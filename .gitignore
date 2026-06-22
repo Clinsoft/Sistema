@@ -1,0 +1,28 @@
+﻿# Build outputs
+**/bin/
+**/obj/
+
+# User-specific
+*.user
+.vs/
+*.suo
+
+# Secrets
+appsettings.Production.json
+**/secrets.json
+
+# Node
+node_modules/
+dist/
+.pnpm-store/
+
+# Certificates
+*.pfx
+*.p12
+
+# NF-e XMLs (store externally)
+**/xml-nfe/
+
+# OS
+.DS_Store
+Thumbs.db

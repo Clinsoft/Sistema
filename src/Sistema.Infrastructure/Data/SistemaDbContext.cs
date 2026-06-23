@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Cadastros.Entities;
 using Sistema.Domain.Compras.Entities;
+using Sistema.Domain.Crediario.Entities;
 using Sistema.Domain.Estoque.Entities;
+using Sistema.Domain.Marketing.Entities;
 using Sistema.Domain.Shared.Primitives;
 using Sistema.Domain.Vendas.Entities;
+using Sistema.Domain.WhatsApp.Entities;
 using System.Reflection;
 
 namespace Sistema.Infrastructure.Data;
@@ -24,6 +27,10 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options) : DbCo
     public DbSet<Produto> Produtos => Set<Produto>();
     public DbSet<Lote> Lotes => Set<Lote>();
     public DbSet<MovimentacaoEstoque> MovimentacoesEstoque => Set<MovimentacaoEstoque>();
+    public DbSet<TabelaNutricional> TabelasNutricionais => Set<TabelaNutricional>();
+    public DbSet<ReceitaProduto> ReceitasProduto => Set<ReceitaProduto>();
+    public DbSet<SugestaoProduto> SugestoesProduto => Set<SugestaoProduto>();
+    public DbSet<QrCodeProduto> QrCodesProduto => Set<QrCodeProduto>();
 
     // Vendas
     public DbSet<Venda> Vendas => Set<Venda>();
@@ -34,6 +41,22 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options) : DbCo
     // Compras
     public DbSet<PedidoCompra> PedidosCompra => Set<PedidoCompra>();
     public DbSet<ItemPedidoCompra> ItensPedidoCompra => Set<ItemPedidoCompra>();
+
+    // Crediário
+    public DbSet<Crediario> Crediarios => Set<Crediario>();
+    public DbSet<ParcelaCrediario> ParcelasCrediario => Set<ParcelaCrediario>();
+    public DbSet<RenegociacaoCrediario> RenegociacoesCrediario => Set<RenegociacaoCrediario>();
+
+    // WhatsApp
+    public DbSet<CatalogoWhatsApp> CatalogosWhatsApp => Set<CatalogoWhatsApp>();
+    public DbSet<ItemCatalogo> ItensCatalogo => Set<ItemCatalogo>();
+    public DbSet<PedidoWhatsApp> PedidosWhatsApp => Set<PedidoWhatsApp>();
+    public DbSet<ItemPedidoWhatsApp> ItensPedidoWhatsApp => Set<ItemPedidoWhatsApp>();
+
+    // Marketing
+    public DbSet<TemplateMarketing> TemplatesMarketing => Set<TemplateMarketing>();
+    public DbSet<ArteMarketing> ArtesMarketing => Set<ArteMarketing>();
+    public DbSet<AgendamentoPublicacao> AgendamentosPublicacao => Set<AgendamentoPublicacao>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

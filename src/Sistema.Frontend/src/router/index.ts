@@ -1,0 +1,135 @@
+import { createRouter, createWebHashHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [
+    { path: '/setup', component: () => import('@/modules/auth/SetupView.vue'),
+      meta: { publica: true } },
+
+    { path: '/login', component: () => import('@/modules/auth/LoginView.vue'),
+      meta: { publica: true } },
+
+    { path: '/', component: () => import('@/modules/dashboard/DashboardView.vue'),
+      meta: { titulo: 'Dashboard' } },
+
+    // PDV
+    { path: '/pdv', component: () => import('@/modules/pdv/PDVView.vue'),
+      meta: { titulo: 'PDV — Ponto de Venda' } },
+    { path: '/pdv/vendas', component: () => import('@/modules/pdv/VendasView.vue'),
+      meta: { titulo: 'Histórico de Vendas' } },
+    { path: '/pdv/sessoes', component: () => import('@/modules/pdv/SessoesView.vue'),
+      meta: { titulo: 'Sessões de Caixa' } },
+    { path: '/pdv/devolucoes', component: () => import('@/modules/pdv/DevolucoesView.vue'),
+      meta: { titulo: 'Devoluções de Venda' } },
+
+    // Estoque
+    { path: '/estoque', component: () => import('@/modules/estoque/EstoqueView.vue'),
+      meta: { titulo: 'Estoque' } },
+    { path: '/estoque/produtos', component: () => import('@/modules/estoque/ProdutosView.vue'),
+      meta: { titulo: 'Produtos' } },
+    { path: '/estoque/movimentacoes', component: () => import('@/modules/estoque/MovimentacoesView.vue'),
+      meta: { titulo: 'Movimentações de Estoque' } },
+    { path: '/estoque/posicao', component: () => import('@/modules/estoque/PosicaoEstoqueView.vue'),
+      meta: { titulo: 'Posição de Estoque' } },
+    { path: '/estoque/lotes', component: () => import('@/modules/estoque/LotesView.vue'),
+      meta: { titulo: 'Lotes e Validades' } },
+    { path: '/estoque/transferencias', component: () => import('@/modules/estoque/TransferenciasView.vue'),
+      meta: { titulo: 'Transferências de Estoque' } },
+    { path: '/estoque/ajuste', component: () => import('@/modules/estoque/AjusteEstoqueView.vue'),
+      meta: { titulo: 'Ajuste de Estoque' } },
+    { path: '/estoque/etiquetas', component: () => import('@/modules/estoque/EtiquetasView.vue'),
+      meta: { titulo: 'Editor de Etiquetas' } },
+
+    // Página pública (sem auth guard)
+    { path: '/produto/:id', component: () => import('@/modules/publico/ProdutoPublicoView.vue'),
+      meta: { publica: true, titulo: 'Produto' } },
+
+    // Compras
+    { path: '/compras', component: () => import('@/modules/compras/ComprasView.vue'),
+      meta: { titulo: 'Pedidos de Compra' } },
+
+    // Crediário
+    { path: '/crediario', component: () => import('@/modules/crediario/CrediarioView.vue'),
+      meta: { titulo: 'Crediário' } },
+
+    // Financeiro
+    { path: '/financeiro', component: () => import('@/modules/financeiro/FinanceiroView.vue'),
+      meta: { titulo: 'Financeiro' } },
+    { path: '/financeiro/contas-receber', component: () => import('@/modules/financeiro/ContasReceberView.vue'),
+      meta: { titulo: 'Contas a Receber' } },
+    { path: '/financeiro/contas-pagar', component: () => import('@/modules/financeiro/ContasPagarView.vue'),
+      meta: { titulo: 'Contas a Pagar' } },
+    { path: '/financeiro/dre', component: () => import('@/modules/financeiro/DreView.vue'),
+      meta: { titulo: 'DRE — Demonstrativo de Resultados' } },
+    { path: '/financeiro/fluxo-caixa', component: () => import('@/modules/financeiro/FluxoCaixaView.vue'),
+      meta: { titulo: 'Fluxo de Caixa' } },
+    { path: '/financeiro/custos-fixos', component: () => import('@/modules/financeiro/CustosFixosView.vue'),
+      meta: { titulo: 'Custos Fixos' } },
+    { path: '/financeiro/operadoras-cartao', component: () => import('@/modules/financeiro/OperadorasCartaoView.vue'),
+      meta: { titulo: 'Operadoras de Cartão' } },
+    { path: '/financeiro/recebiveis-cartao', component: () => import('@/modules/financeiro/ReceiveisCartaoView.vue'),
+      meta: { titulo: 'Recebíveis de Cartão' } },
+
+    // Fiscal
+    { path: '/fiscal', component: () => import('@/modules/fiscal/FiscalView.vue'),
+      meta: { titulo: 'Documentos Fiscais' } },
+    { path: '/fiscal/entradas/:id', component: () => import('@/modules/fiscal/EntradaNFeView.vue'),
+      meta: { titulo: 'Escrituração de Entrada' } },
+
+    // Contabilidade
+    { path: '/contabilidade', component: () => import('@/modules/contabilidade/ContabilidadeView.vue'),
+      meta: { titulo: 'Contabilidade' } },
+    { path: '/contador', component: () => import('@/modules/contabilidade/PainelContadorView.vue'),
+      meta: { publica: true, titulo: 'Painel do Contador' } },
+
+    // WhatsApp
+    { path: '/whatsapp', component: () => import('@/modules/whatsapp/WhatsAppView.vue'),
+      meta: { titulo: 'Catálogo WhatsApp' } },
+
+    // Marketing
+    { path: '/marketing', component: () => import('@/modules/marketing/MarketingView.vue'),
+      meta: { titulo: 'Marketing' } },
+    { path: '/marketing/clube', component: () => import('@/modules/marketing/ClubePromocoesView.vue'),
+      meta: { titulo: 'Clube de Promoções' } },
+    { path: '/marketing/promocoes', component: () => import('@/modules/marketing/PromocoesView.vue'),
+      meta: { titulo: 'Promoções' } },
+
+    // Cadastros
+    { path: '/cadastros', component: () => import('@/modules/cadastros/CadastrosView.vue'),
+      meta: { titulo: 'Cadastros' } },
+    { path: '/cadastros/clientes', component: () => import('@/modules/cadastros/ClientesView.vue'),
+      meta: { titulo: 'Clientes' } },
+    { path: '/cadastros/fornecedores', component: () => import('@/modules/cadastros/FornecedoresView.vue'),
+      meta: { titulo: 'Fornecedores' } },
+    { path: '/cadastros/categorias', component: () => import('@/modules/cadastros/CategoriasView.vue'),
+      meta: { titulo: 'Categorias de Produtos' } },
+    { path: '/cadastros/marcas', component: () => import('@/modules/cadastros/MarcasView.vue'),
+      meta: { titulo: 'Marcas de Produtos' } },
+    { path: '/cadastros/unidades-medida', component: () => import('@/modules/cadastros/UnidadesMedidaView.vue'),
+      meta: { titulo: 'Unidades de Medida' } },
+    { path: '/cadastros/locais-estoque', component: () => import('@/modules/cadastros/LocaisEstoqueView.vue'),
+      meta: { titulo: 'Locais de Estoque' } },
+    { path: '/cadastros/colaboradores', component: () => import('@/modules/cadastros/ColaboradoresView.vue'),
+      meta: { titulo: 'Colaboradores' } },
+
+    // Relatórios
+    { path: '/relatorios', component: () => import('@/modules/relatorios/RelatoriosView.vue'),
+      meta: { titulo: 'Relatórios' } },
+    { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
+      meta: { titulo: 'Planejamento Anual de Vendas' } },
+
+    // Configurações
+    { path: '/configuracoes', component: () => import('@/modules/configuracoes/ConfiguracoesView.vue'),
+      meta: { titulo: 'Configurações' } },
+
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ]
+})
+
+router.beforeEach((to) => {
+  const auth = useAuthStore()
+  if (!to.meta.publica && !auth.logado) return '/login'
+})
+
+export default router

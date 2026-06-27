@@ -1,0 +1,862 @@
+﻿<template>
+  <div>
+    <div class="d-flex align-center mb-3">
+      <div class="text-h6 font-weight-bold flex-grow-1">Documentos Fiscais</div>
+    </div>
+
+    <v-tabs v-model="aba" bg-color="transparent" class="mb-4">
+      <v-tab value="emitidas" prepend-icon="mdi-file-send-outline">NF-e Emitidas</v-tab>
+      <v-tab value="recebidas" prepend-icon="mdi-file-download-outline">
+        NF-e Recebidas
+        <v-chip v-if="resumoRecebidas.semManifestacao > 0" color="warning" size="x-small" class="ml-2">
+          {{ resumoRecebidas.semManifestacao }} pendente(s)
+        </v-chip>
+      </v-tab>
+      <v-tab value="entradas" prepend-icon="mdi-file-import-outline">Importar XML</v-tab>
+    </v-tabs>
+
+    <!-- ─────────────── ABA: EMITIDAS ─────────────── -->
+    <div v-if="aba === 'emitidas'">
+      <v-row class="mb-3">
+        <v-col v-for="c in cardsEmitidas" :key="c.label" cols="6" sm="3">
+          <v-card rounded="xl" elevation="1">
+            <v-card-text class="pa-3 d-flex align-center">
+              <v-avatar :color="c.cor" size="40" class="mr-3">
+                <v-icon :icon="c.icon" color="white" size="20" />
+              </v-avatar>
+              <div>
+                <div class="text-h6 font-weight-bold">{{ c.valor }}</div>
+                <div class="text-caption text-medium-emphasis">{{ c.label }}</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
+        <v-row dense>
+          <v-col cols="12" sm="3">
+            <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="filtros.inicio" label="Início" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="filtros.fim" label="Fim" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-select v-model="filtros.status" label="Status"
+              :items="['Todos','Autorizada','Cancelada','Rejeitada']"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+        </v-row>
+        <div class="d-flex justify-end mt-2">
+          <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregando" @click="carregarEmitidas">
+            Buscar
+          </v-btn>
+        </div>
+      </v-card>
+
+      <v-card rounded="xl" elevation="1">
+        <v-data-table :headers="headersEmitidas" :items="notas" :loading="carregando" density="compact" hover>
+          <template #item.modelo="{ item }">
+            <v-chip size="small" :color="item.modelo===55?'primary':'secondary'" variant="tonal">
+              {{ item.modelo===55?'NF-e':'NFC-e' }}
+            </v-chip>
+          </template>
+          <template #item.status="{ item }">
+            <v-chip size="small" :color="corStatusEmitida(item.status)" variant="tonal">{{ item.status }}</v-chip>
+          </template>
+          <template #item.totalNota="{ item }">R$ {{ fmt(item.totalNota) }}</template>
+          <template #item.dataEmissao="{ item }">{{ fmtData(item.dataEmissao) }}</template>
+          <template #item.actions="{ item }">
+            <v-btn v-if="item.status==='EmDigitacao'"
+              icon="mdi-send-clock-outline" size="x-small" variant="text" color="primary"
+              @click="transmitir(item)" title="Transmitir" />
+            <v-btn v-if="item.status==='Autorizada'"
+              icon="mdi-download-outline" size="x-small" variant="text" color="info"
+              @click="baixarXml(item)" title="Baixar XML" />
+            <v-btn v-if="item.status==='Autorizada'"
+              icon="mdi-close-circle-outline" size="x-small" variant="text" color="error"
+              @click="cancelar(item)" title="Cancelar" />
+          </template>
+        </v-data-table>
+      </v-card>
+    </div>
+
+    <!-- ─────────────── ABA: RECEBIDAS ─────────────── -->
+    <div v-if="aba === 'recebidas'">
+
+      <!-- Cards resumo -->
+      <v-row class="mb-3">
+        <v-col cols="6" sm="3">
+          <v-card rounded="xl" elevation="1">
+            <v-card-text class="pa-3 d-flex align-center">
+              <v-avatar color="primary" size="40" class="mr-3">
+                <v-icon icon="mdi-file-multiple-outline" color="white" size="20" />
+              </v-avatar>
+              <div>
+                <div class="text-h6 font-weight-bold">{{ resumoRecebidas.total }}</div>
+                <div class="text-caption text-medium-emphasis">NF-e recebidas</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-card rounded="xl" elevation="1">
+            <v-card-text class="pa-3 d-flex align-center">
+              <v-avatar color="warning" size="40" class="mr-3">
+                <v-icon icon="mdi-clock-alert-outline" color="white" size="20" />
+              </v-avatar>
+              <div>
+                <div class="text-h6 font-weight-bold">{{ resumoRecebidas.semManifestacao }}</div>
+                <div class="text-caption text-medium-emphasis">Sem manifestação</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-card rounded="xl" elevation="1">
+            <v-card-text class="pa-3 d-flex align-center">
+              <v-avatar color="success" size="40" class="mr-3">
+                <v-icon icon="mdi-check-circle-outline" color="white" size="20" />
+              </v-avatar>
+              <div>
+                <div class="text-h6 font-weight-bold">{{ resumoRecebidas.confirmadas }}</div>
+                <div class="text-caption text-medium-emphasis">Confirmadas</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-card rounded="xl" elevation="1">
+            <v-card-text class="pa-3 d-flex align-center">
+              <v-avatar color="info" size="40" class="mr-3">
+                <v-icon icon="mdi-currency-usd" color="white" size="20" />
+              </v-avatar>
+              <div>
+                <div class="text-h6 font-weight-bold">R$ {{ fmt(resumoRecebidas.valorTotal) }}</div>
+                <div class="text-caption text-medium-emphasis">Valor total recebido</div>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Barra de ações + filtros -->
+      <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
+        <v-row dense align="center">
+          <v-col cols="12" sm="3">
+            <v-text-field v-model="filtrosRec.emitente" label="Emitente (nome ou CNPJ)"
+              variant="outlined" density="compact" hide-details clearable
+              prepend-inner-icon="mdi-magnify" />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <FiltroMes @selecionar="(i, f) => { filtrosRec.dataInicio = i; filtrosRec.dataFim = f }" />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosRec.dataInicio" label="De" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosRec.dataFim" label="Até" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-select v-model="filtrosRec.manifestacao" label="Manifestação"
+              :items="opcoesManifestacaoFiltro" variant="outlined" density="compact"
+              hide-details clearable />
+          </v-col>
+          <v-col cols="12" sm="2" class="d-flex gap-2">
+            <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregandoRec" @click="carregarRecebidas">
+              Buscar
+            </v-btn>
+            <v-btn color="success" variant="tonal" rounded="lg" :loading="consultandoSefaz"
+              @click="consultarSefaz" title="Buscar novas NF-e na SEFAZ">
+              <v-icon>mdi-cloud-download-outline</v-icon>
+            </v-btn>
+          </v-col>
+        </v-row>
+
+        <v-alert v-if="alertaCertificado" type="warning" variant="tonal" density="compact" class="mt-3">
+          <strong>Certificado A1 não configurado.</strong>
+          A consulta à SEFAZ requer o certificado digital da empresa.
+          <router-link to="/configuracoes" class="ml-1">Configurar agora</router-link>
+        </v-alert>
+      </v-card>
+
+      <!-- Tabela NF-e recebidas -->
+      <v-card rounded="xl" elevation="1">
+        <v-data-table :headers="headersRecebidas" :items="notasRecebidas"
+          :loading="carregandoRec" density="comfortable" hover
+          no-data-text="Nenhuma NF-e recebida. Clique no botão ☁ para consultar a SEFAZ.">
+          <template #item.emitente="{ item }">
+            <div class="text-body-2 font-weight-medium">{{ item.emitenteNome }}</div>
+            <div class="text-caption text-medium-emphasis">{{ fmtCnpj(item.emitenteCnpj) }}</div>
+          </template>
+          <template #item.numero="{ item }">
+            <div class="text-caption">
+              Série {{ item.serie }} Nº {{ item.numero }}
+            </div>
+            <div class="text-caption text-medium-emphasis" style="font-size:10px">
+              {{ item.chaveAcesso?.substring(0, 20) }}…
+            </div>
+          </template>
+          <template #item.valorTotal="{ item }">
+            <span class="font-weight-medium">R$ {{ fmt(item.valorTotal) }}</span>
+          </template>
+          <template #item.dataEmissao="{ item }">{{ fmtData(item.dataEmissao) }}</template>
+          <template #item.situacao="{ item }">
+            <v-chip size="small" :color="item.situacao==='Autorizada'?'success':'error'" variant="tonal">
+              {{ item.situacao }}
+            </v-chip>
+          </template>
+          <template #item.manifestacao="{ item }">
+            <v-chip v-if="item.manifestacao" size="small"
+              :color="corManifestacao(item.manifestacao)" variant="tonal">
+              <v-icon start size="12">{{ iconeManifestacao(item.manifestacao) }}</v-icon>
+              {{ labelManifestacao(item.manifestacao) }}
+            </v-chip>
+            <v-chip v-else size="small" color="warning" variant="tonal">
+              <v-icon start size="12">mdi-clock-outline</v-icon>
+              Pendente
+            </v-chip>
+          </template>
+          <template #item.acoes="{ item }">
+            <v-menu>
+              <template #activator="{ props }">
+                <v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" />
+              </template>
+              <v-list density="compact" min-width="240">
+                <v-list-subheader>Manifestar</v-list-subheader>
+                <v-list-item prepend-icon="mdi-eye-outline" title="Ciência da Operação"
+                  subtitle="Ciente, aguardando NF-e completa"
+                  @click="manifestar(item, 'CienciaOperacao')" />
+                <v-list-item prepend-icon="mdi-check-circle-outline" title="Confirmação da Operação"
+                  subtitle="Operação ocorreu conforme descrito"
+                  class="text-success"
+                  @click="manifestar(item, 'ConfirmacaoOperacao')" />
+                <v-list-item prepend-icon="mdi-help-circle-outline" title="Desconhecimento"
+                  subtitle="Não reconheço esta operação"
+                  class="text-warning"
+                  @click="manifestar(item, 'DesconhecimentoOperacao')" />
+                <v-list-item prepend-icon="mdi-cancel" title="Operação Não Realizada"
+                  subtitle="Operação não ocorreu"
+                  class="text-error"
+                  @click="abrirNaoRealizada(item)" />
+                <v-divider />
+                <v-list-item v-if="item.temXml"
+                  prepend-icon="mdi-download-outline" title="Baixar XML"
+                  @click="baixarXmlRecebida(item)" />
+                <v-divider />
+                <v-list-item
+                  prepend-icon="mdi-file-import-outline" title="Escriturar Entrada"
+                  subtitle="Lançar no estoque e financeiro"
+                  class="text-primary font-weight-medium"
+                  @click="escriturarEntrada(item)" />
+              </v-list>
+            </v-menu>
+          </template>
+        </v-data-table>
+      </v-card>
+    </div>
+
+    <!-- ─────────────── ABA: ENTRADAS ESCRITURADAS ─────────────── -->
+    <div v-if="aba === 'entradas'">
+      <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
+        <v-row dense align="center">
+          <v-col cols="12" sm="2">
+            <FiltroMes @selecionar="(i, f) => { filtrosEnt.dataInicio = i; filtrosEnt.dataFim = f }" />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosEnt.dataInicio" label="De" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosEnt.dataFim" label="Até" type="date"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="3">
+            <v-select v-model="filtrosEnt.status" label="Status" clearable
+              :items="[{title:'Em Edição',value:'EmEdicao'},{title:'Processada',value:'Processada'},{title:'Estornada',value:'Estornada'}]"
+              variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="3" class="d-flex gap-2">
+            <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregandoEnt" @click="carregarEntradas">
+              Buscar
+            </v-btn>
+            <v-btn color="success" rounded="lg" prepend-icon="mdi-file-import-outline"
+              @click="dlgImportarXml = true">
+              Importar XML
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+
+      <v-card rounded="xl" elevation="1">
+        <v-data-table :headers="headersEntradas" :items="entradas" :loading="carregandoEnt"
+          density="comfortable" hover
+          no-data-text="Nenhuma entrada escriturada. Use 'Importar XML' ou Escriturar via NF-e Recebidas.">
+          <template #item.emitente="{ item }">
+            <div class="text-body-2 font-weight-medium">{{ item.emitenteNome }}</div>
+            <div class="text-caption text-medium-emphasis">{{ fmtCnpj(item.emitenteCnpj) }}</div>
+          </template>
+          <template #item.chave="{ item }">
+            <span class="text-caption" style="font-size:10px">{{ item.chaveAcesso?.substring(0, 22) }}…</span>
+          </template>
+          <template #item.dataEmissao="{ item }">{{ fmtData(item.dataEmissao) }}</template>
+          <template #item.dataEntrada="{ item }">{{ fmtData(item.dataEntrada) }}</template>
+          <template #item.valorTotal="{ item }">
+            <span class="font-weight-medium">R$ {{ fmt(item.valorTotal) }}</span>
+          </template>
+          <template #item.status="{ item }">
+            <v-chip size="small" :color="corStatusEntrada(item.status)" variant="tonal">
+              {{ labelStatusEntrada(item.status) }}
+            </v-chip>
+          </template>
+          <template #item.totalItens="{ item }">
+            <span class="text-body-2">{{ item.totalItens }}</span>
+          </template>
+          <template #item.acoes="{ item }">
+            <v-btn icon="mdi-arrow-right-circle-outline" size="small" variant="text" color="primary"
+              @click="abrirEntrada(item)" title="Abrir escrituração" />
+          </template>
+        </v-data-table>
+      </v-card>
+    </div>
+
+    <!-- Dialog: Importar XML diretamente -->
+    <v-dialog v-model="dlgImportarXml" max-width="500" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="primary">mdi-file-xml-box</v-icon>
+          Importar XML de NF-e
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Faça o upload do arquivo XML autorizado pela SEFAZ. O sistema irá extrair
+            emitente, itens, totais e duplicatas automaticamente.
+          </v-alert>
+
+          <v-file-input v-model="xmlFile" label="Arquivo XML da NF-e *"
+            accept=".xml,text/xml,application/xml"
+            variant="outlined" density="compact" prepend-icon="mdi-paperclip"
+            hint="Selecione o arquivo .xml da NF-e autorizada" persistent-hint
+            :rules="[r => !!r || 'Selecione o arquivo XML']" />
+
+          <v-select v-model="localImportacaoId" label="Local de estoque de destino *"
+            :items="locaisEstoque" item-title="nome" item-value="id"
+            variant="outlined" density="compact" class="mt-3"
+            :rules="[r => !!r || 'Selecione o local de estoque']" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgImportarXml = false" :disabled="importando">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="importando"
+            :disabled="!xmlFile || !localImportacaoId" @click="importarXml">
+            <v-icon start>mdi-upload</v-icon>
+            Importar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog SPED -->
+    <v-dialog v-model="dialogSped" max-width="400">
+      <v-card rounded="xl" class="pa-4">
+        <v-card-title class="mb-3">Download SPED EFD</v-card-title>
+        <v-row dense>
+          <v-col cols="6">
+            <v-text-field v-model.number="sped.mes" label="Mês" type="number"
+              min="1" max="12" variant="outlined" density="compact" />
+          </v-col>
+          <v-col cols="6">
+            <v-text-field v-model.number="sped.ano" label="Ano" type="number"
+              variant="outlined" density="compact" />
+          </v-col>
+        </v-row>
+        <v-btn color="primary" block rounded="lg" :loading="baixandoSped" @click="baixarSped">
+          Gerar e Baixar
+        </v-btn>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Operação Não Realizada (justificativa obrigatória) -->
+    <v-dialog v-model="dlgNaoRealizada" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="error">mdi-cancel</v-icon>
+          Operação Não Realizada
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            Emitente: <strong>{{ notaSelecionada?.emitenteNome }}</strong>
+          </div>
+          <v-textarea v-model="justificativaNaoRealizada"
+            label="Justificativa *" rows="3" variant="outlined" density="compact"
+            hint="Mínimo 15 caracteres" persistent-hint
+            :rules="[r => !!r || 'Obrigatória', r => r.length >= 15 || 'Mínimo 15 caracteres']" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgNaoRealizada = false" :disabled="manifestando">Cancelar</v-btn>
+          <v-btn color="error" rounded="lg" :loading="manifestando"
+            @click="manifestar(notaSelecionada, 'OperacaoNaoRealizada', justificativaNaoRealizada)">
+            Confirmar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Iniciar Escrituração -->
+    <v-dialog v-model="dlgEscriturar" max-width="420" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="primary">mdi-file-import-outline</v-icon>
+          Escriturar Entrada
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            <strong>{{ notaParaEscriturar?.emitenteNome }}</strong><br>
+            <span class="text-caption text-medium-emphasis">
+              Valor: R$ {{ fmt(notaParaEscriturar?.valorTotal) }}
+            </span>
+          </div>
+          <v-select v-model="localEscrituracaoId" label="Local de estoque de destino *"
+            :items="locaisEstoque" item-title="nome" item-value="id"
+            variant="outlined" density="compact"
+            :rules="[r => !!r || 'Selecione o local de estoque']" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgEscriturar = false" :disabled="iniciandoEscriturar">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="iniciandoEscriturar"
+            :disabled="!localEscrituracaoId" @click="confirmarEscriturar">
+            <v-icon start>mdi-arrow-right</v-icon>
+            Iniciar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Inutilizar Numeração -->
+    <v-dialog v-model="dlgInutilizar" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="error">mdi-close-box-outline</v-icon>
+          Inutilizar Numeração
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
+            Use quando números foram pulados e nunca serão emitidos. Operação irreversível.
+          </v-alert>
+          <v-row dense>
+            <v-col cols="6">
+              <v-select v-model="inut.modelo" label="Modelo" variant="outlined" density="compact"
+                :items="[{title:'NF-e (55)',value:55},{title:'NFC-e (65)',value:65}]" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="inut.serie" label="Série"
+                type="number" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="inut.numeroInicial" label="Nº Inicial"
+                type="number" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="inut.numeroFinal" label="Nº Final"
+                type="number" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea v-model="inut.justificativa" label="Justificativa *"
+                rows="2" variant="outlined" density="compact"
+                hint="Mínimo 15 caracteres" persistent-hint />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgInutilizar = false" :disabled="inutilizando">Cancelar</v-btn>
+          <v-btn color="error" rounded="lg" :loading="inutilizando" @click="confirmarInutilizar">
+            Inutilizar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-speed-dial v-if="aba === 'emitidas' || aba === 'entradas'" location="bottom right" transition="fade-transition" class="fixed-fab">
+      <template #activator="{ props }">
+        <v-fab v-bind="props" icon="mdi-plus" color="primary" size="large" />
+      </template>
+      <v-btn key="inut" prepend-icon="mdi-close-box-outline" text="Inutilizar numeração"
+        color="surface" variant="flat" @click="dlgInutilizar = true" />
+      <v-btn key="sped" prepend-icon="mdi-file-export-outline" text="SPED EFD"
+        color="surface" variant="flat" @click="dialogSped = true" />
+      <v-btn key="xmls" prepend-icon="mdi-zip-box-outline" text="XMLs do período"
+        color="surface" variant="flat" @click="baixarXmls" />
+    </v-speed-dial>
+  </div>
+</template>
+
+<script setup lang="ts">
+import FiltroMes from '@/components/FiltroMes.vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import api from '@/composables/useApi'
+import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
+import { formatarCnpj } from '@/utils/documento'
+
+const auth = useAuthStore()
+const notif = useNotifStore()
+const router = useRouter()
+const aba = ref('emitidas')
+
+// ── Emitidas ──
+const carregando = ref(false)
+const baixandoSped = ref(false)
+const notas = ref<any[]>([])
+const dialogSped = ref(false)
+const filtros = ref({
+  inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+  fim: new Date().toISOString().slice(0, 10),
+  status: 'Todos',
+})
+const sped = ref({ mes: new Date().getMonth() + 1, ano: new Date().getFullYear() })
+
+const cardsEmitidas = computed(() => [
+  { label: 'NF-e emitidas', valor: notas.value.filter((n: any) => n.modelo === 55 && n.status === 'Autorizada').length, icon: 'mdi-file-check-outline', cor: 'success' },
+  { label: 'NFC-e emitidas', valor: notas.value.filter((n: any) => n.modelo === 65 && n.status === 'Autorizada').length, icon: 'mdi-receipt-text-check-outline', cor: 'primary' },
+  { label: 'Canceladas', valor: notas.value.filter((n: any) => n.status === 'Cancelada').length, icon: 'mdi-file-cancel-outline', cor: 'error' },
+  { label: 'Total faturado', valor: `R$ ${fmt(notas.value.filter((n: any) => n.status === 'Autorizada').reduce((s: number, n: any) => s + n.totalNota, 0))}`, icon: 'mdi-currency-usd', cor: 'info' },
+])
+
+const headersEmitidas = [
+  { title: 'Modelo', key: 'modelo' }, { title: 'Série', key: 'serie' }, { title: 'Nº', key: 'numero' },
+  { title: 'Destinatário', key: 'nomeDestinatario' }, { title: 'Emissão', key: 'dataEmissao' },
+  { title: 'Total', key: 'totalNota' }, { title: 'Status', key: 'status' }, { title: '', key: 'actions', sortable: false },
+]
+
+// ── Recebidas ──
+const carregandoRec = ref(false)
+const consultandoSefaz = ref(false)
+const manifestando = ref(false)
+const notasRecebidas = ref<any[]>([])
+const alertaCertificado = ref(false)
+const dlgNaoRealizada = ref(false)
+const notaSelecionada = ref<any>(null)
+const justificativaNaoRealizada = ref('')
+
+const resumoRecebidas = ref({
+  total: 0, semManifestacao: 0, confirmadas: 0,
+  ciencia: 0, desconhecidas: 0, naoRealizadas: 0, valorTotal: 0,
+})
+
+const filtrosRec = ref({
+  emitente: '',
+  dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+  dataFim: new Date().toISOString().slice(0, 10),
+  manifestacao: null as string | null,
+})
+
+const opcoesManifestacaoFiltro = [
+  { title: 'Pendentes', value: null },
+  { title: 'Ciência da Operação', value: 'CienciaOperacao' },
+  { title: 'Confirmação da Operação', value: 'ConfirmacaoOperacao' },
+  { title: 'Desconhecimento', value: 'DesconhecimentoOperacao' },
+  { title: 'Operação Não Realizada', value: 'OperacaoNaoRealizada' },
+]
+
+const headersRecebidas = [
+  { title: 'Emitente', key: 'emitente', sortable: false },
+  { title: 'Nota', key: 'numero', sortable: false },
+  { title: 'Emissão', key: 'dataEmissao' },
+  { title: 'Valor Total', key: 'valorTotal' },
+  { title: 'Situação', key: 'situacao' },
+  { title: 'Manifestação', key: 'manifestacao' },
+  { title: '', key: 'acoes', sortable: false, align: 'end' as const },
+]
+
+function corStatusEmitida(s: string) {
+  return ({ Autorizada: 'success', Cancelada: 'error', Rejeitada: 'warning', EmDigitacao: 'default', Transmitindo: 'info' } as any)[s] ?? 'default'
+}
+
+function corManifestacao(m: string) {
+  return ({ ConfirmacaoOperacao: 'success', CienciaOperacao: 'info', DesconhecimentoOperacao: 'warning', OperacaoNaoRealizada: 'error' } as any)[m] ?? 'default'
+}
+
+function iconeManifestacao(m: string) {
+  return ({ ConfirmacaoOperacao: 'mdi-check-circle', CienciaOperacao: 'mdi-eye', DesconhecimentoOperacao: 'mdi-help-circle', OperacaoNaoRealizada: 'mdi-cancel' } as any)[m] ?? 'mdi-circle'
+}
+
+function labelManifestacao(m: string) {
+  return ({ ConfirmacaoOperacao: 'Confirmada', CienciaOperacao: 'Ciência', DesconhecimentoOperacao: 'Desconhecida', OperacaoNaoRealizada: 'Não Realizada' } as any)[m] ?? m
+}
+
+const fmtCnpj = formatarCnpj
+
+const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
+
+async function carregarEmitidas() {
+  carregando.value = true
+  try {
+    const r = await api.get('/fiscal/notas', { params: { empresaId: auth.empresaId, ...filtros.value } })
+    notas.value = r.data
+  } finally { carregando.value = false }
+}
+
+async function carregarRecebidas() {
+  carregandoRec.value = true
+  try {
+    const [notasRes, resumoRes] = await Promise.all([
+      api.get('/fiscal/nfes-recebidas', { params: { empresaId: auth.empresaId, ...filtrosRec.value } }),
+      api.get('/fiscal/nfes-recebidas/resumo', { params: { empresaId: auth.empresaId } }),
+    ])
+    notasRecebidas.value = notasRes.data
+    resumoRecebidas.value = resumoRes.data
+  } catch {
+    notif.erro('Erro ao carregar NF-e recebidas.')
+  } finally { carregandoRec.value = false }
+}
+
+async function consultarSefaz() {
+  consultandoSefaz.value = true
+  alertaCertificado.value = false
+  try {
+    const r = await api.post(`/fiscal/nfes-recebidas/consultar?empresaId=${auth.empresaId}`)
+    if (r.data.novasNotas > 0)
+      notif.ok(`${r.data.novasNotas} nova(s) NF-e encontrada(s) na SEFAZ!`)
+    else
+      notif.ok('Consulta realizada. Nenhuma NF-e nova encontrada.')
+    await carregarRecebidas()
+  } catch (e: any) {
+    const msg = e.response?.data?.mensagem ?? ''
+    if (msg.includes('certificado') || msg.includes('Certificado')) {
+      alertaCertificado.value = true
+    } else {
+      notif.erro(msg || 'Erro ao consultar SEFAZ.')
+    }
+  } finally { consultandoSefaz.value = false }
+}
+
+async function manifestar(item: any, tipo: string, justificativa?: string) {
+  if (tipo === 'OperacaoNaoRealizada' && !justificativa) return
+  manifestando.value = true
+  try {
+    await api.post(`/fiscal/nfes-recebidas/${item.id}/manifestar?empresaId=${auth.empresaId}`,
+      { tipo, justificativa: justificativa ?? null })
+    notif.ok(`Manifestação "${labelManifestacao(tipo)}" registrada.`)
+    dlgNaoRealizada.value = false
+    await carregarRecebidas()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao manifestar.')
+  } finally { manifestando.value = false }
+}
+
+function abrirNaoRealizada(item: any) {
+  notaSelecionada.value = item
+  justificativaNaoRealizada.value = ''
+  dlgNaoRealizada.value = true
+}
+
+async function baixarXmlRecebida(item: any) {
+  try {
+    const r = await api.get(`/fiscal/nfes-recebidas/${item.id}/xml`,
+      { params: { empresaId: auth.empresaId }, responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = `NFe_${item.chaveAcesso}.xml`; a.click()
+  } catch {
+    notif.erro('XML não disponível. Manifeste com Confirmação ou Ciência primeiro.')
+  }
+}
+
+// ── Escrituração ──
+const dlgEscriturar = ref(false)
+const notaParaEscriturar = ref<any>(null)
+const localEscrituracaoId = ref<string | null>(null)
+const iniciandoEscriturar = ref(false)
+const locaisEstoque = ref<any[]>([])
+
+async function carregarLocaisEstoque() {
+  try {
+    const r = await api.get('/estoque/locais', { params: { empresaId: auth.empresaId } })
+    locaisEstoque.value = r.data
+  } catch {}
+}
+
+function escriturarEntrada(item: any) {
+  notaParaEscriturar.value = item
+  localEscrituracaoId.value = locaisEstoque.value[0]?.id ?? null
+  dlgEscriturar.value = true
+}
+
+async function confirmarEscriturar() {
+  if (!localEscrituracaoId.value) return
+  iniciandoEscriturar.value = true
+  try {
+    const r = await api.post(
+      `/fiscal/entradas/de-nfe-recebida/${notaParaEscriturar.value.id}`,
+      { empresaId: auth.empresaId, localEstoqueId: localEscrituracaoId.value })
+    notif.ok('Escrituração iniciada!')
+    dlgEscriturar.value = false
+    router.push(`/fiscal/entradas/${r.data.id}`)
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao iniciar escrituração.')
+  } finally { iniciandoEscriturar.value = false }
+}
+
+// ── Inutilizar Numeração ──
+const dlgInutilizar = ref(false)
+const inutilizando = ref(false)
+const inut = ref({ modelo: 55, serie: 1, numeroInicial: 1, numeroFinal: 1, justificativa: '' })
+
+async function confirmarInutilizar() {
+  if (!inut.value.justificativa || inut.value.justificativa.length < 15) {
+    notif.erro('Justificativa deve ter no mínimo 15 caracteres.')
+    return
+  }
+  inutilizando.value = true
+  try {
+    const r = await api.post('/fiscal/notas/inutilizar', {
+      empresaId: auth.empresaId, ...inut.value,
+    })
+    notif.ok(r.data.mensagem)
+    dlgInutilizar.value = false
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao inutilizar.')
+  } finally { inutilizando.value = false }
+}
+
+async function transmitir(nota: any) {
+  await api.post(`/fiscal/notas/${nota.id}/transmitir`)
+  notif.ok('NF-e transmitida!')
+  await carregarEmitidas()
+}
+
+async function cancelar(nota: any) {
+  await api.post(`/fiscal/notas/${nota.id}/cancelar`, { motivo: 'Cancelamento solicitado pelo emissor' })
+  notif.ok('NF-e cancelada.')
+  await carregarEmitidas()
+}
+
+async function baixarXml(nota: any) {
+  if (!nota.xmlAutorizacao) return notif.aviso('XML não disponível.')
+  const blob = new Blob([nota.xmlAutorizacao], { type: 'application/xml' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `NFe_${nota.chaveAcesso}.xml`; a.click()
+}
+
+async function baixarXmls() {
+  const r = await api.get('/fiscal/relatorios/download-xml', {
+    params: { empresaId: auth.empresaId, inicio: filtros.value.inicio, fim: filtros.value.fim },
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(r.data)
+  const a = document.createElement('a'); a.href = url
+  a.download = `XMLs_${filtros.value.inicio}_${filtros.value.fim}.zip`; a.click()
+}
+
+async function baixarSped() {
+  baixandoSped.value = true
+  try {
+    const r = await api.get('/fiscal/sped/efd-icms', {
+      params: { empresaId: auth.empresaId, ano: sped.value.ano, mes: sped.value.mes },
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a'); a.href = url
+    a.download = `SPED_EFD_${sped.value.ano}${String(sped.value.mes).padStart(2, '0')}.txt`; a.click()
+    dialogSped.value = false
+  } finally { baixandoSped.value = false }
+}
+
+// ── Entradas Escrituradas ──
+const carregandoEnt = ref(false)
+const importando = ref(false)
+const dlgImportarXml = ref(false)
+const entradas = ref<any[]>([])
+const xmlFile = ref<File | null>(null)
+const localImportacaoId = ref<string | null>(null)
+
+const filtrosEnt = ref({
+  dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+  dataFim: new Date().toISOString().slice(0, 10),
+  status: null as string | null,
+})
+
+const headersEntradas = [
+  { title: 'Emitente', key: 'emitente', sortable: false },
+  { title: 'Chave', key: 'chave', sortable: false },
+  { title: 'Emissão', key: 'dataEmissao' },
+  { title: 'Entrada', key: 'dataEntrada' },
+  { title: 'Valor Total', key: 'valorTotal' },
+  { title: 'Itens', key: 'totalItens', width: 60 },
+  { title: 'Status', key: 'status' },
+  { title: '', key: 'acoes', sortable: false, align: 'end' as const },
+]
+
+function corStatusEntrada(s: string) {
+  return ({ EmEdicao: 'warning', Processada: 'success', Estornada: 'error' } as any)[s] ?? 'default'
+}
+
+function labelStatusEntrada(s: string) {
+  return ({ EmEdicao: 'Em Edição', Processada: 'Processada', Estornada: 'Estornada' } as any)[s] ?? s
+}
+
+async function carregarEntradas() {
+  carregandoEnt.value = true
+  try {
+    const params: any = { empresaId: auth.empresaId, ...filtrosEnt.value }
+    if (!params.status) delete params.status
+    const r = await api.get('/fiscal/entradas', { params })
+    entradas.value = r.data
+  } catch {
+    notif.erro('Erro ao carregar entradas.')
+  } finally { carregandoEnt.value = false }
+}
+
+async function importarXml() {
+  if (!xmlFile.value || !localImportacaoId.value) return
+  importando.value = true
+  try {
+    const form = new FormData()
+    form.append('arquivo', xmlFile.value)
+    const r = await api.post('/fiscal/entradas/importar-xml', form, {
+      params: { empresaId: auth.empresaId, localEstoqueId: localImportacaoId.value },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    const res = r.data
+    const aviso = res.itensPendentes > 0
+      ? `${res.itensPendentes} produto(s) precisam de vinculação manual.`
+      : 'Todos os produtos foram vinculados automaticamente.'
+    notif.ok(`NF ${res.numeroNF} importada — ${res.totalItens} itens. ${aviso}`)
+    if (res.avisos?.length) res.avisos.forEach((a: string) => notif.aviso(a))
+    // Persistir duplicatas para pré-popular a aba Financeiro
+    if (res.duplicatas?.length)
+      sessionStorage.setItem(`entrada_duplicatas_${res.id}`, JSON.stringify(res.duplicatas))
+    dlgImportarXml.value = false
+    xmlFile.value = null
+    localImportacaoId.value = locaisEstoque.value[0]?.id ?? null
+    router.push(`/fiscal/entradas/${res.id}`)
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao importar XML.')
+  } finally { importando.value = false }
+}
+
+function abrirEntrada(item: any) {
+  router.push(`/fiscal/entradas/${item.id}`)
+}
+
+watch(aba, (v) => {
+  if (v === 'recebidas') carregarRecebidas()
+  if (v === 'entradas') carregarEntradas()
+})
+
+onMounted(async () => {
+  await Promise.all([carregarEmitidas(), carregarLocaisEstoque()])
+})
+</script>

@@ -1,0 +1,1186 @@
+<template>
+  <div>
+    <v-row align="center" class="mb-4">
+      <v-col><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
+      <v-col cols="auto">
+        <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNovo">Novo Produto</v-btn>
+      </v-col>
+    </v-row>
+
+    <!-- Filtros -->
+    <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
+      <v-row dense align="center">
+        <v-col cols="12" md="5">
+          <v-text-field v-model="busca" placeholder="Buscar por nome, código ou EAN…"
+            prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details
+            clearable @update:model-value="listar" />
+        </v-col>
+        <v-col cols="12" md="3">
+          <v-select v-model="filtroCategoria" :items="categorias" item-title="nome" item-value="id"
+            label="Categoria" variant="outlined" density="compact" hide-details clearable
+            @update:model-value="listar" />
+        </v-col>
+        <v-col cols="12" md="2">
+          <v-select v-model="filtroAtivo"
+            :items="[{title:'Ativos',value:true},{title:'Inativos',value:false},{title:'Todos',value:null}]"
+            label="Status" variant="outlined" density="compact" hide-details
+            @update:model-value="listar" />
+        </v-col>
+        <v-col cols="auto">
+          <v-btn color="primary" variant="tonal" @click="listar">Filtrar</v-btn>
+        </v-col>
+      </v-row>
+    </v-card>
+
+    <!-- Tabela -->
+    <v-card rounded="xl" elevation="1">
+      <v-data-table :headers="headers" :items="produtos" :loading="carregando" density="compact"
+        hover items-per-page="20">
+        <template #item.precoVenda="{ item }">R$ {{ fmtN(item.precoVenda) }}</template>
+        <template #item.custoUnitario="{ item }">R$ {{ fmtN(item.custoUnitario) }}</template>
+        <template #item.estoqueAtual="{ item }">
+          <v-chip :color="item.estoqueAtual <= item.estoqueMinimo ? 'error' : 'success'"
+            size="small" variant="tonal">{{ item.estoqueAtual }}</v-chip>
+        </template>
+        <template #item.ativo="{ item }">
+          <v-chip :color="item.ativo ? 'success' : 'default'" size="small" variant="tonal">
+            {{ item.ativo ? 'Ativo' : 'Inativo' }}
+          </v-chip>
+        </template>
+        <template #item.actions="{ item }">
+          <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary"
+            @click="abrirEdicao(item)" />
+        </template>
+      </v-data-table>
+    </v-card>
+
+    <!-- ===================== DIALOG PRODUTO ===================== -->
+    <v-dialog v-model="dialog" max-width="860" persistent scrollable>
+      <v-card rounded="xl">
+
+        <!-- Cabeçalho fixo -->
+        <div class="prod-header">
+          <div class="d-flex align-center gap-3">
+            <v-avatar color="primary" variant="tonal" size="42" rounded="lg">
+              <v-icon :icon="editando ? 'mdi-package-variant' : 'mdi-plus-box'" size="22" />
+            </v-avatar>
+            <div>
+              <div class="text-subtitle-1 font-weight-bold lh-1">
+                {{ editando ? (form.descricao || 'Editar Produto') : 'Novo Produto' }}
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ editando ? 'Código: ' + form.codigo : 'Preencha os dados e salve' }}
+              </div>
+            </div>
+          </div>
+          <v-btn icon="mdi-close" variant="text" size="small" @click="fecharDialog" />
+        </div>
+
+        <v-divider />
+
+        <v-card-text class="pa-0" style="max-height:78vh;overflow-y:auto">
+          <v-form ref="formulario">
+            <div class="prod-form-body">
+
+              <!-- ── SEÇÃO: IDENTIFICAÇÃO ───────────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-information-outline" size="16" />
+                  <span>Identificação</span>
+                </div>
+
+                <div class="prod-secao-body">
+                  <!-- Imagem + dados lado a lado -->
+                  <div class="d-flex gap-4 mb-4">
+                    <!-- Foto -->
+                    <div class="prod-foto-col">
+                      <div class="prod-foto-box" @click="$refs.inputImgRef?.click()" :title="'Clique para ' + (form.imagemUrl ? 'trocar' : 'adicionar') + ' foto'">
+                        <v-img v-if="form.imagemUrl || previewImagem"
+                          :src="previewImagem || form.imagemUrl || ''"
+                          cover width="110" height="110" />
+                        <div v-else class="prod-foto-empty">
+                          <v-icon icon="mdi-image-plus" size="32" color="grey-lighten-1" />
+                          <span>Foto</span>
+                        </div>
+                      </div>
+                      <input ref="inputImgRef" type="file" accept="image/jpeg,image/png,image/webp"
+                        style="display:none" @change="onFileImagem" />
+                      <v-btn v-if="form.imagemUrl" size="x-small" variant="text" color="error"
+                        class="mt-1" :loading="removendoImagem" @click="removerImagem">
+                        Remover
+                      </v-btn>
+                    </div>
+
+                    <!-- Campos principais -->
+                    <div class="flex-grow-1">
+                      <v-text-field v-model="form.descricao" label="Nome do produto *"
+                        variant="outlined" density="compact" class="mb-2" autofocus
+                        :rules="[r => !!r || 'Obrigatório']" />
+                      <v-row dense>
+                        <v-col cols="5">
+                          <v-text-field v-model="form.codigo" label="Código *"
+                            variant="outlined" density="compact"
+                            :rules="[r => !!r || 'Obrigatório']" />
+                        </v-col>
+                        <v-col cols="7">
+                          <v-text-field v-model="form.codigoBarras" label="Código de barras (EAN)"
+                            variant="outlined" density="compact"
+                            prepend-inner-icon="mdi-barcode" />
+                        </v-col>
+                      </v-row>
+                    </div>
+                  </div>
+
+                  <v-row dense>
+                    <v-col cols="12" md="4">
+                      <v-select v-model="form.categoriaId" :items="categorias" item-title="nome" item-value="id"
+                        label="Categoria *" variant="outlined" density="compact"
+                        :rules="[r => !!r || 'Obrigatório']">
+                        <template #append-inner>
+                          <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
+                            title="Adicionar categoria" @click.stop="abrirQuickAdd('categoria')" />
+                        </template>
+                      </v-select>
+                    </v-col>
+                    <v-col cols="12" md="4">
+                      <v-select v-model="form.marcaId" :items="marcas" item-title="nome" item-value="id"
+                        label="Marca *" variant="outlined" density="compact"
+                        :rules="[r => !!r || 'Obrigatório']">
+                        <template #append-inner>
+                          <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
+                            title="Adicionar marca" @click.stop="abrirQuickAdd('marca')" />
+                        </template>
+                      </v-select>
+                    </v-col>
+                    <v-col cols="12" md="4">
+                      <v-select v-model="form.unidadeMedidaId" :items="unidades" item-title="sigla" item-value="id"
+                        label="Unidade *" variant="outlined" density="compact"
+                        :rules="[r => !!r || 'Obrigatório']">
+                        <template #append-inner>
+                          <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
+                            title="Adicionar unidade" @click.stop="abrirQuickAdd('unidade')" />
+                        </template>
+                      </v-select>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-select v-model="form.fornecedorPrincipalId" :items="fornecedores"
+                        item-title="razaoSocial" item-value="id"
+                        label="Fornecedor principal" variant="outlined" density="compact" clearable />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select v-model="form.marcador" :items="marcadores" item-title="label" item-value="value"
+                        label="Marcador" variant="outlined" density="compact" clearable>
+                        <template #selection="{ item }">
+                          <v-chip :color="item.raw.cor" size="small">
+                            <v-icon :icon="item.raw.icone" size="x-small" class="mr-1"/>{{ item.raw.label }}
+                          </v-chip>
+                        </template>
+                        <template #item="{ item, props }">
+                          <v-list-item v-bind="props">
+                            <template #prepend><v-icon :icon="item.raw.icone" :color="item.raw.cor"/></template>
+                          </v-list-item>
+                        </template>
+                      </v-select>
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-text-field v-model="form.tags" label="Tags"
+                        variant="outlined" density="compact"
+                        prepend-inner-icon="mdi-tag-outline"
+                        placeholder="ex: orgânico, sem glúten" />
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-text-field v-model="form.descricaoComplementar" label="Descrição complementar"
+                        variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-text-field v-model="form.referencia" label="Referência interna"
+                        variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select v-model="form.tipoVariacao"
+                        :items="[{title:'Produto simples',value:'Simples'},{title:'Com variação',value:'ComVariacao'}]"
+                        label="Tipo" variant="outlined" density="compact" />
+                    </v-col>
+                  </v-row>
+
+                  <!-- Opções booleanas em chips visuais -->
+                  <div class="prod-opcoes mt-2">
+                    <v-chip v-model="form.ativo" filter color="success" variant="tonal" size="small">
+                      <v-icon start icon="mdi-check-circle-outline" />Ativo
+                    </v-chip>
+                    <v-chip v-model="form.produtoBalanca" filter color="primary" variant="tonal" size="small">
+                      <v-icon start icon="mdi-scale-balance" />Balança
+                    </v-chip>
+                    <v-chip v-model="form.vendidoFracionado" filter color="secondary" variant="tonal" size="small">
+                      <v-icon start icon="mdi-scissors-cutting" />Fracionado
+                    </v-chip>
+                    <v-chip v-model="form.ocultarNasVendas" filter color="warning" variant="tonal" size="small">
+                      <v-icon start icon="mdi-eye-off-outline" />Ocultar no PDV
+                    </v-chip>
+                    <v-chip v-model="form.requisitarVendedor" filter color="info" variant="tonal" size="small">
+                      <v-icon start icon="mdi-account-tie-outline" />Req. vendedor
+                    </v-chip>
+                    <v-chip v-model="form.controlarLote" filter color="teal" variant="tonal" size="small">
+                      <v-icon start icon="mdi-barcode-scan" />Controlar lote
+                    </v-chip>
+                    <v-chip v-model="form.controlarValidade" filter color="orange" variant="tonal" size="small">
+                      <v-icon start icon="mdi-calendar-clock" />Controlar validade
+                    </v-chip>
+                  </div>
+                  <v-row dense class="mt-2" v-if="form.produtoBalanca || form.controlarValidade">
+                    <v-col cols="6" md="3" v-if="form.produtoBalanca">
+                      <v-text-field v-model.number="form.codigoPlu" label="Código PLU"
+                        type="number" variant="outlined" density="compact" hide-details />
+                    </v-col>
+                    <v-col cols="6" md="3" v-if="form.controlarValidade">
+                      <v-text-field v-model.number="form.validadeEmDias" label="Validade (dias)"
+                        type="number" variant="outlined" density="compact" hide-details />
+                    </v-col>
+                  </v-row>
+                </div>
+              </div>
+
+              <!-- ── SEÇÃO: PREÇOS ──────────────────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-tag-outline" size="16" />
+                  <span>Preços</span>
+                </div>
+                <div class="prod-secao-body">
+                  <!-- Resumo calculado -->
+                  <div class="prod-preco-resumo mb-4">
+                    <div class="prod-preco-item">
+                      <span class="label">Custo</span>
+                      <span class="val">R$ {{ fmtN(form.custoUnitario) }}</span>
+                    </div>
+                    <v-icon icon="mdi-chevron-right" color="grey-lighten-1" />
+                    <div class="prod-preco-item destaque">
+                      <span class="label">Preço de Venda</span>
+                      <span class="val">R$ {{ fmtN(form.precoVenda) }}</span>
+                    </div>
+                    <div class="prod-preco-item badge">
+                      <span class="label">Markup</span>
+                      <span class="val">{{ markupExibir }}×</span>
+                    </div>
+                    <div class="prod-preco-item badge">
+                      <span class="label">Margem</span>
+                      <span class="val">{{ margemExibir }}%</span>
+                    </div>
+                  </div>
+
+                  <v-row dense>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model.number="form.custoUnitario" label="Custo (R$)"
+                        type="number" variant="outlined" density="compact" prefix="R$"
+                        @update:model-value="recalcularPrecos" />
+                    </v-col>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model.number="form.precoFornecedor" label="Preço fornecedor (R$)"
+                        type="number" variant="outlined" density="compact" prefix="R$" />
+                    </v-col>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model.number="form.markupMinimo" label="Markup mínimo"
+                        type="number" variant="outlined" density="compact" step="0.01"
+                        @update:model-value="recalcularPrecos" />
+                    </v-col>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model.number="form.precoMinimo" label="Preço mínimo (R$)"
+                        type="number" variant="outlined" density="compact" prefix="R$"
+                        readonly bg-color="grey-lighten-4" />
+                    </v-col>
+                    <v-col cols="6" md="4">
+                      <v-text-field v-model.number="form.precoVenda" label="Preço de venda *"
+                        type="number" variant="outlined" density="compact" prefix="R$"
+                        :rules="[r => r > 0 || 'Obrigatório']" />
+                    </v-col>
+                    <v-col cols="6" md="4">
+                      <v-text-field v-model.number="form.precoAtacado" label="Preço atacado (R$)"
+                        type="number" variant="outlined" density="compact" prefix="R$" clearable />
+                    </v-col>
+                    <v-col cols="6" md="2">
+                      <v-text-field :model-value="markupExibir" label="Markup"
+                        readonly variant="outlined" density="compact" bg-color="grey-lighten-4" />
+                    </v-col>
+                    <v-col cols="6" md="2">
+                      <v-text-field :model-value="margemExibir + '%'" label="Margem"
+                        readonly variant="outlined" density="compact" bg-color="grey-lighten-4" />
+                    </v-col>
+                  </v-row>
+                </div>
+              </div>
+
+              <!-- ── SEÇÃO: FISCAL ──────────────────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-file-certificate-outline" size="16" />
+                  <span>Fiscal</span>
+                </div>
+                <div class="prod-secao-body">
+                  <v-row dense>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model="form.ncm" label="NCM" variant="outlined" density="compact" placeholder="0000.00.00" />
+                    </v-col>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model="form.cest" label="CEST" variant="outlined" density="compact" placeholder="00.000.00" />
+                    </v-col>
+                    <v-col cols="6" md="2">
+                      <v-text-field v-model="form.cfop" label="CFOP" variant="outlined" density="compact" placeholder="5102" />
+                    </v-col>
+                    <v-col cols="6" md="4">
+                      <v-select v-model="form.origem" :items="origensNcm" item-title="label" item-value="value"
+                        label="Origem" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model="form.cstIcms" label="CST ICMS" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model="form.csosnIcms" label="CSOSN" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model="form.cstPisCofins" label="CST PIS/COFINS" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model.number="form.aliquotaIcms" label="ICMS %" type="number" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model.number="form.aliquotaPis" label="PIS %" type="number" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="4" md="2">
+                      <v-text-field v-model.number="form.aliquotaCofins" label="COFINS %" type="number" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="12" md="4">
+                      <v-text-field v-model="form.codigoFci" label="Código FCI" variant="outlined" density="compact" />
+                    </v-col>
+                  </v-row>
+                </div>
+              </div>
+
+              <!-- ── SEÇÃO: EMBALAGENS ──────────────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-package-variant-closed" size="16" />
+                  <span>Embalagens / Múltiplos GTINs</span>
+                  <v-spacer />
+                  <v-btn v-if="editando" size="x-small" color="primary" variant="tonal"
+                    prepend-icon="mdi-plus" @click="abrirNovaEmb">Adicionar</v-btn>
+                </div>
+                <div class="prod-secao-body">
+                  <v-alert v-if="!editando" type="info" variant="tonal" density="compact" rounded="lg">
+                    Salve o produto primeiro para adicionar embalagens.
+                  </v-alert>
+                  <v-data-table v-else :headers="headersEmb" :items="embalagens"
+                    density="compact" :loading="carregandoEmb" hide-default-footer>
+                    <template #item.precoVenda="{ item }">
+                      {{ item.precoVenda ? 'R$ ' + fmtN(item.precoVenda) : '—' }}
+                    </template>
+                    <template #item.actions="{ item }">
+                      <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary" @click="abrirEdicaoEmb(item)" />
+                      <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" @click="excluirEmb(item.id)" />
+                    </template>
+                  </v-data-table>
+                </div>
+              </div>
+
+              <!-- ── SEÇÃO: TABELA NUTRICIONAL ──────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-food-apple-outline" size="16" />
+                  <span>Tabela Nutricional</span>
+                  <v-spacer />
+                  <v-btn size="x-small" color="success" variant="tonal" prepend-icon="mdi-content-save"
+                    :loading="salvandoNutri" @click="salvarNutricional">
+                    Salvar Nutricional
+                  </v-btn>
+                </div>
+                <div class="prod-secao-body">
+                  <v-row dense class="mb-2">
+                    <v-col cols="12" md="5">
+                      <v-text-field v-model="buscaTaco" label="Buscar na tabela TACO/TBCA"
+                        variant="outlined" density="compact" prepend-inner-icon="mdi-magnify"
+                        clearable @update:model-value="buscarTaco"
+                        placeholder="Ex: arroz, feijão, castanha…" />
+                    </v-col>
+                    <v-col cols="12" md="3">
+                      <v-select v-model="filtroGrupo" :items="gruposTaco" label="Grupo"
+                        variant="outlined" density="compact" clearable
+                        @update:model-value="buscarTaco" />
+                    </v-col>
+                  </v-row>
+                  <v-list v-if="resultadosTaco.length" density="compact" class="mb-3 rounded-lg border">
+                    <v-list-item v-for="a in resultadosTaco" :key="a.id"
+                      :title="a.nome" :subtitle="a.grupo + (a.caloriasKcal ? ' · ' + a.caloriasKcal + ' kcal/100g' : '')"
+                      @click="preencherNutricional(a)" style="cursor:pointer">
+                      <template #append>
+                        <v-btn size="x-small" variant="tonal" color="success">Usar</v-btn>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+
+                  <v-row dense>
+                    <v-col cols="6" md="3"><v-text-field v-model="nutri.porcao" label="Porção" variant="outlined" density="compact" placeholder="100g" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.caloriasKcal" label="Calorias (kcal)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.carboidratos" label="Carboidratos (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.proteinas" label="Proteínas (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.lipidiosTotais" label="Gorduras totais (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.gordurasSaturadas" label="Gord. saturadas (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.gordurasTrans" label="Gord. trans (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.fibraAlimentar" label="Fibra alimentar (g)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.sodio" label="Sódio (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.calcio" label="Cálcio (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.ferro" label="Ferro (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.zinco" label="Zinco (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.potassio" label="Potássio (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.magnesio" label="Magnésio (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.vitaminaC" label="Vitamina C (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="6" md="3"><v-text-field v-model.number="nutri.colesterol" label="Colesterol (mg)" type="number" variant="outlined" density="compact" /></v-col>
+                    <v-col cols="12"><v-textarea v-model="nutri.ingredientes" label="Ingredientes" variant="outlined" density="compact" rows="2" /></v-col>
+                    <v-col cols="12" md="6"><v-textarea v-model="nutri.alergenicos" label="Alérgenos" variant="outlined" density="compact" rows="2" /></v-col>
+                    <v-col cols="12" md="6"><v-textarea v-model="nutri.modoConservacao" label="Modo de conservação" variant="outlined" density="compact" rows="2" /></v-col>
+                  </v-row>
+                </div>
+              </div>
+
+              <!-- ── SEÇÃO: EXTRAS ──────────────────────────────── -->
+              <div class="prod-secao">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-text-box-outline" size="16" />
+                  <span>Informações Adicionais</span>
+                </div>
+                <div class="prod-secao-body">
+                  <v-row dense>
+                    <v-col cols="12">
+                      <v-textarea v-model="form.informacaoAdicional" label="Informação adicional"
+                        variant="outlined" density="compact" rows="3"
+                        placeholder="Observações, modo de uso, alertas, instruções…" />
+                    </v-col>
+                  </v-row>
+
+                  <!-- Ficha técnica PDF -->
+                  <div class="prod-secao-header mt-3 mb-2" style="border:none;padding:0;background:none">
+                    <v-icon icon="mdi-file-pdf-box" color="error" size="16" />
+                    <span>Ficha Técnica (PDF)</span>
+                  </div>
+                  <div v-if="form.fichaTecnicaUrl" class="mb-2">
+                    <v-alert type="success" variant="tonal" density="compact">
+                      <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                        <span>Ficha técnica enviada.</span>
+                        <div class="d-flex gap-2">
+                          <v-btn size="small" color="primary" variant="tonal"
+                            prepend-icon="mdi-eye-outline" :href="form.fichaTecnicaUrl" target="_blank">
+                            Visualizar
+                          </v-btn>
+                          <v-btn size="small" color="error" variant="tonal"
+                            prepend-icon="mdi-delete-outline"
+                            :loading="removendoFicha" @click="removerFicha">
+                            Remover
+                          </v-btn>
+                        </div>
+                      </div>
+                    </v-alert>
+                  </div>
+                  <v-alert v-if="!editando && !form.fichaTecnicaUrl" type="info" variant="tonal" density="compact" rounded="lg">
+                    Salve o produto primeiro para enviar a ficha técnica.
+                  </v-alert>
+                  <div v-else-if="editando" class="d-flex align-center gap-3 flex-wrap">
+                    <v-file-input v-model="arquivoFicha" accept="application/pdf,.pdf"
+                      label="Selecionar PDF" variant="outlined" density="compact"
+                      prepend-icon="mdi-paperclip" hide-details style="max-width:340px" />
+                    <v-btn color="error" :loading="enviandoFicha" :disabled="!arquivoFicha"
+                      prepend-icon="mdi-upload" @click="enviarFicha">
+                      Enviar PDF
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- prod-form-body -->
+          </v-form>
+        </v-card-text>
+
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" @click="fecharDialog">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn color="primary" :loading="salvando" @click="salvar"
+            prepend-icon="mdi-content-save" size="large" rounded="lg">
+            {{ editando ? 'Salvar Alterações' : 'Criar Produto' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Quick-add inline (Categoria / Marca / Unidade) -->
+    <v-dialog v-model="quickAdd.open" max-width="380" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon :icon="quickAdd.icon" color="primary" />
+          Adicionar {{ quickAdd.label }}
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-text-field v-if="quickAdd.tipo !== 'unidade'"
+            v-model="quickAdd.nome" :label="'Nome *'"
+            variant="outlined" density="compact" autofocus
+            @keyup.enter="salvarQuickAdd" />
+          <template v-else>
+            <v-row dense>
+              <v-col cols="4">
+                <v-text-field v-model="quickAdd.sigla" label="Sigla *" variant="outlined" density="compact"
+                  autofocus @keyup.enter="salvarQuickAdd" />
+              </v-col>
+              <v-col cols="8">
+                <v-text-field v-model="quickAdd.nome" label="Descrição" variant="outlined" density="compact"
+                  @keyup.enter="salvarQuickAdd" />
+              </v-col>
+            </v-row>
+          </template>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="quickAdd.open = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="quickAdd.salvando" @click="salvarQuickAdd">Adicionar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog embalagem -->
+    <v-dialog v-model="dialogEmb" max-width="520" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2">
+          {{ embEditandoId ? 'Editar Embalagem' : 'Nova Embalagem' }}
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-text-field v-model="formEmb.descricao" label="Descrição *"
+                variant="outlined" density="compact" placeholder="Ex: Caixa com 12 unidades" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select v-model="formEmb.unidadeMedidaId" :items="unidades"
+                item-title="sigla" item-value="id"
+                label="Unidade *" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model.number="formEmb.multiplicador" label="Qtd. de itens *"
+                type="number" variant="outlined" density="compact"
+                hint="Ex: 12 para caixa com 12 un." persistent-hint />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model="formEmb.codigoBarras" label="GTIN / Código de barras"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field v-model.number="formEmb.precoVenda" label="Preço de venda (R$)"
+                type="number" variant="outlined" density="compact" prefix="R$" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogEmb = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvandoEmb" @click="salvarEmb">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import api from '@/composables/useApi'
+import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
+
+const auth = useAuthStore()
+const notif = useNotifStore()
+
+const carregando = ref(false)
+const salvando = ref(false)
+const dialog = ref(false)
+const editando = ref(false)
+
+const produtos = ref<any[]>([])
+const categorias = ref<any[]>([])
+const marcas = ref<any[]>([])
+const unidades = ref<any[]>([])
+const fornecedores = ref<any[]>([])
+
+const busca = ref('')
+const filtroCategoria = ref<string | null>(null)
+const filtroAtivo = ref<boolean | null>(true)
+const formulario = ref<any>(null)
+const produtoEditandoId = ref<string | null>(null)
+
+// ─── formulário produto ──────────────────────────────────────────
+const formPadrao = () => ({
+  codigo: '', referencia: '', descricao: '', descricaoComplementar: '',
+  tipoVariacao: 'Simples',
+  categoriaId: null as string | null, marcaId: null as string | null,
+  fornecedorPrincipalId: null as string | null,
+  unidadeMedidaId: null as string | null,
+  codigoBarras: '',
+  ativo: true, produtoBalanca: false, ocultarNasVendas: false,
+  requisitarVendedor: false, vendidoFracionado: false,
+  controlarLote: false, controlarValidade: false,
+  validadeEmDias: null as number | null, codigoPlu: null as number | null,
+  precoFornecedor: 0, custoUnitario: 0,
+  markupMinimo: 0, precoMinimo: 0,
+  precoVenda: 0, precoAtacado: null as number | null, markupAtacado: null as number | null,
+  ncm: '', cest: '', cfop: '', origem: '0',
+  cstIcms: '', csosnIcms: '', cstPisCofins: '',
+  aliquotaIcms: 0, aliquotaPis: 0.65, aliquotaCofins: 3,
+  codigoFci: '',
+  imagemUrl: '' as string | null, fichaTecnicaUrl: null as string | null,
+  tags: '', marcador: null as string | null, informacaoAdicional: '',
+})
+const form = ref(formPadrao())
+
+// ─── markup calculado ────────────────────────────────────────────
+const markupExibir = computed(() => {
+  const f = form.value
+  return f.custoUnitario > 0 ? (f.precoVenda / f.custoUnitario).toFixed(2) : '—'
+})
+const margemExibir = computed(() => {
+  const f = form.value
+  return f.precoVenda > 0
+    ? (((f.precoVenda - f.custoUnitario) / f.precoVenda) * 100).toFixed(1)
+    : '—'
+})
+const markupAtacadoExibir = computed(() => {
+  const f = form.value
+  if (!f.precoAtacado || !f.custoUnitario) return '—'
+  return (f.precoAtacado / f.custoUnitario).toFixed(2)
+})
+
+function recalcularPrecos() {
+  const f = form.value
+  if (f.markupMinimo > 0 && f.custoUnitario > 0)
+    f.precoMinimo = parseFloat((f.custoUnitario * f.markupMinimo).toFixed(2))
+}
+
+// ─── upload imagem ───────────────────────────────────────────────
+const arquivoImagem = ref<File | null>(null)
+const enviandoImagem = ref(false)
+const removendoImagem = ref(false)
+const previewImagem = ref<string | null>(null)
+
+function previewImagemLocal() {
+  if (!arquivoImagem.value) { previewImagem.value = null; return }
+  previewImagem.value = URL.createObjectURL(arquivoImagem.value)
+}
+
+function onFileImagem(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0] ?? null
+  arquivoImagem.value = file
+  previewImagemLocal()
+}
+
+async function enviarImagem() {
+  if (!arquivoImagem.value) return
+  if (!produtoEditandoId.value) { notif.ok('Salve o produto primeiro para enviar a imagem.'); return }
+  if (arquivoImagem.value.size > 5_000_000) { notif.erro('Imagem muito grande. Máximo 5 MB.'); return }
+
+  enviandoImagem.value = true
+  try {
+    const fd = new FormData()
+    fd.append('arquivo', arquivoImagem.value)
+    const r = await api.post(`/produtos/${produtoEditandoId.value}/imagem`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    form.value.imagemUrl = r.data.url
+    arquivoImagem.value = null
+    previewImagem.value = null
+    notif.ok('Imagem enviada com sucesso!')
+  } catch { notif.erro('Erro ao enviar imagem.') }
+  finally { enviandoImagem.value = false }
+}
+
+async function removerImagem() {
+  if (!produtoEditandoId.value) return
+  removendoImagem.value = true
+  try {
+    await api.delete(`/produtos/${produtoEditandoId.value}/imagem`)
+    form.value.imagemUrl = null
+    notif.ok('Imagem removida.')
+  } catch { notif.erro('Erro ao remover imagem.') }
+  finally { removendoImagem.value = false }
+}
+
+// ─── ficha técnica PDF ───────────────────────────────────────────
+const arquivoFicha = ref<File | null>(null)
+const enviandoFicha = ref(false)
+const removendoFicha = ref(false)
+
+async function enviarFicha() {
+  if (!arquivoFicha.value || !produtoEditandoId.value) return
+  if (arquivoFicha.value.size > 20_000_000) { notif.erro('Arquivo muito grande. Máximo 20 MB.'); return }
+  enviandoFicha.value = true
+  try {
+    const fd = new FormData()
+    fd.append('arquivo', arquivoFicha.value)
+    const r = await api.post(`/produtos/${produtoEditandoId.value}/ficha-tecnica`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    form.value.fichaTecnicaUrl = r.data.url
+    arquivoFicha.value = null
+    notif.ok('Ficha técnica enviada!')
+  } catch { notif.erro('Erro ao enviar ficha técnica.') }
+  finally { enviandoFicha.value = false }
+}
+
+async function removerFicha() {
+  if (!produtoEditandoId.value) return
+  removendoFicha.value = true
+  try {
+    await api.delete(`/produtos/${produtoEditandoId.value}/ficha-tecnica`)
+    form.value.fichaTecnicaUrl = null
+    notif.ok('Ficha técnica removida.')
+  } catch { notif.erro('Erro ao remover ficha técnica.') }
+  finally { removendoFicha.value = false }
+}
+
+// ─── embalagens ──────────────────────────────────────────────────
+const embalagens = ref<any[]>([])
+const carregandoEmb = ref(false)
+const dialogEmb = ref(false)
+const salvandoEmb = ref(false)
+const embEditandoId = ref<string | null>(null)
+const formEmbPadrao = () => ({
+  descricao: '', unidadeMedidaId: null as string | null,
+  multiplicador: 1, codigoBarras: '', precoVenda: null as number | null,
+})
+const formEmb = ref(formEmbPadrao())
+const headersEmb = [
+  { title: 'Descrição', key: 'descricao' },
+  { title: 'Qtd.', key: 'multiplicador', width: 80 },
+  { title: 'GTIN', key: 'codigoBarras', width: 160 },
+  { title: 'Preço', key: 'precoVenda', width: 110 },
+  { title: '', key: 'actions', sortable: false, width: 80 },
+]
+
+async function carregarEmbalagens() {
+  if (!produtoEditandoId.value) return
+  carregandoEmb.value = true
+  try {
+    const r = await api.get(`/produtos/${produtoEditandoId.value}/embalagens`)
+    embalagens.value = r.data
+  } finally { carregandoEmb.value = false }
+}
+function abrirNovaEmb() { embEditandoId.value = null; formEmb.value = formEmbPadrao(); dialogEmb.value = true }
+function abrirEdicaoEmb(item: any) { embEditandoId.value = item.id; formEmb.value = { ...item }; dialogEmb.value = true }
+async function salvarEmb() {
+  salvandoEmb.value = true
+  try {
+    if (embEditandoId.value)
+      await api.put(`/produtos/${produtoEditandoId.value}/embalagens/${embEditandoId.value}`, formEmb.value)
+    else
+      await api.post(`/produtos/${produtoEditandoId.value}/embalagens`, formEmb.value)
+    dialogEmb.value = false
+    await carregarEmbalagens()
+    notif.ok('Embalagem salva!')
+  } catch { notif.erro('Erro ao salvar embalagem.') }
+  finally { salvandoEmb.value = false }
+}
+async function excluirEmb(id: string) {
+  await api.delete(`/produtos/${produtoEditandoId.value}/embalagens/${id}`)
+  await carregarEmbalagens()
+  notif.ok('Embalagem removida.')
+}
+
+// ─── tabela nutricional ──────────────────────────────────────────
+const nutriPadrao = () => ({
+  porcao: '', caloriasKcal: null as number | null, carboidratos: null as number | null,
+  proteinas: null as number | null, lipidiosTotais: null as number | null,
+  gordurasSaturadas: null as number | null, gordurasTrans: null as number | null,
+  fibraAlimentar: null as number | null, sodio: null as number | null,
+  calcio: null as number | null, ferro: null as number | null,
+  zinco: null as number | null, potassio: null as number | null,
+  magnesio: null as number | null, selenio: null as number | null,
+  vitaminaC: null as number | null, vitaminaA: null as number | null,
+  vitaminaB6: null as number | null, vitaminaB12: null as number | null,
+  acidoFolico: null as number | null, colesterol: null as number | null,
+  ingredientes: '', alergenicos: '', modoConservacao: '',
+})
+const nutri = ref(nutriPadrao())
+const salvandoNutri = ref(false)
+
+const buscaTaco = ref('')
+const filtroGrupo = ref<string | null>(null)
+const resultadosTaco = ref<any[]>([])
+const gruposTaco = ref<string[]>([])
+let tacoTimer: ReturnType<typeof setTimeout>
+
+async function buscarTaco() {
+  clearTimeout(tacoTimer)
+  tacoTimer = setTimeout(async () => {
+    if (!buscaTaco.value && !filtroGrupo.value) { resultadosTaco.value = []; return }
+    const r = await api.get('/alimentos-taco', {
+      params: { q: buscaTaco.value || undefined, grupo: filtroGrupo.value || undefined }
+    })
+    resultadosTaco.value = r.data
+  }, 300)
+}
+
+function preencherNutricional(a: any) {
+  nutri.value = {
+    porcao: nutri.value.porcao || '100g',
+    caloriasKcal: a.caloriasKcal, carboidratos: a.carboidratos,
+    proteinas: a.proteinas, lipidiosTotais: a.lipidiosTotais,
+    gordurasSaturadas: a.gordurasSaturadas, gordurasTrans: a.gordurasTrans,
+    fibraAlimentar: a.fibraAlimentar, sodio: a.sodio,
+    calcio: a.calcio, ferro: a.ferro, zinco: a.zinco,
+    potassio: a.potassio, magnesio: a.magnesio, selenio: a.selenio,
+    vitaminaC: a.vitaminaC, vitaminaA: a.vitaminaA,
+    vitaminaB6: a.vitaminaB6, vitaminaB12: a.vitaminaB12,
+    acidoFolico: a.acidoFolico, colesterol: a.colesterol,
+    ingredientes: nutri.value.ingredientes,
+    alergenicos: nutri.value.alergenicos,
+    modoConservacao: nutri.value.modoConservacao,
+  }
+  notif.ok(`Valores de "${a.nome}" preenchidos — confira e ajuste se necessário.`)
+}
+
+async function salvarNutricional() {
+  if (!produtoEditandoId.value) { notif.ok('Salve o produto primeiro.'); return }
+  salvandoNutri.value = true
+  try {
+    await api.post(`/tabela-nutricional/${produtoEditandoId.value}`, {
+      ...nutri.value, produtoId: produtoEditandoId.value,
+    })
+    notif.ok('Informações nutricionais salvas!')
+  } catch { notif.erro('Erro ao salvar nutricional.') }
+  finally { salvandoNutri.value = false }
+}
+
+// ─── quick-add (categoria / marca / unidade) ─────────────────────
+const quickAdd = ref({
+  open: false, salvando: false,
+  tipo: '' as 'categoria' | 'marca' | 'unidade',
+  label: '', icon: '', nome: '', sigla: '',
+})
+
+function abrirQuickAdd(tipo: 'categoria' | 'marca' | 'unidade') {
+  const mapa = {
+    categoria: { label: 'Categoria',        icon: 'mdi-tag-multiple-outline' },
+    marca:     { label: 'Marca',            icon: 'mdi-watermark' },
+    unidade:   { label: 'Unidade de Medida',icon: 'mdi-ruler-square' },
+  }
+  quickAdd.value = { open: true, salvando: false, tipo, nome: '', sigla: '', ...mapa[tipo] }
+}
+
+async function salvarQuickAdd() {
+  const qa = quickAdd.value
+  if (qa.tipo === 'unidade' && !qa.sigla) { notif.erro('Sigla é obrigatória.'); return }
+  if (qa.tipo !== 'unidade' && !qa.nome) { notif.erro('Nome é obrigatório.'); return }
+  qa.salvando = true
+  try {
+    let novoId: string
+    if (qa.tipo === 'categoria') {
+      const r = await api.post('/categorias', { nome: qa.nome, empresaId: auth.empresaId })
+      novoId = r.data.id
+      await api.get('/categorias', { params: { empresaId: auth.empresaId } }).then(res => { categorias.value = res.data })
+      form.value.categoriaId = novoId
+    } else if (qa.tipo === 'marca') {
+      const r = await api.post('/marcas', { nome: qa.nome, empresaId: auth.empresaId })
+      novoId = r.data.id
+      await api.get('/marcas', { params: { empresaId: auth.empresaId } }).then(res => { marcas.value = res.data })
+      form.value.marcaId = novoId
+    } else {
+      const r = await api.post('/unidades-medida', { sigla: qa.sigla, descricao: qa.nome, empresaId: auth.empresaId })
+      novoId = r.data.id
+      await api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }).then(res => { unidades.value = res.data })
+      form.value.unidadeMedidaId = novoId
+    }
+    notif.ok(`${qa.label} adicionada com sucesso!`)
+    qa.open = false
+  } catch { notif.erro(`Erro ao adicionar ${qa.label}.`) }
+  finally { qa.salvando = false }
+}
+
+// ─── lookups ─────────────────────────────────────────────────────
+const origensNcm = [
+  { value: '0', label: '0 - Nacional' },
+  { value: '1', label: '1 - Estrangeira (importação direta)' },
+  { value: '2', label: '2 - Estrangeira (adquirida no mercado interno)' },
+  { value: '3', label: '3 - Nacional com mais de 40% de conteúdo estrangeiro' },
+  { value: '4', label: '4 - Nacional (processos produtivos básicos)' },
+  { value: '5', label: '5 - Nacional com até 40% de conteúdo estrangeiro' },
+  { value: '6', label: '6 - Estrangeira (importação direta, sem similar)' },
+  { value: '7', label: '7 - Estrangeira (adquirida no mercado interno, sem similar)' },
+  { value: '8', label: '8 - Nacional com mais de 70% de conteúdo estrangeiro' },
+]
+const marcadores = [
+  { value: 'vermelho',   label: 'Vermelho',   cor: 'red',    icone: 'mdi-circle' },
+  { value: 'laranja',    label: 'Laranja',    cor: 'orange', icone: 'mdi-circle' },
+  { value: 'amarelo',    label: 'Amarelo',    cor: 'amber',  icone: 'mdi-circle' },
+  { value: 'verde',      label: 'Verde',      cor: 'green',  icone: 'mdi-circle' },
+  { value: 'azul',       label: 'Azul',       cor: 'blue',   icone: 'mdi-circle' },
+  { value: 'roxo',       label: 'Roxo',       cor: 'purple', icone: 'mdi-circle' },
+  { value: 'destaque',   label: 'Destaque',   cor: 'pink',   icone: 'mdi-star' },
+  { value: 'promocao',   label: 'Promoção',   cor: 'error',  icone: 'mdi-tag' },
+  { value: 'lancamento', label: 'Lançamento', cor: 'success',icone: 'mdi-new-box' },
+]
+
+const headers = [
+  { title: 'Código', key: 'codigo', width: 100 },
+  { title: 'Descrição', key: 'descricao', sortable: true },
+  { title: 'Estoque', key: 'estoqueAtual', width: 100 },
+  { title: 'Custo', key: 'custoUnitario', width: 110 },
+  { title: 'Preço', key: 'precoVenda', width: 110 },
+  { title: 'Status', key: 'ativo', width: 90 },
+  { title: '', key: 'actions', sortable: false, width: 60 },
+]
+function fmtN(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+
+// ─── listar / carregar ───────────────────────────────────────────
+async function listar() {
+  carregando.value = true
+  try {
+    const r = await api.get('/produtos', {
+      params: { empresaId: auth.empresaId, termo: busca.value || undefined,
+        categoriaId: filtroCategoria.value || undefined, ativo: filtroAtivo.value }
+    })
+    produtos.value = r.data.itens ?? r.data
+  } finally { carregando.value = false }
+}
+
+async function carregarCatalogo() {
+  try {
+    const [c, m, u, f, g] = await Promise.all([
+      api.get('/categorias',     { params: { empresaId: auth.empresaId } }),
+      api.get('/marcas',         { params: { empresaId: auth.empresaId } }),
+      api.get('/unidades-medida',{ params: { empresaId: auth.empresaId } }),
+      api.get('/fornecedores',   { params: { empresaId: auth.empresaId } }),
+      api.get('/alimentos-taco/grupos'),
+    ])
+    categorias.value = c.data
+    marcas.value = m.data
+    unidades.value = u.data
+    fornecedores.value = f.data
+    gruposTaco.value = g.data
+  } catch { /* silencioso */ }
+}
+
+// ─── abrir / fechar dialog ───────────────────────────────────────
+function abrirNovo() {
+  editando.value = false
+  produtoEditandoId.value = null
+  form.value = formPadrao()
+  nutri.value = nutriPadrao()
+  embalagens.value = []
+  arquivoImagem.value = null
+  previewImagem.value = null
+  dialog.value = true
+}
+
+async function abrirEdicao(item: any) {
+  editando.value = true
+  produtoEditandoId.value = item.id
+  dialog.value = true
+  try {
+    const r = await api.get(`/produtos/${item.id}`)
+    const p = r.data
+    form.value = {
+      codigo: p.codigo, referencia: p.referencia ?? '',
+      descricao: p.descricao, descricaoComplementar: p.descricaoComplementar ?? '',
+      tipoVariacao: p.tipoVariacao ?? 'Simples',
+      categoriaId: p.categoriaId, marcaId: p.marcaId,
+      fornecedorPrincipalId: p.fornecedorPrincipalId ?? null,
+      unidadeMedidaId: p.unidadeMedidaId, codigoBarras: p.codigoBarras ?? '',
+      ativo: p.ativo, produtoBalanca: p.produtoBalanca,
+      ocultarNasVendas: p.ocultarNasVendas, requisitarVendedor: p.requisitarVendedor,
+      vendidoFracionado: p.vendidoFracionado,
+      controlarLote: p.controlarLote, controlarValidade: p.controlarValidade,
+      validadeEmDias: p.validadeEmDias, codigoPlu: p.codigoPlu,
+      precoFornecedor: p.precoFornecedor ?? 0, custoUnitario: p.custoUnitario,
+      markupMinimo: p.markupMinimo ?? 0, precoMinimo: p.precoMinimo ?? 0,
+      precoVenda: p.precoVenda, precoAtacado: p.precoAtacado ?? null,
+      markupAtacado: p.markupAtacado ?? null,
+      ncm: p.ncm ?? '', cest: p.cest ?? '', cfop: p.cfop ?? '',
+      origem: p.origem ?? '0', cstIcms: p.cstIcms ?? '',
+      csosnIcms: p.csosnIcms ?? '', cstPisCofins: p.cstPisCofins ?? '',
+      aliquotaIcms: p.aliquotaIcms, aliquotaPis: p.aliquotaPis,
+      aliquotaCofins: p.aliquotaCofins, codigoFci: p.codigoFci ?? '',
+      imagemUrl: p.imagemUrl ?? null, fichaTecnicaUrl: p.fichaTecnicaUrl ?? null,
+      tags: p.tags ?? '', marcador: p.marcador ?? null,
+      informacaoAdicional: p.informacaoAdicional ?? '',
+    }
+    embalagens.value = p.embalagens ?? []
+    nutri.value = p.nutricional ? { ...nutriPadrao(), ...p.nutricional } : nutriPadrao()
+  } catch { notif.erro('Erro ao carregar produto.') }
+}
+
+function fecharDialog() {
+  dialog.value = false
+  arquivoImagem.value = null
+  previewImagem.value = null
+}
+
+// ─── salvar produto ──────────────────────────────────────────────
+async function salvar() {
+  const ok = await formulario.value?.validate()
+  if (!ok?.valid) return
+
+  salvando.value = true
+  try {
+    if (editando.value && produtoEditandoId.value) {
+      await api.put(`/produtos/${produtoEditandoId.value}`, { ...form.value })
+      notif.ok('Produto atualizado!')
+    } else {
+      const r = await api.post('/produtos', { empresaId: auth.empresaId, ...form.value })
+      produtoEditandoId.value = r.data.id
+      editando.value = true
+      // Envia imagem pendente automaticamente se selecionada
+      if (arquivoImagem.value) await enviarImagem()
+      notif.ok('Produto criado! Preencha os demais campos e salve novamente se necessário.')
+    }
+    await listar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.title ?? e?.response?.data?.mensagem ?? 'Erro ao salvar.')
+  } finally { salvando.value = false }
+}
+
+onMounted(() => {
+  listar().catch(() => {})
+  carregarCatalogo()
+})
+</script>
+
+<style scoped>
+/* ── Header do dialog ─────────────────────────────────────── */
+.prod-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+/* ── Body com fundo levemente cinza para dar profundidade ─── */
+.prod-form-body {
+  background: #f5f6f8;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Seções com card branco ───────────────────────────────── */
+.prod-secao {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e8edf3;
+  overflow: hidden;
+}
+
+.prod-secao-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #f8f9fb;
+  border-bottom: 1px solid #e8edf3;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgb(var(--v-theme-primary));
+}
+
+.prod-secao-body {
+  padding: 16px;
+}
+
+/* ── Foto do produto ──────────────────────────────────────── */
+.prod-foto-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.prod-foto-box {
+  width: 110px;
+  height: 110px;
+  border-radius: 12px;
+  border: 2px dashed #c8d0dc;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .2s;
+  background: #f5f6f8;
+}
+.prod-foto-box:hover { border-color: rgb(var(--v-theme-primary)); }
+
+.prod-foto-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: #9aa;
+}
+
+/* ── Opções booleanas (chips clicáveis) ───────────────────── */
+.prod-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── Resumo de preços ─────────────────────────────────────── */
+.prod-preco-resumo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.prod-preco-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f5f6f8;
+  border: 1px solid #e4e8ef;
+  border-radius: 10px;
+  padding: 8px 16px;
+  min-width: 90px;
+}
+.prod-preco-item .label {
+  font-size: 0.68rem;
+  color: #8896aa;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.prod-preco-item .val {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2a3550;
+  margin-top: 2px;
+}
+.prod-preco-item.destaque {
+  background: rgb(var(--v-theme-primary));
+  border-color: rgb(var(--v-theme-primary));
+}
+.prod-preco-item.destaque .label { color: rgba(255,255,255,.7); }
+.prod-preco-item.destaque .val { color: white; }
+.prod-preco-item.badge {
+  background: #eef4ff;
+  border-color: #d0e0ff;
+}
+.prod-preco-item.badge .label { color: #5577bb; }
+.prod-preco-item.badge .val { color: #2255bb; }
+
+/* ── Herança do título antigo (caso algum lugar ainda use) ── */
+.secao-titulo {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgb(var(--v-theme-primary));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+</style>

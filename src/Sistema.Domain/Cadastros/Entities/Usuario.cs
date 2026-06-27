@@ -19,5 +19,7 @@ public class Usuario : Entity
 
     public void RegistrarAcesso() => UltimoAcesso = DateTime.UtcNow;
     public void Desativar() => Ativo = false;
+    public void Reativar() => Ativo = true;
+    public void AlterarPerfil(string perfil) => Perfil = perfil;
     public void AlterarSenha(string novoHash) => SenhaHash = novoHash;
 }

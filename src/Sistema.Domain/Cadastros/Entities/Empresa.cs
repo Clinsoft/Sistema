@@ -23,6 +23,28 @@ public class Empresa : Entity
 
     private Empresa() { }
 
+    public void Atualizar(string razaoSocial, string nomeFantasia,
+        string regimeTributario, string logradouro, string numero, string? complemento,
+        string bairro, string cidade, string uf, string cep,
+        string telefone, string email,
+        string inscricaoEstadual = "", string inscricaoMunicipal = "")
+    {
+        RazaoSocial = razaoSocial;
+        NomeFantasia = nomeFantasia;
+        RegimeTributario = regimeTributario;
+        Logradouro = logradouro;
+        Numero = numero;
+        Complemento = complemento;
+        Bairro = bairro;
+        Cidade = cidade;
+        Uf = uf;
+        Cep = cep;
+        Telefone = telefone;
+        Email = email;
+        InscricaoEstadual = inscricaoEstadual;
+        InscricaoMunicipal = inscricaoMunicipal;
+    }
+
     public static Empresa Criar(string razaoSocial, string nomeFantasia, string cnpj,
         string regimeTributario, string logradouro, string numero, string bairro,
         string cidade, string uf, string cep, string telefone, string email,

@@ -23,6 +23,12 @@ public class Venda : Entity
 
     public string? Observacao { get; private set; }
 
+    // CPF do consumidor para NFC-e (opcional, informado no PDV)
+    public string? CpfCnpjConsumidor { get; private set; }
+
+    // ID da NFC-e gerada ao finalizar (null até emissão ser confirmada pela SEFAZ)
+    public Guid? NotaFiscalId { get; private set; }
+
     private readonly List<ItemVenda> _itens = [];
     public IReadOnlyList<ItemVenda> Itens => _itens.AsReadOnly();
 
@@ -66,6 +72,10 @@ public class Venda : Entity
         Troco = Math.Max(0, TotalPago - Total);
     }
 
+    public void InformarCpfCnpjConsumidor(string cpfOuCnpj) => CpfCnpjConsumidor = cpfOuCnpj.ToUpperInvariant();
+
+    public void VincularNotaFiscal(Guid notaFiscalId) => NotaFiscalId = notaFiscalId;
+
     public void Finalizar()
     {
         if (!_itens.Any()) throw new InvalidOperationException("Venda sem itens.");
@@ -73,7 +83,8 @@ public class Venda : Entity
 
         Status = StatusVenda.Finalizada;
         DataHoraFechamento = DateTime.Now;
-        RaiseDomainEvent(new VendaFinalizadaEvent(Id, EmpresaId, ClienteId, _itens.ToList(), Total));
+        RaiseDomainEvent(new VendaFinalizadaEvent(
+            Id, EmpresaId, ClienteId, CpfCnpjConsumidor, LocalEstoqueId, _itens.ToList(), Pagamentos.ToList(), Total));
     }
 
     public void Cancelar(string motivo)

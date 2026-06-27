@@ -37,5 +37,29 @@ public class Fornecedor : Entity
             Telefone = telefone
         };
 
+    public void Editar(string razaoSocial, string? nomeFantasia, string? email,
+        string? telefone, string? contato, int prazoPagamentoDias,
+        string? logradouro = null, string? numero = null, string? complemento = null,
+        string? bairro = null, string? cidade = null, string? uf = null,
+        string? cep = null, string? inscricaoEstadual = null, string? observacao = null)
+    {
+        RazaoSocial = razaoSocial;
+        NomeFantasia = nomeFantasia;
+        Email = email;
+        Telefone = telefone;
+        Contato = contato;
+        PrazoPagamentoDias = prazoPagamentoDias;
+        Logradouro = logradouro;
+        Numero = numero;
+        Complemento = complemento;
+        Bairro = bairro;
+        Cidade = cidade;
+        Uf = uf;
+        Cep = cep;
+        InscricaoEstadual = inscricaoEstadual;
+        Observacao = observacao;
+    }
+
     public void Desativar() => Ativo = false;
+    public void Reativar() => Ativo = true;
 }

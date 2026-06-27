@@ -14,4 +14,11 @@ public class LocalEstoque : Entity
 
     public static LocalEstoque Criar(Guid empresaId, string nome, bool principal = false, string? descricao = null)
         => new() { EmpresaId = empresaId, Nome = nome, Principal = principal, Descricao = descricao };
+
+    public void Editar(string nome, bool principal, string? descricao)
+    {
+        Nome = nome;
+        Principal = principal;
+        Descricao = descricao;
+    }
 }

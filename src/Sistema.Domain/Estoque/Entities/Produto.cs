@@ -5,14 +5,30 @@ namespace Sistema.Domain.Estoque.Entities;
 public class Produto : Entity
 {
     public Guid EmpresaId { get; private set; }
+
+    // Identificação
     public string Codigo { get; private set; } = null!;
-    public string? CodigoBarras { get; private set; }
+    public string? Referencia { get; private set; }
     public string Descricao { get; private set; } = null!;
     public string? DescricaoComplementar { get; private set; }
+    public string? CodigoBarras { get; private set; }
+
+    // Vínculos
     public Guid CategoriaId { get; private set; }
     public Guid MarcaId { get; private set; }
     public Guid UnidadeMedidaId { get; private set; }
     public Guid? FornecedorPrincipalId { get; private set; }
+
+    // Variação
+    public string TipoVariacao { get; private set; } = "Simples"; // Simples | ComVariacao
+
+    // Flags de comportamento
+    public bool ProdutoBalanca { get; private set; }
+    public int? CodigoPlu { get; private set; }
+    public bool OcultarNasVendas { get; private set; }
+    public bool RequisitarVendedor { get; private set; }
+    public bool VendidoFracionado { get; private set; }
+    public bool Ativo { get; private set; } = true;
 
     // Fiscal
     public string? Ncm { get; private set; }
@@ -24,12 +40,17 @@ public class Produto : Entity
     public decimal AliquotaPis { get; private set; }
     public decimal AliquotaCofins { get; private set; }
     public string? Cfop { get; private set; }
-    public string Origem { get; private set; } = "0"; // 0=Nacional
+    public string Origem { get; private set; } = "0";
+    public string? CodigoFci { get; private set; }
 
-    // Preço e custo
+    // Preços
+    public decimal PrecoFornecedor { get; private set; }
     public decimal CustoUnitario { get; private set; }
+    public decimal MarkupMinimo { get; private set; }
+    public decimal PrecoMinimo { get; private set; }
     public decimal PrecoVenda { get; private set; }
     public decimal? PrecoAtacado { get; private set; }
+    public decimal? MarkupAtacado { get; private set; }
     public decimal Markup { get; private set; }
     public decimal MargemLucro { get; private set; }
 
@@ -39,12 +60,18 @@ public class Produto : Entity
     public decimal EstoqueMaximo { get; private set; }
     public bool ControlarLote { get; private set; }
     public bool ControlarValidade { get; private set; }
-    public bool ProdutoBalanca { get; private set; }
-    public int? CodigoPlu { get; private set; }
+    public int? ValidadeEmDias { get; private set; }
 
-    // Flags
-    public bool Ativo { get; private set; } = true;
-    public bool VendidoFracionado { get; private set; }
+    // Imagem e informações adicionais
+    public string? ImagemUrl { get; private set; }
+    public string? FichaTecnicaUrl { get; private set; }
+    public string? Marcador { get; private set; }
+    public string? Tags { get; private set; }
+    public string? InformacaoAdicional { get; private set; }
+
+    // Navigation
+    private readonly List<ProdutoEmbalagem> _embalagens = [];
+    public IReadOnlyList<ProdutoEmbalagem> Embalagens => _embalagens.AsReadOnly();
 
     private Produto() { }
 
@@ -53,8 +80,8 @@ public class Produto : Entity
         decimal custoUnitario, decimal precoVenda,
         string? codigoBarras = null)
     {
-        var markup = custoUnitario > 0 ? precoVenda / custoUnitario : 0;
-        var margem = precoVenda > 0 ? (precoVenda - custoUnitario) / precoVenda * 100 : 0;
+        var markup = custoUnitario > 0 ? Math.Round(precoVenda / custoUnitario, 4) : 0;
+        var margem = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
 
         return new Produto
         {
@@ -67,9 +94,91 @@ public class Produto : Entity
             CustoUnitario = custoUnitario,
             PrecoVenda = precoVenda,
             CodigoBarras = codigoBarras,
-            Markup = Math.Round(markup, 4),
-            MargemLucro = Math.Round(margem, 2)
+            Markup = markup,
+            MargemLucro = margem,
         };
+    }
+
+    public void EditarGeral(string descricao, string? referencia, Guid categoriaId, Guid marcaId,
+        Guid unidadeMedidaId, Guid? fornecedorId, string tipoVariacao,
+        bool produtoBalanca, int? codigoPlu, bool ocultarNasVendas,
+        bool requisitarVendedor, bool vendidoFracionado, bool ativo,
+        bool controlarLote, bool controlarValidade, int? validadeEmDias,
+        string? descricaoComplementar)
+    {
+        Descricao = descricao;
+        Referencia = referencia;
+        CategoriaId = categoriaId;
+        MarcaId = marcaId;
+        UnidadeMedidaId = unidadeMedidaId;
+        FornecedorPrincipalId = fornecedorId;
+        TipoVariacao = tipoVariacao;
+        ProdutoBalanca = produtoBalanca;
+        CodigoPlu = codigoPlu;
+        OcultarNasVendas = ocultarNasVendas;
+        RequisitarVendedor = requisitarVendedor;
+        VendidoFracionado = vendidoFracionado;
+        Ativo = ativo;
+        ControlarLote = controlarLote;
+        ControlarValidade = controlarValidade;
+        ValidadeEmDias = validadeEmDias;
+        DescricaoComplementar = descricaoComplementar;
+    }
+
+    public void EditarPrecos(decimal precoFornecedor, decimal custoUnitario,
+        decimal markupMinimo, decimal precoMinimo,
+        decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)
+    {
+        PrecoFornecedor = precoFornecedor;
+        CustoUnitario = custoUnitario;
+        MarkupMinimo = markupMinimo;
+        PrecoMinimo = precoMinimo;
+        PrecoVenda = precoVenda;
+        PrecoAtacado = precoAtacado;
+        MarkupAtacado = markupAtacado;
+        Markup = custoUnitario > 0 ? Math.Round(precoVenda / custoUnitario, 4) : 0;
+        MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
+    }
+
+    public void EditarFiscal(string? ncm, string? cest, string? cstIcms, string? csosnIcms,
+        string? cstPisCofins, decimal aliquotaIcms, decimal aliquotaPis, decimal aliquotaCofins,
+        string? cfop, string origem, string? codigoFci)
+    {
+        Ncm = ncm;
+        Cest = cest;
+        CstIcms = cstIcms;
+        CsosnIcms = csosnIcms;
+        CstPisCofins = cstPisCofins;
+        AliquotaIcms = aliquotaIcms;
+        AliquotaPis = aliquotaPis;
+        AliquotaCofins = aliquotaCofins;
+        Cfop = cfop;
+        Origem = origem;
+        CodigoFci = codigoFci;
+    }
+
+    public void EditarInfoAdicional(string? imagemUrl, string? marcador, string? tags,
+        string? informacaoAdicional)
+    {
+        ImagemUrl = imagemUrl;
+        Marcador = marcador;
+        Tags = tags;
+        InformacaoAdicional = informacaoAdicional;
+    }
+
+    public void DefinirFichaTecnica(string? url) => FichaTecnicaUrl = url;
+
+    // Compatibilidade com chamadas legadas
+    public void Editar(string descricao, Guid categoriaId, Guid marcaId, Guid unidadeMedidaId,
+        string? codigoBarras, string? ncm, decimal estoqueMinimo, bool ativo)
+    {
+        Descricao = descricao;
+        CategoriaId = categoriaId;
+        MarcaId = marcaId;
+        UnidadeMedidaId = unidadeMedidaId;
+        Ncm = ncm;
+        EstoqueMinimo = estoqueMinimo;
+        Ativo = ativo;
     }
 
     public void AtualizarPreco(decimal novoCusto, decimal novoPreco)
@@ -80,8 +189,27 @@ public class Produto : Entity
         MargemLucro = novoPreco > 0 ? Math.Round((novoPreco - novoCusto) / novoPreco * 100, 2) : 0;
     }
 
+    public void AtualizarPrecoEMarkup(decimal precoVenda, decimal markup)
+    {
+        PrecoVenda = precoVenda;
+        Markup = markup;
+        MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;
+    }
+
     public void AjustarEstoque(decimal quantidade) => EstoqueAtual += quantidade;
     public void DefinirEstoqueMinimo(decimal minimo) => EstoqueMinimo = minimo;
     public bool EstoqueAbaixoDoMinimo() => EstoqueAtual <= EstoqueMinimo;
     public void Desativar() => Ativo = false;
+
+    public void EntradaEstoque(decimal quantidade, decimal custoUnitario)
+    {
+        if (EstoqueAtual + quantidade > 0)
+            CustoUnitario = Math.Round(
+                (EstoqueAtual * CustoUnitario + quantidade * custoUnitario)
+                / (EstoqueAtual + quantidade), 4);
+        EstoqueAtual += quantidade;
+    }
+
+    public void SaidaEstoque(decimal quantidade) =>
+        EstoqueAtual = Math.Max(0, EstoqueAtual - quantidade);
 }

@@ -1,0 +1,41 @@
+using Microsoft.EntityFrameworkCore;
+using Sistema.Domain.Vendas.Entities;
+using Sistema.Domain.Vendas.Interfaces;
+using Sistema.Infrastructure.Data;
+
+namespace Sistema.Infrastructure.Repositories.Vendas;
+
+public class VendaRepository(SistemaDbContext db) : BaseRepository<Venda>(db), IVendaRepository
+{
+    public async Task<Venda?> ObterComItensAsync(Guid id, CancellationToken ct = default)
+        => await _set
+            .Include(v => v.Itens)
+            .Include(v => v.Pagamentos)
+            .FirstOrDefaultAsync(v => v.Id == id, ct);
+
+    public async Task<IReadOnlyList<Venda>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
+        => await _set.AsNoTracking()
+            .Include(v => v.Itens)
+            .Include(v => v.Pagamentos)
+            .Where(v => v.EmpresaId == empresaId && v.DataHora >= inicio && v.DataHora <= fim)
+            .OrderByDescending(v => v.DataHora)
+            .ToListAsync(ct);
+
+    public async Task<string> ProximoNumeroAsync(Guid empresaId, CancellationToken ct = default)
+    {
+        var ultimo = await _set
+            .Where(v => v.EmpresaId == empresaId)
+            .OrderByDescending(v => v.CriadoEm)
+            .Select(v => v.Numero)
+            .FirstOrDefaultAsync(ct);
+
+        if (ultimo is null) return "000001";
+        return int.TryParse(ultimo, out var n) ? (n + 1).ToString("D6") : "000001";
+    }
+
+    public async Task<decimal> TotalVendidasAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
+        => await _set
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada &&
+                        v.DataHora >= inicio && v.DataHora <= fim)
+            .SumAsync(v => v.Total, ct);
+}

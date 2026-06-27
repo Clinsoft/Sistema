@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sistema.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using Sistema.Infrastructure.Data;
 namespace Sistema.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(SistemaDbContext))]
-    partial class SistemaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623140852_Financeiro_ContasBancarias_Lancamentos")]
+    partial class Financeiro_ContasBancarias_Lancamentos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -453,186 +456,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.ToTable("PedidosCompra", (string)null);
                 });
 
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.ContaContabil", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("AceitaLancamento")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("Ativo")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Codigo")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<Guid?>("ContaPaiId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Natureza")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Nivel")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<int>("Tipo")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmpresaId", "Codigo")
-                        .IsUnique();
-
-                    b.ToTable("PlanoContas", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.Contador", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("Ativo")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CRC")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CpfCnpj")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Telefone")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Contadores");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.LancamentoContabil", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataCompetencia")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataLancamento")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DocumentoOrigem")
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("Estornado")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Historico")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid?>("LancamentoEstornoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Numero")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("Tipo")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmpresaId", "DataCompetencia");
-
-                    b.HasIndex("EmpresaId", "Numero");
-
-                    b.ToTable("LancamentosContabeis", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.PartidaContabil", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Complemento")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<Guid>("ContaContabilId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("LancamentoContabilId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Natureza")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("Valor")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LancamentoContabilId");
-
-                    b.ToTable("PartidasContabeis", (string)null);
-                });
-
             modelBuilder.Entity("Sistema.Domain.Crediario.Entities.Crediario", b =>
                 {
                     b.Property<Guid>("Id")
@@ -787,143 +610,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("RenegociacoesCrediario", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Estoque.Entities.AlimentoTaco", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal?>("AcidoFolico")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("AcucaresTotais")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal?>("Calcio")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("CaloriasKcal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("CaloriasKj")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Carboidratos")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Cinzas")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Cobre")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Colesterol")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal?>("Ferro")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("FibraAlimentar")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Fonte")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("Fosforo")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("GordurasMono")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("GordurasPoli")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("GordurasSaturadas")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("GordurasTrans")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("GrupoAlimentar")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("LipidiosTotais")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Magnesio")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Manganes")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Niacina")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NomeCientifico")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("Potassio")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Proteinas")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Riboflavina")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Selenio")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Sodio")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Tiamina")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Umidade")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaA")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaB12")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaB6")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaC")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaD")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaE")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("VitaminaK")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("Zinco")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AlimentosTaco");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Estoque.Entities.Categoria", b =>
@@ -1162,9 +848,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
-                    b.Property<string>("CodigoFci")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int?>("CodigoPlu")
                         .HasColumnType("int");
 
@@ -1213,23 +896,11 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<decimal>("EstoqueMinimo")
                         .HasColumnType("decimal(18,3)");
 
-                    b.Property<string>("FichaTecnicaUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid?>("FornecedorPrincipalId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("ImagemUrl")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("InformacaoAdicional")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid>("MarcaId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Marcador")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("MargemLucro")
                         .HasColumnType("decimal(18,2)");
@@ -1237,18 +908,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<decimal>("Markup")
                         .HasColumnType("decimal(18,4)");
 
-                    b.Property<decimal?>("MarkupAtacado")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MarkupMinimo")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("Ncm")
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
-
-                    b.Property<bool>("OcultarNasVendas")
-                        .HasColumnType("bit");
 
                     b.Property<string>("Origem")
                         .IsRequired()
@@ -1258,36 +920,14 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<decimal?>("PrecoAtacado")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal>("PrecoFornecedor")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("PrecoMinimo")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<decimal>("PrecoVenda")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<bool>("ProdutoBalanca")
                         .HasColumnType("bit");
 
-                    b.Property<string>("Referencia")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("RequisitarVendedor")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Tags")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TipoVariacao")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid>("UnidadeMedidaId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("ValidadeEmDias")
-                        .HasColumnType("int");
 
                     b.Property<bool>("VendidoFracionado")
                         .HasColumnType("bit");
@@ -1301,47 +941,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasFilter("[CodigoBarras] IS NOT NULL");
 
                     b.ToTable("Produtos", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Estoque.Entities.ProdutoEmbalagem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("Ativo")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CodigoBarras")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Descricao")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("Multiplicador")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("PrecoVenda")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid>("ProdutoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("UnidadeMedidaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProdutoId");
-
-                    b.ToTable("ProdutosEmbalagem");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Estoque.Entities.QrCodeProduto", b =>
@@ -1645,11 +1244,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<Guid>("EmpresaId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<bool>("Pesavel")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
                     b.Property<string>("Sigla")
                         .IsRequired()
                         .HasMaxLength(6)
@@ -1919,592 +1513,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.ToTable("MovimentacoesBancarias", (string)null);
                 });
 
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.ConfiguracaoFiscal", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Ambiente")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CaminhoXmlNFe")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CscIdNFCe")
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<string>("CscTokenNFCe")
-                        .HasMaxLength(36)
-                        .HasColumnType("nvarchar(36)");
-
-                    b.Property<string>("EmailContador")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("EnviarEmailAposEmissao")
-                        .HasColumnType("bit");
-
-                    b.Property<long>("ProximoNumerNFCe")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ProximoNumerNFe")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Regime")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SerieNFCe")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SerieNFe")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmpresaId")
-                        .IsUnique();
-
-                    b.ToTable("ConfiguracoesFiscais", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.EntradaNFe", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ChaveAcesso")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataEmissao")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataEntrada")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataEstorno")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataProcessamento")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmitenteCnpj")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmitenteNome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("FornecedorId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("LocalEstoqueId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("MotivoEstorno")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NaturezaOperacao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("NotaFiscalRecebidaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Observacao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("PedidoCompraId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("ValorDesconto")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorFrete")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorFreteManual")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIcmsSt")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIpi")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorProdutos")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorSeguro")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorTotal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("EntradasNFe");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.ItemEntradaNFe", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CfopUtilizado")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CfopXml")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CodigoBarras")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CodigoFornecedor")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("CustoUnitarioFinal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("DescricaoXml")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("EntradaNFeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("EstoqueMovimentado")
-                        .HasColumnType("bit");
-
-                    b.Property<decimal>("FatorConversao")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid?>("LoteId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal?>("MarkupSugerido")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("NcmXml")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("NumeroItem")
-                        .HasColumnType("int");
-
-                    b.Property<string>("NumeroLote")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("PrecoVendaSugerido")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("ProdutoDescricao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("ProdutoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("QuantidadeXml")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Tags")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UnidadeEstoque")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UnidadeXml")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("Validade")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("ValorFreteProporcional")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIcmsSt")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIpi")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorTotalXml")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorUnitarioXml")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EntradaNFeId");
-
-                    b.ToTable("ItensEntradaNFe");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.ItemNotaFiscal", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("AliquotaCbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("AliquotaCofins")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<decimal>("AliquotaIbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("AliquotaIcms")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<decimal>("AliquotaIs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("AliquotaPis")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal>("BaseCbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("BaseIbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("BaseIcms")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Cest")
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)");
-
-                    b.Property<string>("Cfop")
-                        .IsRequired()
-                        .HasMaxLength(4)
-                        .HasColumnType("nvarchar(4)");
-
-                    b.Property<string>("Codigo")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CsosnIcms")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CstIcms")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CstPisCofins")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Descricao")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("Ncm")
-                        .HasMaxLength(8)
-                        .HasColumnType("nvarchar(8)");
-
-                    b.Property<Guid>("NotaFiscalId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("NumeroItem")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("Pesavel")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid?>("ProdutoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Quantidade")
-                        .HasColumnType("decimal(15,4)");
-
-                    b.Property<string>("UnidadeMedida")
-                        .IsRequired()
-                        .HasMaxLength(6)
-                        .HasColumnType("nvarchar(6)");
-
-                    b.Property<decimal>("ValorCbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorCofins")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorDesconto")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIcms")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorIs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorPis")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorRetidoSplitPayment")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorTotal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorUnitario")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NotaFiscalId");
-
-                    b.ToTable("ItensNotaFiscal", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.NotaFiscal", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ChaveAcesso")
-                        .HasMaxLength(44)
-                        .HasColumnType("nvarchar(44)");
-
-                    b.Property<string>("ChaveCartaCorrecao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("ClienteId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("CpfCnpjConsumidor")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CpfCnpjDestinatario")
-                        .HasMaxLength(18)
-                        .HasColumnType("nvarchar(18)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataEmissao")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataSaida")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmailDestinatario")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Modelo")
-                        .HasColumnType("int");
-
-                    b.Property<string>("MotivoRejeicao")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int>("NaturezaOperacao")
-                        .HasColumnType("int");
-
-                    b.Property<string>("NomeDestinatario")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<long>("Numero")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Protocolo")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("QrCode")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Serie")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("TotalCbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalCofins")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalDesconto")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalIbs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalIcms")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalIs")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalNota")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalPis")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalProdutos")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("TotalSplitPayment")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("UrlConsultaQrCode")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("VendaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("XmlEnvio")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("XmlRetorno")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChaveAcesso")
-                        .IsUnique()
-                        .HasFilter("[ChaveAcesso] IS NOT NULL");
-
-                    b.HasIndex("DataEmissao");
-
-                    b.HasIndex("EmpresaId", "Modelo", "Numero");
-
-                    b.ToTable("NotasFiscais", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.NotaFiscalRecebida", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ChaveAcesso")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataConsulta")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataEmissao")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DataManifestacao")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmitenteCnpj")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmitenteNome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmitenteUF")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("JustificativaManifestacao")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("Manifestacao")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Modelo")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NSU")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<long>("Numero")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Serie")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Situacao")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("ValorTotal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("XmlNota")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("NotasFiscaisRecebidas");
-                });
-
             modelBuilder.Entity("Sistema.Domain.Marketing.Entities.AgendamentoPublicacao", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2656,84 +1664,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TemplatesMarketing", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.DevolucaoVenda", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ClienteId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("DataHora")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Motivo")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NumeroVenda")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("TotalDevolvido")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid>("VendaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("DevolucoesVenda");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.ItemDevolucao", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Descricao")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("DevolucaoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("DevolucaoVendaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ProdutoId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Quantidade")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ValorUnitario")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DevolucaoVendaId");
-
-                    b.ToTable("ItensDevolucoesVenda");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Vendas.Entities.ItemVenda", b =>
@@ -2888,9 +1818,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ClienteId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("CpfCnpjConsumidor")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("CriadoEm")
                         .HasColumnType("datetime2");
 
@@ -2904,9 +1831,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("LocalEstoqueId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("NotaFiscalId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Numero")
@@ -3181,15 +2105,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.PartidaContabil", b =>
-                {
-                    b.HasOne("Sistema.Domain.Contabilidade.Entities.LancamentoContabil", null)
-                        .WithMany("Partidas")
-                        .HasForeignKey("LancamentoContabilId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Sistema.Domain.Crediario.Entities.ParcelaCrediario", b =>
                 {
                     b.HasOne("Sistema.Domain.Crediario.Entities.Crediario", null)
@@ -3197,40 +2112,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasForeignKey("CrediarioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Estoque.Entities.ProdutoEmbalagem", b =>
-                {
-                    b.HasOne("Sistema.Domain.Estoque.Entities.Produto", null)
-                        .WithMany("Embalagens")
-                        .HasForeignKey("ProdutoId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.ItemEntradaNFe", b =>
-                {
-                    b.HasOne("Sistema.Domain.Fiscal.Entities.EntradaNFe", null)
-                        .WithMany("Itens")
-                        .HasForeignKey("EntradaNFeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.ItemNotaFiscal", b =>
-                {
-                    b.HasOne("Sistema.Domain.Fiscal.Entities.NotaFiscal", null)
-                        .WithMany("Itens")
-                        .HasForeignKey("NotaFiscalId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.ItemDevolucao", b =>
-                {
-                    b.HasOne("Sistema.Domain.Vendas.Entities.DevolucaoVenda", null)
-                        .WithMany("Itens")
-                        .HasForeignKey("DevolucaoVendaId");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Vendas.Entities.ItemVenda", b =>
@@ -3274,34 +2155,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Navigation("Itens");
                 });
 
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.LancamentoContabil", b =>
-                {
-                    b.Navigation("Partidas");
-                });
-
             modelBuilder.Entity("Sistema.Domain.Crediario.Entities.Crediario", b =>
                 {
                     b.Navigation("Parcelas");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Estoque.Entities.Produto", b =>
-                {
-                    b.Navigation("Embalagens");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.EntradaNFe", b =>
-                {
-                    b.Navigation("Itens");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Fiscal.Entities.NotaFiscal", b =>
-                {
-                    b.Navigation("Itens");
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.DevolucaoVenda", b =>
-                {
-                    b.Navigation("Itens");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Vendas.Entities.Venda", b =>

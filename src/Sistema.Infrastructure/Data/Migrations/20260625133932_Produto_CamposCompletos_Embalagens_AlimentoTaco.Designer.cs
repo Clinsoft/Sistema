@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sistema.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using Sistema.Infrastructure.Data;
 namespace Sistema.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(SistemaDbContext))]
-    partial class SistemaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260625133932_Produto_CamposCompletos_Embalagens_AlimentoTaco")]
+    partial class Produto_CamposCompletos_Embalagens_AlimentoTaco
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -502,47 +505,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("PlanoContas", (string)null);
-                });
-
-            modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.Contador", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("Ativo")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("AtualizadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CRC")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CpfCnpj")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("EmpresaId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Telefone")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Contadores");
                 });
 
             modelBuilder.Entity("Sistema.Domain.Contabilidade.Entities.LancamentoContabil", b =>
@@ -1213,9 +1175,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<decimal>("EstoqueMinimo")
                         .HasColumnType("decimal(18,3)");
 
-                    b.Property<string>("FichaTecnicaUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid?>("FornecedorPrincipalId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1644,11 +1603,6 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<Guid>("EmpresaId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("Pesavel")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
 
                     b.Property<string>("Sigla")
                         .IsRequired()
@@ -2252,9 +2206,6 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<int>("NumeroItem")
                         .HasColumnType("int");
-
-                    b.Property<bool>("Pesavel")
-                        .HasColumnType("bit");
 
                     b.Property<Guid?>("ProdutoId")
                         .HasColumnType("uniqueidentifier");

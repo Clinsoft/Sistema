@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sistema.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using Sistema.Infrastructure.Data;
 namespace Sistema.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(SistemaDbContext))]
-    partial class SistemaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260625190735_AddContador")]
+    partial class AddContador
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1645,11 +1648,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<Guid>("EmpresaId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<bool>("Pesavel")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
                     b.Property<string>("Sigla")
                         .IsRequired()
                         .HasMaxLength(6)
@@ -2252,9 +2250,6 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<int>("NumeroItem")
                         .HasColumnType("int");
-
-                    b.Property<bool>("Pesavel")
-                        .HasColumnType("bit");
 
                     b.Property<Guid?>("ProdutoId")
                         .HasColumnType("uniqueidentifier");

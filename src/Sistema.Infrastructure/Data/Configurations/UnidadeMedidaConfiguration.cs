@@ -12,6 +12,7 @@ public class UnidadeMedidaConfiguration : IEntityTypeConfiguration<UnidadeMedida
         b.HasKey(u => u.Id);
         b.Property(u => u.Sigla).HasMaxLength(6).IsRequired();
         b.Property(u => u.Descricao).HasMaxLength(50).IsRequired();
+        b.Property(u => u.Pesavel).HasDefaultValue(false);
         b.HasIndex(u => new { u.EmpresaId, u.Sigla }).IsUnique();
     }
 }

@@ -1,5 +1,6 @@
 using Hangfire;
 using Sistema.API.Extensions;
+using Sistema.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,10 +53,34 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseHangfireDashboard("/jobs");
+
+// Registrar jobs recorrentes
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.EstoqueAlertaJob>(
+    "estoque-alerta-minimo",
+    job => job.ExecutarAsync(),
+    "0 8 * * *");   // 08:00 todo dia
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.CrediarioLembreteJob>(
+    "crediario-lembrete-parcelas",
+    job => job.ExecutarAsync(),
+    "0 9 * * *");   // 09:00 todo dia
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FinanceiroAlertaJob>(
+    "financeiro-alerta-vencimentos",
+    job => job.ExecutarAsync(),
+    "0 8 * * *");   // 08:00 todo dia
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.BackupJob>(
+    "backup-banco-dados",
+    job => job.ExecutarAsync(),
+    "0 2 * * *");   // 02:00 toda madrugada
+
 app.MapControllers();
 
 app.Run();

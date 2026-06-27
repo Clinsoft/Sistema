@@ -1,0 +1,54 @@
+name: CD — Deploy
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+
+jobs:
+  publish:
+    name: Publicar artefatos
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build backend (publish)
+        run: |
+          dotnet publish src/Sistema.API \
+            -c Release \
+            -o ./publish/api \
+            --no-self-contained \
+            -r linux-x64
+
+      - name: Build frontend
+        working-directory: src/Sistema.Frontend
+        run: |
+          npm ci
+          npx vite build
+
+      - name: Empacotar release
+        run: |
+          cp -r src/Sistema.Frontend/dist ./publish/wwwroot
+          tar -czf clinsoft-${{ github.ref_name }}.tar.gz ./publish
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: clinsoft-${{ github.ref_name }}.tar.gz
+          generate_release_notes: true

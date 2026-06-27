@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Backend: build + testes
+  # ──────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend (.NET 8)
+    runs-on: ubuntu-latest
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: ClinSoft@CI2024
+          MSSQL_PID: Express
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P 'ClinSoft@CI2024' -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore Sistema.sln
+
+      - name: Build
+        run: dotnet build Sistema.sln --no-restore -c Release
+
+      - name: Testes unitários
+        run: dotnet test tests/Sistema.UnitTests --no-build -c Release --logger "trx;LogFileName=unit-results.xml" -v minimal
+
+      - name: Testes de integração
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=ClinSoftTest;User Id=SA;Password=ClinSoft@CI2024;TrustServerCertificate=True;"
+        run: dotnet test tests/Sistema.IntegrationTests --no-build -c Release --logger "trx;LogFileName=integration-results.xml" -v minimal
+
+      - name: Testes fiscais
+        run: dotnet test tests/Sistema.FiscalTests --no-build -c Release -v minimal
+
+      - name: Publicar resultados
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Resultados Testes .NET
+          path: '**/TestResults/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: false
+
+  # ──────────────────────────────────────────────────────────────────
+  # Frontend: build + lint
+  # ──────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (Vue 3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/Sistema.Frontend/package-lock.json
+
+      - name: Install
+        working-directory: src/Sistema.Frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: src/Sistema.Frontend
+        run: npx vue-tsc --noEmit || true
+
+      - name: Build
+        working-directory: src/Sistema.Frontend
+        run: npx vite build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/Sistema.Frontend/dist
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────
+  # E2E: Playwright (apenas em push para master)
+  # ──────────────────────────────────────────────────────────────────
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: ClinSoft@CI2024
+          MSSQL_PID: Express
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P 'ClinSoft@CI2024' -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/Sistema.Frontend/package-lock.json
+
+      - name: Restore & Build backend
+        run: |
+          dotnet restore Sistema.sln
+          dotnet build src/Sistema.API --no-restore -c Release
+
+      - name: Aplicar migrations
+        env:
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=ClinSoftE2E;User Id=SA;Password=ClinSoft@CI2024;TrustServerCertificate=True;"
+        run: |
+          dotnet tool install --global dotnet-ef || true
+          dotnet ef database update --project src/Sistema.Infrastructure --startup-project src/Sistema.API
+
+      - name: Start backend
+        env:
+          ASPNETCORE_ENVIRONMENT: Testing
+          ASPNETCORE_URLS: http://localhost:5000
+          ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=ClinSoftE2E;User Id=SA;Password=ClinSoft@CI2024;TrustServerCertificate=True;"
+          Jwt__Secret: "chave-ci-minimo-32-caracteres-aqui!!"
+        run: |
+          dotnet run --project src/Sistema.API -c Release &
+          sleep 10
+
+      - name: Install frontend deps
+        working-directory: src/Sistema.Frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/Sistema.E2ETests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: tests/Sistema.E2ETests
+        env:
+          BASE_URL: http://localhost:5173
+          API_URL: http://localhost:5000
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: tests/Sistema.E2ETests/playwright-report
+          retention-days: 7

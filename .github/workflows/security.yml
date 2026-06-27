@@ -1,0 +1,62 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # toda segunda-feira às 03:00 UTC
+  push:
+    branches: [master]
+
+jobs:
+  dotnet-audit:
+    name: .NET — Vulnerabilidades NuGet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restaurar
+        run: dotnet restore Sistema.sln
+      - name: Audit NuGet
+        run: dotnet list package --vulnerable --include-transitive 2>&1 | tee nuget-audit.txt
+      - name: Falhar se encontrar crítico
+        run: |
+          if grep -q "Critical\|High" nuget-audit.txt; then
+            echo "⚠️ Vulnerabilidades críticas/altas encontradas!"
+            cat nuget-audit.txt
+            exit 1
+          fi
+
+  npm-audit:
+    name: NPM — Vulnerabilidades frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Install
+        working-directory: src/Sistema.Frontend
+        run: npm ci
+      - name: Audit
+        working-directory: src/Sistema.Frontend
+        run: npm audit --audit-level=high || true
+
+  codeql:
+    name: CodeQL — Análise estática
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp, javascript
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build para CodeQL
+        run: dotnet build Sistema.sln -c Release
+      - uses: github/codeql-action/analyze@v3

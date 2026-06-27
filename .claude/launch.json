@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Clinsoft Frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite"],
+      "cwd": "src/Sistema.Frontend",
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "Clinsoft Backend",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["watch", "run", "--launch-profile", "http", "--non-interactive"],
+      "cwd": "src/Sistema.API",
+      "port": 5131
+    }
+  ]
+}

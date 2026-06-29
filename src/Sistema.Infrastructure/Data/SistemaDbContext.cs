@@ -86,6 +86,11 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<TemplateMarketing> TemplatesMarketing => Set<TemplateMarketing>();
     public DbSet<ArteMarketing> ArtesMarketing => Set<ArteMarketing>();
     public DbSet<AgendamentoPublicacao> AgendamentosPublicacao => Set<AgendamentoPublicacao>();
+    public DbSet<ConfiguracaoValidade> ConfiguracoesValidade => Set<ConfiguracaoValidade>();
+    public DbSet<AlertaValidade> AlertasValidade => Set<AlertaValidade>();
+    public DbSet<ConfiguracaoWhatsAppMensagem> ConfiguracoesWhatsAppMensagem => Set<ConfiguracaoWhatsAppMensagem>();
+    public DbSet<TemplateWhatsAppMensagem> TemplatesWhatsAppMensagem => Set<TemplateWhatsAppMensagem>();
+    public DbSet<HistoricoMensagemWhatsApp> HistoricosMensagensWhatsApp => Set<HistoricoMensagemWhatsApp>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

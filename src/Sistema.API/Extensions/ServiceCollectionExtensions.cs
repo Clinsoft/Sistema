@@ -107,6 +107,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Sistema.Infrastructure.Fiscal.SpedFiscalService>();
         services.AddScoped<IDistribuicaoDFeService, Sistema.Infrastructure.Fiscal.DistribuicaoDFeService>();
 
+        // WhatsApp Cloud API
+        services.AddHttpClient<Sistema.Infrastructure.Services.WhatsAppCloudApiService>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
+
         return services;
     }
 }

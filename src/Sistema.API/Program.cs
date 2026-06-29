@@ -81,6 +81,16 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.BackupJob>(
     job => job.ExecutarAsync(),
     "0 2 * * *");   // 02:00 toda madrugada
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ValidadeJob>(
+    "validade-monitoramento",
+    job => job.ExecutarAsync(),
+    "0 8 * * *");   // 08:00 todo dia — verifica vencimentos e gera promoções
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
+    "whatsapp-disparos-automaticos",
+    job => job.ExecutarAsync(),
+    "0 8 * * *");   // 08:00 todo dia — aniversariantes, promoções, novidades
+
 app.MapControllers();
 
 app.Run();

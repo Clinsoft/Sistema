@@ -163,6 +163,28 @@ public class WhatsAppMensagemController(
             : StatusCode(502, new { mensagem = "Falha no envio.", erro });
     }
 
+    // ─── Disparos manuais de campanha ─────────────────────────────────────────
+
+    /// <summary>Enfileira imediatamente o job de promoções para esta empresa.</summary>
+    [HttpPost("disparar-promocao")]
+    [Authorize]
+    public IActionResult DispararPromocaoAgora([FromQuery] Guid empresaId)
+    {
+        Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
+            j => j.DispararPromocaoManualAsync(empresaId));
+        return Accepted(new { mensagem = "Disparo de promoção enfileirado. Aguarde alguns instantes." });
+    }
+
+    /// <summary>Enfileira imediatamente o job de novidades para esta empresa.</summary>
+    [HttpPost("disparar-novidade")]
+    [Authorize]
+    public IActionResult DispararNovidadeAgora([FromQuery] Guid empresaId)
+    {
+        Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
+            j => j.DispararNovidadeManualAsync(empresaId));
+        return Accepted(new { mensagem = "Disparo de novidade enfileirado. Aguarde alguns instantes." });
+    }
+
     // ─── Histórico ────────────────────────────────────────────────────────────
 
     [HttpGet("historico")]

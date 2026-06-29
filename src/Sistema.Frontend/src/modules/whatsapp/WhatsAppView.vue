@@ -148,8 +148,28 @@
             </v-card>
           </v-col>
 
-          <!-- Envio manual -->
+          <!-- Disparo de campanhas -->
           <v-col cols="12" md="8">
+            <v-card class="mb-4">
+              <v-card-title>Disparar Campanha Agora</v-card-title>
+              <v-card-text>
+                <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                  Enfileira o disparo imediato para todos os clientes ativos com telefone cadastrado.
+                  Promoções usam os produtos em oferta de hoje. Novidades envia para toda a base.
+                </v-alert>
+                <div class="d-flex gap-3 flex-wrap">
+                  <v-btn color="orange" prepend-icon="mdi-tag-multiple" :loading="disparandoPromocao"
+                    @click="dispararPromocao">
+                    Disparar Promoções
+                  </v-btn>
+                  <v-btn color="primary" prepend-icon="mdi-newspaper-variant" :loading="disparandoNovidade"
+                    @click="dispararNovidade">
+                    Disparar Novidade
+                  </v-btn>
+                </div>
+              </v-card-text>
+            </v-card>
+
             <v-card>
               <v-card-title>Envio Manual</v-card-title>
               <v-card-text>
@@ -766,6 +786,36 @@ function iconeStatus(status: string) {
     Lida: 'mdi-check-all', Falhou: 'mdi-close-circle',
   }
   return m[status] ?? 'mdi-help'
+}
+
+// Disparos de campanha
+const disparandoPromocao = ref(false)
+const disparandoNovidade  = ref(false)
+
+async function dispararPromocao() {
+  disparandoPromocao.value = true
+  try {
+    await api.post('/whatsapp/mensagem/disparar-promocao', null, { params: { empresaId: auth.empresaId } })
+    notif.ok('Disparo de promoções enfileirado! As mensagens serão enviadas em instantes.')
+    setTimeout(carregarHistorico, 3000)
+  } catch {
+    notif.erro('Erro ao disparar promoções. Verifique se o WhatsApp está configurado.')
+  } finally {
+    disparandoPromocao.value = false
+  }
+}
+
+async function dispararNovidade() {
+  disparandoNovidade.value = true
+  try {
+    await api.post('/whatsapp/mensagem/disparar-novidade', null, { params: { empresaId: auth.empresaId } })
+    notif.ok('Disparo de novidade enfileirado! As mensagens serão enviadas em instantes.')
+    setTimeout(carregarHistorico, 3000)
+  } catch {
+    notif.erro('Erro ao disparar novidade. Verifique se o WhatsApp está configurado.')
+  } finally {
+    disparandoNovidade.value = false
+  }
 }
 
 async function carregarHistorico() {

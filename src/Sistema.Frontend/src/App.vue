@@ -156,6 +156,8 @@
           <v-list density="compact" nav class="pb-2">
             <v-list-item prepend-icon="mdi-cog-outline" title="Configurações"
               to="/configuracoes" color="primary" rounded="lg" />
+            <v-list-item prepend-icon="mdi-store-outline" title="Filiais / Unidades"
+              to="/configuracoes/filiais" color="primary" rounded="lg" />
             <v-list-item prepend-icon="mdi-logout" title="Sair"
               @click="auth.sair()" color="error" rounded="lg" />
           </v-list>
@@ -172,6 +174,43 @@
           <span class="text-body-1 font-weight-medium">{{ tituloPagina }}</span>
         </v-app-bar-title>
         <template #append>
+          <!-- Seletor de filial (aparece quando há mais de uma unidade) -->
+          <v-menu v-if="auth.temFiliais" offset-y>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="tonal" color="primary" class="mr-2"
+                prepend-icon="mdi-store-outline" append-icon="mdi-chevron-down"
+                size="small" style="max-width:240px">
+                <span class="text-truncate" style="max-width:160px">
+                  {{ auth.empresaAtual?.nomeFantasia ?? 'Selecionar unidade' }}
+                </span>
+                <v-chip v-if="auth.empresaAtual?.tipoUnidade === 'Filial'"
+                  size="x-small" color="warning" variant="tonal" class="ml-1">Filial</v-chip>
+              </v-btn>
+            </template>
+            <v-list min-width="260" density="compact">
+              <v-list-subheader>Selecionar unidade</v-list-subheader>
+              <v-list-item v-for="f in auth.filiais" :key="f.id"
+                :active="f.id === auth.empresaId"
+                active-color="primary"
+                @click="auth.trocarFilial(f.id)">
+                <template #prepend>
+                  <v-icon :icon="f.tipoUnidade === 'Matriz' ? 'mdi-home-city-outline' : 'mdi-store-outline'"
+                    size="18" class="mr-2" />
+                </template>
+                <v-list-item-title>{{ f.nomeFantasia }}</v-list-item-title>
+                <v-list-item-subtitle class="text-caption">
+                  {{ f.tipoUnidade }} · {{ f.cnpj }}
+                </v-list-item-subtitle>
+                <template #append>
+                  <v-icon v-if="f.id === auth.empresaId" icon="mdi-check" color="primary" size="16" />
+                </template>
+              </v-list-item>
+              <v-divider />
+              <v-list-item prepend-icon="mdi-plus" title="Cadastrar nova filial"
+                to="/configuracoes/filiais" density="compact" color="primary" />
+            </v-list>
+          </v-menu>
+
           <v-btn :icon="tema === 'clinsoftLight' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
             variant="text" @click="alternarTema" />
           <v-btn icon="mdi-bell-outline" variant="text" />

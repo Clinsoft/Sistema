@@ -89,6 +89,8 @@ const atalhos = [
   { icon: 'mdi-package-variant',       label: 'Lotes e Validades',     to: '/estoque/lotes',          cor: 'warning' },
   { icon: 'mdi-transfer',              label: 'Transferências',        to: '/estoque/transferencias', cor: 'success' },
   { icon: 'mdi-tune-vertical',         label: 'Ajuste em Lote',       to: '/estoque/ajuste',         cor: 'error' },
+  { icon: 'mdi-scale',                 label: 'Exportar para Balança', to: '/estoque/balanca',        cor: 'teal' },
+  { icon: 'mdi-label-outline',         label: 'Editor de Etiquetas',   to: '/estoque/etiquetas',      cor: 'deep-purple' },
 ]
 
 function fmtVal(v: number) {

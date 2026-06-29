@@ -21,6 +21,10 @@ public class Empresa : Entity
     public string Email { get; private set; } = null!;
     public bool Ativo { get; private set; } = true;
 
+    // Multi-filial
+    public Guid? MatrizId { get; private set; }
+    public string TipoUnidade { get; private set; } = "Matriz"; // Matriz | Filial
+
     private Empresa() { }
 
     public void Atualizar(string razaoSocial, string nomeFantasia,
@@ -43,6 +47,18 @@ public class Empresa : Entity
         Email = email;
         InscricaoEstadual = inscricaoEstadual;
         InscricaoMunicipal = inscricaoMunicipal;
+    }
+
+    public static Empresa CriarFilial(Guid matrizId, string razaoSocial, string nomeFantasia,
+        string cnpj, string regimeTributario, string logradouro, string numero, string bairro,
+        string cidade, string uf, string cep, string telefone, string email,
+        string inscricaoEstadual = "", string inscricaoMunicipal = "", string? complemento = null)
+    {
+        var filial = Criar(razaoSocial, nomeFantasia, cnpj, regimeTributario, logradouro, numero,
+            bairro, cidade, uf, cep, telefone, email, inscricaoEstadual, inscricaoMunicipal, complemento);
+        filial.MatrizId = matrizId;
+        filial.TipoUnidade = "Filial";
+        return filial;
     }
 
     public static Empresa Criar(string razaoSocial, string nomeFantasia, string cnpj,

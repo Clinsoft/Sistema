@@ -13,9 +13,19 @@ namespace Sistema.API.Controllers.Estoque;
 public class BalancaController(SistemaDbContext db) : ControllerBase
 {
     [HttpGet("exportar")]
-    public async Task<IActionResult> Exportar([FromQuery] Guid empresaId,
-        [FromQuery] string modelo, CancellationToken ct)
+    public async Task<IActionResult> Exportar(
+        [FromQuery] Guid empresaId,
+        [FromQuery] string modelo,
+        [FromQuery] int identificadorPesavel = 2,
+        [FromQuery] int tamanhoCodigoProduto = 5,
+        [FromQuery] string tipoInformacao = "PrecoTotal",
+        CancellationToken ct = default)
     {
+        var cfg = new BalancaConfig(
+            Math.Clamp(identificadorPesavel, 1, 9),
+            Math.Clamp(tamanhoCodigoProduto, 4, 6),
+            tipoInformacao);
+
         var produtos = await db.Produtos.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.Ativo && p.ProdutoBalanca && p.CodigoPlu != null)
             .OrderBy(p => p.CodigoPlu)
@@ -23,12 +33,12 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
         var conteudo = modelo.ToUpper() switch
         {
-            "FILIZOLA" or "FILIZOLA_SMART" => GerarFilizolaSmart(produtos),
-            "TOLEDO_MGV5" => GerarToledoMgv5(produtos),
-            "TOLEDO_MGV6" => GerarToledoMgv6(produtos),
-            "TOLEDO_MGV7" => GerarToledoMgv7(produtos),
-            "RAMUZA" or "RAMUZA_ATENA" => GerarRamuzaAtena(produtos),
-            "URANO" or "URANO_INTEGRA" => GerarUranoIntegra(produtos),
+            "FILIZOLA" or "FILIZOLA_SMART" => GerarFilizolaSmart(produtos, cfg),
+            "TOLEDO_MGV5"                  => GerarToledoMgv5(produtos, cfg),
+            "TOLEDO_MGV6"                  => GerarToledoMgv6(produtos, cfg),
+            "TOLEDO_MGV7"                  => GerarToledoMgv7(produtos, cfg),
+            "RAMUZA" or "RAMUZA_ATENA"     => GerarRamuzaAtena(produtos, cfg),
+            "URANO" or "URANO_INTEGRA"     => GerarUranoIntegra(produtos, cfg),
             _ => throw new InvalidOperationException($"Modelo '{modelo}' não suportado.")
         };
 
@@ -38,89 +48,108 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     // ─── Filizola SMART ──────────────────────────────────────────────────────
     // Formato: PLU|DESCRICAO|PRECO|VALIDADE_DIAS
-    private static string GerarFilizolaSmart(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    private static string GerarFilizolaSmart(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
+        sb.AppendLine($"#CONFIG IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
+            var plu = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
             var desc = p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao.PadRight(22);
-            sb.AppendLine($"{p.CodigoPlu:D6}|{desc}|{p.PrecoVenda:F2}|0");
+            sb.AppendLine($"{plu}|{desc}|{p.PrecoVenda:F2}|{p.ValidadeEmDias ?? 0}");
         }
         return sb.ToString();
     }
 
     // ─── Toledo MGV5 ─────────────────────────────────────────────────────────
-    // Formato fixo: posição 1-6 PLU, 7-28 descrição, 29-37 preço sem ponto, 38-40 validade dias
-    private static string GerarToledoMgv5(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    // Formato fixo: PLU (N dígitos), descrição (22 chars), preço (7 dígitos sem separador), validade (3 dígitos)
+    private static string GerarToledoMgv5(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         foreach (var p in produtos)
         {
-            var plu = p.CodigoPlu?.ToString("D6") ?? "000000";
+            var plu  = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
             var desc = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
-            var preco = ((long)(p.PrecoVenda * 100)).ToString("D7");
-            sb.AppendLine($"{plu}{desc}{preco}000");
+            var preco    = ((long)(p.PrecoVenda * 100)).ToString("D7");
+            var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
+            sb.AppendLine($"{plu}{desc}{preco}{validade}");
         }
         return sb.ToString();
     }
 
     // ─── Toledo MGV6 ─────────────────────────────────────────────────────────
-    private static string GerarToledoMgv6(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    private static string GerarToledoMgv6(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("01CABECALHO");
+        sb.AppendLine($"01CABECALHO IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
-            var plu = p.CodigoPlu?.ToString("D6") ?? "000000";
-            var desc = (p.Descricao.Length > 30 ? p.Descricao[..30] : p.Descricao).PadRight(30);
-            var preco = $"{p.PrecoVenda:F2}".Replace(",", "").PadLeft(8, '0');
-            sb.AppendLine($"02{plu}{desc}{preco}0000");
+            var plu      = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var desc     = (p.Descricao.Length > 30 ? p.Descricao[..30] : p.Descricao).PadRight(30);
+            var preco    = $"{p.PrecoVenda:F2}".Replace(",", "").PadLeft(8, '0');
+            var validade = (p.ValidadeEmDias ?? 0).ToString("D4");
+            sb.AppendLine($"02{plu}{desc}{preco}{validade}");
         }
         sb.AppendLine("99FIM");
         return sb.ToString();
     }
 
     // ─── Toledo MGV7 ─────────────────────────────────────────────────────────
-    private static string GerarToledoMgv7(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    private static string GerarToledoMgv7(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
+        sb.AppendLine("[Configuracao]");
+        sb.AppendLine($"IdentificadorPesavel={cfg.IdentificadorPesavel}");
+        sb.AppendLine($"TamanhoCodigoProduto={cfg.TamanhoCodigoProduto}");
+        sb.AppendLine($"TipoInformacao={cfg.TipoInformacao}");
+        sb.AppendLine();
         foreach (var p in produtos)
         {
             var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
-            sb.AppendLine($"[Produto]");
-            sb.AppendLine($"PLU={p.CodigoPlu}");
+            sb.AppendLine("[Produto]");
+            sb.AppendLine($"PLU={p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}")}");
             sb.AppendLine($"Nome={p.Descricao[..Math.Min(p.Descricao.Length, 30)]}");
             sb.AppendLine($"Preco={preco}");
-            sb.AppendLine($"Validade=0");
+            sb.AppendLine($"Validade={p.ValidadeEmDias ?? 0}");
             sb.AppendLine();
         }
         return sb.ToString();
     }
 
     // ─── Ramuza Atena ────────────────────────────────────────────────────────
-    private static string GerarRamuzaAtena(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    private static string GerarRamuzaAtena(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         foreach (var p in produtos)
         {
-            var plu = p.CodigoPlu?.ToString("D5") ?? "00000";
-            var desc = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
-            var preco = ((long)(p.PrecoVenda * 100)).ToString("D6");
-            sb.AppendLine($"{plu}{desc}{preco}");
+            var plu      = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var desc     = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
+            var preco    = ((long)(p.PrecoVenda * 100)).ToString("D6");
+            var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
+            sb.AppendLine($"{plu}{desc}{preco}{validade}");
         }
         return sb.ToString();
     }
 
     // ─── Urano Integra ───────────────────────────────────────────────────────
-    private static string GerarUranoIntegra(IEnumerable<Domain.Estoque.Entities.Produto> produtos)
+    private static string GerarUranoIntegra(
+        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("PRODUTOS");
+        sb.AppendLine($"PRODUTOS IP={cfg.IdentificadorPesavel};TC={cfg.TamanhoCodigoProduto};TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
+            var plu   = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
             var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
-            sb.AppendLine($"{p.CodigoPlu};{p.Descricao[..Math.Min(p.Descricao.Length, 25)]};{preco};0");
+            sb.AppendLine($"{plu};{p.Descricao[..Math.Min(p.Descricao.Length, 25)]};{preco};{p.ValidadeEmDias ?? 0}");
         }
         return sb.ToString();
     }
 }
+
+public record BalancaConfig(int IdentificadorPesavel, int TamanhoCodigoProduto, string TipoInformacao);

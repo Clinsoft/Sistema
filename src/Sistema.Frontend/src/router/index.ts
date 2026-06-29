@@ -40,6 +40,8 @@ const router = createRouter({
       meta: { titulo: 'Ajuste de Estoque' } },
     { path: '/estoque/etiquetas', component: () => import('@/modules/estoque/EtiquetasView.vue'),
       meta: { titulo: 'Editor de Etiquetas' } },
+    { path: '/estoque/balanca', component: () => import('@/modules/estoque/BalancaView.vue'),
+      meta: { titulo: 'Exportação para Balança' } },
 
     // Página pública (sem auth guard)
     { path: '/produto/:id', component: () => import('@/modules/publico/ProdutoPublicoView.vue'),
@@ -48,6 +50,8 @@ const router = createRouter({
     // Compras
     { path: '/compras', component: () => import('@/modules/compras/ComprasView.vue'),
       meta: { titulo: 'Pedidos de Compra' } },
+    { path: '/compras/cotacoes', component: () => import('@/modules/compras/CotacoesView.vue'),
+      meta: { titulo: 'Comparador de Cotações' } },
 
     // Crediário
     { path: '/crediario', component: () => import('@/modules/crediario/CrediarioView.vue'),
@@ -122,6 +126,8 @@ const router = createRouter({
     // Configurações
     { path: '/configuracoes', component: () => import('@/modules/configuracoes/ConfiguracoesView.vue'),
       meta: { titulo: 'Configurações' } },
+    { path: '/configuracoes/filiais', component: () => import('@/modules/configuracoes/FiliaisView.vue'),
+      meta: { titulo: 'Unidades / Filiais' } },
 
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ]

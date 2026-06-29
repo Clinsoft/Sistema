@@ -92,9 +92,58 @@ public class MarketingController(SistemaDbContext db, IUnitOfWork uow) : Control
         await uow.SalvarAsync(ct);
         return Ok(new { agendamento.Id });
     }
+
+    // ─── Geração automática por promoção ─────────────────────────────────────
+
+    [HttpPost("artes/auto-promocao")]
+    public async Task<IActionResult> GerarArtesPromocao(
+        [FromBody] GerarArtePromocaoRequest req, CancellationToken ct)
+    {
+        var formatos = new[]
+        {
+            (FormatoArte.FeedQuadrado,   "Feed"),
+            (FormatoArte.StoryVertical,  "Story"),
+            (FormatoArte.BannerHorizontal, "Banner"),
+        };
+
+        var ids = new List<Guid>();
+        foreach (var (formato, label) in formatos)
+        {
+            var layoutJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                gerador      = "AutoPromocao",
+                formato      = formato.ToString(),
+                nomePromocao = req.NomePromocao,
+                desconto     = req.Desconto,
+                tipoDesconto = req.TipoDesconto,
+                tipoPromocao = req.TipoPromocao,
+                aplicaEm     = req.AplicaEm,
+                dataInicio   = req.DataInicio,
+                dataFim      = req.DataFim,
+                apenasClube  = req.ApenasClube,
+            });
+
+            var arte = ArteMarketing.Criar(
+                req.EmpresaId,
+                $"{req.NomePromocao} — {label}",
+                TipoArteMarketing.Promocao,
+                formato,
+                layoutJson,
+                templateId: null);
+
+            db.ArtesMarketing.Add(arte);
+            ids.Add(arte.Id);
+        }
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { ids });
+    }
 }
 
 public record CriarTemplateRequest(Guid EmpresaId, string Nome, string Tipo, string Formato, string LayoutJson);
 public record AtualizarTemplateRequest(string LayoutJson, string? ThumbnailBase64 = null);
 public record SalvarArteRequest(Guid EmpresaId, string Nome, Guid TemplateId, string LayoutJson);
 public record AgendarPublicacaoRequest(Guid EmpresaId, Guid ArteId, string RedeSocial, DateTime DataHoraAgendada, string? Legenda = null);
+public record GerarArtePromocaoRequest(
+    Guid EmpresaId, string NomePromocao, decimal Desconto, string TipoDesconto,
+    string TipoPromocao, string AplicaEm, string DataInicio, string? DataFim, bool ApenasClube);

@@ -1,7 +1,11 @@
 ﻿<template>
   <div>
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center mb-4 gap-2">
       <div class="text-h6 font-weight-bold flex-grow-1">Pedidos de Compra</div>
+      <v-btn color="secondary" variant="tonal" prepend-icon="mdi-file-compare"
+        rounded="lg" @click="$router.push('/compras/cotacoes')">
+        Comparar Cotações
+      </v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Novo Pedido</v-btn>
     </div>
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">

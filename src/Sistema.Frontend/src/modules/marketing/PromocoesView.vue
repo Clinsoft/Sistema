@@ -53,6 +53,8 @@
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
         </template>
         <template #item.acoes="{ item }">
+          <v-btn icon="mdi-image-multiple-outline" size="x-small" variant="text"
+            color="purple" title="Ver / Gerar Artes" @click="abrirArtes(item)" />
           <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" @click="editar(item)" />
           <v-btn :icon="item.status === 'Ativa' ? 'mdi-pause' : 'mdi-play'" size="x-small" variant="text"
             :color="item.status === 'Ativa' ? 'warning' : 'success'" @click="alternarStatus(item)" />
@@ -205,6 +207,76 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog Artes da Promoção -->
+    <v-dialog v-model="dialogArtes" max-width="820" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center gap-2">
+          <v-icon icon="mdi-image-multiple" color="purple" />
+          Artes — {{ promocaoArtes?.nome }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="dialogArtes = false" />
+        </v-card-title>
+        <v-divider />
+
+        <v-card-text class="pa-4">
+          <!-- Gerar artes -->
+          <div v-if="!artesGeradas.length" class="text-center py-6">
+            <v-icon icon="mdi-palette-outline" size="60" color="purple" class="mb-3" opacity="0.4" />
+            <div class="text-body-1 font-weight-bold mb-1">Nenhuma arte gerada ainda</div>
+            <div class="text-caption text-medium-emphasis mb-4">
+              Gere automaticamente 3 layouts (Feed, Story e Banner) para esta promoção
+            </div>
+            <v-btn color="purple" size="large" prepend-icon="mdi-auto-fix"
+              :loading="gerandoArtes" @click="gerarArtes">
+              Gerar Artes Automaticamente
+            </v-btn>
+          </div>
+
+          <template v-else>
+            <!-- Abas por formato -->
+            <v-tabs v-model="tabArte" density="compact" class="mb-4">
+              <v-tab v-for="f in formatosArte" :key="f.id" :value="f.id">
+                <v-icon :icon="f.icon" size="16" class="mr-1" />{{ f.label }}
+              </v-tab>
+            </v-tabs>
+
+            <v-window v-model="tabArte">
+              <v-window-item v-for="f in formatosArte" :key="f.id" :value="f.id">
+                <div class="d-flex flex-column align-center gap-3">
+                  <ArtePromoCanvas
+                    :ref="el => canvasRefs[f.id] = el"
+                    :layout="layoutParaFormato(f.id)"
+                    :previewW="f.previewW" />
+                  <div class="d-flex gap-2">
+                    <v-btn prepend-icon="mdi-download" color="purple" variant="tonal"
+                      @click="baixarArte(f.id)">
+                      Baixar PNG
+                    </v-btn>
+                    <v-btn prepend-icon="mdi-refresh" variant="text"
+                      :loading="gerandoArtes" @click="gerarArtes">
+                      Regerar
+                    </v-btn>
+                  </div>
+                </div>
+              </v-window-item>
+            </v-window>
+
+            <!-- Botão reagendar -->
+            <v-divider class="my-4" />
+            <div class="d-flex align-center gap-2">
+              <v-icon icon="mdi-calendar-clock" color="primary" />
+              <span class="text-body-2">Agendar publicação dessas artes</span>
+              <v-spacer />
+              <v-btn size="small" color="primary" variant="tonal"
+                prepend-icon="mdi-send" @click="$router.push('/marketing')">
+                Ir para Marketing
+              </v-btn>
+            </div>
+          </template>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -213,6 +285,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import ArtePromoCanvas from './ArtePromoCanvas.vue'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
@@ -226,6 +299,20 @@ const filtroTipo = ref<string | null>(null)
 const filtroStatus = ref<string | null>(null)
 const promocoes = ref<any[]>([])
 const itensFiltro = ref<any[]>([])
+
+// Artes
+const dialogArtes = ref(false)
+const promocaoArtes = ref<any>(null)
+const artesGeradas = ref<any[]>([])
+const gerandoArtes = ref(false)
+const tabArte = ref('FeedQuadrado')
+const canvasRefs = ref<Record<string, any>>({})
+
+const formatosArte = [
+  { id: 'FeedQuadrado',     label: 'Feed',   icon: 'mdi-square',           previewW: 340 },
+  { id: 'StoryVertical',    label: 'Story',  icon: 'mdi-cellphone',        previewW: 220 },
+  { id: 'BannerHorizontal', label: 'Banner', icon: 'mdi-panorama-wide-angle', previewW: 520 },
+]
 
 const tiposPromocao = [
   { value: 'Desconto',             label: 'Desconto simples',        icon: 'mdi-tag',                   cor: 'error'       },
@@ -289,14 +376,94 @@ async function salvar() {
   try {
     if (editando.value) {
       await api.put(`/promocoes/${editando.value}`, form.value)
+      notif.ok('Promoção atualizada!')
     } else {
       await api.post('/promocoes', { ...form.value, empresaId: auth.empresaId })
+      notif.ok('Promoção salva! Gerando artes...')
+      // Gera artes automaticamente ao criar nova promoção
+      gerarArtesAutomatico(form.value)
     }
-    notif.ok('Promoção salva!')
     dialog.value = false
     await carregar()
   } catch { notif.erro('Erro ao salvar promoção.') }
   finally { salvando.value = false }
+}
+
+async function gerarArtesAutomatico(promocao: any) {
+  try {
+    await api.post('/marketing/artes/auto-promocao', {
+      empresaId: auth.empresaId,
+      nomePromocao: promocao.nome,
+      desconto: promocao.desconto,
+      tipoDesconto: promocao.tipoDesconto,
+      tipoPromocao: promocao.tipo,
+      aplicaEm: promocao.aplicaEm,
+      dataInicio: promocao.dataInicio,
+      dataFim: promocao.dataFim || null,
+      apenasClube: promocao.apenasClube,
+    })
+    notif.ok('Artes geradas! Acesse o ícone 🎨 na promoção para visualizar.')
+  } catch { /* silencioso — não bloqueia o fluxo */ }
+}
+
+function abrirArtes(item: any) {
+  promocaoArtes.value = item
+  artesGeradas.value = []
+  tabArte.value = 'FeedQuadrado'
+  dialogArtes.value = true
+  // Carrega artes já existentes do backend
+  carregarArtesDaPromocao(item)
+}
+
+async function carregarArtesDaPromocao(item: any) {
+  try {
+    const r = await api.get('/marketing/artes', { params: { empresaId: auth.empresaId } })
+    const nome = item.nome
+    artesGeradas.value = (r.data ?? []).filter((a: any) => a.titulo?.startsWith(nome))
+  } catch { artesGeradas.value = [] }
+}
+
+async function gerarArtes() {
+  if (!promocaoArtes.value) return
+  gerandoArtes.value = true
+  try {
+    await api.post('/marketing/artes/auto-promocao', {
+      empresaId: auth.empresaId,
+      nomePromocao: promocaoArtes.value.nome,
+      desconto: promocaoArtes.value.desconto,
+      tipoDesconto: promocaoArtes.value.tipoDesconto,
+      tipoPromocao: promocaoArtes.value.tipo,
+      aplicaEm: promocaoArtes.value.aplicaEm,
+      dataInicio: promocaoArtes.value.dataInicio,
+      dataFim: promocaoArtes.value.dataFim || null,
+      apenasClube: promocaoArtes.value.apenasClube ?? false,
+    })
+    await carregarArtesDaPromocao(promocaoArtes.value)
+    notif.ok('Artes geradas com sucesso!')
+  } catch { notif.erro('Erro ao gerar artes.') }
+  finally { gerandoArtes.value = false }
+}
+
+function layoutParaFormato(formato: string) {
+  const p = promocaoArtes.value
+  if (!p) return {}
+  return {
+    gerador: 'AutoPromocao',
+    formato,
+    nomePromocao: p.nome,
+    desconto: p.desconto,
+    tipoDesconto: p.tipoDesconto,
+    tipoPromocao: p.tipo,
+    aplicaEm: p.aplicaEm,
+    dataInicio: p.dataInicio,
+    dataFim: p.dataFim,
+    apenasClube: p.apenasClube ?? false,
+  }
+}
+
+async function baixarArte(formato: string) {
+  const ref = canvasRefs.value[formato]
+  if (ref?.exportarPng) await ref.exportarPng()
 }
 
 async function alternarStatus(item: any) {

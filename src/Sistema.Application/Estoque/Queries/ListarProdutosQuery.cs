@@ -18,13 +18,13 @@ public class ListarProdutosHandler(IProdutoRepository repo)
         var total = await repo.ContarAsync(q.EmpresaId, q.Termo, q.CategoriaId, q.Ativo, ct);
 
         var dtos = produtos.Select(p => new ProdutoDto(
-            p.Id, p.Codigo, p.CodigoBarras, p.Descricao,
+            p.Id, p.Codigo, p.CodigoBarras, p.Descricao, p.DescricaoComplementar,
             p.CategoriaId, "", p.MarcaId, "", p.UnidadeMedidaId, "",
             p.CustoUnitario, p.PrecoVenda, p.PrecoAtacado,
             p.Markup, p.MargemLucro,
             p.EstoqueAtual, p.EstoqueMinimo,
             p.Ncm, p.Cest, p.ControlarLote, p.ControlarValidade,
-            p.ProdutoBalanca, p.Ativo, p.CriadoEm
+            p.ProdutoBalanca, p.CodigoPlu, p.Ativo, p.CriadoEm
         )).ToList();
 
         return new ListaPaginadaDto<ProdutoDto>(dtos, total, q.Pagina, q.TamanhoPagina);

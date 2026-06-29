@@ -39,9 +39,11 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn icon="mdi-eye-outline" size="x-small" variant="text" color="info"
-            @click="verParcelas(item)" />
+            @click="verParcelas(item)" title="Ver parcelas" />
+          <v-btn icon="mdi-file-sign" size="x-small" variant="text" color="success"
+            @click="imprimirContrato(item)" title="Imprimir contrato p/ assinatura" />
           <v-btn icon="mdi-printer" size="x-small" variant="text" color="primary"
-            @click="imprimirCarne(item)" title="Imprimir carnê" />
+            @click="imprimirCarne(item)" title="Imprimir carnê de parcelas" />
         </template>
       </v-data-table>
     </v-card>
@@ -120,6 +122,13 @@ async function verParcelas(item: any) {
 async function baixarParcela(parcela: any) {
   await api.post(`/crediario/parcelas/${parcela.id}/pagar`, { dataPagamento: new Date().toISOString().slice(0,10) })
   notif.ok('Parcela baixada!'); await verParcelas(crediarioSel.value)
+}
+async function imprimirContrato(item: any) {
+  try {
+    const r = await api.get(`/crediario/${item.id}/contrato`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    window.open(url, '_blank')
+  } catch { notif.erro('Erro ao gerar contrato.') }
 }
 async function imprimirCarne(item: any) {
   const r=await api.get(`/crediario/${item.id}/carne`, { responseType:'blob' })

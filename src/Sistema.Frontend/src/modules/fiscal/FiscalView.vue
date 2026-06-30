@@ -177,6 +177,10 @@
               @click="consultarSefaz" title="Buscar novas NF-e na SEFAZ">
               <v-icon>mdi-cloud-download-outline</v-icon>
             </v-btn>
+            <v-btn color="indigo" variant="tonal" rounded="lg" :loading="habilitando"
+              @click="dialogHabilitar = true" title="Habilitar monitoramento de NF-e na SEFAZ">
+              <v-icon>mdi-link-plus</v-icon>
+            </v-btn>
           </v-col>
         </v-row>
 
@@ -326,6 +330,39 @@
         </v-data-table>
       </v-card>
     </div>
+
+    <!-- Dialog: Habilitar busca de NF-e -->
+    <v-dialog v-model="dialogHabilitar" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="indigo">mdi-link-plus</v-icon>
+          Habilitar Busca de NF-e
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <p class="text-body-2 mb-3">
+            Este processo conecta seu sistema à SEFAZ para monitorar automaticamente
+            as NF-e emitidas pelos seus fornecedores com destino ao seu CNPJ.
+          </p>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            <strong>Requisito:</strong> certificado digital A1 instalado e ambiente configurado como
+            <strong>Produção</strong>.
+          </v-alert>
+          <v-alert v-if="habilitarResultado" :type="habilitarResultado.startsWith('❌') ? 'error' : 'success'"
+            variant="tonal" density="compact" class="mt-2">
+            {{ habilitarResultado }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogHabilitar = false; habilitarResultado = null">Fechar</v-btn>
+          <v-btn color="indigo" variant="flat" :loading="habilitando"
+            :disabled="!!habilitarResultado && !habilitarResultado.startsWith('❌')"
+            @click="habilitarNFe">
+            <v-icon start>mdi-link-plus</v-icon>Habilitar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Dialog: Importar XML diretamente -->
     <v-dialog v-model="dlgImportarXml" max-width="500" persistent>
@@ -542,6 +579,9 @@ const headersEmitidas = [
 // ── Recebidas ──
 const carregandoRec = ref(false)
 const consultandoSefaz = ref(false)
+const habilitando = ref(false)
+const dialogHabilitar = ref(false)
+const habilitarResultado = ref<string | null>(null)
 const manifestando = ref(false)
 const notasRecebidas = ref<any[]>([])
 const alertaCertificado = ref(false)
@@ -620,6 +660,19 @@ async function carregarRecebidas() {
   } catch {
     notif.erro('Erro ao carregar NF-e recebidas.')
   } finally { carregandoRec.value = false }
+}
+
+async function habilitarNFe() {
+  habilitando.value = true
+  habilitarResultado.value = null
+  try {
+    const r = await api.post(`/fiscal/nfes-recebidas/habilitar?empresaId=${auth.empresaId}`)
+    habilitarResultado.value = r.data.mensagem
+    await carregarRecebidas()
+  } catch (e: any) {
+    const msg = e.response?.data?.mensagem ?? 'Erro ao habilitar. Verifique o certificado digital.'
+    habilitarResultado.value = '❌ ' + msg
+  } finally { habilitando.value = false }
 }
 
 async function consultarSefaz() {

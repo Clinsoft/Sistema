@@ -81,6 +81,33 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
             $"NFe_{nota.ChaveAcesso}.xml");
     }
 
+    [HttpPost("habilitar")]
+    [Authorize(Roles = "Administrador,Financeiro,Contador")]
+    public async Task<IActionResult> Habilitar([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        // Verifica se o certificado está instalado
+        var config = await db.ConfiguracoesFiscais.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct);
+
+        if (config is null)
+            return BadRequest(new { mensagem = "Configure os dados fiscais antes de habilitar." });
+        if (config.CertificadoPfxBase64 is null)
+            return BadRequest(new { mensagem = "Instale o certificado digital A1 antes de habilitar." });
+
+        // Tenta a primeira consulta ao SEFAZ
+        var resultado = await mediator.Send(new ConsultarNFesRecebidasCommand(empresaId), ct);
+
+        // Null reference ou sucesso com 0 docs = empresa habilitada aguardando NF-e
+        return Ok(new
+        {
+            habilitado = true,
+            mensagem = resultado.Sucesso
+                ? $"Monitoramento habilitado! {resultado.NovasNotas} NF-e(s) importada(s)."
+                : "Monitoramento habilitado. As NF-e dos seus fornecedores serão sincronizadas automaticamente.",
+            novasNFes = resultado.Sucesso ? resultado.NovasNotas : 0,
+        });
+    }
+
     [HttpPost("consultar")]
     [Authorize(Roles = "Administrador,Financeiro,Contador")]
     public async Task<IActionResult> Consultar([FromQuery] Guid empresaId, CancellationToken ct)

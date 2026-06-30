@@ -89,6 +89,18 @@
     <!-- ─────────────── ABA: RECEBIDAS ─────────────── -->
     <div v-if="aba === 'recebidas'">
 
+      <!-- Botão Habilitar -->
+      <v-card rounded="xl" elevation="1" class="mb-3 pa-3 d-flex align-center justify-space-between flex-wrap gap-3">
+        <div>
+          <div class="text-subtitle-1 font-weight-medium">Monitoramento de NF-e</div>
+          <div class="text-caption text-medium-emphasis">Receba automaticamente as NF-e emitidas pelos seus fornecedores</div>
+        </div>
+        <v-btn color="indigo" variant="flat" rounded="lg" :loading="habilitando"
+          @click="dialogHabilitar = true" prepend-icon="mdi-link-plus">
+          Habilitar Busca de NF-e
+        </v-btn>
+      </v-card>
+
       <!-- Cards resumo -->
       <v-row class="mb-3">
         <v-col cols="6" sm="3">
@@ -169,17 +181,13 @@
               :items="opcoesManifestacaoFiltro" variant="outlined" density="compact"
               hide-details clearable />
           </v-col>
-          <v-col cols="12" sm="2" class="d-flex gap-2">
-            <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregandoRec" @click="carregarRecebidas">
+          <v-col cols="12" sm="2" class="d-flex gap-2 align-center">
+            <v-btn color="primary" variant="tonal" rounded="lg" size="small" :loading="carregandoRec" @click="carregarRecebidas">
               Buscar
             </v-btn>
-            <v-btn color="success" variant="tonal" rounded="lg" :loading="consultandoSefaz"
+            <v-btn color="success" variant="tonal" rounded="lg" size="small" icon :loading="consultandoSefaz"
               @click="consultarSefaz" title="Buscar novas NF-e na SEFAZ">
               <v-icon>mdi-cloud-download-outline</v-icon>
-            </v-btn>
-            <v-btn color="indigo" variant="tonal" rounded="lg" :loading="habilitando"
-              @click="dialogHabilitar = true" title="Habilitar monitoramento de NF-e na SEFAZ">
-              <v-icon>mdi-link-plus</v-icon>
             </v-btn>
           </v-col>
         </v-row>

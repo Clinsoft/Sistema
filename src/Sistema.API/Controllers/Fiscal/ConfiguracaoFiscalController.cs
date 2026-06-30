@@ -70,12 +70,16 @@ public class ConfiguracaoFiscalController(
                 config.IrParaHomologacao();
         }
 
-        // CSC NFC-e
+        // CSC NFC-e — id pode vir como number ou string do frontend
         if (body.TryGetProperty("cscIdNFCe", out var cscId) &&
             body.TryGetProperty("cscTokenNFCe", out var cscToken))
         {
-            var id2 = cscId.GetString() ?? "";
-            var tok = cscToken.GetString() ?? "";
+            var id2 = cscId.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? cscId.GetInt32().ToString()
+                : cscId.GetString() ?? "";
+            var tok = cscToken.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? cscToken.GetInt32().ToString()
+                : cscToken.GetString() ?? "";
             if (!string.IsNullOrEmpty(id2) && !string.IsNullOrEmpty(tok))
                 config.ConfigurarNFCe(id2, tok);
         }

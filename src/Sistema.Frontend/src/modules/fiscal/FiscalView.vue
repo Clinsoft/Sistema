@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <div class="d-flex align-center mb-3">
       <div class="text-h6 font-weight-bold flex-grow-1">Documentos Fiscais</div>
@@ -78,6 +78,9 @@
             <v-btn v-if="item.status==='Autorizada'"
               icon="mdi-download-outline" size="x-small" variant="text" color="info"
               @click="baixarXml(item)" title="Baixar XML" />
+            <v-btn v-if="item.status==='Autorizada'"
+              icon="mdi-file-pdf-box" size="x-small" variant="text" color="error"
+              @click="baixarDanfe(item.id)" title="Baixar DANFE" />
             <v-btn v-if="item.status==='Autorizada'"
               icon="mdi-close-circle-outline" size="x-small" variant="text" color="error"
               @click="cancelar(item)" title="Cancelar" />
@@ -339,6 +342,341 @@
       </v-card>
     </div>
 
+    <!-- ══════════════════════════════════════════════════════
+         DIALOG: EMISSÃO DE NF-e (Stepper 4 etapas)
+    ══════════════════════════════════════════════════════ -->
+    <v-dialog v-model="dlgNovaNFe" fullscreen persistent transition="dialog-bottom-transition">
+      <v-card>
+        <v-toolbar color="primary" density="compact">
+          <v-btn icon="mdi-close" @click="fecharNovaNFe" />
+          <v-toolbar-title>Emissão de NF-e</v-toolbar-title>
+          <v-spacer />
+          <v-chip v-if="nfeEmitida" color="white" text-color="primary" variant="flat" class="mr-2">
+            <v-icon start>mdi-check-circle</v-icon>
+            NF-e {{ nfeEmitida.numero }} Emitida
+          </v-chip>
+        </v-toolbar>
+
+        <v-container class="pa-4" style="max-width:900px">
+          <v-stepper v-model="nfeStep"
+            :items="['Destinatário', 'Itens', 'Impostos e Pagamento', 'Revisão e Emissão']"
+            alt-labels flat>
+
+            <!-- ── Step 1: Destinatário ── -->
+            <template #item.1>
+              <v-card flat class="mt-2">
+                <v-row dense>
+                  <v-col cols="12" sm="4">
+                    <v-select v-model="nfeForm.destinatario.tipo" label="Tipo *"
+                      :items="[{title:'Pessoa Física',value:'PF'},{title:'Pessoa Jurídica',value:'PJ'},{title:'Consumidor Final',value:'CF'}]"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="4">
+                    <v-text-field v-model="nfeForm.destinatario.cpfCnpj"
+                      :label="nfeForm.destinatario.tipo==='PJ'?'CNPJ *':'CPF *'"
+                      variant="outlined" density="compact"
+                      :hint="nfeForm.destinatario.tipo==='PJ'?'14 dígitos':'11 dígitos'"
+                      persistent-hint />
+                  </v-col>
+                  <v-col cols="12" sm="4">
+                    <v-text-field v-model="nfeForm.destinatario.nome" label="Nome / Razão Social *"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="4">
+                    <v-text-field v-model="nfeForm.destinatario.email" label="E-mail"
+                      variant="outlined" density="compact" type="email" />
+                  </v-col>
+                  <v-col cols="12" sm="8">
+                    <v-select v-model="nfeForm.naturezaOperacao" label="Natureza da Operação *"
+                      :items="naturezasOperacao" item-title="title" item-value="value"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                </v-row>
+                <div class="d-flex justify-end mt-4">
+                  <v-btn color="primary" rounded="lg" @click="nfeStep++"
+                    :disabled="!nfeForm.destinatario.nome || !nfeForm.destinatario.cpfCnpj">
+                    Próximo <v-icon end>mdi-chevron-right</v-icon>
+                  </v-btn>
+                </div>
+              </v-card>
+            </template>
+
+            <!-- ── Step 2: Itens ── -->
+            <template #item.2>
+              <v-card flat class="mt-2">
+                <div class="d-flex align-center mb-3">
+                  <div class="text-body-1 font-weight-medium flex-grow-1">Itens da Nota</div>
+                  <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-plus"
+                    @click="abrirAddItem">Adicionar Item</v-btn>
+                </div>
+
+                <v-data-table :headers="headersItensNFe" :items="nfeForm.itens" density="compact"
+                  no-data-text="Nenhum item adicionado" hide-default-footer items-per-page="-1">
+                  <template #item.valorUnitario="{ item }">R$ {{ fmt(item.valorUnitario) }}</template>
+                  <template #item.total="{ item }">
+                    <strong>R$ {{ fmt(item.quantidade * item.valorUnitario - (item.valorDesconto ?? 0)) }}</strong>
+                  </template>
+                  <template #item.acoes="{ item, index }">
+                    <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error"
+                      @click="nfeForm.itens.splice(index, 1)" />
+                  </template>
+                </v-data-table>
+
+                <v-card v-if="nfeForm.itens.length" rounded="lg" color="grey-lighten-4" class="mt-3 pa-3">
+                  <div class="d-flex justify-end">
+                    <span class="text-body-1 font-weight-bold">
+                      Total: <span class="text-success">R$ {{ fmt(totalItensNFe) }}</span>
+                    </span>
+                  </div>
+                </v-card>
+
+                <div class="d-flex justify-space-between mt-4">
+                  <v-btn variant="text" @click="nfeStep--">
+                    <v-icon start>mdi-chevron-left</v-icon> Voltar
+                  </v-btn>
+                  <v-btn color="primary" rounded="lg" @click="nfeStep++"
+                    :disabled="nfeForm.itens.length === 0">
+                    Próximo <v-icon end>mdi-chevron-right</v-icon>
+                  </v-btn>
+                </div>
+              </v-card>
+            </template>
+
+            <!-- ── Step 3: Impostos e Pagamento ── -->
+            <template #item.3>
+              <v-card flat class="mt-2">
+                <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+                  <strong>Regime Tributário:</strong> Simples Nacional — os impostos (ICMS/PIS/COFINS)
+                  são calculados automaticamente pelo servidor conforme as alíquotas configuradas.
+                </v-alert>
+
+                <v-select v-model="nfeCfopPadrao" label="CFOP padrão para todos os itens"
+                  :items="cfops" item-title="title" item-value="value"
+                  variant="outlined" density="compact" class="mb-4"
+                  hint="Aplica o mesmo CFOP em todos os itens" persistent-hint
+                  @update:model-value="aplicarCfopPadrao" />
+
+                <div class="text-body-2 font-weight-medium mb-2">Formas de Pagamento</div>
+                <v-row v-for="(pag, i) in nfeForm.pagamentos" :key="i" dense align="center">
+                  <v-col cols="6">
+                    <v-select v-model="pag.tipo" label="Forma"
+                      :items="formasPagamento" item-title="title" item-value="value"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="5">
+                    <v-text-field v-model.number="pag.valor" label="Valor (R$)"
+                      type="number" step="0.01" prefix="R$"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="1">
+                    <v-btn icon="mdi-delete-outline" variant="text" color="error" size="small"
+                      @click="nfeForm.pagamentos.splice(i, 1)"
+                      :disabled="nfeForm.pagamentos.length <= 1" />
+                  </v-col>
+                </v-row>
+                <v-btn prepend-icon="mdi-plus" variant="tonal" size="small" class="mt-2"
+                  @click="nfeForm.pagamentos.push({ tipo: 'Dinheiro', valor: 0 })">
+                  Adicionar forma de pagamento
+                </v-btn>
+
+                <v-card rounded="lg" color="grey-lighten-4" class="mt-4 pa-3">
+                  <div class="d-flex justify-space-between text-body-2">
+                    <span>Total da nota:</span>
+                    <span class="font-weight-bold">R$ {{ fmt(totalItensNFe) }}</span>
+                  </div>
+                  <div class="d-flex justify-space-between text-body-2 mt-1">
+                    <span>Total pago:</span>
+                    <span :class="totalPagoNFe >= totalItensNFe ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
+                      R$ {{ fmt(totalPagoNFe) }}
+                    </span>
+                  </div>
+                  <div v-if="totalPagoNFe < totalItensNFe" class="text-caption text-error mt-1">
+                    Faltam R$ {{ fmt(totalItensNFe - totalPagoNFe) }} para cobrir o total da nota.
+                  </div>
+                </v-card>
+
+                <div class="d-flex justify-space-between mt-4">
+                  <v-btn variant="text" @click="nfeStep--">
+                    <v-icon start>mdi-chevron-left</v-icon> Voltar
+                  </v-btn>
+                  <v-btn color="primary" rounded="lg" @click="nfeStep++">
+                    Próximo <v-icon end>mdi-chevron-right</v-icon>
+                  </v-btn>
+                </div>
+              </v-card>
+            </template>
+
+            <!-- ── Step 4: Revisão e Emissão ── -->
+            <template #item.4>
+              <v-card flat class="mt-2">
+                <!-- Resultado pós-emissão -->
+                <template v-if="nfeEmitida">
+                  <v-alert type="success" variant="tonal" class="mb-4">
+                    <div class="text-body-1 font-weight-bold mb-2">NF-e Emitida com Sucesso!</div>
+                    <div class="text-body-2">Número: <strong>{{ nfeEmitida.numero }}</strong></div>
+                    <div class="text-body-2 mt-1">Status: <strong>{{ nfeEmitida.status }}</strong></div>
+                    <div class="text-body-2 mt-1">Protocolo: <strong>{{ nfeEmitida.protocolo ?? '—' }}</strong></div>
+                    <div class="text-body-2 mt-1 text-caption" style="word-break:break-all">
+                      Chave: {{ nfeEmitida.chaveAcesso }}
+                    </div>
+                    <div v-if="nfeEmitida.mensagem" class="text-caption mt-1 text-medium-emphasis">
+                      {{ nfeEmitida.mensagem }}
+                    </div>
+                  </v-alert>
+                  <div class="d-flex gap-3 flex-wrap">
+                    <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-file-pdf-box"
+                      @click="baixarDanfe(nfeEmitida.id)">Baixar DANFE</v-btn>
+                    <v-btn color="info" variant="tonal" rounded="lg" prepend-icon="mdi-xml"
+                      @click="baixarXmlNfe(nfeEmitida.id)">Baixar XML</v-btn>
+                    <v-btn variant="text" @click="fecharNovaNFe">Fechar</v-btn>
+                  </div>
+                </template>
+
+                <!-- Revisão antes de emitir -->
+                <template v-else>
+                  <v-row>
+                    <v-col cols="12" md="6">
+                      <v-card rounded="lg" variant="outlined" class="pa-3 mb-3">
+                        <div class="text-caption text-medium-emphasis font-weight-medium mb-2">DESTINATÁRIO</div>
+                        <div class="text-body-2 font-weight-bold">{{ nfeForm.destinatario.nome }}</div>
+                        <div class="text-caption">{{ nfeForm.destinatario.cpfCnpj }}</div>
+                        <div class="text-caption">{{ nfeForm.destinatario.email }}</div>
+                        <div class="mt-1">
+                          <v-chip size="x-small" color="primary" variant="tonal">
+                            {{ naturezasOperacao.find(n => n.value === nfeForm.naturezaOperacao)?.title }}
+                          </v-chip>
+                        </div>
+                      </v-card>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-card rounded="lg" variant="outlined" class="pa-3 mb-3">
+                        <div class="text-caption text-medium-emphasis font-weight-medium mb-2">RESUMO FINANCEIRO</div>
+                        <div class="text-body-2">Itens: <strong>{{ nfeForm.itens.length }}</strong></div>
+                        <div class="text-body-2">
+                          Total nota: <strong class="text-success">R$ {{ fmt(totalItensNFe) }}</strong>
+                        </div>
+                        <div class="text-body-2">Total pago: <strong>R$ {{ fmt(totalPagoNFe) }}</strong></div>
+                        <div class="text-caption mt-1">
+                          <span v-for="pag in nfeForm.pagamentos" :key="pag.tipo" class="mr-2">
+                            {{ formasPagamento.find(f => f.value === pag.tipo)?.title }}: R$ {{ fmt(pag.valor) }}
+                          </span>
+                        </div>
+                      </v-card>
+                    </v-col>
+                  </v-row>
+
+                  <v-card rounded="lg" variant="outlined" class="pa-3 mb-3">
+                    <div class="text-caption text-medium-emphasis font-weight-medium mb-2">
+                      ITENS ({{ nfeForm.itens.length }})
+                    </div>
+                    <div v-for="(item, i) in nfeForm.itens" :key="i"
+                      class="text-body-2 d-flex justify-space-between py-1"
+                      :class="i < nfeForm.itens.length - 1 ? 'border-b' : ''">
+                      <span>{{ item.quantidade }}x {{ item.descricao }}
+                        <span class="text-medium-emphasis text-caption">(CFOP {{ item.cfop }}, NCM {{ item.ncm }})</span>
+                      </span>
+                      <span class="font-weight-medium ml-4">
+                        R$ {{ fmt(item.quantidade * item.valorUnitario - (item.valorDesconto ?? 0)) }}
+                      </span>
+                    </div>
+                  </v-card>
+
+                  <v-textarea v-model="nfeForm.informacoesAdicionais"
+                    label="Informações Adicionais (opcional)" rows="2"
+                    variant="outlined" density="compact" class="mb-4" />
+
+                  <div class="d-flex justify-space-between">
+                    <v-btn variant="text" @click="nfeStep--">
+                      <v-icon start>mdi-chevron-left</v-icon> Voltar
+                    </v-btn>
+                    <v-btn color="success" size="large" rounded="lg" :loading="emitindoNFe"
+                      prepend-icon="mdi-send" @click="emitirNFe">
+                      Emitir NF-e
+                    </v-btn>
+                  </div>
+                </template>
+              </v-card>
+            </template>
+          </v-stepper>
+        </v-container>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Adicionar Item à NF-e -->
+    <v-dialog v-model="dlgAddItem" max-width="640" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2">
+          <v-icon start color="primary">mdi-package-variant-plus</v-icon>
+          Adicionar Item
+        </v-card-title>
+        <v-card-text>
+          <v-autocomplete v-model="itemBusca" label="Buscar produto (opcional)"
+            :items="produtosBusca" item-title="descricao" item-value="id"
+            variant="outlined" density="compact" clearable return-object
+            :loading="buscandoProduto" class="mb-3"
+            @update:search="buscarProdutos"
+            @update:model-value="preencherItemDeProduto"
+            no-data-text="Digite para buscar produtos" />
+
+          <v-divider class="mb-3">
+            <span class="text-caption text-medium-emphasis px-2">ou preencha manualmente</span>
+          </v-divider>
+
+          <v-row dense>
+            <v-col cols="6" sm="3">
+              <v-text-field v-model="itemForm.codigo" label="Código"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field v-model="itemForm.ncm" label="NCM *"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="itemForm.descricao" label="Descrição *"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="4" sm="2">
+              <v-text-field v-model="itemForm.unidade" label="Un."
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="4" sm="2">
+              <v-text-field v-model="itemForm.cfop" label="CFOP *"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="4" sm="2">
+              <v-text-field v-model.number="itemForm.quantidade" label="Qtd *"
+                type="number" step="0.001" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field v-model.number="itemForm.valorUnitario" label="Vl. Unit. *"
+                type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field v-model.number="itemForm.valorDesconto" label="Desconto"
+                type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12">
+              <v-card rounded="lg" color="grey-lighten-4" class="pa-2 text-body-2">
+                Total do item:
+                <strong class="text-success">
+                  R$ {{ fmt((itemForm.quantidade || 0) * (itemForm.valorUnitario || 0) - (itemForm.valorDesconto || 0)) }}
+                </strong>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgAddItem = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" @click="confirmarAddItem"
+            :disabled="!itemForm.descricao || !itemForm.ncm || !itemForm.cfop
+              || !(itemForm.quantidade > 0) || !(itemForm.valorUnitario > 0)">
+            Adicionar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: Habilitar busca de NF-e -->
     <v-dialog v-model="dialogHabilitar" max-width="480" persistent>
       <v-card rounded="xl">
@@ -531,10 +869,13 @@
       </v-card>
     </v-dialog>
 
-    <v-speed-dial v-if="aba === 'emitidas' || aba === 'entradas'" location="bottom right" transition="fade-transition" class="fixed-fab">
+    <v-speed-dial v-if="aba === 'emitidas' || aba === 'entradas'" location="bottom right"
+      transition="fade-transition" class="fixed-fab">
       <template #activator="{ props }">
         <v-fab v-bind="props" icon="mdi-plus" color="primary" size="large" />
       </template>
+      <v-btn key="nfe" prepend-icon="mdi-file-send-outline" text="Nova NF-e"
+        color="primary" variant="flat" @click="abrirNovaNFe" />
       <v-btn key="inut" prepend-icon="mdi-close-box-outline" text="Inutilizar numeração"
         color="surface" variant="flat" @click="dlgInutilizar = true" />
       <v-btn key="sped" prepend-icon="mdi-file-export-outline" text="SPED EFD"
@@ -644,7 +985,6 @@ function labelManifestacao(m: string) {
 }
 
 const fmtCnpj = formatarCnpj
-
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 
@@ -896,7 +1236,6 @@ async function importarXml() {
       : 'Todos os produtos foram vinculados automaticamente.'
     notif.ok(`NF ${res.numeroNF} importada — ${res.totalItens} itens. ${aviso}`)
     if (res.avisos?.length) res.avisos.forEach((a: string) => notif.aviso(a))
-    // Persistir duplicatas para pré-popular a aba Financeiro
     if (res.duplicatas?.length)
       sessionStorage.setItem(`entrada_duplicatas_${res.id}`, JSON.stringify(res.duplicatas))
     dlgImportarXml.value = false
@@ -910,6 +1249,221 @@ async function importarXml() {
 
 function abrirEntrada(item: any) {
   router.push(`/fiscal/entradas/${item.id}`)
+}
+
+// ══════════════════════════════════════════════════════════════════
+// NOVA NF-e — Stepper 4 etapas
+// ══════════════════════════════════════════════════════════════════
+
+const dlgNovaNFe = ref(false)
+const nfeStep = ref(1)
+const emitindoNFe = ref(false)
+const nfeEmitida = ref<any>(null)
+
+// Lookups estáticos
+const naturezasOperacao = [
+  { title: 'Venda de Produto', value: 1 },
+  { title: 'Venda ao Consumidor', value: 2 },
+  { title: 'Devolução', value: 3 },
+  { title: 'Transferência', value: 4 },
+  { title: 'Remessa', value: 5 },
+]
+
+const cfops = [
+  { title: '5102 — Venda de mercadoria adquirida (dentro do estado)', value: '5102' },
+  { title: '5103 — Venda de produção do estabelecimento (dentro do estado)', value: '5103' },
+  { title: '6102 — Venda de mercadoria adquirida (fora do estado)', value: '6102' },
+  { title: '6103 — Venda de produção do estabelecimento (fora do estado)', value: '6103' },
+  { title: '5405 — Venda para não contribuinte (simples nacional)', value: '5405' },
+  { title: '5906 — Remessa para industrialização', value: '5906' },
+  { title: '5910 — Remessa em bonificação', value: '5910' },
+]
+
+const formasPagamento = [
+  { title: 'Dinheiro', value: 'Dinheiro' },
+  { title: 'PIX', value: 'Pix' },
+  { title: 'Cartão de Crédito', value: 'CartaoCredito' },
+  { title: 'Cartão de Débito', value: 'CartaoDebito' },
+  { title: 'Boleto', value: 'Boleto' },
+  { title: 'Crediário', value: 'Crediario' },
+  { title: 'Outros', value: 'Outros' },
+]
+
+interface NFeItem {
+  produtoId?: string
+  codigo: string
+  descricao: string
+  ncm: string
+  cfop: string
+  unidade: string
+  quantidade: number
+  valorUnitario: number
+  valorDesconto: number
+}
+
+interface NFePagamento {
+  tipo: string
+  valor: number
+}
+
+interface NFeForm {
+  destinatario: { tipo: string; cpfCnpj: string; nome: string; email: string }
+  naturezaOperacao: number
+  itens: NFeItem[]
+  pagamentos: NFePagamento[]
+  informacoesAdicionais: string
+}
+
+const nfeFormPadrao = (): NFeForm => ({
+  destinatario: { tipo: 'PF', cpfCnpj: '', nome: '', email: '' },
+  naturezaOperacao: 1,
+  itens: [],
+  pagamentos: [{ tipo: 'Dinheiro', valor: 0 }],
+  informacoesAdicionais: '',
+})
+
+const nfeForm = ref<NFeForm>(nfeFormPadrao())
+const nfeCfopPadrao = ref('5102')
+
+const headersItensNFe = [
+  { title: 'Código', key: 'codigo', width: 90 },
+  { title: 'Descrição', key: 'descricao' },
+  { title: 'NCM', key: 'ncm', width: 90 },
+  { title: 'CFOP', key: 'cfop', width: 80 },
+  { title: 'Un.', key: 'unidade', width: 60 },
+  { title: 'Qtd', key: 'quantidade', width: 80 },
+  { title: 'Vl. Unit.', key: 'valorUnitario', width: 110 },
+  { title: 'Total', key: 'total', width: 110 },
+  { title: '', key: 'acoes', sortable: false, width: 48 },
+]
+
+const totalItensNFe = computed(() =>
+  nfeForm.value.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario - (i.valorDesconto ?? 0), 0)
+)
+
+const totalPagoNFe = computed(() =>
+  nfeForm.value.pagamentos.reduce((s, p) => s + (p.valor ?? 0), 0)
+)
+
+function aplicarCfopPadrao(cfop: string) {
+  nfeForm.value.itens.forEach(i => { i.cfop = cfop })
+}
+
+function abrirNovaNFe() {
+  nfeForm.value = nfeFormPadrao()
+  nfeStep.value = 1
+  nfeEmitida.value = null
+  nfeCfopPadrao.value = '5102'
+  dlgNovaNFe.value = true
+}
+
+function fecharNovaNFe() {
+  dlgNovaNFe.value = false
+  nfeEmitida.value = null
+  if (aba.value === 'emitidas') carregarEmitidas()
+}
+
+// ── Adicionar item ──
+const dlgAddItem = ref(false)
+const buscandoProduto = ref(false)
+const produtosBusca = ref<any[]>([])
+const itemBusca = ref<any>(null)
+
+const itemFormPadrao = () => ({
+  produtoId: undefined as string | undefined,
+  codigo: '',
+  descricao: '',
+  ncm: '',
+  cfop: nfeCfopPadrao.value || '5102',
+  unidade: 'UN',
+  quantidade: 1,
+  valorUnitario: 0,
+  valorDesconto: 0,
+})
+const itemForm = ref(itemFormPadrao())
+
+function abrirAddItem() {
+  itemForm.value = itemFormPadrao()
+  itemBusca.value = null
+  produtosBusca.value = []
+  dlgAddItem.value = true
+}
+
+async function buscarProdutos(busca: string) {
+  if (!busca || busca.length < 2) return
+  buscandoProduto.value = true
+  try {
+    const r = await api.get('/produtos', { params: { empresaId: auth.empresaId, busca } })
+    produtosBusca.value = r.data
+  } catch {
+    produtosBusca.value = []
+  } finally { buscandoProduto.value = false }
+}
+
+function preencherItemDeProduto(produto: any) {
+  if (!produto) return
+  itemForm.value.produtoId = produto.id
+  itemForm.value.codigo = produto.codigoInterno ?? produto.codigoBarras ?? ''
+  itemForm.value.descricao = produto.descricao ?? produto.nome ?? ''
+  itemForm.value.ncm = produto.ncm ?? ''
+  itemForm.value.cfop = nfeCfopPadrao.value || '5102'
+  itemForm.value.unidade = produto.unidadeMedida ?? 'UN'
+  itemForm.value.valorUnitario = produto.precoVenda ?? 0
+}
+
+function confirmarAddItem() {
+  nfeForm.value.itens.push({ ...itemForm.value })
+  dlgAddItem.value = false
+}
+
+// ── Emitir NF-e ──
+async function emitirNFe() {
+  emitindoNFe.value = true
+  try {
+    const payload = {
+      empresaId: auth.empresaId,
+      modelo: '55',
+      destinatario: nfeForm.value.destinatario,
+      naturezaOperacao: nfeForm.value.naturezaOperacao,
+      itens: nfeForm.value.itens,
+      pagamentos: nfeForm.value.pagamentos,
+      informacoesAdicionais: nfeForm.value.informacoesAdicionais || undefined,
+    }
+    const r = await api.post('/fiscal/notas', payload)
+    const nota = r.data
+
+    // Se status for EmDigitacao, tentar transmitir automaticamente
+    if (nota.status === 'EmDigitacao') {
+      try {
+        const rt = await api.post(`/fiscal/notas/${nota.id}/transmitir`)
+        nfeEmitida.value = { ...nota, ...rt.data }
+      } catch {
+        nfeEmitida.value = nota
+        notif.aviso('NF-e salva mas transmissão falhou. Use o botão Transmitir na tabela.')
+      }
+    } else {
+      nfeEmitida.value = nota
+    }
+    notif.ok(`NF-e ${nota.numero ?? ''} criada com sucesso!`)
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao emitir NF-e.')
+  } finally { emitindoNFe.value = false }
+}
+
+async function baixarDanfe(id: string) {
+  try {
+    const r = await api.get(`/fiscal/notas/${id}/danfe`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a'); a.href = url; a.download = `DANFE_${id}.pdf`; a.click()
+  } catch { notif.erro('DANFE não disponível.') }
+}
+
+async function baixarXmlNfe(id: string) {
+  try {
+    const r = await api.get(`/fiscal/notas/${id}/xml`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a'); a.href = url; a.download = `NFe_${id}.xml`; a.click()
+  } catch { notif.erro('XML não disponível.') }
 }
 
 watch(aba, (v) => {

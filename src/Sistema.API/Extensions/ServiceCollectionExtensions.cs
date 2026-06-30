@@ -24,6 +24,7 @@ using Sistema.Domain.Financeiro.Interfaces;
 using Sistema.Infrastructure.Repositories.Financeiro;
 using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Infrastructure.Repositories.Fiscal;
+using Sistema.Infrastructure.Fiscal;
 
 namespace Sistema.API.Extensions;
 
@@ -105,7 +106,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotaFiscalRepository, NotaFiscalRepository>();
         services.AddScoped<IConfiguracaoFiscalRepository, ConfiguracaoFiscalRepository>();
         services.AddScoped<Sistema.Infrastructure.Fiscal.SpedFiscalService>();
-        services.AddScoped<IDistribuicaoDFeService, Sistema.Infrastructure.Fiscal.DistribuicaoDFeService>();
+        services.AddScoped<IDistribuicaoDFeService, DistribuicaoDFeService>();
+        services.AddScoped<INFeTransmissaoService, NFeTransmissaoService>();
 
         // WhatsApp Cloud API
         services.AddHttpClient<Sistema.Infrastructure.Services.WhatsAppCloudApiService>();

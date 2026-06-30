@@ -21,6 +21,12 @@ public class Empresa : Entity
     public string Email { get; private set; } = null!;
     public bool Ativo { get; private set; } = true;
 
+    /// <summary>Código IBGE do município (7 dígitos). Obrigatório para NF-e.</summary>
+    public string? CodMunicipio { get; private set; }
+
+    /// <summary>Nome do município conforme tabela IBGE. Obrigatório para NF-e.</summary>
+    public string? NomeMunicipio { get; private set; }
+
     // Multi-filial
     public Guid? MatrizId { get; private set; }
     public string TipoUnidade { get; private set; } = "Matriz"; // Matriz | Filial

@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Fiscal.Entities;
 using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Sistema.Infrastructure.Fiscal;
 
 namespace Sistema.API.Controllers.Fiscal;
 
@@ -14,6 +15,7 @@ namespace Sistema.API.Controllers.Fiscal;
 public class NotasFiscaisController(
     INotaFiscalRepository repo,
     IConfiguracaoFiscalRepository configRepo,
+    INFeTransmissaoService transmissaoService,
     SistemaDbContext db,
     IUnitOfWork uow) : ControllerBase
 {
@@ -34,6 +36,28 @@ public class NotasFiscaisController(
     {
         var nota = await repo.ObterComItensAsync(id, ct);
         return nota is null ? NotFound() : Ok(nota);
+    }
+
+    /// <summary>Retorna o XML assinado da nota (enviado à SEFAZ).</summary>
+    [HttpGet("{id:guid}/xml")]
+    public async Task<IActionResult> ObterXml(Guid id, CancellationToken ct)
+    {
+        var nota = await repo.ObterPorIdAsync(id, ct);
+        if (nota is null) return NotFound();
+        if (nota.XmlEnvio is null) return NotFound(new { mensagem = "XML não disponível para esta nota." });
+        return Content(nota.XmlEnvio, "application/xml", System.Text.Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Retorna o DANFE em PDF.
+    /// TODO: implementar geração de DANFE com QuestPDF (Sistema.Infrastructure.Fiscal.DanfeBuilder).
+    /// </summary>
+    [HttpGet("{id:guid}/danfe")]
+    public IActionResult ObterDanfe(Guid id)
+    {
+        // TODO: implementar geração do DANFE com QuestPDF
+        return StatusCode(StatusCodes.Status501NotImplemented,
+            new { mensagem = "Geração de DANFE ainda não implementada. Em desenvolvimento." });
     }
 
     /// <summary>
@@ -125,11 +149,11 @@ public class NotasFiscaisController(
     }
 
     /// <summary>
-    /// Stub de transmissão SEFAZ. Fase 2 integrará com NFe.NET/DFe.NET.
+    /// Gera e assina o XML, transmite para a SEFAZ e registra o resultado.
     /// </summary>
     [HttpPost("{id:guid}/transmitir")]
     [Authorize(Roles = "Administrador,Financeiro,Contador")]
-    public async Task<IActionResult> Transmitir(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Transmitir(Guid id, [FromBody] TransmitirNFeRequest? req, CancellationToken ct)
     {
         var nota = await repo.ObterComItensAsync(id, ct)
             ?? throw new KeyNotFoundException("Nota não encontrada.");
@@ -137,24 +161,49 @@ public class NotasFiscaisController(
         if (nota.Status != StatusNF.EmDigitacao)
             throw new InvalidOperationException($"Nota com status '{nota.Status}' não pode ser transmitida.");
 
-        // TODO Fase 2: integrar com DFe.NET para gerar e assinar XML, transmitir SEFAZ
-        // Por hora, simula autorização em homologação
-        var config = await configRepo.ObterPorEmpresaAsync(nota.EmpresaId, ct);
-        if (config?.Ambiente == AmbienteFiscal.Producao)
-            throw new InvalidOperationException("Integração com SEFAZ (produção) não implementada nesta versão. Use ambiente de homologação.");
+        var config = await configRepo.ObterPorEmpresaAsync(nota.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada.");
 
-        // Simulação homologação
-        var chave = $"35{DateTime.Now:yyyyMMdd}000000000000055{nota.Serie:D3}{nota.Numero:D9}1000000000{new Random().Next(10000000, 99999999)}";
-        nota.RegistrarTransmissao(chave, "<xml simulado/>");
-        nota.RegistrarAutorizacao($"1{DateTime.Now:yyyyMMddHHmmss}000000000", "<xml autorizado simulado/>");
+        if (config.CertificadoPfxBase64 is null)
+            throw new InvalidOperationException("Certificado digital A1 não configurado. Acesse Configurações → Fiscal.");
+
+        var empresa = await db.Empresas.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == nota.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
+
+        // Pagamentos: informados no request ou padrão dinheiro pelo total da nota
+        var pagamentos = req?.Pagamentos?.Count > 0
+            ? req.Pagamentos.Select(p => (p.TPag, p.VPag)).ToList()
+            : new List<(string, decimal)> { ("01", nota.TotalNota) };
+
+        // 1. Gerar e assinar XML
+        var (xmlAssinado, chave44) = NFeXmlBuilder.GerarXmlAssinado(
+            nota, empresa, config,
+            pagamentos,
+            req?.InformacoesAdicionais);
+
+        nota.RegistrarTransmissao(chave44, xmlAssinado);
+
+        // 2. Transmitir para SEFAZ
+        var resultado = await transmissaoService.TransmitirAsync(xmlAssinado, config, ct);
+
+        if (resultado.Autorizada)
+            nota.RegistrarAutorizacao(resultado.Protocolo!, resultado.XmlRetorno ?? xmlAssinado);
+        else
+            nota.RegistrarRejeicao(resultado.MotivoRejeicao ?? "Rejeitada pela SEFAZ",
+                resultado.XmlRetorno ?? "");
 
         repo.Atualizar(nota);
         await uow.SalvarAsync(ct);
 
         return Ok(new
         {
-            nota.Id, nota.Numero, nota.ChaveAcesso, nota.Protocolo, nota.Status,
-            mensagem = "Nota autorizada (simulação homologação)."
+            nota.Id, nota.Numero, nota.ChaveAcesso, nota.Protocolo,
+            nota.Status, nota.MotivoRejeicao,
+            autorizada = resultado.Autorizada,
+            mensagem = resultado.Autorizada
+                ? "Nota autorizada pela SEFAZ."
+                : $"Nota rejeitada: {resultado.MotivoRejeicao}"
         });
     }
 
@@ -222,10 +271,108 @@ public class NotasFiscaisController(
             totalInutilizado = req.NumeroFinal - req.NumeroInicial + 1,
         });
     }
+
+    /// <summary>
+    /// Cria NF-e avulsa (não vinculada a venda). Após criada, use POST /{id}/transmitir.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> Criar([FromBody] CriarNFeRequest req, CancellationToken ct)
+    {
+        var empresa = await db.Empresas.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == req.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
+
+        var config = await configRepo.ObterPorEmpresaAsync(req.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada para a empresa.");
+
+        var modelo = req.Modelo == 65 ? ModeloNF.NFCe : ModeloNF.NFe;
+        var numero = modelo == ModeloNF.NFe
+            ? config.AvancarNumeracaoNFe()
+            : config.AvancarNumeracaoNFCe();
+
+        string? cpfCnpj = req.Destinatario?.CpfCnpj;
+        string? nomeDestinatario = req.Destinatario?.Nome;
+        string? emailDestinatario = req.Destinatario?.Email;
+        Guid? clienteId = req.ClienteId;
+
+        if (req.ClienteId.HasValue)
+        {
+            var cliente = await db.Clientes.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == req.ClienteId.Value, ct);
+            if (cliente is not null)
+            {
+                cpfCnpj ??= cliente.CpfCnpj;
+                nomeDestinatario ??= cliente.Nome;
+                emailDestinatario ??= cliente.Email;
+            }
+        }
+
+        var nota = NotaFiscal.Criar(req.EmpresaId, modelo,
+            modelo == ModeloNF.NFe ? config.SerieNFe : config.SerieNFCe,
+            numero, NaturezaOperacao.VendaConsumidor, clienteId);
+
+        if (!string.IsNullOrWhiteSpace(cpfCnpj))
+            nota.DefinirDestinatario(cpfCnpj, nomeDestinatario ?? "", emailDestinatario);
+
+        int numItem = 1;
+        foreach (var itemReq in req.Itens)
+        {
+            Domain.Estoque.Entities.Produto? produto = null;
+            if (itemReq.ProdutoId.HasValue)
+                produto = await db.Produtos.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == itemReq.ProdutoId.Value, ct);
+
+            var um = produto is not null
+                ? await db.UnidadesMedida.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.Id == produto.UnidadeMedidaId, ct)
+                : null;
+
+            var itemNF = ItemNotaFiscal.Criar(
+                nota.Id, numItem++,
+                produto?.Codigo ?? itemReq.ProdutoId?.ToString()?[..8] ?? numItem.ToString(),
+                itemReq.Descricao,
+                itemReq.Cfop ?? produto?.Cfop ?? "5102",
+                itemReq.Unidade ?? um?.Sigla ?? "UN",
+                itemReq.Quantidade,
+                itemReq.ValorUnitario,
+                itemReq.ValorDesconto,
+                ncm: itemReq.Ncm ?? produto?.Ncm,
+                cest: itemReq.Cest ?? produto?.Cest,
+                produtoId: itemReq.ProdutoId,
+                pesavel: um?.Pesavel ?? false);
+
+            if (config.Regime == RegimeTributario.SimplesNacional)
+                itemNF.CalcularImpostos(null, itemReq.CsosnIcms ?? produto?.CsosnIcms ?? "400", 0,
+                    itemReq.CstPisCofins ?? produto?.CstPisCofins ?? "07", 0, 0);
+            else
+                itemNF.CalcularImpostos(
+                    itemReq.CstIcms ?? produto?.CstIcms ?? "000", null,
+                    itemReq.AliqIcms ?? produto?.AliquotaIcms ?? 0,
+                    itemReq.CstPisCofins ?? produto?.CstPisCofins ?? "01",
+                    itemReq.AliqPis ?? produto?.AliquotaPis ?? 0.65m,
+                    itemReq.AliqCofins ?? produto?.AliquotaCofins ?? 3m);
+
+            nota.AdicionarItem(itemNF);
+        }
+
+        configRepo.Atualizar(config);
+        await repo.AdicionarAsync(nota, ct);
+        await uow.SalvarAsync(ct);
+
+        return CreatedAtAction(nameof(Obter), new { id = nota.Id }, new
+        {
+            nota.Id, nota.Numero, nota.Serie, nota.Modelo,
+            nota.Status, nota.TotalNota,
+            aviso = "Nota em digitação. Use POST /{id}/transmitir para enviar à SEFAZ."
+        });
+    }
 }
+
+// ── DTOs ─────────────────────────────────────────────────────────────────────
 
 public record CriarNFDeVendaRequest(string Modelo = "55");
 public record CancelarNFRequest(string Justificativa);
+
 public record InutilizarRequest(
     Guid EmpresaId,
     int Modelo,          // 55 = NF-e, 65 = NFC-e
@@ -233,3 +380,41 @@ public record InutilizarRequest(
     long NumeroInicial,
     long NumeroFinal,
     string Justificativa);
+
+public record CriarNFeRequest(
+    Guid EmpresaId,
+    int Modelo,                          // 55 = NF-e, 65 = NFC-e
+    Guid? ClienteId,
+    DestinatarioNFeDto? Destinatario,
+    List<ItemNFeDto> Itens,
+    string? InformacoesAdicionais = null);
+
+public record DestinatarioNFeDto(
+    string? CpfCnpj,
+    string? Nome,
+    string? Email);
+
+public record ItemNFeDto(
+    Guid? ProdutoId,
+    string Descricao,
+    decimal Quantidade,
+    decimal ValorUnitario,
+    decimal ValorDesconto = 0,
+    string? Cfop = null,
+    string? Ncm = null,
+    string? Cest = null,
+    string? Unidade = null,
+    string? CstIcms = null,
+    string? CsosnIcms = null,
+    decimal? AliqIcms = null,
+    string? CstPisCofins = null,
+    decimal? AliqPis = null,
+    decimal? AliqCofins = null);
+
+public record TransmitirNFeRequest(
+    List<PagamentoNFeDto>? Pagamentos = null,
+    string? InformacoesAdicionais = null);
+
+public record PagamentoNFeDto(
+    string TPag,   // 01=dinheiro, 03=crédito, 04=débito, 17=PIX, etc.
+    decimal VPag);

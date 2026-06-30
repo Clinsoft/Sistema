@@ -4,6 +4,7 @@ using Sistema.Domain.Fiscal.Entities;
 using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Infrastructure.Data;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Xml;
 
@@ -11,7 +12,7 @@ namespace Sistema.Infrastructure.Fiscal;
 
 /// <summary>
 /// Integração com o webservice nfeDistDFeInt da SEFAZ Nacional.
-/// Usa SOAP 1.0 (HTTP POST com SOAPAction), TLS mútuo e assinatura WS-Security.
+/// Usa SOAP 1.2 (HTTP POST), TLS mútuo e assinatura XML (RSA-SHA1).
 /// </summary>
 public class DistribuicaoDFeService(
     SistemaDbContext db,
@@ -20,6 +21,11 @@ public class DistribuicaoDFeService(
     private const string UrlProducao    = "https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx";
     private const string UrlHomologacao = "https://hom1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx";
     private const string SoapAction     = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse";
+
+    // NFeRecepcaoEvento4 — webservice de manifestação do destinatário
+    private const string EventoUrlProducao    = "https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
+    private const string EventoUrlHomologacao = "https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
+    private const string EventoSoapAction     = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento";
 
     public async Task<ResultadoConsultaDFe> ConsultarAsync(
         string cnpj, string uf, string ultimoNSU, CancellationToken ct)
@@ -32,14 +38,9 @@ public class DistribuicaoDFeService(
 
             var url         = config.Ambiente == AmbienteFiscal.Producao ? UrlProducao : UrlHomologacao;
             var ambienteInt = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
-            var cUF         = UfParaCodigo(uf);
-            // SEFAZ retorna null reference com ultNSU=0 na primeira chamada;
-            // usar NSU=1 na inicialização evita o bug do serviço nfeDistDFeInteresse
-            var nsuBase = ultimoNSU == "0" || ultimoNSU == "" ? "1" : ultimoNSU;
-            var nsuFmt  = nsuBase.PadLeft(15, '0');
-
-            // cUFAutor=91 para o serviço nacional de distribuição DFe
-            var distXml = $"<distDFeInt versao=\"1.01\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><tpAmb>{ambienteInt}</tpAmb><cUFAutor>91</cUFAutor><CNPJ>{cnpj}</CNPJ><distNSU><ultNSU>{nsuFmt}</ultNSU></distNSU></distDFeInt>";
+            var cUFAutor = UfParaCodigo(uf);
+            var nsuFmt  = (ultimoNSU == "0" || ultimoNSU == "") ? "000000000000000" : ultimoNSU.PadLeft(15, '0');
+            var distXml = $"<distDFeInt versao=\"1.01\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><tpAmb>{ambienteInt}</tpAmb><cUFAutor>{cUFAutor}</cUFAutor><CNPJ>{cnpj}</CNPJ><distNSU><ultNSU>{nsuFmt}</ultNSU></distNSU></distDFeInt>";
 
             logger.LogInformation("SEFAZ DFe XML: {Xml}", distXml);
             var responseXml = await EnviarAsync(url, distXml, cert, ct);
@@ -57,8 +58,70 @@ public class DistribuicaoDFeService(
         string cnpj, string uf, string chaveAcesso,
         ManifestacaoTipo tipo, string? justificativa, CancellationToken ct)
     {
-        logger.LogInformation("Manifestação {Tipo} registrada para chave {Chave}", tipo, chaveAcesso);
-        return await Task.FromResult(true);
+        try
+        {
+            var (cert, config) = await CarregarAsync(cnpj, ct);
+            if (cert is null || config is null)
+            {
+                logger.LogWarning("Manifestação cancelada: certificado não configurado para CNPJ {Cnpj}", cnpj);
+                return false;
+            }
+
+            var url         = config.Ambiente == AmbienteFiscal.Producao ? EventoUrlProducao : EventoUrlHomologacao;
+            var ambienteInt = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
+
+            var tpEvento   = (int)tipo;
+            var descEvento = tipo switch
+            {
+                ManifestacaoTipo.CienciaOperacao        => "Ciência da Operação",
+                ManifestacaoTipo.ConfirmacaoOperacao     => "Confirmação da Operação",
+                ManifestacaoTipo.DesconhecimentoOperacao => "Desconhecimento da Operação",
+                ManifestacaoTipo.OperacaoNaoRealizada    => "Operação Não Realizada",
+                _ => throw new ArgumentOutOfRangeException(nameof(tipo))
+            };
+
+            var dhEvento = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:sszzz");
+            var idEvento = $"ID{tpEvento}{chaveAcesso}01";
+
+            // Operação Não Realizada requer justificativa (xJust, mínimo 15 chars)
+            var detEventoInterno = tipo == ManifestacaoTipo.OperacaoNaoRealizada
+                ? $"<descEvento>{descEvento}</descEvento><xJust>{System.Security.SecurityElement.Escape(justificativa ?? "Operação não reconhecida pelo destinatário.")}</xJust>"
+                : $"<descEvento>{descEvento}</descEvento>";
+
+            var infEventoXml = $"""
+                <infEvento Id="{idEvento}">
+                  <cOrgao>91</cOrgao>
+                  <tpAmb>{ambienteInt}</tpAmb>
+                  <CNPJ>{cnpj}</CNPJ>
+                  <chNFe>{chaveAcesso}</chNFe>
+                  <dhEvento>{dhEvento}</dhEvento>
+                  <tpEvento>{tpEvento}</tpEvento>
+                  <nSeqEvento>1</nSeqEvento>
+                  <verEvento>1.00</verEvento>
+                  <detEvento versao="1.00">{detEventoInterno}</detEvento>
+                </infEvento>
+                """;
+
+            var eventoAssinadoXml = AssinarEvento(infEventoXml, idEvento, cert);
+
+            var envEvento = $"""
+                <envEvento versao="1.00" xmlns="http://www.portalfiscal.inf.br/nfe">
+                  <idLote>1</idLote>
+                  <evento versao="1.00">{eventoAssinadoXml}</evento>
+                </envEvento>
+                """;
+
+            logger.LogInformation("SEFAZ Manifestação tipo={Tipo} chave={Chave}", tipo, chaveAcesso);
+            var responseXml = await EnviarEventoAsync(url, envEvento, cert, ct);
+            logger.LogInformation("SEFAZ Manifestação response: {Response}", responseXml[..Math.Min(500, responseXml.Length)]);
+
+            return ParsearRespostaEvento(responseXml);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao manifestar NF-e {Chave} tipo {Tipo}", chaveAcesso, tipo);
+            return false;
+        }
     }
 
     public async Task<string?> BaixarXmlAsync(
@@ -92,7 +155,105 @@ public class DistribuicaoDFeService(
         }
     }
 
-    // ── Envio SOAP com WS-Security ─────────────────────────────────────────
+    // ── Assinatura RSA-SHA1 do infEvento ──────────────────────────────────
+
+    private static string AssinarEvento(string infEventoXml, string idEvento, X509Certificate2 cert)
+    {
+        var doc = new XmlDocument { PreserveWhitespace = false };
+        doc.LoadXml($"<evento xmlns=\"http://www.portalfiscal.inf.br/nfe\">{infEventoXml}</evento>");
+
+        if (doc.DocumentElement!.FirstChild is not XmlElement infNode)
+            throw new InvalidOperationException("infEvento não encontrado.");
+
+        var signed = new SignedXml(doc)
+        {
+            SigningKey = cert.GetRSAPrivateKey()
+                ?? throw new InvalidOperationException("Certificado sem chave RSA privada.")
+        };
+
+        signed.SignedInfo.SignatureMethod        = SignedXml.XmlDsigRSASHA1Url;
+        signed.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigC14NTransformUrl;
+
+        var reference = new Reference($"#{idEvento}");
+        reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
+        reference.AddTransform(new XmlDsigC14NTransform());
+        reference.DigestMethod = SignedXml.XmlDsigSHA1Url;
+        signed.AddReference(reference);
+
+        var keyInfo = new KeyInfo();
+        keyInfo.AddClause(new KeyInfoX509Data(cert));
+        signed.KeyInfo = keyInfo;
+
+        signed.ComputeSignature();
+        infNode.AppendChild(doc.ImportNode(signed.GetXml(), true));
+
+        return infNode.OuterXml;
+    }
+
+    // ── Envio SOAP — NFeRecepcaoEvento4 ───────────────────────────────────
+
+    private static async Task<string> EnviarEventoAsync(
+        string url, string corpoXml, X509Certificate2 cert, CancellationToken ct)
+    {
+        var envelope = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+              <soap12:Header>
+                <nfeCabecMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
+                  <cUF>91</cUF><versaoDados>1.00</versaoDados>
+                </nfeCabecMsg>
+              </soap12:Header>
+              <soap12:Body>
+                <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
+                  {corpoXml}
+                </nfeDadosMsg>
+              </soap12:Body>
+            </soap12:Envelope>
+            """;
+
+        var handler = new SocketsHttpHandler
+        {
+            SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+            {
+                ClientCertificates = new X509CertificateCollection { cert },
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
+                    | System.Security.Authentication.SslProtocols.Tls13,
+            }
+        };
+
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+        var bytes   = Encoding.UTF8.GetBytes(envelope);
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType =
+            System.Net.Http.Headers.MediaTypeHeaderValue.Parse(
+                $"application/soap+xml;charset=utf-8;action=\"{EventoSoapAction}\"");
+
+        var response = await client.PostAsync(url, content, ct);
+        var body     = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"SEFAZ evento {(int)response.StatusCode}: {body[..Math.Min(800, body.Length)]}");
+
+        return body;
+    }
+
+    private static bool ParsearRespostaEvento(string xml)
+    {
+        try
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var ns = new XmlNamespaceManager(doc.NameTable);
+            ns.AddNamespace("nfe", "http://www.portalfiscal.inf.br/nfe");
+            var cStat = doc.SelectSingleNode("//nfe:cStat", ns)?.InnerText ?? "";
+            // 135 = Evento registrado e vinculado a NF-e, 136 = Evento vinculado
+            return cStat == "135" || cStat == "136";
+        }
+        catch { return false; }
+    }
+
+    // ── Envio SOAP — NFeDistribuicaoDFe ───────────────────────────────────
 
     private static async Task<string> EnviarAsync(
         string url, string corpoXml, X509Certificate2 cert, CancellationToken ct)
@@ -138,9 +299,8 @@ public class DistribuicaoDFeService(
 
         if (!response.IsSuccessStatusCode)
         {
-            // Null reference no SEFAZ = empresa sem registro NSU no serviço (primeiro acesso)
             if (body.Contains("Object reference not set to an instance of an object"))
-                return body; // deixa ParsearResposta tratar como vazio
+                return body;
             throw new HttpRequestException($"SEFAZ {(int)response.StatusCode}: {body[..Math.Min(800, body.Length)]}");
         }
 
@@ -151,7 +311,6 @@ public class DistribuicaoDFeService(
 
     private static ResultadoConsultaDFe ParsearResposta(string xml, string ultimoNSU)
     {
-        // Null reference no SEFAZ = CNPJ sem registro NSU (primeiro acesso) → tratar como vazio
         if (xml.Contains("Object reference not set to an instance of an object"))
             return new ResultadoConsultaDFe(true, null, ultimoNSU, []);
 
@@ -162,7 +321,6 @@ public class DistribuicaoDFeService(
         ns.AddNamespace("soap12", "http://www.w3.org/2003/05/soap-envelope");
         ns.AddNamespace("soap11", "http://schemas.xmlsoap.org/soap/envelope/");
 
-        // Verifica Fault (SOAP 1.1 e 1.2)
         var fault = doc.SelectSingleNode("//soap12:Fault", ns)
                  ?? doc.SelectSingleNode("//soap11:Fault", ns)
                  ?? doc.SelectSingleNode("//*[local-name()='Fault']");
@@ -212,18 +370,18 @@ public class DistribuicaoDFeService(
             var ns = new XmlNamespaceManager(doc.NameTable);
             ns.AddNamespace("n", "http://www.portalfiscal.inf.br/nfe");
 
-            var ide  = doc.SelectSingleNode("//n:ide", ns);
-            var emit = doc.SelectSingleNode("//n:emit", ns);
-            var tot  = doc.SelectSingleNode("//n:ICMSTot", ns);
+            var ide    = doc.SelectSingleNode("//n:ide", ns);
+            var emit   = doc.SelectSingleNode("//n:emit", ns);
+            var tot    = doc.SelectSingleNode("//n:ICMSTot", ns);
             var infNFe = doc.SelectSingleNode("//n:infNFe", ns);
 
             if (ide is null) return null;
 
-            var chave    = infNFe?.Attributes?["Id"]?.Value?.Replace("NFe", "") ?? "";
-            var modelo   = ide.SelectSingleNode("n:mod", ns)?.InnerText ?? "55";
-            var serie    = ide.SelectSingleNode("n:serie", ns)?.InnerText ?? "1";
-            var numero   = long.TryParse(ide.SelectSingleNode("n:nNF", ns)?.InnerText, out var n) ? n : 0;
-            var dtStr    = ide.SelectSingleNode("n:dhEmi", ns)?.InnerText ?? ide.SelectSingleNode("n:dEmi", ns)?.InnerText;
+            var chave     = infNFe?.Attributes?["Id"]?.Value?.Replace("NFe", "") ?? "";
+            var modelo    = ide.SelectSingleNode("n:mod", ns)?.InnerText ?? "55";
+            var serie     = ide.SelectSingleNode("n:serie", ns)?.InnerText ?? "1";
+            var numero    = long.TryParse(ide.SelectSingleNode("n:nNF", ns)?.InnerText, out var n) ? n : 0;
+            var dtStr     = ide.SelectSingleNode("n:dhEmi", ns)?.InnerText ?? ide.SelectSingleNode("n:dEmi", ns)?.InnerText;
             var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
             var emitCnpj  = emit?.SelectSingleNode("n:CNPJ", ns)?.InnerText ?? "";
             var emitNome  = emit?.SelectSingleNode("n:xNome", ns)?.InnerText ?? "";
@@ -276,25 +434,22 @@ public class DistribuicaoDFeService(
         if (config?.CertificadoPfxBase64 is null) return (null, config);
 
         var bytes = Convert.FromBase64String(config.CertificadoPfxBase64);
-        var cert  = new X509Certificate2(bytes, config.CertificadoSenha,
-            X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
+        var flags = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Linux)
+            ? X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet
+            : X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet;
+        var cert  = new X509Certificate2(bytes, config.CertificadoSenha, flags);
 
         return (cert, config);
     }
 
     private static byte[] GzipDecompress(byte[] data)
     {
-        using var ms  = new System.IO.MemoryStream(data);
-        using var gz  = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionMode.Decompress);
+        using var ms   = new System.IO.MemoryStream(data);
+        using var gz   = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionMode.Decompress);
         using var out_ = new System.IO.MemoryStream();
         gz.CopyTo(out_);
         return out_.ToArray();
-    }
-
-    private static string ExtrairCufDoXml(string xml)
-    {
-        var m = System.Text.RegularExpressions.Regex.Match(xml, @"<cUFAutor>(\d+)</cUFAutor>");
-        return m.Success ? m.Groups[1].Value : "35";
     }
 
     private static ResultadoConsultaDFe Falha(string erro, string ultimoNSU) =>

@@ -67,6 +67,8 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<MovimentacaoBancaria> MovimentacoesBancarias => Set<MovimentacaoBancaria>();
     public DbSet<CustoFixo> CustosFixos => Set<CustoFixo>();
+    public DbSet<OperadoraCartao> OperadorasCartao => Set<OperadoraCartao>();
+    public DbSet<RecebivelCartao> ReceiveisCartao => Set<RecebivelCartao>();
 
     // Contabilidade
     public DbSet<ContaContabil> PlanoContas => Set<ContaContabil>();

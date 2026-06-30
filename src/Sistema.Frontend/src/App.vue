@@ -120,14 +120,14 @@
               to="/estoque/movimentacoes" value="/estoque/movimentacoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-list-status" title="Posição de Estoque"
               to="/estoque/posicao" value="/estoque/posicao" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-package-variant" title="Lotes e Validades"
-              to="/estoque/lotes" value="/estoque/lotes" color="warning" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-transfer" title="Transferências"
               to="/estoque/transferencias" value="/estoque/transferencias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tune-vertical" title="Ajuste de Estoque"
               to="/estoque/ajuste" value="/estoque/ajuste" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tag-outline" title="Etiquetas"
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
+              to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
           </v-list-group>
 
           <v-list-item prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"

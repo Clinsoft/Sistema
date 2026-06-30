@@ -116,11 +116,11 @@
                 </v-col>
               </v-row>
 
-              <v-alert v-if="erro" type="error" variant="tonal" class="mt-2 mb-3" density="compact">
+              <v-alert v-if="erro" type="error" variant="tonal" class="mt-3" density="compact">
                 {{ erro }}
               </v-alert>
 
-              <div class="d-flex gap-2 mt-4">
+              <div class="d-flex gap-2 mt-6">
                 <v-btn variant="outlined" @click="passo = 1" :disabled="salvando">
                   <v-icon start>mdi-arrow-left</v-icon> Voltar
                 </v-btn>
@@ -191,7 +191,19 @@ async function concluir() {
   try {
     const baseUrl = import.meta.env.VITE_API_URL ?? ''
     await axios.post(`${baseUrl}/api/setup`, {
-      ...empresa.value,
+      razaoSocial: empresa.value.razaoSocial,
+      nomeFantasia: empresa.value.nomeFantasia,
+      cnpj: empresa.value.cnpj,
+      regimeTributario: empresa.value.regimeTributario,
+      logradouro: empresa.value.logradouro,
+      numero: empresa.value.numero,
+      complemento: empresa.value.complemento,
+      bairro: empresa.value.bairro,
+      cidade: empresa.value.cidade,
+      uf: empresa.value.uf,
+      cep: empresa.value.cep,
+      telefone: empresa.value.telefone,
+      emailEmpresa: empresa.value.email,
       nomeAdmin: admin.value.nome,
       emailAdmin: admin.value.email,
       senhaAdmin: admin.value.senha,

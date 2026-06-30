@@ -42,6 +42,10 @@ const router = createRouter({
       meta: { titulo: 'Editor de Etiquetas' } },
     { path: '/estoque/balanca', component: () => import('@/modules/estoque/BalancaView.vue'),
       meta: { titulo: 'Exportação para Balança' } },
+    { path: '/estoque/validade', component: () => import('@/modules/estoque/ValidadeView.vue'),
+      meta: { titulo: 'Controle de Validade' } },
+    { path: '/estoque/validade/config', component: () => import('@/modules/estoque/ValidadeConfigView.vue'),
+      meta: { titulo: 'Configurações de Validade' } },
 
     // Página pública (sem auth guard)
     { path: '/produto/:id', component: () => import('@/modules/publico/ProdutoPublicoView.vue'),

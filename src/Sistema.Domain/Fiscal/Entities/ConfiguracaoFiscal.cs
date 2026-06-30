@@ -17,6 +17,8 @@ public class ConfiguracaoFiscal : Entity
     public string? CaminhoXmlNFe { get; private set; }     // Pasta local para salvar XMLs
     public string? EmailContador { get; private set; }
     public bool EnviarEmailAposEmissao { get; private set; }
+    public string? CertificadoPfxBase64 { get; set; }
+    public string? CertificadoSenha { get; set; }
 
     private ConfiguracaoFiscal() { }
 
@@ -38,6 +40,7 @@ public class ConfiguracaoFiscal : Entity
         CscTokenNFCe = cscToken;
     }
 
+    public void AtualizarRegime(RegimeTributario regime) => Regime = regime;
     public void IrParaProducao() => Ambiente = AmbienteFiscal.Producao;
     public void IrParaHomologacao() => Ambiente = AmbienteFiscal.Homologacao;
 }

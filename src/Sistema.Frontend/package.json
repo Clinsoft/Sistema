@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "axios": "^1.7.2",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.3",

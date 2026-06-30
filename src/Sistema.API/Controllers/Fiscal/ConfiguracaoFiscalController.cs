@@ -37,6 +37,52 @@ public class ConfiguracaoFiscalController(
         return Ok(new { config.Id });
     }
 
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Atualizar(Guid id,
+        [FromBody] System.Text.Json.JsonElement body, CancellationToken ct)
+    {
+        var config = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Configuração não encontrada.");
+
+        // Regime
+        if (body.TryGetProperty("regime", out var regimeProp))
+        {
+            var regimeStr = regimeProp.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? ((RegimeTributario)regimeProp.GetInt32()).ToString()
+                : regimeProp.GetString() ?? "";
+            if (Enum.TryParse<RegimeTributario>(regimeStr, out var regime))
+                config.AtualizarRegime(regime);
+        }
+
+        // Ambiente
+        if (body.TryGetProperty("ambiente", out var ambProp))
+        {
+            var ambVal = ambProp.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? ambProp.GetInt32() : -1;
+            var ambStr = ambProp.ValueKind == System.Text.Json.JsonValueKind.String
+                ? ambProp.GetString() ?? "" : "";
+
+            if (ambVal == 1 || ambStr.ToLower() == "producao")
+                config.IrParaProducao();
+            else if (ambVal == 2 || ambStr.ToLower() == "homologacao")
+                config.IrParaHomologacao();
+        }
+
+        // CSC NFC-e
+        if (body.TryGetProperty("cscIdNFCe", out var cscId) &&
+            body.TryGetProperty("cscTokenNFCe", out var cscToken))
+        {
+            var id2 = cscId.GetString() ?? "";
+            var tok = cscToken.GetString() ?? "";
+            if (!string.IsNullOrEmpty(id2) && !string.IsNullOrEmpty(tok))
+                config.ConfigurarNFCe(id2, tok);
+        }
+
+        repo.Atualizar(config);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/producao")]
     public async Task<IActionResult> IrParaProducao(Guid id, CancellationToken ct)
     {
@@ -74,5 +120,11 @@ public class ConfiguracaoFiscalController(
 public record CriarConfiguracaoRequest(
     Guid EmpresaId, string Regime,
     string? CscId = null, string? CscToken = null);
+
+public record AtualizarConfiguracaoRequest(
+    string? Regime, string? Ambiente,
+    string? CscIdNFCe, string? CscTokenNFCe,
+    int? SerieNFe, int? SerieNFCe,
+    string? EmailContador, bool? EnviarEmailAposEmissao);
 
 public record CscRequest(string CscId, string CscToken);

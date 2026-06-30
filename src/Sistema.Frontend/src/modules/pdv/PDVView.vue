@@ -24,7 +24,7 @@
         <v-text-field
           ref="inputCodigo"
           v-model="codigoDigitado"
-          placeholder="Código de barras, SKU ou nome do produto — pressione Enter"
+          placeholder="Código de barras, SKU ou nome do produto"
           prepend-inner-icon="mdi-barcode-scan"
           variant="outlined"
           density="compact"
@@ -33,7 +33,14 @@
           rounded="lg"
           class="pdv-search"
           @keyup.enter="buscarProduto"
-        />
+        >
+          <template #append-inner>
+            <v-btn icon size="x-small" variant="text" color="rgba(255,255,255,.6)"
+              title="Escanear com câmera" @click="abrirScanner">
+              <v-icon size="18">mdi-camera</v-icon>
+            </v-btn>
+          </template>
+        </v-text-field>
       </div>
       <div class="pdv-topbar-right">
         <div class="pdv-info-pill">
@@ -54,6 +61,28 @@
 
       <!-- ── COLUNA ESQUERDA: Itens ─────────────────────────── -->
       <div class="pdv-col-itens">
+
+        <!-- Faixa de promoções ativas -->
+        <transition name="pdv-promo-slide">
+          <div v-if="promoAtiva && !promoDismissed" class="pdv-promo-bar">
+            <v-icon size="13" class="pdv-promo-icon">mdi-bullhorn-outline</v-icon>
+            <span class="pdv-promo-texto">
+              <strong>Informe ao cliente:</strong> {{ promoAtiva }}
+            </span>
+            <button
+              v-if="todasPromocoes.length > 1"
+              class="pdv-promo-nav"
+              title="Próxima promoção"
+              @click="proximaPromo"
+            >
+              <v-icon size="11">mdi-chevron-right</v-icon>
+              {{ promoIdx + 1 }}/{{ todasPromocoes.length }}
+            </button>
+            <button class="pdv-promo-dismiss" title="Dispensar" @click="promoDismissed = true">
+              <v-icon size="12">mdi-close</v-icon>
+            </button>
+          </div>
+        </transition>
 
         <!-- Cabeçalho das colunas -->
         <div class="pdv-col-header">
@@ -346,6 +375,68 @@
       </div>
     </div>
 
+    <!-- ══ DIALOG SCANNER CÂMERA ══════════════════════════════════ -->
+    <v-dialog v-model="dialogScanner" max-width="420" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center">
+          <v-icon start color="primary">mdi-barcode-scan</v-icon>
+          Escanear código de barras
+          <v-spacer />
+          <v-btn icon size="small" variant="text" @click="fecharScanner">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        <v-card-text class="pa-0">
+          <!-- Viewfinder da câmera -->
+          <div class="pdv-scanner-wrap">
+            <video ref="videoScanner" class="pdv-scanner-video" autoplay playsinline muted />
+            <div class="pdv-scanner-overlay">
+              <div class="pdv-scanner-frame" />
+            </div>
+            <div v-if="scannerStatus" class="pdv-scanner-status">{{ scannerStatus }}</div>
+          </div>
+
+          <!-- Fallback: captura por foto (iOS Safari) -->
+          <div v-if="usarFotoFallback" class="pa-4 text-center">
+            <v-icon size="40" color="primary" class="mb-2">mdi-camera</v-icon>
+            <div class="text-body-2 text-medium-emphasis mb-4">
+              Tire uma foto do código de barras
+            </div>
+            <input
+              ref="inputFoto"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style="display:none"
+              @change="lerFoto"
+            />
+            <v-btn color="primary" prepend-icon="mdi-camera" @click="inputFoto?.click()">
+              Abrir Câmera
+            </v-btn>
+          </div>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-2">
+          <v-btn variant="text" prepend-icon="mdi-keyboard" @click="fecharScanner">
+            Digitar manualmente
+          </v-btn>
+          <v-spacer />
+          <v-select
+            v-if="cameras.length > 1"
+            v-model="cameraAtual"
+            :items="cameras"
+            item-title="label"
+            item-value="deviceId"
+            label="Câmera"
+            variant="outlined"
+            density="compact"
+            hide-details
+            style="max-width:160px"
+            @update:model-value="trocarCamera"
+          />
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ══ MODAL ATALHOS ══════════════════════════════════════════ -->
     <v-dialog v-model="modalAtalhos" max-width="500">
       <v-card rounded="xl">
@@ -542,6 +633,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import QRCode from 'qrcode'
 import { formatarCpf, maskCnpj, cpfRaw, cnpjRaw } from '@/utils/documento'
+import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
@@ -898,6 +990,167 @@ async function imprimirComprovante() {
   window.open(url, '_blank')
 }
 
+// ── Scanner de câmera ─────────────────────────────────────────────
+const dialogScanner = ref(false)
+const videoScanner = ref<HTMLVideoElement | null>(null)
+const inputFoto = ref<HTMLInputElement | null>(null)
+const scannerStatus = ref('')
+const usarFotoFallback = ref(false)
+const cameras = ref<{ deviceId: string; label: string }[]>([])
+const cameraAtual = ref('')
+let zxingReader: BrowserMultiFormatReader | null = null
+let scannerStream: MediaStream | null = null
+
+async function abrirScanner() {
+  dialogScanner.value = true
+  usarFotoFallback.value = false
+  scannerStatus.value = 'Iniciando câmera...'
+
+  await nextTick()
+
+  try {
+    // Lista câmeras disponíveis
+    const dispositivosCam = await BrowserMultiFormatReader.listVideoInputDevices()
+    cameras.value = dispositivosCam.map(d => ({
+      deviceId: d.deviceId,
+      label: d.label || `Câmera ${d.deviceId.slice(0, 6)}`
+    }))
+
+    // Prefere câmera traseira no mobile
+    const traseira = dispositivosCam.find(d =>
+      /back|rear|traseira|environment/i.test(d.label)
+    )
+    cameraAtual.value = traseira?.deviceId ?? dispositivosCam[0]?.deviceId ?? ''
+
+    await iniciarLeitura()
+  } catch (e: any) {
+    if (e?.name === 'NotAllowedError') {
+      scannerStatus.value = 'Permissão de câmera negada.'
+      usarFotoFallback.value = true
+    } else {
+      // Sem câmera acessível — usa fallback por foto
+      usarFotoFallback.value = true
+      scannerStatus.value = ''
+    }
+  }
+}
+
+async function iniciarLeitura() {
+  if (!videoScanner.value) return
+  scannerStatus.value = 'Aponte para o código de barras...'
+
+  zxingReader = new BrowserMultiFormatReader()
+
+  try {
+    await zxingReader.decodeFromVideoDevice(
+      cameraAtual.value || undefined,
+      videoScanner.value,
+      (result, err) => {
+        if (result) {
+          const codigo = result.getText()
+          fecharScanner()
+          codigoDigitado.value = codigo
+          buscarProduto()
+        }
+        // NotFoundException é esperado entre frames — ignora silenciosamente
+      }
+    )
+  } catch (e: any) {
+    scannerStatus.value = 'Erro ao acessar câmera.'
+    usarFotoFallback.value = true
+  }
+}
+
+async function trocarCamera() {
+  if (zxingReader) {
+    BrowserMultiFormatReader.releaseAllStreams()
+    zxingReader = null
+  }
+  await nextTick()
+  await iniciarLeitura()
+}
+
+function fecharScanner() {
+  dialogScanner.value = false
+  if (zxingReader) {
+    BrowserMultiFormatReader.releaseAllStreams()
+    zxingReader = null
+  }
+  scannerStatus.value = ''
+  nextTick(() => inputCodigo.value?.focus())
+}
+
+async function lerFoto(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+
+  // Usa BarcodeDetector nativo se disponível (Chrome Android)
+  if ('BarcodeDetector' in window) {
+    try {
+      const bd = new (window as any).BarcodeDetector({
+        formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code', 'upc_a']
+      })
+      const img = await createImageBitmap(file)
+      const barcodes = await bd.detect(img)
+      if (barcodes.length) {
+        fecharScanner()
+        codigoDigitado.value = barcodes[0].rawValue
+        buscarProduto()
+        return
+      }
+      notif.aviso('Código não detectado. Tente outra foto.')
+    } catch { /* fallback para ZXing abaixo */ }
+  }
+
+  // Fallback: ZXing a partir de blob URL
+  try {
+    const url = URL.createObjectURL(file)
+    const reader = new BrowserMultiFormatReader()
+    const result = await reader.decodeFromImageUrl(url)
+    URL.revokeObjectURL(url)
+    fecharScanner()
+    codigoDigitado.value = result.getText()
+    buscarProduto()
+  } catch {
+    notif.aviso('Código não detectado. Tente outra foto mais nítida.')
+  }
+}
+
+// ── Promoções ativas ───────────────────────────────────────────────
+const todasPromocoes = ref<string[]>([])
+const promoIdx = ref(0)
+const promoDismissed = ref(false)
+const promoAtiva = computed(() => todasPromocoes.value[promoIdx.value] ?? null)
+
+function proximaPromo() {
+  promoIdx.value = (promoIdx.value + 1) % todasPromocoes.value.length
+}
+
+async function carregarPromocoes() {
+  try {
+    const hoje = new Date().toISOString().slice(0, 10)
+    const r = await api.get('/marketing/artes', {
+      params: { empresaId: auth.empresaId, data: hoje }
+    })
+    const artes: any[] = r.data ?? []
+    const nomes = artes
+      .filter((a: any) => a.layoutJson)
+      .map((a: any) => {
+        try {
+          const l = JSON.parse(a.layoutJson)
+          const nome = l.produto_nome ?? a.titulo ?? ''
+          const preco = l.produto_preco_promo ?? l.produto_preco ?? ''
+          const desc = l.desconto ?? ''
+          if (nome && desc) return `${nome} — ${desc}% OFF`
+          if (nome && preco) return `${nome} por R$ ${preco}`
+          return nome || a.titulo
+        } catch { return a.titulo ?? '' }
+      })
+      .filter(Boolean)
+    todasPromocoes.value = nomes
+  } catch { /* silencioso */ }
+}
+
 // ── Colaboradores ──────────────────────────────────────────────────
 async function carregarColaboradores() {
   if (!auth.empresaId) return
@@ -996,11 +1249,12 @@ onMounted(async () => {
   atualizarHora()
   clockTimer = setInterval(atualizarHora, 30000)
   document.addEventListener('keydown', onKeydown, true)
-  await Promise.all([carregarColaboradores(), verificarSessaoCaixa()])
+  await Promise.all([carregarColaboradores(), verificarSessaoCaixa(), carregarPromocoes()])
 })
 onUnmounted(() => {
   clearInterval(clockTimer)
   document.removeEventListener('keydown', onKeydown, true)
+  if (zxingReader) BrowserMultiFormatReader.releaseAllStreams()
 })
 </script>
 
@@ -1485,6 +1739,169 @@ onUnmounted(() => {
   border-radius: 6px; padding: 3px 8px;
   font-family: monospace; font-size: 11px; font-weight: 700; color: #334155;
   flex-shrink: 0;
+}
+
+/* ── Faixa de promoções ── */
+.pdv-promo-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 30px;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.pdv-promo-icon {
+  color: #d97706;
+  flex-shrink: 0;
+  animation: pdv-promo-pulse 2.5s ease-in-out infinite;
+}
+@keyframes pdv-promo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+.pdv-promo-texto {
+  flex: 1;
+  font-size: 11.5px;
+  color: #92400e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pdv-promo-texto strong {
+  color: #b45309;
+  font-weight: 700;
+  margin-right: 3px;
+}
+.pdv-promo-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #b45309;
+  background: rgba(217,119,6,.1);
+  border: none;
+  border-radius: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .12s;
+}
+.pdv-promo-nav:hover { background: rgba(217,119,6,.2); }
+.pdv-promo-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: #d97706;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: .6;
+  transition: opacity .12s;
+}
+.pdv-promo-dismiss:hover { opacity: 1; background: rgba(217,119,6,.1); }
+
+.pdv-promo-slide-enter-active { transition: all .2s ease; }
+.pdv-promo-slide-leave-active { transition: all .15s ease; }
+.pdv-promo-slide-enter-from, .pdv-promo-slide-leave-to {
+  height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
+}
+
+/* ── Scanner ── */
+.pdv-scanner-wrap {
+  position: relative;
+  background: #000;
+  aspect-ratio: 4/3;
+  overflow: hidden;
+}
+.pdv-scanner-video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pdv-scanner-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.pdv-scanner-frame {
+  width: 220px; height: 140px;
+  border: 2.5px solid rgba(255,255,255,.85);
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+  position: relative;
+}
+.pdv-scanner-frame::before, .pdv-scanner-frame::after {
+  content: '';
+  position: absolute;
+  width: 28px; height: 28px;
+  border-color: #3b82f6;
+  border-style: solid;
+}
+.pdv-scanner-frame::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+.pdv-scanner-frame::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+.pdv-scanner-status {
+  position: absolute; bottom: 12px; left: 0; right: 0;
+  text-align: center; font-size: 12px; color: rgba(255,255,255,.8);
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+
+/* ══ MOBILE RESPONSIVO ══════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .pdv-shell { height: 100dvh; }
+
+  .pdv-topbar { padding: 0 12px; gap: 8px; height: 52px; }
+  .pdv-topbar-center { flex: 1; max-width: none; }
+  .pdv-topbar-right .pdv-info-pill { display: none; }
+  .pdv-brand-name { display: none; }
+  .pdv-brand { padding-right: 8px; }
+
+  /* Empilha colunas verticalmente */
+  .pdv-body { flex-direction: column; overflow-y: auto; }
+
+  .pdv-col-itens {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+  .pdv-itens-wrap { max-height: 45dvh; overflow-y: auto; }
+
+  .pdv-col-pag {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    overflow: visible;
+    flex: none;
+  }
+
+  /* Itens com touch mais fácil */
+  .pdv-item { padding: 13px 14px; gap: 10px; }
+  .pdv-qtd-btn { width: 36px; height: 36px; font-size: 18px; }
+  .pdv-qtd-input { height: 36px; font-size: 14px; }
+  .pdv-item-qtd { width: 112px; }
+
+  /* Formas de pagamento em grid 2x2 mais generoso */
+  .pdv-fp-btn { padding: 16px 6px; font-size: 12px; }
+
+  /* Botão Finalizar maior para toque */
+  .pdv-btn-finalizar { height: 64px; font-size: 17px; }
+  .pdv-acoes { padding: 16px 16px 24px; }
+
+  /* Totais compactos */
+  .pdv-total-valor { font-size: 24px; }
+
+  /* Ocultar atalhos de teclado no mobile */
+  .pdv-kbd, .pdv-kbd-fp, .pdv-kbd-big { display: none; }
+
+  /* Hint chips menores */
+  .pdv-vazio-titulo { font-size: 14px; }
+  .pdv-vazio-sub { font-size: 12px; }
 }
 
 /* Transições */

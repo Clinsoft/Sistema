@@ -33,4 +33,6 @@ public class Lote : Entity
     public bool EstaVencido() => DataValidade.HasValue && DataValidade.Value.Date < DateTime.Today;
     public bool VenceEm(int dias) => DataValidade.HasValue && DataValidade.Value.Date <= DateTime.Today.AddDays(dias);
     public void Baixar(decimal quantidade) => Quantidade = Math.Max(0, Quantidade - quantidade);
+    public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
+    public void AtualizarValidade(DateTime dataValidade) => DataValidade = dataValidade;
 }

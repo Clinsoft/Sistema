@@ -3,7 +3,6 @@
     <v-row align="center" class="mb-4">
       <v-col><h2 class="text-h5 font-weight-bold">Editor de Etiquetas</h2></v-col>
       <v-col cols="auto" class="d-flex gap-2">
-        <!-- Botão ZPL para Zebra -->
         <template v-if="isGondola">
           <v-btn color="success" prepend-icon="mdi-download" @click="baixarZpl"
             :disabled="!produtosSel.length">
@@ -53,6 +52,59 @@
             <v-checkbox v-model="camposGondola.unidade" label="Unidade de medida" density="compact" hide-details />
           </template>
 
+          <!-- ── EcoGranel (etiqueta de preço com QR Code) ── -->
+          <template v-else-if="template === 'ecogranel'">
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Cor da Borda</div>
+            <v-row dense>
+              <v-col cols="7">
+                <v-text-field v-model="borda.cor" label="Cor" variant="outlined"
+                  density="compact" type="color" hide-details />
+              </v-col>
+              <v-col cols="5">
+                <v-text-field v-model.number="borda.espessura" label="Espessura (px)"
+                  type="number" variant="outlined" density="compact" :min="2" :max="20" hide-details />
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Marca d'água</div>
+            <div class="text-caption text-medium-emphasis mb-2">
+              Imagem exibida como fundo (logo, semente, produto, etc.)
+            </div>
+            <v-btn variant="outlined" size="small" prepend-icon="mdi-image-plus"
+              @click="inputMarcaDagua?.click()" class="mb-2">
+              {{ marcaDaguaUrl ? 'Trocar imagem' : 'Carregar imagem' }}
+            </v-btn>
+            <input ref="inputMarcaDagua" type="file" accept="image/*" class="d-none"
+              @change="carregarMarcaDagua" />
+            <div v-if="marcaDaguaUrl" class="d-flex align-center gap-2 mt-1">
+              <img :src="marcaDaguaUrl" style="height:40px;border-radius:4px;opacity:.6" />
+              <v-btn icon="mdi-close" size="x-small" variant="text" @click="marcaDaguaUrl=''" />
+            </div>
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Campos visíveis</div>
+            <v-checkbox v-model="camposEco.nome" label="Nome do produto" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.codigoPlu" label="Código PLU (após nome)" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.preco100g" label="Preço por 100g" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.validade" label="Validade" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.descricao" label="Texto descritivo" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.qrcode" label="QR Code" density="compact" hide-details />
+            <v-checkbox v-model="camposEco.frase" label='Frase "Natural como deve ser!"' density="compact" hide-details />
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Texto descritivo (padrão)</div>
+            <v-textarea v-model="textoDescritivoEco" variant="outlined" density="compact"
+              rows="3" auto-grow hint="Usado quando o produto não tem descrição complementar" persistent-hint />
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">URL base do QR Code</div>
+            <v-text-field v-model="qrBaseUrl" variant="outlined" density="compact"
+              placeholder="https://ecogranel.com.br/produtos/produto.php?p="
+              hint="O slug do produto será adicionado automaticamente" persistent-hint />
+          </template>
+
           <!-- ── Pote 9×9cm ── -->
           <template v-else-if="template === 'pote9x9'">
             <v-divider class="my-3" />
@@ -94,10 +146,11 @@
             variant="outlined" density="compact" :min="1" :max="100" />
           <v-text-field v-model="validade" label="Validade" type="date"
             variant="outlined" density="compact" class="mt-2" />
-          <v-text-field v-if="!isGondola && template !== 'pote9x9'" v-model="lote" label="Lote (p/ todos)"
-            variant="outlined" density="compact" />
-          <v-text-field v-if="!isGondola && template !== 'pote9x9'" v-model.number="precoPromo"
-            label="Preço Promocional (R$)" type="number" variant="outlined" density="compact" prefix="R$" />
+          <v-text-field v-if="!isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
+            v-model="lote" label="Lote (p/ todos)" variant="outlined" density="compact" />
+          <v-text-field v-if="!isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
+            v-model.number="precoPromo" label="Preço Promocional (R$)"
+            type="number" variant="outlined" density="compact" prefix="R$" />
         </v-card>
 
         <!-- Busca de produtos -->
@@ -122,9 +175,8 @@
         <v-card rounded="xl" elevation="1" class="pa-4">
           <div class="d-flex align-center mb-3 gap-3">
             <div class="text-body-2 font-weight-bold">Pré-visualização</div>
-            <v-chip v-if="isGondola" color="success" size="small" prepend-icon="mdi-printer">
-              Zebra ZPL
-            </v-chip>
+            <v-chip v-if="isGondola" color="success" size="small" prepend-icon="mdi-printer">Zebra ZPL</v-chip>
+            <v-chip v-if="template === 'ecogranel'" color="green-darken-2" size="small" prepend-icon="mdi-qrcode">QR Code</v-chip>
           </div>
 
           <div v-if="!produtosSel.length" class="text-center py-8 text-medium-emphasis">
@@ -132,31 +184,19 @@
             <div>Selecione produtos para visualizar as etiquetas</div>
           </div>
 
-          <!-- Preview gôndola: renderiza HTML fiel ao ZPL gerado -->
+          <!-- Preview gôndola -->
           <div v-if="isGondola" class="gondola-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
-              class="gondola-etiqueta"
-              :style="gondolaDimStyle">
-              <!-- Faixa superior: nome -->
+              class="gondola-etiqueta" :style="gondolaDimStyle">
               <div v-if="camposGondola.nome" class="gon-nome"
-                :style="{ fontSize: gondolaCfg.nomeFontPx + 'px' }">
-                {{ p.descricao }}
-              </div>
-              <!-- Preço principal -->
+                :style="{ fontSize: gondolaCfg.nomeFontPx + 'px' }">{{ p.descricao }}</div>
               <div v-if="camposGondola.preco" class="gon-preco"
                 :style="{ fontSize: gondolaCfg.precoFontPx + 'px' }">
                 <span class="gon-preco-rs">R$</span>
                 <span class="gon-preco-valor">{{ fmtPreco(p.precoVenda) }}</span>
               </div>
-              <!-- Preço por kg ou unidade -->
-              <div v-if="camposGondola.precoKg" class="gon-por-unidade">
-                {{ fmtPrecoKg(p) }}
-              </div>
-              <!-- Validade -->
-              <div v-if="camposGondola.validade && validade" class="gon-validade">
-                Val: {{ fmtData(validade) }}
-              </div>
-              <!-- Código de barras simulado -->
+              <div v-if="camposGondola.precoKg" class="gon-por-unidade">{{ fmtPrecoKg(p) }}</div>
+              <div v-if="camposGondola.validade && validade" class="gon-validade">Val: {{ fmtData(validade) }}</div>
               <div v-if="camposGondola.codBarras && p.codigoBarras" class="gon-barcode-area">
                 <div class="gon-barcode-bars">
                   <span v-for="i in 50" :key="i"
@@ -165,9 +205,53 @@
                 </div>
                 <div class="gon-barcode-num">{{ p.codigoBarras }}</div>
               </div>
-              <!-- Código PLU -->
               <div v-if="camposGondola.codigoPlu && p.codigoPlu" class="gon-plu">
                 PLU: {{ String(p.codigoPlu).padStart(6, '0') }}
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Preview EcoGranel ── -->
+          <div v-else-if="template === 'ecogranel'" id="area-impressao" class="etiquetas-grid">
+            <div v-for="p in etiquetasExpandidas" :key="p._key"
+              class="etiqueta-eco"
+              :style="{ border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px` }">
+
+              <!-- Marca d'água -->
+              <img v-if="marcaDaguaUrl" :src="marcaDaguaUrl" class="eco-marca-dagua" />
+
+              <!-- Cabeçalho: nome do produto -->
+              <div v-if="camposEco.nome" class="eco-nome" :style="{ color: '#111' }">
+                {{ p.descricao?.toUpperCase() }}
+                <span v-if="camposEco.codigoPlu && p.codigoPlu" class="eco-nome-plu">
+                  -{{ String(p.codigoPlu).padStart(4, '0') }}
+                </span>
+              </div>
+
+              <!-- Preço grande -->
+              <div v-if="camposEco.preco100g" class="eco-preco-bloco">
+                <span class="eco-preco-valor">{{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</span>
+                <div class="eco-preco-label">cada 100g</div>
+              </div>
+
+              <!-- Validade -->
+              <div v-if="camposEco.validade && validade" class="eco-validade">
+                <strong>Validade: {{ fmtData(validade) }}</strong>
+              </div>
+
+              <!-- Texto descritivo -->
+              <div v-if="camposEco.descricao" class="eco-descricao">
+                {{ p.descricaoComplementar || textoDescritivoEco }}
+              </div>
+
+              <!-- Rodapé: QR Code + frase -->
+              <div class="eco-rodape">
+                <div v-if="camposEco.qrcode" class="eco-qr-wrap">
+                  <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                </div>
+                <div v-if="camposEco.frase" class="eco-frase">
+                  <strong>Natural como deve ser!</strong>
+                </div>
               </div>
             </div>
           </div>
@@ -195,7 +279,8 @@
                   Validade: {{ fmtData(validade) }}
                 </div>
               </div>
-              <div v-if="camposPote.frase" class="pote-frase" :style="{ color: borda.cor, borderTopColor: borda.cor + '33' }">
+              <div v-if="camposPote.frase" class="pote-frase"
+                :style="{ color: borda.cor, borderTopColor: borda.cor + '33' }">
                 Natural como deve ser!
               </div>
             </div>
@@ -220,7 +305,6 @@
             </div>
           </div>
 
-          <!-- Info ZPL -->
           <v-alert v-if="isGondola && produtosSel.length" type="info" variant="tonal"
             density="compact" class="mt-4" icon="mdi-information">
             O botão <strong>Gerar ZPL</strong> baixa o arquivo <code>.zpl</code> pronto para enviar à Zebra
@@ -240,7 +324,6 @@
           <v-text-field v-model.number="zebraPorta" label="Porta" type="number"
             variant="outlined" density="compact" class="mt-2" />
           <v-alert type="warning" variant="tonal" density="compact" class="mt-2">
-            O envio via rede requer que o backend exponha o endpoint de impressão ZPL.
             Por enquanto, baixe o ZPL e use o <strong>Zebra Setup Utilities</strong> para enviar.
           </v-alert>
         </v-card-text>
@@ -255,7 +338,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
+import QRCode from 'qrcode'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 
@@ -264,7 +348,7 @@ const buscaTemp = ref<string | null>(null)
 const buscando = ref(false)
 const sugestoes = ref<any[]>([])
 const produtosSel = ref<any[]>([])
-const template = ref('gondola-70x40')
+const template = ref('ecogranel')
 const qtdEtiquetas = ref(1)
 const validade = ref('')
 const lote = ref('')
@@ -274,8 +358,17 @@ const zebraIp = ref('192.168.1.100')
 const zebraPorta = ref(9100)
 const zebraDpi = ref(203)
 const gondolaTamanho = ref('70x40')
+const marcaDaguaUrl = ref('')
+const inputMarcaDagua = ref<HTMLInputElement | null>(null)
+const qrBaseUrl = ref('https://ecogranel.com.br/produtos/produto.php?p=')
+const textoDescritivoEco = ref('')
 
-const borda = ref({ cor: '#2e7d32', espessura: 4 })
+const borda = ref({ cor: '#2e7d32', espessura: 5 })
+
+const camposEco = ref({
+  nome: true, codigoPlu: true, preco100g: true, validade: true,
+  descricao: true, qrcode: true, frase: true,
+})
 
 const camposPote = ref({
   nome: true, descricao: true, codigoPlu: true,
@@ -293,6 +386,7 @@ const campos = ref({
 })
 
 const templates = [
+  { id: 'ecogranel', nome: 'EcoGranel' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },
   { id: 'pote9x9', nome: 'Pote 9×9cm' },
   { id: '40x25', nome: '40×25mm' },
@@ -315,13 +409,11 @@ const gondolaTamanhoAtual = computed(() =>
   gondolaTamanhos.find(s => s.id === gondolaTamanho.value) ?? gondolaTamanhos[2]
 )
 
-// Dimensões de preview em px (aprox. 3.78 px/mm)
 const gondolaDimStyle = computed(() => {
   const { w, h } = gondolaTamanhoAtual.value
   return { width: `${w * 3.78}px`, height: `${h * 3.78}px` }
 })
 
-// Tamanhos de fonte escalados pelo tamanho da etiqueta
 const gondolaCfg = computed(() => {
   const { w } = gondolaTamanhoAtual.value
   const scale = w / 70
@@ -332,26 +424,10 @@ const gondolaCfg = computed(() => {
 })
 
 const tplConfig: Record<string, any> = {
-  '40x25': {
-    style: 'width:150px;height:94px;font-size:8px;padding:4px',
-    nomeStyle: 'font-size:8px;font-weight:bold;line-height:1.1',
-    precoStyle: 'font-size:16px;font-weight:bold',
-  },
-  '50x30': {
-    style: 'width:189px;height:113px;font-size:9px;padding:5px',
-    nomeStyle: 'font-size:9px;font-weight:bold',
-    precoStyle: 'font-size:20px;font-weight:bold',
-  },
-  '100x50': {
-    style: 'width:378px;height:189px;font-size:11px;padding:8px',
-    nomeStyle: 'font-size:12px;font-weight:bold',
-    precoStyle: 'font-size:28px;font-weight:bold',
-  },
-  'grande': {
-    style: 'width:283px;height:170px;font-size:10px;padding:8px',
-    nomeStyle: 'font-size:11px;font-weight:bold',
-    precoStyle: 'font-size:24px;font-weight:bold',
-  },
+  '40x25':  { style: 'width:150px;height:94px;font-size:8px;padding:4px',  nomeStyle: 'font-size:8px;font-weight:bold;line-height:1.1', precoStyle: 'font-size:16px;font-weight:bold' },
+  '50x30':  { style: 'width:189px;height:113px;font-size:9px;padding:5px', nomeStyle: 'font-size:9px;font-weight:bold', precoStyle: 'font-size:20px;font-weight:bold' },
+  '100x50': { style: 'width:378px;height:189px;font-size:11px;padding:8px',nomeStyle: 'font-size:12px;font-weight:bold', precoStyle: 'font-size:28px;font-weight:bold' },
+  'grande': { style: 'width:283px;height:170px;font-size:10px;padding:8px',nomeStyle: 'font-size:11px;font-weight:bold', precoStyle: 'font-size:24px;font-weight:bold' },
 }
 
 const tplAtual = computed(() => tplConfig[template.value] ?? tplConfig['40x25'])
@@ -365,127 +441,144 @@ const etiquetasExpandidas = computed(() => {
   return lista
 })
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 function fmtData(d: string) { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
 function preco100g(precoKg: number) { return precoKg / 10 }
 
-function fmtPreco(v: number) {
-  const s = (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-  return s
+// Formato especial: "7,69" (sem R$ e com vírgula)
+function fmtPrecoDisplay(v: number) {
+  return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 }
+
+function fmtPreco(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 
 function fmtPrecoKg(p: any) {
   const unidade = p.unidadeSigla || 'KG'
   return `R$ ${fmt(p.precoVenda)} / ${unidade}`
 }
 
+// Converte nome do produto em slug para URL do QR
+function nomeParaSlug(nome: string): string {
+  return (nome ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+}
+
+// ── QR Code ──────────────────────────────────────────────────────────────────
+// Guarda referência dos canvas por _key e gera QR quando monta
+const qrCanvasMap = new Map<string, HTMLCanvasElement>()
+
+function registrarQr(el: any, p: any) {
+  if (!el) return
+  const key = p._key
+  if (qrCanvasMap.get(key) === el) return
+  qrCanvasMap.set(key, el)
+  renderizarQr(el, p)
+}
+
+async function renderizarQr(canvas: HTMLCanvasElement, p: any) {
+  const slug = nomeParaSlug(p.descricao ?? '')
+  const url = qrBaseUrl.value + slug
+  try {
+    await QRCode.toCanvas(canvas, url, {
+      width: 100,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff00' },
+    })
+  } catch { /* silencia erros de canvas */ }
+}
+
+// Re-renderiza QR quando a URL base muda
+watch(qrBaseUrl, async () => {
+  await nextTick()
+  for (const [key, canvas] of qrCanvasMap.entries()) {
+    const p = etiquetasExpandidas.value.find(e => e._key === key)
+    if (p) renderizarQr(canvas, p)
+  }
+})
+
+watch(etiquetasExpandidas, async () => {
+  if (template.value !== 'ecogranel') return
+  await nextTick()
+  for (const [key, canvas] of qrCanvasMap.entries()) {
+    const p = etiquetasExpandidas.value.find(e => e._key === key)
+    if (p) renderizarQr(canvas, p)
+  }
+}, { deep: true })
+
+// ── Marca d'água ─────────────────────────────────────────────────────────────
+function carregarMarcaDagua(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = ev => { marcaDaguaUrl.value = ev.target?.result as string }
+  reader.readAsDataURL(file)
+}
+
 // ── Gerador ZPL ──────────────────────────────────────────────────────────────
-// Retorna string ZPL completa para todos os produtos selecionados
 function gerarZpl(): string {
-  const dpi = zebraDpi.value // 203 ou 300
+  const dpi = zebraDpi.value
   const dotsPerMm = dpi / 25.4
   const { w, h } = gondolaTamanhoAtual.value
-
-  const labelW = Math.round(w * dotsPerMm) // largura em dots
-  const labelH = Math.round(h * dotsPerMm) // altura em dots
-
-  // Margens internas em dots
-  const mx = Math.round(2 * dotsPerMm)  // 2mm esquerda
-  const my = Math.round(2 * dotsPerMm)  // 2mm topo
-
-  // Alturas de linhas em dots
-  const linhaNome  = Math.round(5 * dotsPerMm)
-  const linhaPreco = Math.round(h * 0.45 * dotsPerMm)
+  const labelW = Math.round(w * dotsPerMm)
+  const labelH = Math.round(h * dotsPerMm)
+  const mx = Math.round(2 * dotsPerMm)
+  const my = Math.round(2 * dotsPerMm)
 
   const zplBlocks: string[] = []
 
   for (const p of etiquetasExpandidas.value) {
-    const nome = zplSanitize(p.descricao ?? '')
+    const nome    = zplSanitize(p.descricao ?? '')
     const precoStr = 'R$ ' + fmt(p.precoVenda)
-    const porKg = fmtPrecoKg(p)
-    const ean = p.codigoBarras ?? ''
-    const plu = p.codigoPlu ? 'PLU: ' + String(p.codigoPlu).padStart(6, '0') : ''
-    const val = validade.value ? 'Val: ' + fmtData(validade.value) : ''
+    const porKg   = fmtPrecoKg(p)
+    const ean     = p.codigoBarras ?? ''
+    const plu     = p.codigoPlu ? 'PLU: ' + String(p.codigoPlu).padStart(6, '0') : ''
+    const val     = validade.value ? 'Val: ' + fmtData(validade.value) : ''
 
-    let zpl = `^XA\n`
-    zpl += `^PW${labelW}\n`   // largura da etiqueta
-    zpl += `^LL${labelH}\n`   // comprimento da etiqueta
-    zpl += `^LH0,0\n`
-
+    let zpl = `^XA\n^PW${labelW}\n^LL${labelH}\n^LH0,0\n`
     let y = my
 
-    // Nome do produto (fonte B, bold, tamanho ~5mm de altura)
     if (camposGondola.value.nome && nome) {
-      const fh = Math.round(4 * dotsPerMm)
-      const fw = Math.round(fh * 0.6)
-      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${nome}^FS\n`
-      y += fh + Math.round(1 * dotsPerMm)
+      const fh = Math.round(4 * dotsPerMm); const fw = Math.round(fh * 0.6)
+      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${nome}^FS\n`; y += fh + Math.round(1 * dotsPerMm)
     }
-
-    // Preço principal (fonte grande, ~40% da altura da etiqueta)
     if (camposGondola.value.preco) {
-      const fh = Math.round(h * 0.38 * dotsPerMm)
-      const fw = Math.round(fh * 0.65)
-      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${precoStr}^FS\n`
-      y += fh + Math.round(0.5 * dotsPerMm)
+      const fh = Math.round(h * 0.38 * dotsPerMm); const fw = Math.round(fh * 0.65)
+      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${precoStr}^FS\n`; y += fh + Math.round(0.5 * dotsPerMm)
     }
-
-    // Preço por kg/unidade
     if (camposGondola.value.precoKg) {
-      const fh = Math.round(3 * dotsPerMm)
-      const fw = Math.round(fh * 0.6)
-      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${porKg}^FS\n`
-      y += fh + Math.round(0.5 * dotsPerMm)
+      const fh = Math.round(3 * dotsPerMm); const fw = Math.round(fh * 0.6)
+      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${porKg}^FS\n`; y += fh + Math.round(0.5 * dotsPerMm)
     }
-
-    // Validade
     if (camposGondola.value.validade && val) {
-      const fh = Math.round(2.5 * dotsPerMm)
-      const fw = Math.round(fh * 0.6)
-      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${val}^FS\n`
-      y += fh + Math.round(0.5 * dotsPerMm)
+      const fh = Math.round(2.5 * dotsPerMm); const fw = Math.round(fh * 0.6)
+      zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${val}^FS\n`; y += fh + Math.round(0.5 * dotsPerMm)
     }
-
-    // PLU
     if (camposGondola.value.codigoPlu && plu) {
-      const fh = Math.round(2.5 * dotsPerMm)
-      const fw = Math.round(fh * 0.6)
+      const fh = Math.round(2.5 * dotsPerMm); const fw = Math.round(fh * 0.6)
       zpl += `^FO${mx},${y}^A0N,${fh},${fw}^FD${plu}^FS\n`
-      y += fh + Math.round(0.5 * dotsPerMm)
     }
-
-    // Código de barras EAN-13 — posicionado na direita ou abaixo
     if (camposGondola.value.codBarras && ean) {
-      const barcodeH = Math.round((labelH - y - Math.round(3 * dotsPerMm)))
-      const barcodeH2 = Math.max(barcodeH, Math.round(6 * dotsPerMm))
-      const barcodeX = labelW - Math.round(35 * dotsPerMm) // coluna direita
-      // Usa código de barras somente no lado direito quando há espaço (tamanhos ≥ 70mm de largura)
+      const barcodeH2 = Math.max(Math.round((labelH - y - Math.round(3 * dotsPerMm))), Math.round(6 * dotsPerMm))
       if (w >= 60) {
-        zpl += `^FO${barcodeX},${my}^BY1,2,${barcodeH2}^BE^FD${ean}^FS\n`
+        zpl += `^FO${labelW - Math.round(35 * dotsPerMm)},${my}^BY1,2,${barcodeH2}^BE^FD${ean}^FS\n`
       } else {
-        // Etiqueta pequena: coloca abaixo com tamanho menor
         const bh = Math.max(Math.round(h * 0.3 * dotsPerMm), Math.round(5 * dotsPerMm))
         zpl += `^FO${mx},${y}^BY1,2,${bh}^BE^FD${ean}^FS\n`
       }
     }
-
-    zpl += `^PQ${qtdEtiquetas.value}\n`
-    zpl += `^XZ\n`
-
+    zpl += `^PQ${qtdEtiquetas.value}\n^XZ\n`
     zplBlocks.push(zpl)
   }
-
-  // Para múltiplos produtos distintos, cada um é um job separado
   return zplBlocks.join('\n')
 }
 
-// Remove caracteres não-ASCII que o ZPL não suporta
 function zplSanitize(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // remove acentos
-    .replace(/[^\x20-\x7E]/g, '')   // remove não-ASCII
-    .substring(0, 50)               // máx 50 chars para caber na etiqueta
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
 }
 
 function baixarZpl() {
@@ -500,6 +593,7 @@ function baixarZpl() {
   enviarZebraDialog.value = false
 }
 
+// ── Busca de produtos ────────────────────────────────────────────────────────
 let timer: any
 async function buscarProdutos(q: string) {
   if (!q || q.length < 2) { sugestoes.value = []; return }
@@ -525,17 +619,51 @@ function removerProduto(id: string) {
   produtosSel.value = produtosSel.value.filter(p => p.id !== id)
 }
 
+// ── Impressão ────────────────────────────────────────────────────────────────
 function imprimir() {
   const area = document.getElementById('area-impressao')
   if (!area) return
   const bordaCor = borda.value.cor
   const w = window.open('', '_blank')!
   w.document.write(`
-    <html><head><title>Etiquetas</title>
+    <html><head><title>Etiquetas EcoGranel</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { margin: 0; font-family: Arial, sans-serif; }
-      .etiquetas-grid { display: flex; flex-wrap: wrap; gap: 4mm; padding: 5mm; }
+      body { margin: 0; font-family: Arial, sans-serif; background: white; }
+      .etiquetas-grid { display: flex; flex-wrap: wrap; gap: 6mm; padding: 5mm; }
+
+      /* ── EcoGranel ── */
+      .etiqueta-eco {
+        width: 10cm; height: 10cm;
+        display: flex; flex-direction: column;
+        background: linear-gradient(160deg, #ffffff 0%, #e8f5e9 60%, #c8e6c9 100%);
+        position: relative; overflow: hidden; page-break-inside: avoid;
+      }
+      .eco-marca-dagua {
+        position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
+        pointer-events: none; user-select: none;
+      }
+      .eco-nome {
+        font-size: 13pt; font-weight: 900; color: #111;
+        text-align: center; padding: 5mm 4mm 2mm; line-height: 1.15;
+        letter-spacing: 0.5px;
+      }
+      .eco-nome-plu { font-weight: 700; font-size: 0.85em; }
+      .eco-preco-bloco { text-align: center; padding: 2mm 4mm 1mm; }
+      .eco-preco-valor { font-size: 60pt; font-weight: 900; color: #111; line-height: 1; letter-spacing: -2px; }
+      .eco-preco-label { font-size: 9pt; color: #444; margin-top: 1mm; }
+      .eco-validade { text-align: center; font-size: 10pt; color: #222; padding: 1mm 4mm; }
+      .eco-descricao { font-size: 9pt; color: #333; text-align: center;
+        padding: 2mm 5mm; line-height: 1.4; font-weight: 500; }
+      .eco-rodape {
+        flex: 1; display: flex; align-items: flex-end;
+        justify-content: space-between; padding: 2mm 4mm 3mm;
+      }
+      .eco-qr-wrap canvas { width: 22mm !important; height: 22mm !important; display: block; }
+      .eco-frase { font-size: 10pt; font-weight: 900; color: #1b5e20;
+        text-align: right; max-width: 55%; line-height: 1.3; }
+
+      /* ── Pote ── */
       .etiqueta-pote {
         width: 9cm; height: 9cm; display: flex; flex-direction: column;
         page-break-inside: avoid; overflow: hidden; background: white;
@@ -552,12 +680,16 @@ function imprimir() {
       .pote-preco-label { font-size: 8pt; color: #666; margin-top: 1px; }
       .pote-validade { font-size: 8pt; color: #555; }
       .pote-frase { text-align: center; font-style: italic; font-weight: bold;
-        font-size: 10pt; padding: 6px 8px; color: ${bordaCor}; letter-spacing: 0.5px; }
+        font-size: 10pt; padding: 6px 8px; color: ${bordaCor};
+        letter-spacing: 0.5px; border-top: 1px solid; }
+
+      /* ── Padrão ── */
       .etiqueta { border: 1px solid #999; display: flex; flex-direction: column;
-        justify-content: space-between; overflow: hidden; page-break-inside: avoid; }
+        justify-content: space-between; overflow: hidden; page-break-inside: avoid;
+        background: white; }
       .etq-nome { font-weight: bold; word-break: break-word; }
       .etq-de { text-decoration: line-through; font-size: 0.8em; color: #888; }
-      .etq-preco { font-weight: bold; }
+      .etq-preco { font-weight: bold; color: #1565C0; }
       .etq-ean { font-family: monospace; font-size: 0.75em; }
       .etq-rodape { font-size: 0.7em; color: #555; display: flex; gap: 4px; flex-wrap: wrap; }
       @media print { @page { margin: 5mm; } }
@@ -574,130 +706,147 @@ function imprimir() {
 .etiquetas-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   background: #f0f0f0;
-  padding: 12px;
+  padding: 16px;
   border-radius: 8px;
   min-height: 200px;
 }
 
+/* ── EcoGranel ── */
+.etiqueta-eco {
+  width: 380px;
+  height: 380px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #ffffff 0%, #e8f5e9 60%, #c8e6c9 100%);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 3px 12px rgba(0,0,0,.15);
+  transition: box-shadow .2s;
+}
+.etiqueta-eco:hover { box-shadow: 0 6px 20px rgba(0,0,0,.22); }
+
+.eco-marca-dagua {
+  position: absolute;
+  right: 8px;
+  top: 30%;
+  width: 42%;
+  opacity: 0.18;
+  pointer-events: none;
+  user-select: none;
+}
+
+.eco-nome {
+  font-size: 16px;
+  font-weight: 900;
+  color: #111;
+  text-align: center;
+  padding: 14px 12px 6px;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+  z-index: 1;
+}
+.eco-nome-plu {
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.eco-preco-bloco {
+  text-align: center;
+  padding: 4px 12px 2px;
+  z-index: 1;
+}
+.eco-preco-valor {
+  font-size: 86px;
+  font-weight: 900;
+  color: #111;
+  line-height: 1;
+  letter-spacing: -3px;
+  font-family: Arial Black, Arial, sans-serif;
+}
+.eco-preco-label {
+  font-size: 13px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.eco-validade {
+  text-align: center;
+  font-size: 13px;
+  color: #222;
+  padding: 2px 12px 4px;
+  z-index: 1;
+}
+
+.eco-descricao {
+  font-size: 12px;
+  color: #333;
+  text-align: center;
+  padding: 4px 16px 6px;
+  line-height: 1.4;
+  font-weight: 500;
+  z-index: 1;
+}
+
+.eco-rodape {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 6px 14px 12px;
+  z-index: 1;
+}
+
+.eco-qr-canvas {
+  width: 90px !important;
+  height: 90px !important;
+  display: block;
+}
+
+.eco-frase {
+  font-size: 13px;
+  font-weight: 900;
+  color: #1b5e20;
+  text-align: right;
+  max-width: 55%;
+  line-height: 1.3;
+}
+
 /* ── Gôndola Zebra ── */
 .gondola-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  background: #e8e8e8;
-  padding: 12px;
-  border-radius: 8px;
-  min-height: 100px;
+  display: flex; flex-wrap: wrap; gap: 10px;
+  background: #e8e8e8; padding: 12px; border-radius: 8px; min-height: 100px;
 }
-
 .gondola-etiqueta {
-  background: white;
-  border: 1px solid #bbb;
-  border-left: 5px solid #1565C0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 5px 7px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.1);
-  overflow: hidden;
-  position: relative;
+  background: white; border: 1px solid #bbb; border-left: 5px solid #1565C0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 5px 7px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  overflow: hidden; position: relative;
 }
-
-.gon-nome {
-  font-weight: bold;
-  color: #1a1a1a;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-.gon-preco {
-  font-weight: 900;
-  color: #1565C0;
-  line-height: 1;
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
+.gon-nome { font-weight: bold; color: #1a1a1a; line-height: 1.2; word-break: break-word; }
+.gon-preco { font-weight: 900; color: #1565C0; line-height: 1; display: flex; align-items: baseline; gap: 2px; }
 .gon-preco-rs { font-size: 0.45em; font-weight: bold; padding-bottom: 2px; }
-.gon-preco-valor { }
-
-.gon-por-unidade {
-  font-size: 9px;
-  color: #555;
-}
-
-.gon-validade {
-  font-size: 8px;
-  color: #888;
-}
-
-.gon-barcode-area {
-  position: absolute;
-  right: 4px;
-  top: 4px;
-  bottom: 4px;
-  width: 60px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.gon-barcode-bars {
-  display: flex;
-  align-items: stretch;
-  height: 70%;
-}
-.gon-bar {
-  display: inline-block;
-  height: 100%;
-}
-.gon-barcode-num {
-  font-family: monospace;
-  font-size: 6px;
-  color: #333;
-  margin-top: 2px;
-  text-align: center;
-}
-
-.gon-plu {
-  font-size: 8px;
-  color: #666;
-  font-family: monospace;
-}
+.gon-por-unidade { font-size: 9px; color: #555; }
+.gon-validade { font-size: 8px; color: #888; }
+.gon-barcode-area { position: absolute; right: 4px; top: 4px; bottom: 4px; width: 60px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.gon-barcode-bars { display: flex; align-items: stretch; height: 70%; }
+.gon-bar { display: inline-block; height: 100%; }
+.gon-barcode-num { font-family: monospace; font-size: 6px; color: #333; margin-top: 2px; text-align: center; }
+.gon-plu { font-size: 8px; color: #666; font-family: monospace; }
 
 /* ── Pote 9×9cm ── */
 .etiqueta-pote {
-  width: 340px;
-  height: 340px;
-  display: flex;
-  flex-direction: column;
-  background: white;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
-  transition: box-shadow .2s;
+  width: 340px; height: 340px; display: flex; flex-direction: column;
+  background: white; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12); transition: box-shadow .2s;
 }
 .etiqueta-pote:hover { box-shadow: 0 4px 16px rgba(0,0,0,.2); }
-
-.pote-nome {
-  text-align: center;
-  font-weight: bold;
-  font-size: 15px;
-  padding: 10px 12px;
-  word-break: break-word;
-  line-height: 1.25;
-  color: white;
-}
-.pote-corpo {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-}
+.pote-nome { text-align: center; font-weight: bold; font-size: 15px;
+  padding: 10px 12px; word-break: break-word; line-height: 1.25; color: white; }
+.pote-corpo { flex: 1; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; gap: 8px; padding: 10px 12px; }
 .pote-descricao { font-size: 11px; color: #555; text-align: center; line-height: 1.4; }
 .pote-plu { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #666; }
 .pote-plu-valor { font-family: monospace; font-weight: bold; font-size: 13px; color: #333; }
@@ -705,28 +854,13 @@ function imprimir() {
 .pote-preco-valor { font-size: 32px; font-weight: bold; line-height: 1; }
 .pote-preco-label { font-size: 11px; color: #666; margin-top: 2px; }
 .pote-validade { font-size: 11px; color: #555; display: flex; align-items: center; }
-.pote-frase {
-  text-align: center;
-  font-style: italic;
-  font-weight: bold;
-  font-size: 12px;
-  padding: 8px 10px;
-  letter-spacing: 0.3px;
-  border-top: 1px solid;
-}
+.pote-frase { text-align: center; font-style: italic; font-weight: bold;
+  font-size: 12px; padding: 8px 10px; letter-spacing: 0.3px; border-top: 1px solid; }
 
 /* ── Templates padrão ── */
-.etiqueta {
-  border: 1px solid #ccc;
-  background: white;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-sizing: border-box;
-  overflow: hidden;
-  cursor: default;
-  transition: box-shadow .2s;
-}
+.etiqueta { border: 1px solid #ccc; background: white; display: flex;
+  flex-direction: column; justify-content: space-between;
+  box-sizing: border-box; overflow: hidden; cursor: default; transition: box-shadow .2s; }
 .etiqueta:hover { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .etq-preco { color: #1565C0; }
 .etq-de { text-decoration: line-through; font-size: .75em; color: #888; }

@@ -86,9 +86,9 @@ const atalhos = [
   { icon: 'mdi-package-variant-closed', label: 'Produtos',              to: '/estoque/produtos',       cor: 'primary' },
   { icon: 'mdi-swap-horizontal',        label: 'Movimentações',         to: '/estoque/movimentacoes',  cor: 'secondary' },
   { icon: 'mdi-list-status',           label: 'Posição de Estoque',    to: '/estoque/posicao',        cor: 'info' },
-  { icon: 'mdi-package-variant',       label: 'Lotes e Validades',     to: '/estoque/lotes',          cor: 'warning' },
   { icon: 'mdi-transfer',              label: 'Transferências',        to: '/estoque/transferencias', cor: 'success' },
   { icon: 'mdi-tune-vertical',         label: 'Ajuste em Lote',       to: '/estoque/ajuste',         cor: 'error' },
+  { icon: 'mdi-calendar-alert',         label: 'Controle de Validade',  to: '/estoque/validade',       cor: 'warning' },
   { icon: 'mdi-scale',                 label: 'Exportar para Balança', to: '/estoque/balanca',        cor: 'teal' },
   { icon: 'mdi-label-outline',         label: 'Editor de Etiquetas',   to: '/estoque/etiquetas',      cor: 'deep-purple' },
 ]

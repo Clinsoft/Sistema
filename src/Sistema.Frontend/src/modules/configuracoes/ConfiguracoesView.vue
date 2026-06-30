@@ -63,6 +63,13 @@
     <!-- Fiscal -->
     <div v-if="aba==='fiscal'" class="d-flex flex-column gap-4">
 
+      <!-- ── Aviso de ordem ── -->
+      <v-alert type="info" variant="tonal" density="compact" icon="mdi-information-outline">
+        <strong>Ordem recomendada:</strong>
+        1º Preencha a <strong>Configuração Geral</strong> (abaixo) e salve →
+        2º Instale o <strong>Certificado Digital A1</strong> (este card).
+      </v-alert>
+
       <!-- ── Certificado Digital ── -->
       <v-card rounded="xl" elevation="1">
         <div class="cfg-secao-header">
@@ -158,6 +165,15 @@
             </v-col>
             <v-col cols="12" sm="auto" class="d-flex gap-2">
               <v-btn
+                color="primary"
+                prepend-icon="mdi-certificate-outline"
+                :loading="salvandoCert"
+                :disabled="!certFile || !certSenha"
+                @click="salvarCertificado"
+              >
+                Instalar
+              </v-btn>
+              <v-btn
                 color="secondary" variant="tonal"
                 prepend-icon="mdi-shield-search"
                 :loading="validandoCert"
@@ -165,16 +181,6 @@
                 @click="validarCertificado"
               >
                 Validar
-              </v-btn>
-              <v-btn
-                color="primary"
-                prepend-icon="mdi-certificate-outline"
-                :loading="salvandoCert"
-                :disabled="!certFile || !certSenha || !certValidacao?.valido"
-                :title="!certValidacao?.valido ? 'Valide o certificado antes de instalar' : ''"
-                @click="salvarCertificado"
-              >
-                Instalar
               </v-btn>
             </v-col>
           </v-row>

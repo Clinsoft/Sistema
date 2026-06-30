@@ -21,7 +21,8 @@ public class ConsultarNFesRecebidasHandler(
             .Where(n => n.EmpresaId == cmd.EmpresaId)
             .MaxAsync(n => (string?)n.NSU, ct) ?? "0";
 
-        var resultado = await dfe.ConsultarAsync(empresa.Cnpj, empresa.Uf, ultimoNSU, ct);
+        var cnpjLimpo = new string(empresa.Cnpj.Where(char.IsLetterOrDigit).ToArray());
+        var resultado = await dfe.ConsultarAsync(cnpjLimpo, empresa.Uf, ultimoNSU, ct);
 
         if (!resultado.Sucesso)
             return new ResultadoConsulta(false, resultado.Erro, 0, 0);

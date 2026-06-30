@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Fiscal.Entities;
 using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
+using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers.Fiscal;
 
@@ -10,7 +12,7 @@ namespace Sistema.API.Controllers.Fiscal;
 [Route("api/fiscal/configuracao")]
 [Authorize(Roles = "Administrador,Contador")]
 public class ConfiguracaoFiscalController(
-    IConfiguracaoFiscalRepository repo, IUnitOfWork uow) : ControllerBase
+    IConfiguracaoFiscalRepository repo, IUnitOfWork uow, SistemaDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Obter([FromQuery] Guid empresaId, CancellationToken ct)
@@ -104,6 +106,92 @@ public class ConfiguracaoFiscalController(
         await uow.SalvarAsync(ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Aplica tributação padrão (ICMS/PIS/COFINS) a todos os produtos da empresa
+    /// conforme o regime tributário configurado. Não altera NCM/CEST.
+    /// </summary>
+    [HttpPost("{id:guid}/aplicar-tributacao-padrao")]
+    public async Task<IActionResult> AplicarTributacaoPadrao(
+        Guid id, [FromQuery] bool apenasSeVazio = false, CancellationToken ct = default)
+    {
+        var config = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Configuração não encontrada.");
+
+        var regime = config.Regime.ToString();
+
+        var produtos = await db.Produtos
+            .Where(p => p.EmpresaId == config.EmpresaId)
+            .ToListAsync(ct);
+
+        int atualizados = 0;
+        foreach (var produto in produtos)
+        {
+            // Se apenasSeVazio=true, só aplica em produtos sem tributação definida
+            if (apenasSeVazio &&
+                (produto.CstIcms != null || produto.CsosnIcms != null))
+                continue;
+
+            produto.AplicarTributacaoPadrao(regime);
+            atualizados++;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            regime,
+            totalProdutos = produtos.Count,
+            atualizados,
+            padrao = TributacaoPadrao(regime)
+        });
+    }
+
+    /// <summary>Retorna os valores de tributação padrão para um regime, sem alterar dados.</summary>
+    [HttpGet("{id:guid}/tributacao-padrao")]
+    public async Task<IActionResult> ObterTributacaoPadrao(Guid id, CancellationToken ct)
+    {
+        var config = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Configuração não encontrada.");
+
+        var regime = config.Regime.ToString();
+        var totalProdutos = await db.Produtos
+            .CountAsync(p => p.EmpresaId == config.EmpresaId, ct);
+        var semTributacao = await db.Produtos
+            .CountAsync(p => p.EmpresaId == config.EmpresaId &&
+                             p.CstIcms == null && p.CsosnIcms == null, ct);
+
+        return Ok(new
+        {
+            regime,
+            totalProdutos,
+            semTributacao,
+            padrao = TributacaoPadrao(regime)
+        });
+    }
+
+    private static object TributacaoPadrao(string regime) => regime switch
+    {
+        "SimplesNacional" => new
+        {
+            csosnIcms = "400", cstIcms = (string?)null, aliquotaIcms = 0m,
+            cstPisCofins = "07", aliquotaPis = 0m, aliquotaCofins = 0m, cfop = "5102",
+            descricao = "CSOSN 400 — Não tributado (SN). PIS/COFINS CST 07 — isento."
+        },
+        "LucroPresumido" => new
+        {
+            csosnIcms = (string?)null, cstIcms = "000", aliquotaIcms = 12m,
+            cstPisCofins = "01", aliquotaPis = 0.65m, aliquotaCofins = 3m, cfop = "5102",
+            descricao = "CST 000 — tributado integral. PIS 0,65% / COFINS 3% (regime cumulativo)."
+        },
+        "LucroReal" => new
+        {
+            csosnIcms = (string?)null, cstIcms = "000", aliquotaIcms = 12m,
+            cstPisCofins = "02", aliquotaPis = 1.65m, aliquotaCofins = 7.6m, cfop = "5102",
+            descricao = "CST 000 — tributado integral. PIS 1,65% / COFINS 7,6% (regime não cumulativo)."
+        },
+        _ => new { descricao = "Regime não reconhecido." }
+    };
 
     [HttpPost("{id:guid}/csc-nfce")]
     public async Task<IActionResult> ConfigurarCscNFCe(Guid id, [FromBody] CscRequest req, CancellationToken ct)

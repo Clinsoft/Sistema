@@ -455,8 +455,79 @@
                 hint="Ex: 5.102" persistent-hint placeholder="5102" />
             </v-col>
           </v-row>
+
+          <!-- Botão aplicar em massa -->
+          <v-divider class="my-4" />
+          <div class="d-flex align-center gap-3 flex-wrap">
+            <div class="flex-grow-1">
+              <div class="text-body-2 font-weight-medium">Aplicar tributação padrão em todos os produtos</div>
+              <div class="text-caption text-medium-emphasis">
+                Preenche ICMS, PIS e COFINS de todos os produtos com os valores acima.
+                NCM e CEST não são alterados.
+              </div>
+            </div>
+            <v-btn color="deep-purple" variant="tonal" rounded="lg"
+              prepend-icon="mdi-lightning-bolt" :loading="carregandoTrib"
+              @click="abrirDialogAplicarTrib">
+              Aplicar a todos os produtos
+            </v-btn>
+          </div>
         </div>
       </v-card>
+
+      <!-- Dialog confirmação tributação padrão -->
+      <v-dialog v-model="dialogTrib" max-width="520" persistent>
+        <v-card rounded="xl">
+          <v-card-title class="text-h6 pa-4 pb-2">
+            <v-icon icon="mdi-percent-box-outline" color="deep-purple" class="mr-2" />
+            Aplicar Tributação Padrão
+          </v-card-title>
+          <v-card-text>
+            <v-alert v-if="tribPreview" type="info" variant="tonal" density="compact" class="mb-4">
+              Serão atualizados
+              <strong>{{ tribPreview.semTributacao }} produto(s)</strong> sem tributação
+              (de {{ tribPreview.totalProdutos }} no total).
+            </v-alert>
+
+            <v-table density="compact" v-if="tribPreview">
+              <thead><tr>
+                <th>Campo</th><th>Valor</th>
+              </tr></thead>
+              <tbody>
+                <tr v-if="fiscal.regime === 'SimplesNacional'">
+                  <td>CSOSN</td><td><strong>{{ tribPreview.padrao?.csosnIcms }}</strong> — Não tributado (SN)</td>
+                </tr>
+                <tr v-else>
+                  <td>CST ICMS</td><td><strong>{{ tribPreview.padrao?.cstIcms }}</strong> — Tributado integral</td>
+                </tr>
+                <tr>
+                  <td>Alíquota ICMS</td><td><strong>{{ tribPreview.padrao?.aliquotaIcms }}%</strong></td>
+                </tr>
+                <tr>
+                  <td>CST PIS/COFINS</td><td><strong>{{ tribPreview.padrao?.cstPisCofins }}</strong></td>
+                </tr>
+                <tr>
+                  <td>Alíquota PIS</td><td><strong>{{ tribPreview.padrao?.aliquotaPis }}%</strong></td>
+                </tr>
+                <tr>
+                  <td>Alíquota COFINS</td><td><strong>{{ tribPreview.padrao?.aliquotaCofins }}%</strong></td>
+                </tr>
+                <tr><td>CFOP</td><td><strong>{{ tribPreview.padrao?.cfop }}</strong></td></tr>
+              </tbody>
+            </v-table>
+
+            <v-checkbox v-model="tribSobrazerosVazio" class="mt-3" density="compact" hide-details
+              label="Aplicar apenas em produtos sem tributação definida" />
+          </v-card-text>
+          <v-card-actions class="pa-4 pt-0">
+            <v-btn variant="text" @click="dialogTrib = false">Cancelar</v-btn>
+            <v-spacer />
+            <v-btn color="deep-purple" :loading="aplicandoTrib" @click="aplicarTributacao">
+              Confirmar e Aplicar
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <!-- ── NFS-e (Serviços) ── -->
       <v-card rounded="xl" elevation="1">
@@ -865,21 +936,41 @@ const pisCofinsDefaultsPorRegime: Record<string, { cst: string; pis: number; cof
 
 let carregandoFiscalDaApi = false
 
-// Só aplica defaults de PIS/COFINS se o usuário mudou o regime manualmente (não durante carga)
+const icmsDefaultsPorRegime: Record<string, { csosn?: string; cst?: string; aliq: number }> = {
+  SimplesNacional: { csosn: '400', cst: undefined, aliq: 0    },
+  LucroPresumido:  { csosn: undefined, cst: '000', aliq: 12   },
+  LucroReal:       { csosn: undefined, cst: '000', aliq: 12   },
+}
+
+// Preenche tributação padrão ao trocar regime (apenas se usuário não customizou)
 watch(() => fiscal.value.regime, (novoRegime) => {
   if (carregandoFiscalDaApi) return
+
+  // PIS/COFINS
   const d = pisCofinsDefaultsPorRegime[novoRegime]
-  if (!d) return
-  // Aplica somente se os valores ainda coincidem com o default de ALGUM regime
-  // (ou seja, o usuário não customizou manualmente)
-  const eraDefault = Object.values(pisCofinsDefaultsPorRegime).some(
-    pd => pd.cst === fiscal.value.cstPisPadrao && pd.pis === fiscal.value.aliquotaPisPadrao
-  )
-  if (eraDefault) {
-    fiscal.value.cstPisPadrao         = d.cst
-    fiscal.value.aliquotaPisPadrao    = d.pis
-    fiscal.value.cstCofinsPadrao      = d.cst
-    fiscal.value.aliquotaCofinsPadrao = d.cofins
+  if (d) {
+    const eraDefault = Object.values(pisCofinsDefaultsPorRegime).some(
+      pd => pd.cst === fiscal.value.cstPisPadrao && pd.pis === fiscal.value.aliquotaPisPadrao
+    )
+    if (eraDefault) {
+      fiscal.value.cstPisPadrao         = d.cst
+      fiscal.value.aliquotaPisPadrao    = d.pis
+      fiscal.value.cstCofinsPadrao      = d.cst
+      fiscal.value.aliquotaCofinsPadrao = d.cofins
+    }
+  }
+
+  // ICMS / CSOSN
+  const ic = icmsDefaultsPorRegime[novoRegime]
+  if (ic) {
+    const eraDefaultIcms = Object.values(icmsDefaultsPorRegime).some(
+      pd => pd.aliq === fiscal.value.aliquotaIcmsPadrao
+    )
+    if (eraDefaultIcms) {
+      fiscal.value.csosnPadrao        = ic.csosn ?? null
+      fiscal.value.cstIcmsPadrao      = ic.cst   ?? null
+      fiscal.value.aliquotaIcmsPadrao = ic.aliq
+    }
   }
 })
 
@@ -1151,6 +1242,41 @@ async function salvarFiscal() {
     else await api.post('/fiscal/configuracao', { ...fiscal.value, empresaId: auth.empresaId })
     notif.ok('Configuração fiscal salva!')
   } finally { salvando.value = false }
+}
+
+// ── Tributação padrão em massa ───────────────────────────────────
+const dialogTrib     = ref(false)
+const carregandoTrib = ref(false)
+const aplicandoTrib  = ref(false)
+const tribPreview    = ref<any>(null)
+const tribSobrazerosVazio = ref(true)
+
+async function abrirDialogAplicarTrib() {
+  if (!fiscal.value.id) {
+    notif.aviso('Salve a configuração fiscal antes de aplicar tributação.')
+    return
+  }
+  carregandoTrib.value = true
+  try {
+    const r = await api.get(`/fiscal/configuracao/${fiscal.value.id}/tributacao-padrao`)
+    tribPreview.value = r.data
+    dialogTrib.value  = true
+  } catch { notif.erro('Erro ao carregar prévia.') }
+  finally { carregandoTrib.value = false }
+}
+
+async function aplicarTributacao() {
+  aplicandoTrib.value = true
+  try {
+    const r = await api.post(
+      `/fiscal/configuracao/${fiscal.value.id}/aplicar-tributacao-padrao`,
+      null,
+      { params: { apenasSeVazio: tribSobrazerosVazio.value } }
+    )
+    notif.ok(`Tributação aplicada em ${r.data.atualizados} produto(s).`)
+    dialogTrib.value = false
+  } catch { notif.erro('Erro ao aplicar tributação.') }
+  finally { aplicandoTrib.value = false }
 }
 
 watch(aba, async (v) => {

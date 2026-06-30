@@ -196,6 +196,46 @@ public class Produto : Entity
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;
     }
 
+    /// <summary>
+    /// Aplica tributação padrão conforme regime tributário da empresa.
+    /// Não sobrescreve campos que já foram definidos individualmente (NCM, CEST).
+    /// </summary>
+    public void AplicarTributacaoPadrao(string regime)
+    {
+        switch (regime)
+        {
+            case "SimplesNacional":
+                CsosnIcms      = "400";
+                CstIcms        = null;
+                AliquotaIcms   = 0m;
+                CstPisCofins   = "07";
+                AliquotaPis    = 0m;
+                AliquotaCofins = 0m;
+                Cfop           ??= "5102";
+                break;
+
+            case "LucroPresumido":
+                CstIcms        = "000";
+                CsosnIcms      = null;
+                AliquotaIcms   = 12m;   // interestadual; ajustar por UF se necessário
+                CstPisCofins   = "01";  // cumulativo
+                AliquotaPis    = 0.65m;
+                AliquotaCofins = 3m;
+                Cfop           ??= "5102";
+                break;
+
+            case "LucroReal":
+                CstIcms        = "000";
+                CsosnIcms      = null;
+                AliquotaIcms   = 12m;
+                CstPisCofins   = "02";  // não cumulativo
+                AliquotaPis    = 1.65m;
+                AliquotaCofins = 7.6m;
+                Cfop           ??= "5102";
+                break;
+        }
+    }
+
     public void AjustarEstoque(decimal quantidade) => EstoqueAtual += quantidade;
     public void DefinirEstoqueMinimo(decimal minimo) => EstoqueMinimo = minimo;
     public bool EstoqueAbaixoDoMinimo() => EstoqueAtual <= EstoqueMinimo;

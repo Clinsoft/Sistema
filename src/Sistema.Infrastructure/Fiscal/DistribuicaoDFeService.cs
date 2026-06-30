@@ -33,7 +33,10 @@ public class DistribuicaoDFeService(
             var url         = config.Ambiente == AmbienteFiscal.Producao ? UrlProducao : UrlHomologacao;
             var ambienteInt = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
             var cUF         = UfParaCodigo(uf);
-            var nsuFmt      = ultimoNSU.PadLeft(15, '0');
+            // SEFAZ retorna null reference com ultNSU=0 na primeira chamada;
+            // usar NSU=1 na inicialização evita o bug do serviço nfeDistDFeInteresse
+            var nsuBase = ultimoNSU == "0" || ultimoNSU == "" ? "1" : ultimoNSU;
+            var nsuFmt  = nsuBase.PadLeft(15, '0');
 
             // cUFAutor=91 para o serviço nacional de distribuição DFe
             var distXml = $"<distDFeInt versao=\"1.01\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><tpAmb>{ambienteInt}</tpAmb><cUFAutor>91</cUFAutor><CNPJ>{cnpj}</CNPJ><distNSU><ultNSU>{nsuFmt}</ultNSU></distNSU></distDFeInt>";
@@ -148,22 +151,26 @@ public class DistribuicaoDFeService(
 
     private static ResultadoConsultaDFe ParsearResposta(string xml, string ultimoNSU)
     {
+        // Null reference no SEFAZ = CNPJ sem registro NSU (primeiro acesso) → tratar como vazio
+        if (xml.Contains("Object reference not set to an instance of an object"))
+            return new ResultadoConsultaDFe(true, null, ultimoNSU, []);
+
         var doc = new XmlDocument();
         doc.LoadXml(xml);
         var ns = new XmlNamespaceManager(doc.NameTable);
         ns.AddNamespace("nfe", "http://www.portalfiscal.inf.br/nfe");
-        ns.AddNamespace("soap", "http://schemas.xmlsoap.org/soap/envelope/");
+        ns.AddNamespace("soap12", "http://www.w3.org/2003/05/soap-envelope");
+        ns.AddNamespace("soap11", "http://schemas.xmlsoap.org/soap/envelope/");
 
-        // Verifica Fault
-        var fault = doc.SelectSingleNode("//soap:Fault", ns) ?? doc.SelectSingleNode("//Fault");
+        // Verifica Fault (SOAP 1.1 e 1.2)
+        var fault = doc.SelectSingleNode("//soap12:Fault", ns)
+                 ?? doc.SelectSingleNode("//soap11:Fault", ns)
+                 ?? doc.SelectSingleNode("//*[local-name()='Fault']");
         if (fault != null)
         {
-            var msg = fault.SelectSingleNode("faultstring")?.InnerText
-                   ?? fault.SelectSingleNode(".//Text")?.InnerText
+            var msg = fault.SelectSingleNode("*[local-name()='Text']")?.InnerText
+                   ?? fault.SelectSingleNode("faultstring")?.InnerText
                    ?? "Erro SEFAZ";
-            // Null reference = empresa sem registro NSU (primeiro acesso ao serviço)
-            if (msg.Contains("Object reference"))
-                return new ResultadoConsultaDFe(true, null, ultimoNSU, []);
             return Falha(msg, ultimoNSU);
         }
 

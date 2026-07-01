@@ -97,13 +97,12 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
         // Tenta a primeira consulta ao SEFAZ
         var resultado = await mediator.Send(new ConsultarNFesRecebidasCommand(empresaId), ct);
 
-        // Null reference ou sucesso com 0 docs = empresa habilitada aguardando NF-e
         return Ok(new
         {
             habilitado = true,
-            mensagem = resultado.Sucesso
-                ? $"Monitoramento habilitado! {resultado.NovasNotas} NF-e(s) importada(s)."
-                : "Monitoramento habilitado. As NF-e dos seus fornecedores serão sincronizadas automaticamente.",
+            mensagem = resultado.Sucesso && resultado.NovasNotas > 0
+                ? $"Monitoramento ativo! {resultado.NovasNotas} NF-e(s) importada(s)."
+                : "Monitoramento ativo. As NF-e emitidas pelos seus fornecedores aparecerão aqui automaticamente quando chegarem na SEFAZ.",
             novasNFes = resultado.Sucesso ? resultado.NovasNotas : 0,
         });
     }

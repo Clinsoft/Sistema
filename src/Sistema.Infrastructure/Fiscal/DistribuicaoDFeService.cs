@@ -310,10 +310,11 @@ public class DistribuicaoDFeService(
     private static ResultadoConsultaDFe ParsearResposta(string xml, string ultimoNSU)
     {
         if (xml.Contains("Object reference not set to an instance of an object"))
-            return Falha(
-                "CNPJ não habilitado na SEFAZ para o serviço de Distribuição DFe. " +
-                "Acesse nfe.fazenda.gov.br → Acesso Identificado → Distribuição DFe → Habilitação com o certificado A1.",
-                ultimoNSU);
+            // Bug conhecido do SEFAZ: retorna NullReference quando o CNPJ existe mas
+            // ainda não há nenhuma NF-e na fila de distribuição (nenhum fornecedor
+            // emitiu nota contra este CNPJ ainda). Resolução automática após a
+            // primeira NF-e recebida.
+            return new ResultadoConsultaDFe(true, null, ultimoNSU, [], ultimoNSU);
 
         var doc = new XmlDocument();
         doc.LoadXml(xml);

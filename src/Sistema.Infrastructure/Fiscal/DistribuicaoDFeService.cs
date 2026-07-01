@@ -216,6 +216,7 @@ public class DistribuicaoDFeService(
             SslOptions = new System.Net.Security.SslClientAuthenticationOptions
             {
                 ClientCertificates = new X509CertificateCollection { cert },
+                LocalCertificateSelectionCallback = (_, _, _, _, _) => cert,
                 RemoteCertificateValidationCallback = (_, _, _, _) => true,
                 EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
                     | System.Security.Authentication.SslProtocols.Tls13,
@@ -280,6 +281,7 @@ public class DistribuicaoDFeService(
             SslOptions = new System.Net.Security.SslClientAuthenticationOptions
             {
                 ClientCertificates = new X509CertificateCollection { cert },
+                LocalCertificateSelectionCallback = (_, _, _, _, _) => cert,
                 RemoteCertificateValidationCallback = (_, _, _, _) => true,
                 EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
                     | System.Security.Authentication.SslProtocols.Tls13,
@@ -298,11 +300,7 @@ public class DistribuicaoDFeService(
         var body     = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
-        {
-            if (body.Contains("Object reference not set to an instance of an object"))
-                return body;
             throw new HttpRequestException($"SEFAZ {(int)response.StatusCode}: {body[..Math.Min(800, body.Length)]}");
-        }
 
         return body;
     }
@@ -312,7 +310,10 @@ public class DistribuicaoDFeService(
     private static ResultadoConsultaDFe ParsearResposta(string xml, string ultimoNSU)
     {
         if (xml.Contains("Object reference not set to an instance of an object"))
-            return new ResultadoConsultaDFe(true, null, ultimoNSU, []);
+            return Falha(
+                "CNPJ não habilitado na SEFAZ para o serviço de Distribuição DFe. " +
+                "Acesse nfe.fazenda.gov.br → Acesso Identificado → Distribuição DFe → Habilitação com o certificado A1.",
+                ultimoNSU);
 
         var doc = new XmlDocument();
         doc.LoadXml(xml);

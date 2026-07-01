@@ -64,8 +64,9 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> ImportarXml(
         [FromQuery] Guid empresaId,
         [FromQuery] Guid localEstoqueId,
-        IFormFile? arquivo,
-        CancellationToken ct)
+        [FromQuery] decimal freteManual = 0,
+        IFormFile? arquivo = null,
+        CancellationToken ct = default)
     {
         // Lê o XML — aceita upload de arquivo ou body raw
         string xml;
@@ -139,6 +140,9 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         // Adicionar itens parseados
         foreach (var itemParsed in parsed.Itens)
             entrada.AdicionarItem(itemParsed);
+
+        if (freteManual > 0)
+            entrada.DefinirFreteManual(freteManual);
 
         db.EntradasNFe.Add(entrada);
         await db.SaveChangesAsync(ct);

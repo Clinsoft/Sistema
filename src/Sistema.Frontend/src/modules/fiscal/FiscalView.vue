@@ -733,6 +733,12 @@
             :items="locaisEstoque" item-title="nome" item-value="id"
             variant="outlined" density="compact" class="mt-3"
             :rules="[r => !!r || 'Selecione o local de estoque']" />
+
+          <v-text-field v-model.number="freteManualImportacao" label="Frete adicional (R$)"
+            variant="outlined" density="compact" class="mt-3" type="number" min="0" step="0.01"
+            prefix="R$"
+            hint="Frete não incluso no XML — será rateado proporcionalmente entre os itens no custo"
+            persistent-hint />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -1182,6 +1188,7 @@ const dlgImportarXml = ref(false)
 const entradas = ref<any[]>([])
 const xmlFile = ref<File | null>(null)
 const localImportacaoId = ref<string | null>(null)
+const freteManualImportacao = ref(0)
 
 const filtrosEnt = ref({
   dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
@@ -1227,7 +1234,7 @@ async function importarXml() {
     const form = new FormData()
     form.append('arquivo', xmlFile.value)
     const r = await api.post('/fiscal/entradas/importar-xml', form, {
-      params: { empresaId: auth.empresaId, localEstoqueId: localImportacaoId.value },
+      params: { empresaId: auth.empresaId, localEstoqueId: localImportacaoId.value, freteManual: freteManualImportacao.value || 0 },
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     const res = r.data
@@ -1240,6 +1247,7 @@ async function importarXml() {
       sessionStorage.setItem(`entrada_duplicatas_${res.id}`, JSON.stringify(res.duplicatas))
     dlgImportarXml.value = false
     xmlFile.value = null
+    freteManualImportacao.value = 0
     localImportacaoId.value = locaisEstoque.value[0]?.id ?? null
     router.push(`/fiscal/entradas/${res.id}`)
   } catch (e: any) {

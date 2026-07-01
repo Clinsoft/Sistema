@@ -300,7 +300,13 @@ public class DistribuicaoDFeService(
         var body     = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
+        {
+            // HTTP 500 "Object reference" = CNPJ sem NF-es na fila (bug SEFAZ).
+            // Retorna o body para ParsearResposta tratar como "sem documentos".
+            if (body.Contains("Object reference not set to an instance of an object"))
+                return body;
             throw new HttpRequestException($"SEFAZ {(int)response.StatusCode}: {body[..Math.Min(800, body.Length)]}");
+        }
 
         return body;
     }

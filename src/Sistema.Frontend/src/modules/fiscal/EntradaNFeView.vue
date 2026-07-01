@@ -535,7 +535,7 @@ async function carregar() {
 async function carregarAuxiliares() {
   const [forn, locais, pedidos, prods] = await Promise.all([
     api.get('/fornecedores', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
-    api.get('/estoque/locais', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/compras/pedidos', { params: { empresaId: auth.empresaId, status: 'Enviado' } }).catch(() => ({ data: [] })),
     api.get('/estoque/produtos', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
   ])

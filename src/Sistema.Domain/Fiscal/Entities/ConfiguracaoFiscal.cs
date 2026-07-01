@@ -20,6 +20,9 @@ public class ConfiguracaoFiscal : Entity
     public string? CertificadoPfxBase64 { get; set; }
     public string? CertificadoSenha { get; set; }
 
+    // Controle de paginação DFe — salvo após cada consulta bem-sucedida ao SEFAZ
+    public string UltimoNsuDFe { get; private set; } = "0";
+
     private ConfiguracaoFiscal() { }
 
     public static ConfiguracaoFiscal Criar(Guid empresaId, RegimeTributario regime,
@@ -43,6 +46,18 @@ public class ConfiguracaoFiscal : Entity
     public void AtualizarRegime(RegimeTributario regime) => Regime = regime;
     public void IrParaProducao() => Ambiente = AmbienteFiscal.Producao;
     public void IrParaHomologacao() => Ambiente = AmbienteFiscal.Homologacao;
+
+    /// <summary>
+    /// Salva o último NSU retornado pelo SEFAZ. Garante progressão numérica correta
+    /// (compara como long, não como string, para evitar "9" > "10").
+    /// </summary>
+    public void AvancarNsuDFe(string nsuSefaz)
+    {
+        if (long.TryParse(nsuSefaz, out var novo) &&
+            long.TryParse(UltimoNsuDFe, out var atual) &&
+            novo > atual)
+            UltimoNsuDFe = nsuSefaz;
+    }
 }
 
 public enum RegimeTributario { SimplesNacional = 1, LucroPresumido = 2, LucroReal = 3 }

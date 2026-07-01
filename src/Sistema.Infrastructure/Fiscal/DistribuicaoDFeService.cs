@@ -336,6 +336,7 @@ public class DistribuicaoDFeService(
         var cStat  = doc.SelectSingleNode("//nfe:cStat", ns)?.InnerText ?? "";
         var xMot   = doc.SelectSingleNode("//nfe:xMotivo", ns)?.InnerText ?? "";
         var ultNSU = doc.SelectSingleNode("//nfe:ultNSU", ns)?.InnerText ?? ultimoNSU;
+        var maxNSU = doc.SelectSingleNode("//nfe:maxNSU", ns)?.InnerText ?? ultNSU;
 
         if (cStat != "137" && cStat != "138")
             return Falha($"SEFAZ {cStat}: {xMot}", ultimoNSU);
@@ -358,8 +359,8 @@ public class DistribuicaoDFeService(
             }
         }
 
-        var nsuFinal = ultNSU.TrimStart('0') is "" ? "0" : ultNSU.TrimStart('0');
-        return new ResultadoConsultaDFe(true, null, nsuFinal, docs);
+        static string TrimNsu(string s) => s.TrimStart('0') is "" ? "0" : s.TrimStart('0');
+        return new ResultadoConsultaDFe(true, null, TrimNsu(ultNSU), docs, TrimNsu(maxNSU));
     }
 
     private static DFeDocumento? ParsearDocumento(string xmlNota, string nsu)
@@ -454,7 +455,7 @@ public class DistribuicaoDFeService(
     }
 
     private static ResultadoConsultaDFe Falha(string erro, string ultimoNSU) =>
-        new(false, erro, ultimoNSU, []);
+        new(false, erro, ultimoNSU, [], ultimoNSU);
 
     private static int UfParaCodigo(string uf) => uf.ToUpper() switch
     {

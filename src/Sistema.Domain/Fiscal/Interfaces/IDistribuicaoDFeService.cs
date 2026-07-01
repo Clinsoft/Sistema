@@ -33,7 +33,12 @@ public record ResultadoConsultaDFe(
     bool Sucesso,
     string? Erro,
     string UltimoNSU,
-    IReadOnlyList<DFeDocumento> Documentos);
+    IReadOnlyList<DFeDocumento> Documentos,
+    string MaxNSU = "0")
+{
+    /// <summary>true se SEFAZ ainda tem mais docs para buscar (cStat=138).</summary>
+    public bool TemMais => Documentos.Count > 0;
+};
 
 public record DFeDocumento(
     string ChaveAcesso,

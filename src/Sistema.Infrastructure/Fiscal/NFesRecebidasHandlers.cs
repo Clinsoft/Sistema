@@ -17,37 +17,68 @@ public class ConsultarNFesRecebidasHandler(
             .FirstOrDefaultAsync(e => e.Id == cmd.EmpresaId, ct)
             ?? throw new KeyNotFoundException("Empresa não encontrada.");
 
-        var ultimoNSU = await db.NotasFiscaisRecebidas
-            .Where(n => n.EmpresaId == cmd.EmpresaId)
-            .MaxAsync(n => (string?)n.NSU, ct) ?? "0";
+        // Carrega config com tracking para poder salvar o NSU depois
+        var config = await db.ConfiguracoesFiscais
+            .FirstOrDefaultAsync(c => c.EmpresaId == cmd.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Configuração fiscal não encontrada.");
 
         var cnpjLimpo = new string(empresa.Cnpj.Where(char.IsLetterOrDigit).ToArray());
-        var resultado = await dfe.ConsultarAsync(cnpjLimpo, empresa.Uf, ultimoNSU, ct);
+        var totalNovas = 0;
 
-        if (!resultado.Sucesso)
-            return new ResultadoConsulta(false, resultado.Erro, 0, 0);
-
-        var chavesExistentes = await db.NotasFiscaisRecebidas
-            .Where(n => n.EmpresaId == cmd.EmpresaId)
-            .Select(n => n.ChaveAcesso)
-            .ToListAsync(ct);
-
-        var novas = resultado.Documentos
-            .Where(d => !chavesExistentes.Contains(d.ChaveAcesso))
-            .Select(d => NotaFiscalRecebida.Criar(
-                cmd.EmpresaId, d.ChaveAcesso, d.NSU, d.Modelo, d.Serie, d.Numero,
-                d.DataEmissao, d.EmitenteCnpj, d.EmitenteNome, d.EmitenteUF,
-                d.ValorTotal, d.Situacao))
-            .ToList();
-
-        if (novas.Count > 0)
+        // Loop de varredura: repete enquanto SEFAZ retorna documentos (cStat=138).
+        // Para quando cStat=137 (sem mais docs) ou em erro.
+        var nsuAtual = config.UltimoNsuDFe;
+        const int maxIteracoes = 50; // proteção contra loop infinito
+        for (int iter = 0; iter < maxIteracoes; iter++)
         {
-            db.NotasFiscaisRecebidas.AddRange(novas);
-            await db.SaveChangesAsync(ct);
+            var resultado = await dfe.ConsultarAsync(cnpjLimpo, empresa.Uf, nsuAtual, ct);
+
+            if (!resultado.Sucesso)
+            {
+                if (iter == 0)
+                    return new ResultadoConsulta(false, resultado.Erro, 0, 0);
+                break; // já processou alguma coisa, para sem propagar erro
+            }
+
+            // Salva NSU avançado imediatamente (mesmo se não há docs novas)
+            config.AvancarNsuDFe(resultado.UltimoNSU);
+
+            if (resultado.Documentos.Count > 0)
+            {
+                var chavesExistentes = await db.NotasFiscaisRecebidas
+                    .Where(n => n.EmpresaId == cmd.EmpresaId &&
+                                resultado.Documentos.Select(d => d.ChaveAcesso).Contains(n.ChaveAcesso))
+                    .Select(n => n.ChaveAcesso)
+                    .ToListAsync(ct);
+
+                var novas = resultado.Documentos
+                    .Where(d => !chavesExistentes.Contains(d.ChaveAcesso))
+                    .Select(d => NotaFiscalRecebida.Criar(
+                        cmd.EmpresaId, d.ChaveAcesso, d.NSU, d.Modelo, d.Serie, d.Numero,
+                        d.DataEmissao, d.EmitenteCnpj, d.EmitenteNome, d.EmitenteUF,
+                        d.ValorTotal, d.Situacao))
+                    .ToList();
+
+                if (novas.Count > 0)
+                    db.NotasFiscaisRecebidas.AddRange(novas);
+
+                totalNovas += novas.Count;
+                await db.SaveChangesAsync(ct); // salva docs e NSU juntos
+            }
+            else
+            {
+                await db.SaveChangesAsync(ct); // salva só o NSU atualizado
+            }
+
+            // Para quando não há mais docs (cStat=137: TemMais=false)
+            if (!resultado.TemMais)
+                break;
+
+            nsuAtual = resultado.UltimoNSU;
         }
 
         var total = await db.NotasFiscaisRecebidas.CountAsync(n => n.EmpresaId == cmd.EmpresaId, ct);
-        return new ResultadoConsulta(true, null, novas.Count, total);
+        return new ResultadoConsulta(true, null, totalNovas, total);
     }
 }
 

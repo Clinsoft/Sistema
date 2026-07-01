@@ -1084,7 +1084,7 @@ const locaisEstoque = ref<any[]>([])
 
 async function carregarLocaisEstoque() {
   try {
-    const r = await api.get('/estoque/locais', { params: { empresaId: auth.empresaId } })
+    const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
     locaisEstoque.value = r.data
   } catch {}
 }

@@ -125,8 +125,19 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
         [FromBody] ManifestarRequest req,
         CancellationToken ct)
     {
-        await mediator.Send(new ManifestarNFeCommand(empresaId, id, req.Tipo, req.Justificativa), ct);
-        return Ok(new { mensagem = "Manifestação registrada." });
+        // O frontend envia o tipo como string (ex.: "CienciaOperacao"). A API não tem
+        // conversor global de enum, então convertemos manualmente aqui.
+        if (!Enum.TryParse<ManifestacaoTipo>(req.Tipo, ignoreCase: true, out var tipo))
+            return BadRequest(new { mensagem = $"Tipo de manifestação inválido: '{req.Tipo}'." });
+
+        var sucesso = await mediator.Send(new ManifestarNFeCommand(empresaId, id, tipo, req.Justificativa), ct);
+        return Ok(new
+        {
+            sucesso,
+            mensagem = sucesso
+                ? "Manifestação registrada e aceita pela SEFAZ."
+                : "Manifestação registrada localmente, mas a SEFAZ não confirmou o evento. Verifique o certificado e tente novamente."
+        });
     }
 
     [HttpGet("resumo")]
@@ -149,4 +160,4 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
     }
 }
 
-public record ManifestarRequest(ManifestacaoTipo Tipo, string? Justificativa);
+public record ManifestarRequest(string Tipo, string? Justificativa);

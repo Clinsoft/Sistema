@@ -45,13 +45,20 @@ public class ConsultarNFesRecebidasHandler(
 
             if (resultado.Documentos.Count > 0)
             {
+                // Deduplica dentro do próprio lote (mesma chave pode vir como resNFe e
+                // em outro documento no mesmo lote), ficando com o maior NSU de cada chave.
+                var documentosUnicos = resultado.Documentos
+                    .GroupBy(d => d.ChaveAcesso)
+                    .Select(g => g.OrderByDescending(d => d.NSU).First())
+                    .ToList();
+
                 var chavesExistentes = await db.NotasFiscaisRecebidas
                     .Where(n => n.EmpresaId == cmd.EmpresaId &&
-                                resultado.Documentos.Select(d => d.ChaveAcesso).Contains(n.ChaveAcesso))
+                                documentosUnicos.Select(d => d.ChaveAcesso).Contains(n.ChaveAcesso))
                     .Select(n => n.ChaveAcesso)
                     .ToListAsync(ct);
 
-                var novas = resultado.Documentos
+                var novas = documentosUnicos
                     .Where(d => !chavesExistentes.Contains(d.ChaveAcesso))
                     .Select(d => NotaFiscalRecebida.Criar(
                         cmd.EmpresaId, d.ChaveAcesso, d.NSU, d.Modelo, d.Serie, d.Numero,

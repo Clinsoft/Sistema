@@ -36,8 +36,14 @@ public record ResultadoConsultaDFe(
     IReadOnlyList<DFeDocumento> Documentos,
     string MaxNSU = "0")
 {
-    /// <summary>true se SEFAZ ainda tem mais docs para buscar (cStat=138).</summary>
-    public bool TemMais => Documentos.Count > 0;
+    /// <summary>
+    /// true enquanto o último NSU processado for menor que o maior NSU disponível
+    /// (ultNSU &lt; maxNSU) — protocolo oficial de paginação da Distribuição DFe.
+    /// Não depende de os documentos do lote terem sido parseados com sucesso.
+    /// </summary>
+    public bool TemMais =>
+        long.TryParse(UltimoNSU, out var u) &&
+        long.TryParse(MaxNSU, out var m) && m > u;
 };
 
 public record DFeDocumento(

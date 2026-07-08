@@ -22,9 +22,10 @@ public class DistribuicaoDFeService(
     private const string UrlHomologacao = "https://hom1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx";
     private const string SoapAction     = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse";
 
-    // NFeRecepcaoEvento4 — webservice de manifestação do destinatário
-    private const string EventoUrlProducao    = "https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
-    private const string EventoUrlHomologacao = "https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
+    // NFeRecepcaoEvento4 — manifestação do destinatário: processada pelo
+    // Ambiente Nacional (AN), não pela SEFAZ estadual. cOrgao do evento = 91.
+    private const string EventoUrlProducao    = "https://www1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx";
+    private const string EventoUrlHomologacao = "https://hom1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx";
     private const string EventoSoapAction     = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento";
 
     public async Task<ResultadoConsultaDFe> ConsultarAsync(
@@ -71,12 +72,13 @@ public class DistribuicaoDFeService(
             var ambienteInt = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
 
             var tpEvento   = (int)tipo;
+            // descEvento é uma enumeração fixa do schema — sem acentos e com grafia exata.
             var descEvento = tipo switch
             {
-                ManifestacaoTipo.CienciaOperacao        => "Ciência da Operação",
-                ManifestacaoTipo.ConfirmacaoOperacao     => "Confirmação da Operação",
-                ManifestacaoTipo.DesconhecimentoOperacao => "Desconhecimento da Operação",
-                ManifestacaoTipo.OperacaoNaoRealizada    => "Operação Não Realizada",
+                ManifestacaoTipo.CienciaOperacao        => "Ciencia da Operacao",
+                ManifestacaoTipo.ConfirmacaoOperacao     => "Confirmacao da Operacao",
+                ManifestacaoTipo.DesconhecimentoOperacao => "Desconhecimento da Operacao",
+                ManifestacaoTipo.OperacaoNaoRealizada    => "Operacao nao Realizada",
                 _ => throw new ArgumentOutOfRangeException(nameof(tipo))
             };
 
@@ -185,9 +187,13 @@ public class DistribuicaoDFeService(
         signed.KeyInfo = keyInfo;
 
         signed.ComputeSignature();
-        infNode.AppendChild(doc.ImportNode(signed.GetXml(), true));
 
-        return infNode.OuterXml;
+        // A <Signature> deve ser IRMÃ de <infEvento> (ambas filhas de <evento>),
+        // não filha de infEvento. Anexa ao elemento raiz <evento> e retorna o
+        // conteúdo interno (infEvento + Signature) para o wrapper montar o <evento>.
+        _ = infNode;
+        doc.DocumentElement!.AppendChild(doc.ImportNode(signed.GetXml(), true));
+        return doc.DocumentElement.InnerXml;
     }
 
     // ── Envio SOAP — NFeRecepcaoEvento4 ───────────────────────────────────
@@ -259,19 +265,19 @@ public class DistribuicaoDFeService(
     private static async Task<string> EnviarAsync(
         string url, string corpoXml, X509Certificate2 cert, CancellationToken ct)
     {
+        // NFeDistribuicaoDFe exige o elemento de operação nfeDistDFeInteresse
+        // envolvendo o nfeDadosMsg. Sem esse wrapper, o ASMX não consegue vincular
+        // o parâmetro e retorna HTTP 500 "Object reference not set to an instance of an object".
+        // Este serviço (1.01) NÃO usa o cabeçalho nfeCabecMsg.
         var envelope = $"""
             <?xml version="1.0" encoding="utf-8"?>
             <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
-              <soap12:Header>
-                <nfeCabecMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
-                  <cUF>91</cUF>
-                  <versaoDados>1.01</versaoDados>
-                </nfeCabecMsg>
-              </soap12:Header>
               <soap12:Body>
-                <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
-                  {corpoXml}
-                </nfeDadosMsg>
+                <nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
+                  <nfeDadosMsg>
+                    {corpoXml}
+                  </nfeDadosMsg>
+                </nfeDistDFeInteresse>
               </soap12:Body>
             </soap12:Envelope>
             """;
@@ -301,10 +307,10 @@ public class DistribuicaoDFeService(
 
         if (!response.IsSuccessStatusCode)
         {
-            // HTTP 500 "Object reference" = CNPJ sem NF-es na fila (bug SEFAZ).
-            // Retorna o body para ParsearResposta tratar como "sem documentos".
             if (body.Contains("Object reference not set to an instance of an object"))
-                return body;
+                throw new HttpRequestException(
+                    "SEFAZ retornou erro genérico (Object reference). Requisição inválida ou " +
+                    "CNPJ não habilitado para Distribuição DFe. Verifique o certificado e o credenciamento do CNPJ.");
             throw new HttpRequestException($"SEFAZ {(int)response.StatusCode}: {body[..Math.Min(800, body.Length)]}");
         }
 
@@ -315,13 +321,6 @@ public class DistribuicaoDFeService(
 
     private static ResultadoConsultaDFe ParsearResposta(string xml, string ultimoNSU)
     {
-        if (xml.Contains("Object reference not set to an instance of an object"))
-            // Bug conhecido do SEFAZ: retorna NullReference quando o CNPJ existe mas
-            // ainda não há nenhuma NF-e na fila de distribuição (nenhum fornecedor
-            // emitiu nota contra este CNPJ ainda). Resolução automática após a
-            // primeira NF-e recebida.
-            return new ResultadoConsultaDFe(true, null, ultimoNSU, [], ultimoNSU);
-
         var doc = new XmlDocument();
         doc.LoadXml(xml);
         var ns = new XmlNamespaceManager(doc.NameTable);
@@ -379,31 +378,73 @@ public class DistribuicaoDFeService(
             var ns = new XmlNamespaceManager(doc.NameTable);
             ns.AddNamespace("n", "http://www.portalfiscal.inf.br/nfe");
 
-            var ide    = doc.SelectSingleNode("//n:ide", ns);
-            var emit   = doc.SelectSingleNode("//n:emit", ns);
-            var tot    = doc.SelectSingleNode("//n:ICMSTot", ns);
-            var infNFe = doc.SelectSingleNode("//n:infNFe", ns);
+            // Resumo da NF-e (resNFe) — retornado ANTES da manifestação do destinatário.
+            var res = doc.SelectSingleNode("//n:resNFe", ns);
+            if (res != null) return ParsearResumo(res, ns, nsu);
 
-            if (ide is null) return null;
+            // NF-e completa (procNFe / nfeProc) — disponível após manifestar.
+            var ide = doc.SelectSingleNode("//n:ide", ns);
+            if (ide != null) return ParsearNFeCompleta(doc, ide, ns, nsu);
 
-            var chave     = infNFe?.Attributes?["Id"]?.Value?.Replace("NFe", "") ?? "";
-            var modelo    = ide.SelectSingleNode("n:mod", ns)?.InnerText ?? "55";
-            var serie     = ide.SelectSingleNode("n:serie", ns)?.InnerText ?? "1";
-            var numero    = long.TryParse(ide.SelectSingleNode("n:nNF", ns)?.InnerText, out var n) ? n : 0;
-            var dtStr     = ide.SelectSingleNode("n:dhEmi", ns)?.InnerText ?? ide.SelectSingleNode("n:dEmi", ns)?.InnerText;
-            var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
-            var emitCnpj  = emit?.SelectSingleNode("n:CNPJ", ns)?.InnerText ?? "";
-            var emitNome  = emit?.SelectSingleNode("n:xNome", ns)?.InnerText ?? "";
-            var emitUF    = emit?.SelectSingleNode("n:enderEmit/n:UF", ns)?.InnerText;
-            var valor     = decimal.TryParse(
-                tot?.SelectSingleNode("n:vNF", ns)?.InnerText,
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
-
-            return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
-                emitCnpj, emitNome, emitUF, valor, SituacaoNFeRecebida.Autorizada);
+            // Eventos (procEventoNFe / resEvento) e outros documentos → ignora.
+            return null;
         }
         catch { return null; }
+    }
+
+    /// <summary>Parseia um resumo resNFe. Modelo/série/número são derivados da chave de acesso.</summary>
+    private static DFeDocumento? ParsearResumo(XmlNode res, XmlNamespaceManager ns, string nsu)
+    {
+        var chave = res.SelectSingleNode("n:chNFe", ns)?.InnerText ?? "";
+        if (chave.Length != 44) return null;
+
+        var emitCnpj = res.SelectSingleNode("n:CNPJ", ns)?.InnerText
+                    ?? res.SelectSingleNode("n:CPF", ns)?.InnerText ?? "";
+        var emitNome = res.SelectSingleNode("n:xNome", ns)?.InnerText ?? "";
+        var dtStr    = res.SelectSingleNode("n:dhEmi", ns)?.InnerText;
+        var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
+        var valor = decimal.TryParse(res.SelectSingleNode("n:vNF", ns)?.InnerText,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+        // Chave: cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nNF(9) tpEmis(1) cNF(8) cDV(1)
+        var modelo = chave.Substring(20, 2);
+        var serieStr = chave.Substring(22, 3).TrimStart('0');
+        var serie  = serieStr == "" ? "0" : serieStr;
+        var numero = long.TryParse(chave.Substring(25, 9), out var nn) ? nn : 0;
+        var emitUF = CodigoParaUf(chave.Substring(0, 2));
+
+        // cSitNFe: 1=autorizada, 3=cancelada
+        var situacao = res.SelectSingleNode("n:cSitNFe", ns)?.InnerText == "3"
+            ? SituacaoNFeRecebida.Cancelada : SituacaoNFeRecebida.Autorizada;
+
+        return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
+            emitCnpj, emitNome, emitUF, valor, situacao);
+    }
+
+    /// <summary>Parseia a NF-e completa (procNFe / nfeProc).</summary>
+    private static DFeDocumento? ParsearNFeCompleta(XmlDocument doc, XmlNode ide, XmlNamespaceManager ns, string nsu)
+    {
+        var emit   = doc.SelectSingleNode("//n:emit", ns);
+        var tot    = doc.SelectSingleNode("//n:ICMSTot", ns);
+        var infNFe = doc.SelectSingleNode("//n:infNFe", ns);
+
+        var chave     = infNFe?.Attributes?["Id"]?.Value?.Replace("NFe", "") ?? "";
+        var modelo    = ide.SelectSingleNode("n:mod", ns)?.InnerText ?? "55";
+        var serie     = ide.SelectSingleNode("n:serie", ns)?.InnerText ?? "1";
+        var numero    = long.TryParse(ide.SelectSingleNode("n:nNF", ns)?.InnerText, out var n) ? n : 0;
+        var dtStr     = ide.SelectSingleNode("n:dhEmi", ns)?.InnerText ?? ide.SelectSingleNode("n:dEmi", ns)?.InnerText;
+        var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
+        var emitCnpj  = emit?.SelectSingleNode("n:CNPJ", ns)?.InnerText ?? "";
+        var emitNome  = emit?.SelectSingleNode("n:xNome", ns)?.InnerText ?? "";
+        var emitUF    = emit?.SelectSingleNode("n:enderEmit/n:UF", ns)?.InnerText;
+        var valor     = decimal.TryParse(
+            tot?.SelectSingleNode("n:vNF", ns)?.InnerText,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+        return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
+            emitCnpj, emitNome, emitUF, valor, SituacaoNFeRecebida.Autorizada);
     }
 
     private static string? ExtrairXmlNota(string responseXml)
@@ -472,5 +513,15 @@ public class DistribuicaoDFeService(
         "PR" => 41, "PE" => 26, "PI" => 22, "RJ" => 33, "RN" => 24,
         "RS" => 43, "RO" => 11, "RR" => 14, "SC" => 42, "SP" => 35,
         "SE" => 28, "TO" => 17, _ => 35
+    };
+
+    private static string? CodigoParaUf(string codigo) => codigo switch
+    {
+        "12" => "AC", "27" => "AL", "16" => "AP", "13" => "AM", "29" => "BA",
+        "23" => "CE", "53" => "DF", "32" => "ES", "52" => "GO", "21" => "MA",
+        "51" => "MT", "50" => "MS", "31" => "MG", "15" => "PA", "25" => "PB",
+        "41" => "PR", "26" => "PE", "22" => "PI", "33" => "RJ", "24" => "RN",
+        "43" => "RS", "11" => "RO", "14" => "RR", "42" => "SC", "35" => "SP",
+        "28" => "SE", "17" => "TO", _ => null
     };
 }

@@ -27,7 +27,8 @@ public class NotasFiscaisController(
         return Ok(notas.Select(n => new
         {
             n.Id, n.Modelo, n.Serie, n.Numero, n.ChaveAcesso,
-            n.Status, n.DataEmissao, n.NomeDestinatario, n.TotalNota
+            Status = n.Status.ToString(),
+            n.DataEmissao, n.NomeDestinatario, n.TotalNota
         }));
     }
 
@@ -143,7 +144,7 @@ public class NotasFiscaisController(
         return Ok(new
         {
             nota.Id, nota.Numero, nota.Serie, nota.Modelo,
-            nota.Status, nota.TotalNota,
+            Status = nota.Status.ToString(), nota.TotalNota,
             aviso = "Nota em digitação. Use POST /transmitir para enviar à SEFAZ."
         });
     }
@@ -199,7 +200,7 @@ public class NotasFiscaisController(
         return Ok(new
         {
             nota.Id, nota.Numero, nota.ChaveAcesso, nota.Protocolo,
-            nota.Status, nota.MotivoRejeicao,
+            Status = nota.Status.ToString(), nota.MotivoRejeicao,
             autorizada = resultado.Autorizada,
             mensagem = resultado.Autorizada
                 ? "Nota autorizada pela SEFAZ."
@@ -362,7 +363,7 @@ public class NotasFiscaisController(
         return CreatedAtAction(nameof(Obter), new { id = nota.Id }, new
         {
             nota.Id, nota.Numero, nota.Serie, nota.Modelo,
-            nota.Status, nota.TotalNota,
+            Status = nota.Status.ToString(), nota.TotalNota,
             aviso = "Nota em digitação. Use POST /{id}/transmitir para enviar à SEFAZ."
         });
     }

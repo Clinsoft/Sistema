@@ -16,6 +16,12 @@ node_modules/
 dist/
 .pnpm-store/
 
+# Build/publish output
+publish_out/
+
+# Claude Code — worktrees de agentes paralelos
+.claude/worktrees/
+
 # Certificates
 *.pfx
 *.p12

@@ -21,5 +21,6 @@ public class Usuario : Entity
     public void Desativar() => Ativo = false;
     public void Reativar() => Ativo = true;
     public void AlterarPerfil(string perfil) => Perfil = perfil;
+    public void AlterarNome(string nome) => Nome = nome;
     public void AlterarSenha(string novoHash) => SenhaHash = novoHash;
 }

@@ -38,8 +38,10 @@ public class ArteMarketing : Entity
     public void AtualizarLayout(string layoutJson, string? thumbnail = null)
     {
         LayoutJson = layoutJson;
-        ThumbnailBase64 = thumbnail;
+        if (thumbnail is not null) ThumbnailBase64 = thumbnail;
     }
+
+    public void Renomear(string nome) => Nome = nome;
 }
 
 public enum StatusArte { Rascunho, Finalizada }

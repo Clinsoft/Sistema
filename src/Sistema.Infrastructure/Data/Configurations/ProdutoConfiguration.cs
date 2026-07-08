@@ -14,6 +14,9 @@ public class ProdutoConfiguration : IEntityTypeConfiguration<Produto>
         b.HasIndex(p => new { p.EmpresaId, p.Codigo }).IsUnique();
         b.Property(p => p.CodigoBarras).HasMaxLength(30);
         b.HasIndex(p => new { p.EmpresaId, p.CodigoBarras }).HasFilter("[CodigoBarras] IS NOT NULL");
+        b.Property(p => p.CodigoFornecedorPrincipal).HasMaxLength(60);
+        b.HasIndex(p => new { p.EmpresaId, p.FornecedorPrincipalId, p.CodigoFornecedorPrincipal })
+            .HasFilter("[CodigoFornecedorPrincipal] IS NOT NULL");
         b.Property(p => p.Descricao).HasMaxLength(200).IsRequired();
         b.Property(p => p.DescricaoComplementar).HasMaxLength(500);
         b.Property(p => p.Ncm).HasMaxLength(8);

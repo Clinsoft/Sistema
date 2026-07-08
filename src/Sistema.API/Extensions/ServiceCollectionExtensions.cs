@@ -111,6 +111,9 @@ public static class ServiceCollectionExtensions
 
         // WhatsApp Cloud API
         services.AddHttpClient<Sistema.Infrastructure.Services.WhatsAppCloudApiService>();
+
+        // Gemini (Nano Banana 2) — geração de imagens para artes de marketing
+        services.AddHttpClient<Sistema.Infrastructure.Services.GeminiImageService>();
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
 
         return services;

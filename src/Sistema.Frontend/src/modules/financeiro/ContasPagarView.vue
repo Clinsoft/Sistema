@@ -5,6 +5,18 @@
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Nova</v-btn>
     </div>
 
+    <GuiaPassos
+      id="contas-pagar"
+      titulo="Como usar Contas a Pagar"
+      :passos="[
+        'Use o filtro de <b>Mês</b> ou as datas para listar os títulos do período e clique em <b>Buscar</b>.',
+        'Clique em <b>Nova</b> para lançar uma conta. Escolha <b>Único</b>, <b>Parcelar</b> (divide o total) ou <b>Repetir</b> (mesmo valor por período).',
+        'No campo <b>Fornecedor</b>, digite o nome — se não existir, aparece a opção <b>Cadastrar</b> para criar na hora.',
+        'Na tabela: <b>💲 Pagar</b> baixa o título, <b>✎ Editar</b> altera dados, <b>↻ Renegociar</b> reprograma valor e vencimento.',
+        'Títulos vindos de NF-e já aparecem aqui automaticamente após processar a entrada.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
       <v-row dense>
@@ -87,13 +99,19 @@
         <template #item.dataVencimento="{ item }">{{ fmtData(item.dataVencimento) }}</template>
         <template #item.actions="{ item }">
           <v-btn icon="mdi-cash-check" size="x-small" color="success" variant="text"
-            title="Pagar" @click="abrirPagamento(item)" />
+            title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
+          <v-btn icon="mdi-pencil-outline" size="x-small" color="primary" variant="text"
+            title="Editar" @click="abrirEditar(item)" :disabled="item.status === 'Pago'" />
+          <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
+            title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
+          <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
+            title="Cancelar título" @click="cancelarTitulo(item)" :disabled="item.status === 'Pago' || item.status === 'Cancelado'" />
         </template>
       </v-data-table>
     </v-card>
 
     <!-- Dialog: Nova Conta a Pagar -->
-    <v-dialog v-model="dialogNovo" max-width="520" persistent>
+    <v-dialog v-model="dialogNovo" max-width="560" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-4 pb-2">
           <v-icon start color="error">mdi-arrow-up-circle-outline</v-icon>
@@ -123,20 +141,77 @@
               </v-select>
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model="form.fornecedorNome" label="Fornecedor / Beneficiário"
-                variant="outlined" density="compact" />
+              <v-autocomplete v-model="form.fornecedorId" label="Fornecedor / Beneficiário"
+                :items="fornecedores" item-title="razaoSocial" item-value="id"
+                variant="outlined" density="compact" hide-details clearable auto-select-first
+                :search="form._buscaForneced" @update:search="v => form._buscaForneced = v">
+                <template #no-data>
+                  <v-list-item
+                    v-if="form._buscaForneced && form._buscaForneced.trim().length >= 2"
+                    :title="'Cadastrar ' + form._buscaForneced.trim()"
+                    prepend-icon="mdi-plus-circle-outline"
+                    @click="criarFornecedorRapido(form._buscaForneced.trim(), 'nova')" />
+                  <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
+                </template>
+              </v-autocomplete>
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model.number="form.valorOriginal" label="Valor (R$) *"
+              <v-text-field v-model.number="form.valorOriginal" label="Valor total (R$) *"
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model="form.dataVencimento" label="Vencimento *"
+              <v-text-field v-model="form.dataVencimento" label="Primeiro vencimento *"
                 type="date" variant="outlined" density="compact" />
             </v-col>
-            <v-col cols="12">
+
+            <!-- Modo de repetição -->
+            <v-col cols="12" class="mt-1">
+              <v-btn-toggle v-model="form.modo" mandatory density="compact" rounded="lg" color="primary" class="w-100">
+                <v-btn value="unico" class="flex-grow-1" size="small">Único</v-btn>
+                <v-btn value="parcelar" class="flex-grow-1" size="small">Parcelar</v-btn>
+                <v-btn value="repetir" class="flex-grow-1" size="small">Repetir</v-btn>
+              </v-btn-toggle>
+            </v-col>
+
+            <!-- Parcelar: divide o valor total em N parcelas -->
+            <template v-if="form.modo === 'parcelar'">
+              <v-col cols="6">
+                <v-text-field v-model.number="form.quantas" label="Nº de parcelas"
+                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="6">
+                <v-select v-model="form.periodo" label="Intervalo"
+                  :items="periodos" item-title="label" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12">
+                <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+                  {{ form.quantas || 1 }}x de R$ {{ fmtParcela }} — total R$ {{ fmt(form.valorOriginal || 0) }}
+                </v-alert>
+              </v-col>
+            </template>
+
+            <!-- Repetir: repete o mesmo valor N vezes -->
+            <template v-if="form.modo === 'repetir'">
+              <v-col cols="6">
+                <v-text-field v-model.number="form.quantas" label="Quantas vezes"
+                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="6">
+                <v-select v-model="form.periodo" label="Periodicidade"
+                  :items="periodos" item-title="label" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12">
+                <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+                  {{ form.quantas || 1 }}x de R$ {{ fmt(form.valorOriginal || 0) }} — total R$ {{ fmtTotalRepetir }}
+                </v-alert>
+              </v-col>
+            </template>
+
+            <v-col cols="12" class="mt-1">
               <v-text-field v-model="form.observacao" label="Observação"
-                variant="outlined" density="compact" />
+                variant="outlined" density="compact" hide-details />
             </v-col>
           </v-row>
         </v-card-text>
@@ -144,6 +219,136 @@
           <v-spacer />
           <v-btn variant="text" @click="dialogNovo = false" :disabled="salvando">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :loading="salvando" @click="salvarNova">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Editar -->
+    <v-dialog v-model="dialogEditar" max-width="560" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2">
+          <v-icon start color="primary">mdi-pencil-outline</v-icon>Editar lançamento
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12">
+              <v-text-field v-model="edicao.descricao" label="Descrição *"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-select v-model="edicao.categoria" label="Categoria"
+                :items="categorias" variant="outlined" density="compact" clearable hide-details />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-autocomplete v-model="edicao.fornecedorId" label="Fornecedor"
+                :items="fornecedores" item-title="razaoSocial" item-value="id"
+                variant="outlined" density="compact" hide-details clearable auto-select-first
+                :search="edicao._buscaForneced" @update:search="v => edicao._buscaForneced = v">
+                <template #no-data>
+                  <v-list-item
+                    v-if="edicao._buscaForneced && edicao._buscaForneced.trim().length >= 2"
+                    :title="'Cadastrar ' + edicao._buscaForneced.trim()"
+                    prepend-icon="mdi-plus-circle-outline"
+                    @click="criarFornecedorRapido(edicao._buscaForneced.trim(), 'editar')" />
+                  <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
+                </template>
+              </v-autocomplete>
+            </v-col>
+            <v-col cols="12" sm="6" class="mt-2">
+              <v-text-field v-model.number="edicao.valorOriginal" label="Valor total (R$)"
+                type="number" prefix="R$" variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="12" sm="6" class="mt-2">
+              <v-text-field v-model="edicao.dataVencimento" label="Primeiro vencimento"
+                type="date" variant="outlined" density="compact" hide-details />
+            </v-col>
+
+            <!-- Modo -->
+            <v-col cols="12" class="mt-2">
+              <v-btn-toggle v-model="edicao.modo" mandatory density="compact" rounded="lg" color="primary" class="w-100">
+                <v-btn value="unico" class="flex-grow-1" size="small">Único</v-btn>
+                <v-btn value="parcelar" class="flex-grow-1" size="small">Parcelar</v-btn>
+                <v-btn value="repetir" class="flex-grow-1" size="small">Repetir</v-btn>
+              </v-btn-toggle>
+            </v-col>
+
+            <template v-if="edicao.modo === 'parcelar'">
+              <v-col cols="6">
+                <v-text-field v-model.number="edicao.quantas" label="Nº de parcelas"
+                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="6">
+                <v-select v-model="edicao.periodo" label="Intervalo"
+                  :items="periodos" item-title="label" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12">
+                <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+                  {{ edicao.quantas || 1 }}x de R$ {{ fmt(Math.round((edicao.valorOriginal||0)/(edicao.quantas||1)*100)/100) }} — total R$ {{ fmt(edicao.valorOriginal||0) }}
+                </v-alert>
+              </v-col>
+            </template>
+
+            <template v-if="edicao.modo === 'repetir'">
+              <v-col cols="6">
+                <v-text-field v-model.number="edicao.quantas" label="Quantas vezes"
+                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="6">
+                <v-select v-model="edicao.periodo" label="Periodicidade"
+                  :items="periodos" item-title="label" item-value="value"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12">
+                <v-alert type="info" variant="tonal" density="compact" class="text-caption">
+                  {{ edicao.quantas || 1 }}x de R$ {{ fmt(edicao.valorOriginal||0) }} — total R$ {{ fmt((edicao.valorOriginal||0)*(edicao.quantas||1)) }}
+                </v-alert>
+              </v-col>
+            </template>
+
+            <v-col cols="12" class="mt-1">
+              <v-text-field v-model="edicao.observacao" label="Observação"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogEditar = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvando" @click="confirmarEdicao">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Renegociar -->
+    <v-dialog v-model="dialogReneg" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2">
+          <v-icon start color="warning">mdi-refresh</v-icon>Renegociar
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            Saldo atual: <strong>R$ {{ fmt(reneg.saldo) }}</strong>
+          </div>
+          <v-row dense>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="reneg.novoValor" label="Novo valor (R$)"
+                type="number" prefix="R$" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="reneg.novoVencimento" label="Novo vencimento"
+                type="date" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12">
+              <v-text-field v-model="reneg.motivo" label="Motivo"
+                variant="outlined" density="compact" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogReneg = false">Cancelar</v-btn>
+          <v-btn color="warning" rounded="lg" :loading="salvando" @click="confirmarReneg">Renegociar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -169,6 +374,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -181,19 +387,65 @@ const salvando = ref(false)
 const lancamentos = ref<any[]>([])
 const dialogPagamento = ref(false)
 const dialogNovo = ref(false)
+const dialogEditar = ref(false)
+const dialogReneg = ref(false)
 const pagamento = ref({ id: '', valor: 0, data: new Date().toISOString().slice(0, 10) })
+const fornecedores = ref<any[]>([])
+const edicao = ref({
+  id: '', descricao: '', categoria: '', valorOriginal: 0,
+  dataVencimento: '', observacao: '', fornecedorId: '' as string | null, _buscaForneced: '',
+  modo: 'unico' as 'unico' | 'parcelar' | 'repetir', quantas: 2, periodo: 'mensal',
+})
+const reneg = ref({ id: '', saldo: 0, novoValor: 0, novoVencimento: '', motivo: '' })
 
 const categorias = ['Despesas Fixas', 'Despesas Variáveis', 'Pessoas', 'Impostos']
 
+const periodos = [
+  { label: 'Diário',      value: 'diario' },
+  { label: 'Semanal',     value: 'semanal' },
+  { label: 'Quinzenal',   value: 'quinzenal' },
+  { label: 'Mensal',      value: 'mensal' },
+  { label: 'Bimestral',   value: 'bimestral' },
+  { label: 'Trimestral',  value: 'trimestral' },
+  { label: 'Semestral',   value: 'semestral' },
+  { label: 'Anual',       value: 'anual' },
+]
+
 const formPadrao = () => ({
-  descricao: '', categoria: '', fornecedorNome: '',
+  descricao: '', categoria: '', fornecedorId: null as string | null, _buscaForneced: '',
   valorOriginal: 0, dataVencimento: '', observacao: '',
+  modo: 'unico' as 'unico' | 'parcelar' | 'repetir',
+  quantas: 2,
+  periodo: 'mensal',
 })
 const form = ref(formPadrao())
 
+const fmtParcela = computed(() =>
+  fmt(Math.round((form.value.valorOriginal || 0) / (form.value.quantas || 1) * 100) / 100)
+)
+const fmtTotalRepetir = computed(() =>
+  fmt(Math.round((form.value.valorOriginal || 0) * (form.value.quantas || 1) * 100) / 100)
+)
+
+function proximaData(base: string, periodo: string, n: number): string {
+  const d = new Date(base + 'T12:00:00')
+  const map: Record<string, () => void> = {
+    diario:     () => d.setDate(d.getDate() + n),
+    semanal:    () => d.setDate(d.getDate() + n * 7),
+    quinzenal:  () => d.setDate(d.getDate() + n * 15),
+    mensal:     () => d.setMonth(d.getMonth() + n),
+    bimestral:  () => d.setMonth(d.getMonth() + n * 2),
+    trimestral: () => d.setMonth(d.getMonth() + n * 3),
+    semestral:  () => d.setMonth(d.getMonth() + n * 6),
+    anual:      () => d.setFullYear(d.getFullYear() + n),
+  }
+  map[periodo]?.()
+  return d.toISOString().slice(0, 10)
+}
+
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
-  fim: new Date().toISOString().slice(0, 10),
+  fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: 'Todas',
   status: 'Todos',
 })
@@ -277,14 +529,54 @@ function abrirNovo() {
 }
 
 async function salvarNova() {
-  if (!form.value.descricao || !form.value.categoria || form.value.valorOriginal <= 0 || !form.value.dataVencimento) {
+  const f = form.value
+  if (!f.descricao || !f.categoria || f.valorOriginal <= 0 || !f.dataVencimento) {
     notif.erro('Preencha todos os campos obrigatórios.')
     return
   }
   salvando.value = true
   try {
-    await api.post('/contas-pagar', { empresaId: auth.empresaId, ...form.value })
-    notif.ok('Conta a pagar cadastrada!')
+    const base = {
+      empresaId: auth.empresaId,
+      descricao: f.descricao,
+      categoria: f.categoria,
+      fornecedorId: f.fornecedorId || null,
+      observacao: f.observacao,
+    }
+
+    if (f.modo === 'unico') {
+      await api.post('/contas-pagar', {
+        ...base, valor: f.valorOriginal,
+        primeiroVencimento: f.dataVencimento, totalParcelas: 1,
+      })
+    } else if (f.modo === 'parcelar') {
+      const n = Math.max(1, f.quantas || 1)
+      const valorParcela = Math.round(f.valorOriginal / n * 100) / 100
+      for (let i = 0; i < n; i++) {
+        await api.post('/contas-pagar', {
+          ...base,
+          descricao: `${f.descricao} ${i + 1}/${n}`,
+          valor: i === n - 1
+            ? Math.round((f.valorOriginal - valorParcela * (n - 1)) * 100) / 100
+            : valorParcela,
+          primeiroVencimento: i === 0 ? f.dataVencimento : proximaData(f.dataVencimento, f.periodo, i),
+          totalParcelas: 1,
+        })
+      }
+    } else if (f.modo === 'repetir') {
+      const n = Math.max(1, f.quantas || 1)
+      for (let i = 0; i < n; i++) {
+        await api.post('/contas-pagar', {
+          ...base,
+          descricao: `${f.descricao} ${i + 1}/${n}`,
+          valor: f.valorOriginal,
+          primeiroVencimento: i === 0 ? f.dataVencimento : proximaData(f.dataVencimento, f.periodo, i),
+          totalParcelas: 1,
+        })
+      }
+    }
+
+    notif.ok('Conta(s) a pagar cadastrada(s)!')
     dialogNovo.value = false
     await carregar()
   } catch { notif.erro('Erro ao salvar.') }
@@ -308,5 +600,109 @@ async function confirmarPagamento() {
   } finally { salvando.value = false }
 }
 
-onMounted(carregar)
+function abrirEditar(item: any) {
+  edicao.value = {
+    id: item.id,
+    descricao: item.descricao,
+    categoria: item.categoria ?? '',
+    valorOriginal: item.valorOriginal,
+    dataVencimento: item.dataVencimento?.slice(0, 10) ?? '',
+    observacao: item.observacao ?? '',
+    fornecedorId: item.fornecedorId ?? null,
+    modo: 'unico',
+    quantas: 2,
+    periodo: 'mensal',
+  }
+  dialogEditar.value = true
+}
+
+async function confirmarEdicao() {
+  const e = edicao.value
+  salvando.value = true
+  try {
+    if (e.modo === 'unico') {
+      await api.put(`/contas-pagar/${e.id}`, {
+        descricao: e.descricao, categoria: e.categoria,
+        valorOriginal: e.valorOriginal, dataVencimento: e.dataVencimento,
+        observacao: e.observacao, fornecedorId: e.fornecedorId || null,
+      })
+    } else {
+      // Cancel existing entry, then create N new ones
+      await api.post(`/contas-pagar/${e.id}/cancelar`, {})
+      const n = Math.max(2, e.quantas || 2)
+      const base = { empresaId: auth.empresaId, descricao: e.descricao, categoria: e.categoria, observacao: e.observacao, fornecedorId: e.fornecedorId || null }
+      for (let i = 0; i < n; i++) {
+        const valor = e.modo === 'parcelar'
+          ? (i === n - 1 ? Math.round((e.valorOriginal - Math.round(e.valorOriginal / n * 100) / 100 * (n - 1)) * 100) / 100 : Math.round(e.valorOriginal / n * 100) / 100)
+          : e.valorOriginal
+        const descricao = `${e.descricao} ${i + 1}/${n}`
+        const vencimento = i === 0 ? e.dataVencimento : proximaData(e.dataVencimento, e.periodo, i)
+        await api.post('/contas-pagar', { ...base, descricao, valor, primeiroVencimento: vencimento, totalParcelas: 1 })
+      }
+    }
+    notif.ok('Lançamento atualizado.')
+    dialogEditar.value = false
+    await carregar()
+  } catch { notif.erro('Erro ao editar lançamento.') }
+  finally { salvando.value = false }
+}
+
+function abrirRenegociar(item: any) {
+  reneg.value = {
+    id: item.id,
+    saldo: item.saldo,
+    novoValor: item.saldo,
+    novoVencimento: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().slice(0, 10),
+    motivo: '',
+  }
+  dialogReneg.value = true
+}
+
+async function confirmarReneg() {
+  salvando.value = true
+  try {
+    await api.post(`/contas-pagar/${reneg.value.id}/renegociar`, {
+      novoValor: reneg.value.novoValor,
+      novoVencimento: reneg.value.novoVencimento,
+      motivo: reneg.value.motivo,
+    })
+    notif.ok('Renegociado com sucesso.')
+    dialogReneg.value = false
+    await carregar()
+  } catch { notif.erro('Erro ao renegociar.') }
+  finally { salvando.value = false }
+}
+
+async function cancelarTitulo(item: any) {
+  if (!confirm(`Cancelar o título "${item.descricao}" (R$ ${fmt(item.saldo)})?`)) return
+  try {
+    await api.post(`/contas-pagar/${item.id}/cancelar`, {})
+    notif.ok('Título cancelado.')
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar título.') }
+}
+
+async function criarFornecedorRapido(nome: string, contexto: 'nova' | 'editar') {
+  try {
+    const r = await api.post('/fornecedores', { empresaId: auth.empresaId, razaoSocial: nome }, { _quiet: true } as any)
+    const novo = { id: r.data.id ?? r.data, razaoSocial: nome }
+    fornecedores.value = [...fornecedores.value, novo].sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial))
+    if (contexto === 'nova') {
+      form.value.fornecedorId = novo.id
+      form.value._buscaForneced = ''
+    } else {
+      edicao.value.fornecedorId = novo.id
+      edicao.value._buscaForneced = ''
+    }
+    notif.ok(`Fornecedor "${nome}" cadastrado!`)
+  } catch {
+    notif.erro('Erro ao cadastrar fornecedor.')
+  }
+}
+
+onMounted(async () => {
+  await carregar()
+  const rf = await api.get('/fornecedores', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] }))
+  fornecedores.value = rf.data?.items ?? rf.data ?? []
+})
 </script>

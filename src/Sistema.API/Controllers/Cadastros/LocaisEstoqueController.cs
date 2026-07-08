@@ -13,12 +13,17 @@ namespace Sistema.API.Controllers.Cadastros;
 public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Listar([FromQuery] Guid empresaId, CancellationToken ct)
-        => Ok(await db.LocaisEstoque.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId && l.Ativo)
+    public async Task<IActionResult> Listar([FromQuery] Guid empresaId,
+        [FromQuery] Guid[]? empresaIds, CancellationToken ct)
+    {
+        // Se vier a lista de filiais do grupo, lista de todas; senão, só da filial atual.
+        var ids = empresaIds is { Length: > 0 } ? empresaIds : new[] { empresaId };
+        return Ok(await db.LocaisEstoque.AsNoTracking()
+            .Where(l => ids.Contains(l.EmpresaId) && l.Ativo)
             .OrderByDescending(l => l.Principal).ThenBy(l => l.Nome)
-            .Select(l => new { l.Id, l.Nome, l.Descricao, l.Principal })
+            .Select(l => new { l.Id, l.EmpresaId, l.Nome, l.Descricao, l.Principal })
             .ToListAsync(ct));
+    }
 
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] LocalEstoqueRequest req, CancellationToken ct)
@@ -42,6 +47,10 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
     {
         var local = await db.LocaisEstoque.FindAsync([id], ct)
             ?? throw new KeyNotFoundException("Local de estoque não encontrado.");
+
+        // Reassocia a outra filial, se informada (ex.: nova filial do cliente)
+        if (req.EmpresaId != Guid.Empty && req.EmpresaId != local.EmpresaId)
+            local.Reassociar(req.EmpresaId);
 
         if (req.Principal && !local.Principal)
         {

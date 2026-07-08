@@ -35,6 +35,67 @@ public class ArteMarketingConfiguration : IEntityTypeConfiguration<ArteMarketing
     }
 }
 
+public class PromocaoConfiguration : IEntityTypeConfiguration<Promocao>
+{
+    public void Configure(EntityTypeBuilder<Promocao> b)
+    {
+        b.ToTable("Promocoes");
+        b.HasKey(p => p.Id);
+        b.HasIndex(p => new { p.EmpresaId, p.Ativa });
+        b.Property(p => p.Nome).HasMaxLength(150).IsRequired();
+        b.Property(p => p.Tipo).HasMaxLength(30).IsRequired();
+        b.Property(p => p.TipoDesconto).HasMaxLength(20).IsRequired();
+        b.Property(p => p.AplicaEm).HasMaxLength(20).IsRequired();
+        b.Property(p => p.Desconto).HasPrecision(18, 2);
+        b.Property(p => p.ValorMinimoPedido).HasPrecision(18, 2);
+    }
+}
+
+public class MembroClubeConfiguration : IEntityTypeConfiguration<MembroClube>
+{
+    public void Configure(EntityTypeBuilder<MembroClube> b)
+    {
+        b.ToTable("MembrosClube");
+        b.HasKey(m => m.Id);
+        b.HasIndex(m => new { m.EmpresaId, m.ClienteId });
+        b.Property(m => m.Status).HasMaxLength(15).IsRequired();
+        b.Property(m => m.Observacao).HasMaxLength(500);
+        b.Property(m => m.SaldoCashback).HasPrecision(18, 2);
+        b.Property(m => m.TotalCashback).HasPrecision(18, 2);
+        b.Property(m => m.TotalCompras).HasPrecision(18, 2);
+    }
+}
+
+public class MovimentoCashbackConfiguration : IEntityTypeConfiguration<MovimentoCashback>
+{
+    public void Configure(EntityTypeBuilder<MovimentoCashback> b)
+    {
+        b.ToTable("MovimentosCashback");
+        b.HasKey(m => m.Id);
+        b.HasIndex(m => new { m.EmpresaId, m.Data });
+        b.Property(m => m.Tipo).HasMaxLength(10).IsRequired();
+        b.Property(m => m.Motivo).HasMaxLength(300);
+        b.Property(m => m.VendaNumero).HasMaxLength(30);
+        b.Property(m => m.Valor).HasPrecision(18, 2);
+        b.Property(m => m.DescontoUsado).HasPrecision(18, 2);
+    }
+}
+
+public class ConfiguracaoClubeConfiguration : IEntityTypeConfiguration<ConfiguracaoClube>
+{
+    public void Configure(EntityTypeBuilder<ConfiguracaoClube> b)
+    {
+        b.ToTable("ConfiguracoesClube");
+        b.HasKey(c => c.Id);
+        b.HasIndex(c => c.EmpresaId).IsUnique();
+        b.Property(c => c.NomeClubeExibicao).HasMaxLength(80).IsRequired();
+        b.Property(c => c.PercentualCashback).HasPrecision(9, 2);
+        b.Property(c => c.MinimoResgate).HasPrecision(18, 2);
+        b.Property(c => c.LimiteUsoPercent).HasPrecision(9, 2);
+        b.Property(c => c.DescontoMembro).HasPrecision(9, 2);
+    }
+}
+
 public class AgendamentoPublicacaoConfiguration : IEntityTypeConfiguration<AgendamentoPublicacao>
 {
     public void Configure(EntityTypeBuilder<AgendamentoPublicacao> b)

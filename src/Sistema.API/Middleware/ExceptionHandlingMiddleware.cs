@@ -41,7 +41,13 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
             logger.LogError(ex, "Erro não tratado: {Message}", ex.Message);
             ctx.Response.StatusCode = 500;
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync(JsonSerializer.Serialize(new { mensagem = "Erro interno do servidor." }));
+            // Detalhe real (inclusive da exceção interna, ex.: truncamento SQL) para diagnóstico.
+            var detalhe = ex.InnerException?.Message ?? ex.Message;
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(new
+            {
+                mensagem = "Erro interno do servidor.",
+                detalhe
+            }));
         }
     }
 }

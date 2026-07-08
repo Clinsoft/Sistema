@@ -25,6 +25,9 @@ public class OperacoesCaixaController(
             ?? throw new KeyNotFoundException("Sessão não encontrada.");
         sessao.AdicionarSuprimento(req.Valor);
         sessaoRepo.Atualizar(sessao);
+        db.OperacoesCaixa.Add(Domain.Vendas.Entities.OperacaoCaixa.Registrar(
+            sessao.EmpresaId, sessao.Id, Domain.Vendas.Entities.TipoOperacaoCaixa.Suprimento,
+            req.Valor, req.Descricao, sessao.UsuarioId));
         await uow.SalvarAsync(ct);
         return NoContent();
     }
@@ -37,6 +40,9 @@ public class OperacoesCaixaController(
             ?? throw new KeyNotFoundException("Sessão não encontrada.");
         sessao.AdicionarSangria(req.Valor);
         sessaoRepo.Atualizar(sessao);
+        db.OperacoesCaixa.Add(Domain.Vendas.Entities.OperacaoCaixa.Registrar(
+            sessao.EmpresaId, sessao.Id, Domain.Vendas.Entities.TipoOperacaoCaixa.Sangria,
+            req.Valor, req.Descricao, sessao.UsuarioId));
         await uow.SalvarAsync(ct);
         return NoContent();
     }

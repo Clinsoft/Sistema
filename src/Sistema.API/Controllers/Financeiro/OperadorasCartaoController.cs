@@ -15,21 +15,24 @@ public class OperadorasCartaoController(SistemaDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId, CancellationToken ct)
     {
-        var lista = await db.OperadorasCartao.AsNoTracking()
+        var raw = await db.OperadorasCartao.AsNoTracking()
             .Where(o => o.EmpresaId == empresaId && o.Ativo)
             .OrderBy(o => o.Nome)
-            .Select(o => new
-            {
-                o.Id, o.Nome, o.Cor, o.Icone, o.Ativo,
-                o.TaxaDebito, o.TaxaCreditoVista, o.TaxaCreditoParcelado,
-                o.TaxaPix, o.TaxaAntecipacao,
-                prazoDebito = o.PrazoDiasDebito,
-                prazoCreditoVista = o.PrazoDiasCreditoVista,
-                prazoCreditoParcelado = o.PrazoDiasCreditoParcelado,
-                prazoPix = o.PrazoDiasPix,
-                bandeiras = o.BandeirasJson,
-            })
             .ToListAsync(ct);
+
+        var lista = raw.Select(o => new
+        {
+            o.Id, o.Nome, o.Cor, o.Icone, o.Ativo, o.Observacao,
+            o.TaxaDebito, o.TaxaCreditoVista, o.TaxaCreditoParcelado,
+            o.TaxaPix, o.TaxaAntecipacao,
+            prazoDebito = o.PrazoDiasDebito,
+            prazoCreditoVista = o.PrazoDiasCreditoVista,
+            prazoCreditoParcelado = o.PrazoDiasCreditoParcelado,
+            prazoPix = o.PrazoDiasPix,
+            bandeiras = string.IsNullOrEmpty(o.BandeirasJson)
+                ? new List<string>()
+                : JsonSerializer.Deserialize<List<string>>(o.BandeirasJson) ?? new List<string>(),
+        });
         return Ok(lista);
     }
 
@@ -38,8 +41,8 @@ public class OperadorasCartaoController(SistemaDbContext db) : ControllerBase
     {
         var op = OperadoraCartao.Criar(req.EmpresaId, req.Nome, req.Cor, req.Icone,
             req.TaxaDebito, req.TaxaCreditoVista, req.TaxaCreditoParcelado,
-            req.PrazoDiasDebito, req.PrazoDiasCreditoVista, req.PrazoDiasCreditoParcelado,
-            req.Bandeiras, req.TaxaPix, req.PrazoDiasPix, req.TaxaAntecipacao);
+            req.PrazoDebito, req.PrazoCreditoVista, req.PrazoCreditoParcelado,
+            req.Bandeiras, req.TaxaPix, req.PrazoPix, req.TaxaAntecipacao, req.Observacao);
         db.OperadorasCartao.Add(op);
         await db.SaveChangesAsync(ct);
         return Ok(new { op.Id });
@@ -52,8 +55,8 @@ public class OperadorasCartaoController(SistemaDbContext db) : ControllerBase
         if (op is null) return NotFound();
         op.Atualizar(req.Nome, req.Cor, req.Icone,
             req.TaxaDebito, req.TaxaCreditoVista, req.TaxaCreditoParcelado,
-            req.PrazoDiasDebito, req.PrazoDiasCreditoVista, req.PrazoDiasCreditoParcelado,
-            req.Bandeiras, req.TaxaPix, req.PrazoDiasPix, req.TaxaAntecipacao);
+            req.PrazoDebito, req.PrazoCreditoVista, req.PrazoCreditoParcelado,
+            req.Bandeiras, req.TaxaPix, req.PrazoPix, req.TaxaAntecipacao, req.Observacao);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -72,6 +75,7 @@ public class OperadorasCartaoController(SistemaDbContext db) : ControllerBase
 public record OperadoraCartaoRequest(
     Guid EmpresaId, string Nome, string? Cor, string? Icone,
     decimal TaxaDebito, decimal TaxaCreditoVista, decimal TaxaCreditoParcelado,
-    int PrazoDiasDebito, int PrazoDiasCreditoVista, int PrazoDiasCreditoParcelado,
+    int PrazoDebito, int PrazoCreditoVista, int PrazoCreditoParcelado,
     List<string>? Bandeiras = null,
-    decimal TaxaPix = 0, int PrazoDiasPix = 0, decimal TaxaAntecipacao = 0);
+    decimal TaxaPix = 0, int PrazoPix = 0, decimal TaxaAntecipacao = 0,
+    string? Observacao = null);

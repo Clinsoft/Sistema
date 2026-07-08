@@ -7,6 +7,17 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="historico-vendas"
+      titulo="Como usar o Histórico de Vendas"
+      :passos="[
+        'Escolha o <b>período</b> (mês ou datas) e, se quiser, filtre por <b>Status</b> (Finalizada, Cancelada, Em Aberto). Clique em <b>Buscar</b>.',
+        'Os cards mostram o resumo: total de vendas, faturamento, ticket médio e canceladas do período.',
+        'Clique em uma linha (ou no ícone 👁) para abrir o <b>detalhe</b> da venda: itens, pagamentos e totais.',
+        'Em vendas <b>Finalizadas</b>, use <b>↩ Registrar Devolução</b> para devolver itens e repor o estoque automaticamente.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -213,6 +224,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'

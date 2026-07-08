@@ -19,9 +19,30 @@ public class ClientesController(IMediator mediator, IClienteRepository repo,
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId, [FromQuery] string? termo,
+        [FromQuery] bool incluirInativos = false,
         [FromQuery] int pagina = 1, [FromQuery] int tamanhoPagina = 20,
         CancellationToken ct = default)
     {
+        if (incluirInativos)
+        {
+            var q = db.Clientes.AsNoTracking().Where(c => c.EmpresaId == empresaId);
+            if (!string.IsNullOrWhiteSpace(termo))
+                q = q.Where(c => c.Nome.Contains(termo)
+                    || (c.CpfCnpj != null && c.CpfCnpj.Contains(termo))
+                    || (c.Telefone != null && c.Telefone.Contains(termo)));
+
+            var todos = await q.OrderBy(c => c.Nome)
+                .Select(c => new
+                {
+                    c.Id, c.Nome, c.CpfCnpj, tipoPessoa = c.TipoPessoa.ToString(),
+                    c.Email, c.Telefone, c.Celular, c.DataNascimento, c.Classificacao,
+                    c.Logradouro, c.Numero, c.Complemento, c.Bairro, c.Cidade, c.Uf, c.Cep,
+                    c.LimiteCredito, c.PontosFidelidade, c.Ativo, c.CriadoEm
+                })
+                .ToListAsync(ct);
+            return Ok(new { itens = todos, total = todos.Count });
+        }
+
         var resultado = await mediator.Send(new ListarClientesQuery(empresaId, termo, pagina, tamanhoPagina), ct);
         return Ok(resultado);
     }
@@ -59,6 +80,17 @@ public class ClientesController(IMediator mediator, IClienteRepository repo,
         var cliente = await repo.ObterPorIdAsync(id, ct)
             ?? throw new KeyNotFoundException("Cliente não encontrado.");
         cliente.Desativar();
+        repo.Atualizar(cliente);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/reativar")]
+    public async Task<IActionResult> Reativar(Guid id, CancellationToken ct)
+    {
+        var cliente = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Cliente não encontrado.");
+        cliente.Reativar();
         repo.Atualizar(cliente);
         await uow.SalvarAsync(ct);
         return NoContent();

@@ -229,6 +229,45 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return NoContent();
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Excluir(Guid id, CancellationToken ct)
+    {
+        var produto = await db.Produtos.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException("Produto não encontrado.");
+        var emNFe = await db.Set<Sistema.Domain.Fiscal.Entities.ItemEntradaNFe>()
+            .AnyAsync(i => i.ProdutoId == id, ct);
+        var emVenda = await db.ItensVenda.AnyAsync(i => i.ProdutoId == id, ct);
+        var emMovimento = await db.MovimentacoesEstoque.AnyAsync(m => m.ProdutoId == id, ct);
+        if (emNFe || emVenda || emMovimento)
+            return BadRequest(new { mensagem = "Produto possui movimentações (vendas, entradas ou estoque) e não pode ser excluído. Inative-o." });
+        db.Produtos.Remove(produto);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    [HttpPatch("{id:guid}/inativar")]
+    public async Task<IActionResult> Inativar(Guid id, CancellationToken ct)
+        => await DefinirAtivo(id, false, ct);
+
+    [HttpPatch("{id:guid}/reativar")]
+    public async Task<IActionResult> Reativar(Guid id, CancellationToken ct)
+        => await DefinirAtivo(id, true, ct);
+
+    private async Task<IActionResult> DefinirAtivo(Guid id, bool ativo, CancellationToken ct)
+    {
+        var produto = await db.Produtos.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException("Produto não encontrado.");
+        produto.EditarGeral(produto.Descricao, produto.Referencia, produto.CategoriaId, produto.MarcaId,
+            produto.UnidadeMedidaId, produto.FornecedorPrincipalId, produto.TipoVariacao,
+            produto.ProdutoBalanca, produto.CodigoPlu, produto.OcultarNasVendas,
+            produto.RequisitarVendedor, produto.VendidoFracionado, ativo,
+            produto.ControlarLote, produto.ControlarValidade, produto.ValidadeEmDias,
+            produto.DescricaoComplementar);
+        db.Produtos.Update(produto);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpGet("{id:guid}/ficha-tecnica")]
     [AllowAnonymous]
     public async Task<IActionResult> BaixarFichaTecnica(Guid id, CancellationToken ct)
@@ -255,7 +294,64 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             new ListarProdutosQuery(empresaId, null, null, null, true, 1, 500), ct);
         return Ok(resultado);
     }
+
+    [HttpPatch("alterar-precos")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> AlterarPrecos(
+        [FromQuery] Guid empresaId,
+        [FromBody] AlterarPrecosRequest req,
+        CancellationToken ct)
+    {
+        if (req.Itens is null || req.Itens.Count == 0)
+            return BadRequest(new { mensagem = "Nenhum item informado." });
+
+        var ids = req.Itens.Select(i => i.ProdutoId).ToList();
+        var produtos = await db.Produtos
+            .Where(p => p.EmpresaId == empresaId && ids.Contains(p.Id))
+            .ToListAsync(ct);
+
+        int atualizados = 0;
+        foreach (var item in req.Itens)
+        {
+            var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
+            if (produto is null) continue;
+
+            var custo = item.NovoCusto ?? produto.CustoUnitario;
+
+            // Se informou markup, recalcula preço de venda pelo custo
+            var novoPreco = item.NovoMarkup.HasValue && custo > 0
+                ? Math.Round(custo * item.NovoMarkup.Value, 2)
+                : item.NovoPrecoVenda ?? produto.PrecoVenda;
+
+            produto.EditarPrecos(
+                precoFornecedor: item.NovoPrecoFornecedor ?? produto.PrecoFornecedor,
+                custoUnitario: custo,
+                markupMinimo: item.NovoMarkupMinimo ?? produto.MarkupMinimo,
+                precoMinimo: item.NovoPrecoMinimo ?? produto.PrecoMinimo,
+                precoVenda: novoPreco,
+                precoAtacado: item.NovoPrecoAtacado ?? produto.PrecoAtacado,
+                markupAtacado: item.NovoMarkupAtacado ?? produto.MarkupAtacado);
+
+            atualizados++;
+        }
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { atualizados });
+    }
 }
+
+public record AlterarPrecoItemRequest(
+    Guid ProdutoId,
+    decimal? NovoPrecoVenda,
+    decimal? NovoPrecoAtacado,
+    decimal? NovoMarkup,
+    decimal? NovoCusto,
+    decimal? NovoPrecoFornecedor,
+    decimal? NovoMarkupMinimo,
+    decimal? NovoPrecoMinimo,
+    decimal? NovoMarkupAtacado);
+
+public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 

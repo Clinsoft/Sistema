@@ -14,6 +14,17 @@
       </v-btn>
     </div>
 
+    <GuiaPassos
+      id="clube-promocoes"
+      titulo="Como usar o Clube de Promoções"
+      :passos="[
+        'Primeiro abra <b>Configurações</b> e defina as regras: <b>% de cashback</b> por compra, validade, mínimo para resgate, limite de uso, desconto fixo do membro e se o clube está <b>ativo</b>.',
+        'Clique em <b>Novo Membro</b>, selecione o <b>cliente</b> (busca por nome/CPF), defina status e data de adesão. Use ✏️ para <b>editar</b> o membro.',
+        'Na aba <b>Membros</b>, o botão 💵 faz um <b>ajuste manual de cashback</b> (crédito ou débito com motivo). O saldo é atualizado na hora e registrado no extrato.',
+        'A aba <b>Saldo de Cashback</b> mostra o extrato de créditos/débitos; a aba <b>Histórico</b> mostra o cashback gerado nas vendas. Os cards no topo resumem membros, saldo disponível, distribuído e volume de compras.',
+      ]"
+    />
+
     <!-- Cards de resumo -->
     <v-row class="mb-4">
       <v-col v-for="card in cardsResumo" :key="card.label" cols="12" sm="6" md="3">
@@ -278,6 +289,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'

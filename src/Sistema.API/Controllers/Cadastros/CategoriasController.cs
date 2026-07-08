@@ -17,7 +17,13 @@ public class CategoriasController(SistemaDbContext db, IUnitOfWork uow) : Contro
         => Ok(await db.Categorias.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId && c.Ativo)
             .OrderBy(c => c.Nome)
-            .Select(c => new { c.Id, c.Nome, c.CategoriaPaiId })
+            .Select(c => new
+            {
+                c.Id, c.Nome, c.CategoriaPaiId,
+                categoriaPaiNome = db.Categorias
+                    .Where(p => p.Id == c.CategoriaPaiId).Select(p => p.Nome).FirstOrDefault(),
+                qtdProdutos = db.Produtos.Count(p => p.CategoriaId == c.Id && p.Ativo)
+            })
             .ToListAsync(ct));
 
     [HttpPost]
@@ -34,7 +40,9 @@ public class CategoriasController(SistemaDbContext db, IUnitOfWork uow) : Contro
     {
         var rows = await db.Categorias
             .Where(c => c.Id == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Nome, req.Nome), ct);
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.Nome, req.Nome)
+                .SetProperty(c => c.CategoriaPaiId, req.CategoriaPaiId), ct);
         return rows > 0 ? NoContent() : NotFound();
     }
 
@@ -43,6 +51,15 @@ public class CategoriasController(SistemaDbContext db, IUnitOfWork uow) : Contro
     {
         var cat = await db.Categorias.FindAsync([id], ct)
             ?? throw new KeyNotFoundException("Categoria não encontrada.");
+
+        var qtdProdutos = await db.Produtos.CountAsync(p => p.CategoriaId == id && p.Ativo, ct);
+        if (qtdProdutos > 0)
+            return BadRequest(new { mensagem = $"Categoria possui {qtdProdutos} produto(s) vinculado(s). Reatribua-os a outra categoria antes de excluir." });
+
+        var temFilhas = await db.Categorias.AnyAsync(c => c.CategoriaPaiId == id, ct);
+        if (temFilhas)
+            return BadRequest(new { mensagem = "Categoria possui subcategorias. Exclua ou reatribua as subcategorias primeiro." });
+
         db.Categorias.Remove(cat);
         await uow.SalvarAsync(ct);
         return NoContent();

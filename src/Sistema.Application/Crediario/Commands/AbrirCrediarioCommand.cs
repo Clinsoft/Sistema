@@ -10,7 +10,8 @@ public record AbrirCrediarioCommand(
     Guid EmpresaId, Guid ClienteId, Guid UsuarioId,
     decimal ValorTotal, decimal ValorEntrada,
     int NumeroParcelas, decimal TaxaJurosMensal,
-    Guid? VendaId = null) : IRequest<AbrirCrediarioResult>;
+    Guid? VendaId = null, DateTime? DataPrimeiraParcela = null,
+    int? DiaVencimento = null, string? Observacao = null) : IRequest<AbrirCrediarioResult>;
 
 public record AbrirCrediarioResult(Guid Id, string Numero, int NumeroParcelas, decimal ValorParcela);
 
@@ -37,7 +38,8 @@ public class AbrirCrediarioHandler(ICrediarioRepository repo, IUnitOfWork uow)
             cmd.EmpresaId, cmd.ClienteId, cmd.UsuarioId,
             numero, cmd.ValorTotal, cmd.ValorEntrada,
             cmd.NumeroParcelas, cmd.TaxaJurosMensal,
-            DateTime.Today, cmd.VendaId);
+            DateTime.Today, cmd.VendaId,
+            cmd.DataPrimeiraParcela, cmd.DiaVencimento, cmd.Observacao);
 
         await repo.AdicionarAsync(crediario, ct);
         await uow.SalvarAsync(ct);

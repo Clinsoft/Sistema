@@ -11,7 +11,10 @@ public record CriarClienteCommand(
     string? CpfCnpj = null, string? Email = null,
     string? Telefone = null, string? Celular = null,
     DateTime? DataNascimento = null, string? Classificacao = null,
-    decimal LimiteCredito = 0) : IRequest<Guid>;
+    decimal LimiteCredito = 0,
+    string? Logradouro = null, string? Numero = null, string? Complemento = null,
+    string? Bairro = null, string? Cidade = null, string? Uf = null, string? Cep = null)
+    : IRequest<Guid>;
 
 public class CriarClienteValidator : AbstractValidator<CriarClienteCommand>
 {
@@ -37,6 +40,11 @@ public class CriarClienteHandler(IClienteRepository repo, IUnitOfWork uow)
         var tipo = Enum.Parse<TipoPessoa>(cmd.TipoPessoa);
         var cliente = Cliente.Criar(cmd.EmpresaId, cmd.Nome, tipo,
             cmd.CpfCnpj, cmd.Email, cmd.Telefone, cmd.Celular, cmd.DataNascimento);
+
+        // Aplica endereço, limite de crédito e classificação informados na criação
+        cliente.AtualizarDados(cmd.Nome, cmd.Email, cmd.Telefone, cmd.Celular,
+            cmd.Logradouro, cmd.Numero, cmd.Complemento, cmd.Bairro,
+            cmd.Cidade, cmd.Uf, cmd.Cep, cmd.LimiteCredito, cmd.Classificacao);
 
         await repo.AdicionarAsync(cliente, ct);
         await uow.SalvarAsync(ct);

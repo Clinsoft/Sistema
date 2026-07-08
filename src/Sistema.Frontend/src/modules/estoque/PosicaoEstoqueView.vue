@@ -7,6 +7,17 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="posicao-estoque"
+      titulo="Como usar a Posição de Estoque"
+      :passos="[
+        'Os cards no topo somam o total de produtos, quantos estão <b>abaixo do mínimo</b>, o custo total e o valor de venda do estoque.',
+        'Filtre por <b>produto</b>, <b>categoria</b> ou ative <b>Apenas abaixo do mínimo</b>. Itens em falta aparecem com o estoque em <b>vermelho</b>.',
+        'Use o ícone <b>⚙ Ajustar estoque</b> na linha para fazer uma <b>contagem/inventário</b>: informe a quantidade real e o sistema registra a diferença como movimentação.',
+        'Para editar preços, custos e mínimos do produto, vá em <b>Estoque → Produtos</b>. Esta tela é a fotografia atual do estoque.',
+      ]"
+    />
+
     <!-- Totalizadores -->
     <v-row class="mb-4">
       <v-col cols="6" sm="3">
@@ -66,24 +77,70 @@
         <template #item.valorVendaTotal="{ item }">R$ {{ fmt(item.valorVendaTotal) }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmt(item.custoUnitario) }}</template>
         <template #item.precoVenda="{ item }">R$ {{ fmt(item.precoVenda) }}</template>
+        <template #item.acoes="{ item }">
+          <v-btn icon="mdi-tune-vertical" size="x-small" variant="text" color="primary"
+            title="Ajustar estoque (contagem)" @click="abrirAjuste(item)" />
+        </template>
       </v-data-table>
     </v-card>
+
+    <!-- Dialog: ajuste rápido de estoque (inventário) -->
+    <v-dialog v-model="dlgAjuste" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon icon="mdi-tune-vertical" color="primary" /> Ajustar Estoque
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2" v-if="ajuste.produto">
+          <div class="text-body-2 mb-3">
+            <strong>{{ ajuste.produto.descricao }}</strong>
+            <div class="text-caption text-medium-emphasis">
+              Estoque atual: <b>{{ ajuste.produto.estoqueAtual }}</b>
+            </div>
+          </div>
+          <v-select v-model="ajuste.localEstoqueId" :items="locaisEstoque" item-title="nome" item-value="id"
+            label="Local de estoque *" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model.number="ajuste.quantidadeContada" label="Quantidade contada (real) *"
+            type="number" variant="outlined" density="compact" class="mb-2"
+            hint="O sistema calcula e registra a diferença" persistent-hint />
+          <v-text-field v-model="ajuste.observacao" label="Motivo / Observação"
+            variant="outlined" density="compact" />
+          <v-alert v-if="ajuste.quantidadeContada != null" type="info" variant="tonal" density="compact" class="mt-3">
+            Diferença: <b>{{ (ajuste.quantidadeContada - (ajuste.produto.estoqueAtual ?? 0)).toFixed(2) }}</b>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgAjuste = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvando" :disabled="!ajuste.localEstoqueId" @click="salvarAjuste">
+            Confirmar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 const carregando = ref(false)
+const salvando = ref(false)
 const produtos = ref<any[]>([])
 const categorias = ref<any[]>([])
+const locaisEstoque = ref<any[]>([])
 const totais = ref<any>({ qtdProdutos: 0, qtdAbaixoMinimo: 0, custoTotalEstoque: 0, valorVendaTotalEstoque: 0 })
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
 const apenasAbaixoMinimo = ref(false)
+
+const dlgAjuste = ref(false)
+const ajuste = ref<any>({ produto: null, localEstoqueId: null, quantidadeContada: 0, observacao: '' })
 
 const headers = [
   { title: 'Código', key: 'codigo', width: 110 },
@@ -94,6 +151,7 @@ const headers = [
   { title: 'Preço Venda', key: 'precoVenda', width: 110 },
   { title: 'Custo Total', key: 'custoTotal', width: 120 },
   { title: 'Val. Venda', key: 'valorVendaTotal', width: 120 },
+  { title: '', key: 'acoes', sortable: false, width: 50 },
 ]
 
 const produtosFiltrados = computed(() => {
@@ -112,14 +170,42 @@ function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFract
 async function carregar() {
   carregando.value = true
   try {
-    const [pos, cat] = await Promise.all([
+    const [pos, cat, loc] = await Promise.all([
       api.get('/estoque/posicao', { params: { empresaId: auth.empresaId } }),
       api.get('/categorias', { params: { empresaId: auth.empresaId } }),
+      api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }),
     ])
     produtos.value = pos.data.produtos ?? []
     totais.value = pos.data.totais ?? totais.value
     categorias.value = cat.data
+    locaisEstoque.value = loc.data ?? []
   } finally { carregando.value = false }
+}
+
+function abrirAjuste(produto: any) {
+  const local = locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
+  ajuste.value = { produto, localEstoqueId: local, quantidadeContada: produto.estoqueAtual ?? 0, observacao: '' }
+  dlgAjuste.value = true
+}
+
+async function salvarAjuste() {
+  if (!ajuste.value.localEstoqueId) { notif.erro('Selecione o local de estoque.'); return }
+  salvando.value = true
+  try {
+    await api.post('/ajuste-estoque/unitario', {
+      empresaId: auth.empresaId,
+      produtoId: ajuste.value.produto.id,
+      localEstoqueId: ajuste.value.localEstoqueId,
+      quantidadeContada: ajuste.value.quantidadeContada,
+      usuarioId: auth.usuario?.id,
+      observacao: ajuste.value.observacao || null,
+    })
+    notif.ok('Estoque ajustado!')
+    dlgAjuste.value = false
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao ajustar estoque.')
+  } finally { salvando.value = false }
 }
 
 onMounted(carregar)

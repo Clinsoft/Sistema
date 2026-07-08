@@ -5,6 +5,18 @@
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Nova</v-btn>
     </div>
 
+    <GuiaPassos
+      id="contas-receber"
+      titulo="Como usar Contas a Receber"
+      :passos="[
+        'Use o filtro de <b>Mês</b> ou as datas para listar os títulos do período e clique em <b>Buscar</b>.',
+        'Clique em <b>Nova</b> para lançar um recebimento. Escolha <b>Único</b>, <b>Parcelar</b> (divide o total) ou <b>Repetir</b> (mesmo valor por período).',
+        'Informe a <b>subcategoria</b> (Vendas, Serviços…), o <b>cliente/pagador</b> e o vencimento.',
+        'Na tabela: <b>💲 Baixar</b> registra o recebimento (credita a conta), <b>↻ Renegociar</b> reprograma valor e vencimento.',
+        'Títulos de vendas a prazo (crediário) e do faturamento entram aqui automaticamente.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense>
@@ -99,9 +111,36 @@
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model="form.dataVencimento" label="Vencimento *"
+              <v-text-field v-model="form.dataVencimento" label="Primeiro vencimento *"
                 type="date" variant="outlined" density="compact" />
             </v-col>
+
+            <!-- Modo: Único / Parcelar / Repetir -->
+            <v-col cols="12" class="mt-1">
+              <v-btn-toggle v-model="form.modo" mandatory density="compact" rounded="lg" color="success" class="w-100">
+                <v-btn value="unico" class="flex-grow-1"><v-icon start size="16">mdi-numeric-1-circle-outline</v-icon>Único</v-btn>
+                <v-btn value="parcelar" class="flex-grow-1"><v-icon start size="16">mdi-call-split</v-icon>Parcelar</v-btn>
+                <v-btn value="repetir" class="flex-grow-1"><v-icon start size="16">mdi-repeat</v-icon>Repetir</v-btn>
+              </v-btn-toggle>
+            </v-col>
+            <template v-if="form.modo !== 'unico'">
+              <v-col cols="6" sm="4">
+                <v-text-field v-model.number="form.quantas" type="number" min="2"
+                  :label="form.modo === 'parcelar' ? 'Nº de parcelas' : 'Nº de vezes'"
+                  variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="6" sm="4">
+                <v-select v-model="form.periodo" :items="periodos" item-title="label" item-value="value"
+                  label="Período" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12" sm="4" class="d-flex align-center">
+                <div class="text-caption text-medium-emphasis">
+                  <template v-if="form.modo === 'parcelar'">{{ form.quantas }}× de <b>R$ {{ fmtParcela }}</b></template>
+                  <template v-else>{{ form.quantas }}× de <b>R$ {{ fmt(form.valorOriginal) }}</b> = R$ {{ fmtTotalRepetir }}</template>
+                </div>
+              </v-col>
+            </template>
+
             <v-col cols="12">
               <v-text-field v-model="form.observacao" label="Observação"
                 variant="outlined" density="compact" />
@@ -174,6 +213,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -195,15 +235,51 @@ const reneg = ref({ novoValor: 0, novoVencimento: '', motivo: '' })
 // Subcategorias de Recebimentos
 const subcategorias = ['Vendas', 'Serviços', 'Aluguel Recebido', 'Outras Receitas']
 
+const periodos = [
+  { label: 'Diário',     value: 'diario' },
+  { label: 'Semanal',    value: 'semanal' },
+  { label: 'Quinzenal',  value: 'quinzenal' },
+  { label: 'Mensal',     value: 'mensal' },
+  { label: 'Bimestral',  value: 'bimestral' },
+  { label: 'Trimestral', value: 'trimestral' },
+  { label: 'Semestral',  value: 'semestral' },
+  { label: 'Anual',      value: 'anual' },
+]
+
 const formPadrao = () => ({
   descricao: '', categoria: '', clienteNome: '',
   valorOriginal: 0, dataVencimento: '', observacao: '',
+  modo: 'unico' as 'unico' | 'parcelar' | 'repetir',
+  quantas: 2, periodo: 'mensal',
 })
 const form = ref(formPadrao())
 
+const fmtParcela = computed(() =>
+  fmt(Math.round((form.value.valorOriginal || 0) / (form.value.quantas || 1) * 100) / 100)
+)
+const fmtTotalRepetir = computed(() =>
+  fmt(Math.round((form.value.valorOriginal || 0) * (form.value.quantas || 1) * 100) / 100)
+)
+
+function proximaData(base: string, periodo: string, n: number): string {
+  const d = new Date(base + 'T12:00:00')
+  const map: Record<string, () => void> = {
+    diario:     () => d.setDate(d.getDate() + n),
+    semanal:    () => d.setDate(d.getDate() + n * 7),
+    quinzenal:  () => d.setDate(d.getDate() + n * 15),
+    mensal:     () => d.setMonth(d.getMonth() + n),
+    bimestral:  () => d.setMonth(d.getMonth() + n * 2),
+    trimestral: () => d.setMonth(d.getMonth() + n * 3),
+    semestral:  () => d.setMonth(d.getMonth() + n * 6),
+    anual:      () => d.setFullYear(d.getFullYear() + n),
+  }
+  map[periodo]?.()
+  return d.toISOString().slice(0, 10)
+}
+
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
-  fim: new Date().toISOString().slice(0, 10),
+  fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: 'Todas',
   status: 'Todos',
 })
@@ -275,17 +351,57 @@ function abrirNovo() {
 }
 
 async function salvarNovo() {
-  if (!form.value.descricao || form.value.valorOriginal <= 0 || !form.value.dataVencimento) {
+  const f = form.value
+  if (!f.descricao || f.valorOriginal <= 0 || !f.dataVencimento) {
     notif.erro('Preencha descrição, valor e vencimento.')
     return
   }
   salvando.value = true
   try {
-    await api.post('/contas-receber', { empresaId: auth.empresaId, ...form.value })
-    notif.ok('Recebimento cadastrado!')
+    const base = {
+      empresaId: auth.empresaId,
+      descricao: f.descricao,
+      categoria: f.categoria || null,
+      clienteNome: f.clienteNome || null,
+      observacao: f.observacao || null,
+    }
+
+    if (f.modo === 'unico') {
+      await api.post('/contas-receber', {
+        ...base, valor: f.valorOriginal,
+        primeiroVencimento: f.dataVencimento, totalParcelas: 1,
+      })
+    } else if (f.modo === 'parcelar') {
+      const n = Math.max(2, f.quantas || 2)
+      const valorParcela = Math.round(f.valorOriginal / n * 100) / 100
+      for (let i = 0; i < n; i++) {
+        await api.post('/contas-receber', {
+          ...base,
+          descricao: `${f.descricao} ${i + 1}/${n}`,
+          valor: i === n - 1
+            ? Math.round((f.valorOriginal - valorParcela * (n - 1)) * 100) / 100
+            : valorParcela,
+          primeiroVencimento: i === 0 ? f.dataVencimento : proximaData(f.dataVencimento, f.periodo, i),
+          totalParcelas: 1,
+        })
+      }
+    } else {
+      const n = Math.max(2, f.quantas || 2)
+      for (let i = 0; i < n; i++) {
+        await api.post('/contas-receber', {
+          ...base,
+          descricao: `${f.descricao} ${i + 1}/${n}`,
+          valor: f.valorOriginal,
+          primeiroVencimento: i === 0 ? f.dataVencimento : proximaData(f.dataVencimento, f.periodo, i),
+          totalParcelas: 1,
+        })
+      }
+    }
+
+    notif.ok('Recebimento(s) cadastrado(s)!')
     dialogNovo.value = false
     await carregar()
-  } catch { notif.erro('Erro ao salvar.') }
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao salvar.') }
   finally { salvando.value = false }
 }
 
@@ -320,7 +436,11 @@ async function confirmarRenegociacao() {
   if (!reneg.value.novoVencimento) { notif.erro('Informe o novo vencimento.'); return }
   salvando.value = true
   try {
-    await api.post(`/contas-receber/${itemReneg.value.id}/renegociar`, reneg.value)
+    await api.post(`/contas-receber/${itemReneg.value.id}/renegociar`, {
+      novoValor: reneg.value.novoValor,
+      novoVencimento: reneg.value.novoVencimento,
+      observacao: reneg.value.motivo,
+    })
     notif.ok('Título renegociado!')
     dialogReneg.value = false
     await carregar()

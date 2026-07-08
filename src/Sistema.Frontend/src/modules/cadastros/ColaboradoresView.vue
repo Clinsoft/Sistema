@@ -11,6 +11,17 @@
       </v-btn>
     </div>
 
+    <GuiaPassos
+      id="colaboradores"
+      titulo="Como usar o cadastro de Colaboradores"
+      :passos="[
+        'Clique em <b>Novo Colaborador</b> e informe nome, e-mail e senha — o e-mail e a senha são usados para <b>acessar o sistema</b>.',
+        'Escolha o <b>perfil de acesso</b> (Administrador, Vendedor, Financeiro, Contador). A tabela de permissões mostra exatamente o que cada perfil pode <b>ver, adicionar, editar e excluir</b>.',
+        'Use ✎ para editar nome/perfil, 🔑 para <b>redefinir a senha</b> e 🚫/✅ para <b>desativar/reativar</b> o acesso.',
+        'Apenas <b>Administradores</b> podem gerenciar colaboradores. O e-mail não pode ser alterado após criado.',
+      ]"
+    />
+
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
       <v-data-table
@@ -144,15 +155,36 @@
             <div class="cad-secao" v-if="form.perfil">
               <div class="cad-secao-header">
                 <v-icon size="14">mdi-shield-outline</v-icon>
-                Permissões do Perfil
+                Permissões do perfil {{ form.perfil }}
               </div>
               <div class="cad-secao-body">
-                <v-alert type="info" variant="tonal" density="compact" rounded="lg">
-                  <div class="text-caption font-weight-bold mb-1">
-                    Permissões do perfil {{ form.perfil }}:
-                  </div>
+                <v-alert type="info" variant="tonal" density="compact" rounded="lg" class="mb-3">
                   <div class="text-caption">{{ descricaoPerfil(form.perfil) }}</div>
                 </v-alert>
+                <v-table density="compact" class="perm-tabela">
+                  <thead>
+                    <tr>
+                      <th>Módulo</th>
+                      <th class="text-center">Ver</th>
+                      <th class="text-center">Adicionar</th>
+                      <th class="text-center">Editar</th>
+                      <th class="text-center">Excluir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="p in permissoesPerfil(form.perfil)" :key="p.modulo">
+                      <td class="text-body-2">{{ p.modulo }}</td>
+                      <td class="text-center"><v-icon :color="p.ver ? 'success' : 'grey-lighten-1'" size="16">{{ p.ver ? 'mdi-check-circle' : 'mdi-minus' }}</v-icon></td>
+                      <td class="text-center"><v-icon :color="p.adicionar ? 'success' : 'grey-lighten-1'" size="16">{{ p.adicionar ? 'mdi-check-circle' : 'mdi-minus' }}</v-icon></td>
+                      <td class="text-center"><v-icon :color="p.editar ? 'success' : 'grey-lighten-1'" size="16">{{ p.editar ? 'mdi-check-circle' : 'mdi-minus' }}</v-icon></td>
+                      <td class="text-center"><v-icon :color="p.excluir ? 'success' : 'grey-lighten-1'" size="16">{{ p.excluir ? 'mdi-check-circle' : 'mdi-minus' }}</v-icon></td>
+                    </tr>
+                  </tbody>
+                </v-table>
+                <div class="text-caption text-medium-emphasis mt-2">
+                  <v-icon size="12">mdi-information-outline</v-icon>
+                  As permissões são aplicadas pelo perfil. Para acesso diferente, altere o perfil do colaborador.
+                </div>
               </div>
             </div>
           </div>
@@ -196,6 +228,7 @@
 </template>
 
 <script setup lang="ts">
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -263,6 +296,56 @@ function iniciais(nome: string) {
   return nome.trim().split(' ').slice(0, 2).map(n => n[0].toUpperCase()).join('')
 }
 
+// Matriz de permissões por perfil, refletindo o controle de acesso real da API (Authorize Roles).
+// V/A/E/X = Ver / Adicionar / Editar / Excluir
+interface PermModulo { modulo: string; ver: boolean; adicionar: boolean; editar: boolean; excluir: boolean }
+const T = true, F = false
+const matrizPermissoes: Record<string, PermModulo[]> = {
+  Administrador: [
+    { modulo: 'PDV / Vendas',            ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Cadastros (clientes, produtos…)', ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Estoque e Compras',       ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Financeiro (contas, DRE)', ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Fiscal (NF-e, SPED)',      ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Contabilidade',            ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Configurações e Empresa',  ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Colaboradores / Usuários', ver: T, adicionar: T, editar: T, excluir: T },
+  ],
+  Vendedor: [
+    { modulo: 'PDV / Vendas',            ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Cadastros (clientes, produtos…)', ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Estoque e Compras',       ver: T, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Financeiro (contas, DRE)', ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Fiscal (NF-e, SPED)',      ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Contabilidade',            ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Configurações e Empresa',  ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Colaboradores / Usuários', ver: F, adicionar: F, editar: F, excluir: F },
+  ],
+  Financeiro: [
+    { modulo: 'PDV / Vendas',            ver: T, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Cadastros (clientes, produtos…)', ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Estoque e Compras',       ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Financeiro (contas, DRE)', ver: T, adicionar: T, editar: T, excluir: T },
+    { modulo: 'Fiscal (NF-e, SPED)',      ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Contabilidade',            ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Configurações e Empresa',  ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Colaboradores / Usuários', ver: F, adicionar: F, editar: F, excluir: F },
+  ],
+  Contador: [
+    { modulo: 'PDV / Vendas',            ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Cadastros (clientes, produtos…)', ver: T, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Estoque e Compras',       ver: F, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Financeiro (contas, DRE)', ver: T, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Fiscal (NF-e, SPED)',      ver: T, adicionar: F, editar: F, excluir: F },
+    { modulo: 'Contabilidade',            ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Configurações e Empresa',  ver: T, adicionar: F, editar: T, excluir: F },
+    { modulo: 'Colaboradores / Usuários', ver: F, adicionar: F, editar: F, excluir: F },
+  ],
+}
+function permissoesPerfil(p: string): PermModulo[] {
+  return matrizPermissoes[p] ?? []
+}
+
 async function carregar() {
   carregando.value = true
   try {
@@ -297,9 +380,8 @@ async function salvar() {
   salvando.value = true
   try {
     if (editandoId.value) {
-      // Editar: só perfil e nome (não há endpoint PUT genérico; usa PATCH perfil)
-      await api.patch(`/usuarios/${editandoId.value}/perfil`, { perfil: form.value.perfil })
-      notif.ok('Perfil atualizado!')
+      await api.put(`/usuarios/${editandoId.value}`, { nome: form.value.nome, perfil: form.value.perfil })
+      notif.ok('Colaborador atualizado!')
     } else {
       await api.post('/usuarios', {
         empresaId: auth.empresaId,
@@ -353,4 +435,6 @@ onMounted(carregar)
 .cad-secao { background:white; border-radius:12px; border:1px solid #e8edf3; overflow:hidden; }
 .cad-secao-header { display:flex; align-items:center; gap:6px; padding:10px 16px; background:#f8f9fb; border-bottom:1px solid #e8edf3; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:rgb(var(--v-theme-primary)); }
 .cad-secao-body { padding:16px; }
+.perm-tabela th { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748b; }
+.perm-tabela td, .perm-tabela th { padding:4px 8px !important; height:auto !important; }
 </style>

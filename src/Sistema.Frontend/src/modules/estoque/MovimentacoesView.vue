@@ -7,6 +7,17 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="movimentacoes"
+      titulo="Como usar as Movimentações de Estoque"
+      :passos="[
+        'Esta tela é o <b>histórico</b> de tudo que entrou e saiu: vendas, compras, ajustes, transferências e devoluções. Filtre por período, tipo ou produto.',
+        'Entradas aparecem em <b>verde (+)</b> e saídas em <b>vermelho (−)</b>. Os cards somam entradas, saídas e o saldo do período.',
+        'Use <b>Ajuste Manual</b> para corrigir o estoque: escolha o produto e o <b>local</b>, informe a quantidade (<b>+</b> entrada / <b>−</b> saída) e o motivo.',
+        'O ajuste <b>atualiza o saldo do produto</b> na hora e fica registrado aqui. Movimentações são um registro histórico — não podem ser editadas nem excluídas (use um novo ajuste para corrigir).',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4">
       <v-card-text>
@@ -71,6 +82,8 @@
             <v-autocomplete v-model="ajuste.produtoId" :items="produtos" item-title="descricao"
               item-value="id" label="Produto *" :rules="[r => !!r || 'Obrigatório']"
               @update:search="buscarProdutos" />
+            <v-select v-model="ajuste.localEstoqueId" :items="locaisEstoque" item-title="nome"
+              item-value="id" label="Local de estoque *" :rules="[r => !!r || 'Obrigatório']" />
             <v-text-field v-model.number="ajuste.quantidade" label="Quantidade (+/-) *" type="number"
               hint="Use valor positivo para entrada e negativo para saída"
               :rules="[r => r !== 0 || 'Não pode ser zero']" />
@@ -89,6 +102,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
@@ -103,7 +117,8 @@ const carregando = ref(false)
 const dialogAjuste = ref(false)
 const salvando = ref(false)
 const produtos = ref<any[]>([])
-const ajuste = ref({ produtoId: null, quantidade: 0, observacao: '' })
+const locaisEstoque = ref<any[]>([])
+const ajuste = ref<any>({ produtoId: null, localEstoqueId: null, quantidade: 0, observacao: '' })
 const formAjusteRef = ref()
 
 const hoje = new Date().toISOString().split('T')[0]
@@ -152,32 +167,46 @@ async function listar() {
 }
 
 function abrirAjuste() {
-  ajuste.value = { produtoId: null, quantidade: 0, observacao: '' }
+  const local = locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
+  ajuste.value = { produtoId: null, localEstoqueId: local, quantidade: 0, observacao: '' }
   dialogAjuste.value = true
 }
 
 async function buscarProdutos(q: string) {
   if (!q || q.length < 2) return
   const { data } = await api.get('/produtos/buscar', { params: { empresaId: auth.empresaId, q } })
-  produtos.value = Array.isArray(data) ? data : []
+  produtos.value = Array.isArray(data) ? data : (data.itens ?? [])
+}
+
+async function carregarLocais() {
+  try {
+    const { data } = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
+    locaisEstoque.value = data ?? []
+  } catch { locaisEstoque.value = [] }
 }
 
 async function salvarAjuste() {
   const { valid } = await formAjusteRef.value?.validate()
   if (!valid) return
+  if (ajuste.value.quantidade === 0) { notif.erro('Informe uma quantidade diferente de zero.'); return }
   salvando.value = true
   try {
-    await api.post('/estoque/ajuste', {
+    const qtd = ajuste.value.quantidade
+    await api.post('/movimentacoes', {
       empresaId: auth.empresaId,
       produtoId: ajuste.value.produtoId,
-      quantidade: ajuste.value.quantidade,
-      observacao: ajuste.value.observacao,
+      localEstoqueId: ajuste.value.localEstoqueId,
+      tipo: qtd > 0 ? 'AjustePositivo' : 'AjusteNegativo',
+      quantidade: Math.abs(qtd),
+      custoUnitario: 0,
+      usuarioId: auth.usuario?.id,
+      observacao: ajuste.value.observacao || null,
     })
-    notif.ok('Ajuste registrado com sucesso!')
+    notif.ok('Ajuste registrado! Estoque atualizado.')
     dialogAjuste.value = false
     await listar()
-  } catch {
-    notif.erro('Erro ao registrar ajuste.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao registrar ajuste.')
   } finally {
     salvando.value = false
   }
@@ -191,7 +220,7 @@ function corTipo(tipo: string) {
   return mapa[tipo] ?? 'default'
 }
 
-onMounted(listar)
+onMounted(() => { listar(); carregarLocais() })
 </script>
 
 

@@ -208,9 +208,7 @@ async function carregar() {
       params: { empresaId: auth.empresaId, produtoBalanca: true }
     })
     produtos.value = (r.data.items ?? r.data).filter((p: any) => p.produtoBalanca && p.codigoPlu != null)
-  } catch {
-    notif.erro('Erro ao carregar produtos para balança.')
-  } finally {
+  } catch { /* silencioso */ } finally {
     carregando.value = false
   }
 }

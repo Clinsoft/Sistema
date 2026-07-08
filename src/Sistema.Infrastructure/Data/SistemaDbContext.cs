@@ -43,6 +43,8 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<ItemVenda> ItensVenda => Set<ItemVenda>();
     public DbSet<PagamentoVenda> PagamentosVenda => Set<PagamentoVenda>();
     public DbSet<PDVSessao> PDVSessoes => Set<PDVSessao>();
+    public DbSet<OperacaoCaixa> OperacoesCaixa => Set<OperacaoCaixa>();
+    public DbSet<MetaVendaMensal> MetasVendaMensal => Set<MetaVendaMensal>();
     public DbSet<DevolucaoVenda> DevolucoesVenda => Set<DevolucaoVenda>();
     public DbSet<ItemDevolucao> ItensDevolucoesVenda => Set<ItemDevolucao>();
 
@@ -88,6 +90,10 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<TemplateMarketing> TemplatesMarketing => Set<TemplateMarketing>();
     public DbSet<ArteMarketing> ArtesMarketing => Set<ArteMarketing>();
     public DbSet<AgendamentoPublicacao> AgendamentosPublicacao => Set<AgendamentoPublicacao>();
+    public DbSet<Promocao> Promocoes => Set<Promocao>();
+    public DbSet<MembroClube> MembrosClube => Set<MembroClube>();
+    public DbSet<MovimentoCashback> MovimentosCashback => Set<MovimentoCashback>();
+    public DbSet<ConfiguracaoClube> ConfiguracoesClube => Set<ConfiguracaoClube>();
     public DbSet<ConfiguracaoValidade> ConfiguracoesValidade => Set<ConfiguracaoValidade>();
     public DbSet<AlertaValidade> AlertasValidade => Set<AlertaValidade>();
     public DbSet<ConfiguracaoWhatsAppMensagem> ConfiguracoesWhatsAppMensagem => Set<ConfiguracaoWhatsAppMensagem>();

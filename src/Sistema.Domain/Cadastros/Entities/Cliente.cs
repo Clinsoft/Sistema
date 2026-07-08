@@ -62,6 +62,7 @@ public class Cliente : Entity
     public void AdicionarPontos(int pontos) => PontosFidelidade += pontos;
     public void RetirarPontos(int pontos) => PontosFidelidade = Math.Max(0, PontosFidelidade - pontos);
     public void Desativar() => Ativo = false;
+    public void Reativar() => Ativo = true;
 }
 
 public enum TipoPessoa { Fisica, Juridica }

@@ -16,6 +16,7 @@ public class Crediario : Entity
     public DateTime DataContrato { get; private set; }
     public StatusCrediario Status { get; private set; }
     public Guid UsuarioId { get; private set; }
+    public string? Observacao { get; private set; }
 
     private readonly List<ParcelaCrediario> _parcelas = [];
     public IReadOnlyList<ParcelaCrediario> Parcelas => _parcelas.AsReadOnly();
@@ -25,7 +26,8 @@ public class Crediario : Entity
     public static Crediario Criar(Guid empresaId, Guid clienteId, Guid usuarioId,
         string numero, decimal valorTotal, decimal valorEntrada,
         int numeroParcelas, decimal taxaJurosMensal, DateTime dataContrato,
-        Guid? vendaId = null)
+        Guid? vendaId = null, DateTime? dataPrimeiraParcela = null,
+        int? diaVencimento = null, string? observacao = null)
     {
         var valorFinanciado = valorTotal - valorEntrada;
         var crediario = new Crediario
@@ -41,21 +43,24 @@ public class Crediario : Entity
             NumeroParcelas = numeroParcelas,
             TaxaJurosMensal = taxaJurosMensal,
             DataContrato = dataContrato,
+            Observacao = observacao,
             Status = StatusCrediario.Ativo
         };
 
-        crediario.GerarParcelas();
+        crediario.GerarParcelas(dataPrimeiraParcela ?? dataContrato.AddMonths(1), diaVencimento);
         return crediario;
     }
 
-    private void GerarParcelas()
+    private void GerarParcelas(DateTime dataPrimeira, int? diaVencimento)
     {
         // Tabela Price (amortização francesa)
         var pmt = CalcularPmt(ValorFinanciado, TaxaJurosMensal / 100, NumeroParcelas);
 
         for (int i = 1; i <= NumeroParcelas; i++)
         {
-            var vencimento = DataContrato.AddMonths(i);
+            var vencimento = dataPrimeira.AddMonths(i - 1);
+            if (diaVencimento is >= 1 and <= 28)
+                vencimento = new DateTime(vencimento.Year, vencimento.Month, diaVencimento.Value);
             _parcelas.Add(ParcelaCrediario.Criar(Id, i, Math.Round(pmt, 2), vencimento));
         }
     }

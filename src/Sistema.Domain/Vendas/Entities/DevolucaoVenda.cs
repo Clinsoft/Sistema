@@ -11,6 +11,7 @@ public class DevolucaoVenda : Entity
     public DateTime DataHora { get; private set; }
     public string Motivo { get; private set; } = null!;
     public decimal TotalDevolvido { get; private set; }
+    public bool ReporEstoque { get; private set; }
 
     private readonly List<ItemDevolucao> _itens = [];
     public IReadOnlyList<ItemDevolucao> Itens => _itens.AsReadOnly();
@@ -18,7 +19,8 @@ public class DevolucaoVenda : Entity
     private DevolucaoVenda() { }
 
     public static DevolucaoVenda Criar(Guid empresaId, Guid vendaId, string numeroVenda,
-        Guid? clienteId, string motivo, IEnumerable<(Guid produtoId, string descricao, decimal quantidade, decimal valorUnitario)> itens)
+        Guid? clienteId, string motivo, IEnumerable<(Guid produtoId, string descricao, decimal quantidade, decimal valorUnitario)> itens,
+        bool reporEstoque = true)
     {
         var devolucao = new DevolucaoVenda
         {
@@ -28,6 +30,7 @@ public class DevolucaoVenda : Entity
             ClienteId = clienteId,
             Motivo = motivo,
             DataHora = DateTime.Now,
+            ReporEstoque = reporEstoque,
         };
 
         foreach (var (produtoId, descricao, quantidade, valorUnitario) in itens)

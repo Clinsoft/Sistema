@@ -7,6 +7,17 @@
       </v-btn>
     </div>
 
+    <GuiaPassos
+      id="crediario"
+      titulo="Como usar o Crediário"
+      :passos="[
+        'Clique em <b>Novo Crediário</b>, busque o <b>cliente</b>, informe o <b>valor total</b>, a <b>entrada</b> (opcional) e o <b>nº de parcelas</b>. A prévia mostra a parcela.',
+        'Defina a <b>1ª parcela</b>, um <b>dia fixo de vencimento</b> e a <b>taxa de juros</b> (0 = sem juros). As parcelas são geradas automaticamente.',
+        'Na lista, use 👁 para ver as <b>parcelas</b> e receber cada uma (💲). Baixe o <b>Contrato</b> e o <b>Carnê</b> em PDF pelos ícones de documento.',
+        'Os cards mostram inadimplentes, saldo devedor e vencimentos de hoje. Parcelas em atraso aparecem destacadas em vermelho.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -188,11 +199,11 @@
             </template>
             <template #item.status="{ item }">
               <v-chip size="x-small" :color="corStatusParcela(item.status)" variant="tonal">
-                {{ item.status }}
+                {{ rotuloStatusParcela(item.status) }}
               </v-chip>
             </template>
             <template #item.acoes="{ item }">
-              <v-btn v-if="item.status !== 'Pago'"
+              <v-btn v-if="item.status !== 'Paga' && item.status !== 'Cancelada'"
                 icon="mdi-cash-check" size="x-small" variant="text" color="success"
                 @click="abrirPagamento(item)" title="Receber parcela" />
             </template>
@@ -320,6 +331,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -370,11 +382,14 @@ const fmtData = (d?: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString
 const hoje = new Date().toISOString().slice(0, 10)
 
 function eVencida(parcela: any) {
-  return parcela.status !== 'Pago' && parcela.dataVencimento < hoje
+  return parcela.status !== 'Paga' && parcela.dataVencimento < hoje
 }
 
 function corStatusParcela(s: string) {
-  return ({ Pago: 'success', Vencido: 'error', Aberto: 'info', Pendente: 'warning' } as any)[s] ?? 'default'
+  return ({ Paga: 'success', Atrasada: 'error', EmAberto: 'info', Renegociada: 'warning', Cancelada: 'default' } as any)[s] ?? 'default'
+}
+function rotuloStatusParcela(s: string) {
+  return ({ Paga: 'Paga', Atrasada: 'Atrasada', EmAberto: 'Em aberto', Renegociada: 'Renegociada', Cancelada: 'Cancelada' } as any)[s] ?? s
 }
 
 const crediariosExibidos = computed(() => {
@@ -398,9 +413,7 @@ async function carregar() {
       params: { empresaId: auth.empresaId, q: busca.value || undefined }
     })
     crediarios.value = r.data
-  } catch {
-    notif.erro('Erro ao carregar crediários.')
-  } finally { carregando.value = false }
+  } catch { /* silencioso */ } finally { carregando.value = false }
 }
 
 async function abrirParcelas(crediario: any) {
@@ -410,9 +423,7 @@ async function abrirParcelas(crediario: any) {
   try {
     const r = await api.get(`/crediario/${crediario.id}/parcelas`)
     parcelas.value = r.data
-  } catch {
-    notif.erro('Erro ao carregar parcelas.')
-  } finally { carregandoParcelas.value = false }
+  } catch { /* silencioso */ } finally { carregandoParcelas.value = false }
 }
 
 function abrirPagamento(parcela: any) {
@@ -499,8 +510,8 @@ async function buscarClientes(busca: string) {
   if (!busca || busca.length < 2) return
   buscandoCliente.value = true
   try {
-    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, busca } })
-    clientesBusca.value = r.data
+    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, termo: busca } })
+    clientesBusca.value = r.data?.itens ?? r.data ?? []
   } catch { clientesBusca.value = [] }
   finally { buscandoCliente.value = false }
 }
@@ -528,13 +539,14 @@ async function salvarNovo() {
     await api.post('/crediario', {
       empresaId: auth.empresaId,
       clienteId,
+      usuarioId: auth.usuario?.id,
       valorTotal: novoForm.value.valorTotal,
-      entrada: novoForm.value.entrada || 0,
+      valorEntrada: novoForm.value.entrada || 0,
       numeroParcelas: novoForm.value.numeroParcelas,
       taxaJurosMensal: novoForm.value.taxaJurosMensal || 0,
       dataPrimeiraParcela: novoForm.value.dataPrimeiraParcela,
-      diaPagamento: novoForm.value.diaPagamento,
-      observacao: novoForm.value.observacao || undefined,
+      diaVencimento: novoForm.value.diaPagamento,
+      observacao: novoForm.value.observacao || null,
     })
     notif.ok('Crediário criado!')
     dlgNovo.value = false

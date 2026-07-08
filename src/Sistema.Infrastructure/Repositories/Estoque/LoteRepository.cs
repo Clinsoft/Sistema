@@ -7,9 +7,10 @@ namespace Sistema.Infrastructure.Repositories.Estoque;
 
 public class LoteRepository(SistemaDbContext db) : BaseRepository<Lote>(db), ILoteRepository
 {
+    // Lista TODOS os lotes do produto (inclusive com quantidade zerada), para a ficha do produto.
     public async Task<IReadOnlyList<Lote>> ListarPorProdutoAsync(Guid empresaId, Guid produtoId, CancellationToken ct = default)
         => await _set.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId && l.ProdutoId == produtoId && l.Quantidade > 0)
+            .Where(l => l.EmpresaId == empresaId && l.ProdutoId == produtoId)
             .OrderBy(l => l.DataValidade)
             .ToListAsync(ct);
 

@@ -85,45 +85,86 @@ public class DREController(SistemaDbContext db) : ControllerBase
         });
     }
 
-    /// <summary>DRE anual — um mês por coluna.</summary>
+    /// <summary>DRE gerencial mensal por categoria (Recebimentos, Despesas Fixas/Variáveis, Pessoas, Impostos).</summary>
+    [HttpGet("mensal")]
+    public async Task<IActionResult> Mensal([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
+    {
+        var inicio = new DateTime(ano, mes, 1);
+        var fim = inicio.AddMonths(1).AddDays(-1);
+        return Ok(await MontarDreCategorizado(empresaId, inicio, fim, ct));
+    }
+
+    /// <summary>DRE gerencial anual por categoria (exercício inteiro).</summary>
     [HttpGet("anual")]
     public async Task<IActionResult> Anual([FromQuery] Guid empresaId,
         [FromQuery] int ano, CancellationToken ct)
     {
-        var meses = new List<object>();
+        var inicio = new DateTime(ano, 1, 1);
+        var fim = new DateTime(ano, 12, 31);
+        return Ok(await MontarDreCategorizado(empresaId, inicio, fim, ct));
+    }
 
-        for (int mes = 1; mes <= 12; mes++)
+    /// <summary>
+    /// Monta o DRE gerencial por categoria (competência = vencimento no período),
+    /// a partir dos lançamentos financeiros não cancelados.
+    /// </summary>
+    private async Task<object> MontarDreCategorizado(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct)
+    {
+        var fimExcl = fim.AddDays(1);
+        var lancs = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Status != StatusLancamento.Cancelado
+                && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
+            .Select(l => new { l.Tipo, l.Categoria, l.Descricao, l.ValorOriginal })
+            .ToListAsync(ct);
+
+        var receber = lancs.Where(l => l.Tipo == TipoLancamento.ContaReceber).ToList();
+        var pagar = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar).ToList();
+
+        // Subcategorias dos recebimentos agrupadas pela categoria (Vendas, Serviços…)
+        var subRecebimentos = receber
+            .GroupBy(l => string.IsNullOrWhiteSpace(l.Categoria) ? "Recebimentos" : l.Categoria!)
+            .Select(g => new { nome = g.Key, total = g.Sum(x => x.ValorOriginal) })
+            .OrderByDescending(x => x.total).ToList();
+
+        // Despesas por macro-categoria; desconhecidas caem em "Despesas Variáveis"
+        static string Grupo(string? cat) => cat switch
         {
-            var inicio = new DateTime(ano, mes, 1);
-            var fim = inicio.AddMonths(1).AddDays(-1);
+            "Despesas Fixas" => "Despesas Fixas",
+            "Pessoas" => "Pessoas",
+            "Impostos" => "Impostos",
+            _ => "Despesas Variáveis"
+        };
 
-            var receitas = await db.Vendas.AsNoTracking()
-                .Where(v => v.EmpresaId == empresaId
-                    && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
-                    && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
-                .SumAsync(v => (decimal?)v.Total ?? 0, ct);
+        List<object> SubPorDescricao(string grupo) => pagar
+            .Where(l => Grupo(l.Categoria) == grupo)
+            .GroupBy(l => string.IsNullOrWhiteSpace(l.Descricao) ? "Outros" : l.Descricao)
+            .Select(g => (object)new { nome = g.Key, total = g.Sum(x => x.ValorOriginal) })
+            .OrderByDescending(x => ((dynamic)x).total).ToList();
 
-            var despesas = await db.LancamentosFinanceiros.AsNoTracking()
-                .Where(l => l.EmpresaId == empresaId
-                    && l.Tipo == TipoLancamento.ContaPagar
-                    && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
-                    && l.Status == StatusLancamento.Pago)
-                .SumAsync(l => (decimal?)l.ValorPago ?? 0, ct);
+        decimal TotalGrupo(string grupo) => pagar.Where(l => Grupo(l.Categoria) == grupo).Sum(l => l.ValorOriginal);
 
-            meses.Add(new
+        var recebimentos = receber.Sum(l => l.ValorOriginal);
+        var despesasFixas = TotalGrupo("Despesas Fixas");
+        var despesasVariaveis = TotalGrupo("Despesas Variáveis");
+        var pessoas = TotalGrupo("Pessoas");
+        var impostos = TotalGrupo("Impostos");
+        var resultado = recebimentos - despesasFixas - despesasVariaveis - pessoas - impostos;
+        var margemLiquida = recebimentos > 0 ? Math.Round(resultado / recebimentos * 100, 1) : 0m;
+
+        return new
+        {
+            recebimentos, despesasFixas, despesasVariaveis, pessoas, impostos,
+            resultado, margemLiquida,
+            subcategorias = new
             {
-                mes, nomeMes = inicio.ToString("MMM", new System.Globalization.CultureInfo("pt-BR")),
-                receitas, despesas, resultado = receitas - despesas
-            });
-        }
-
-        return Ok(new
-        {
-            ano,
-            meses,
-            totalReceitas = meses.Sum(m => (decimal)((dynamic)m).receitas),
-            totalDespesas = meses.Sum(m => (decimal)((dynamic)m).despesas),
-            resultado = meses.Sum(m => (decimal)((dynamic)m).resultado)
-        });
+                recebimentos = subRecebimentos,
+                despesasFixas = SubPorDescricao("Despesas Fixas"),
+                despesasVariaveis = SubPorDescricao("Despesas Variáveis"),
+                pessoas = SubPorDescricao("Pessoas"),
+                impostos = SubPorDescricao("Impostos")
+            }
+        };
     }
 }

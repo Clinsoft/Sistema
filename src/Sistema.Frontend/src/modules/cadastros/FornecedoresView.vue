@@ -7,11 +7,22 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="fornecedores"
+      titulo="Como usar o cadastro de Fornecedores"
+      :passos="[
+        'Clique em <b>Novo Fornecedor</b> e escolha o(s) <b>tipo(s) de parceiro</b> (Fornecedor, Transportadora, Representante, Parceiro).',
+        'Digite o <b>CPF/CNPJ</b> — para CNPJ os dados da Receita são preenchidos automaticamente. O <b>CEP</b> completa o endereço.',
+        'Informe <b>contato</b>, <b>prazo de pagamento</b> e demais dados. Use ✎ para editar depois.',
+        'Use o botão 🗑/↻ para <b>inativar/reativar</b>. Filtre por <b>Status</b> para ver inativos e recuperá-los.',
+      ]"
+    />
+
     <v-card>
       <v-card-text>
         <v-row class="mb-2">
           <v-col cols="12" md="5">
-            <v-text-field v-model="busca" label="Buscar por nome ou CNPJ" prepend-inner-icon="mdi-magnify"
+            <v-text-field v-model="busca" label="Buscar por nome ou CPF/CNPJ" prepend-inner-icon="mdi-magnify"
               clearable density="compact" hide-details @update:modelValue="listar" />
           </v-col>
           <v-col cols="12" md="3">
@@ -35,7 +46,7 @@
               </v-chip>
             </div>
           </template>
-          <template #item.cnpj="{ item }">{{ formatarCnpj(item.cnpj) }}</template>
+          <template #item.cnpj="{ item }">{{ formatarCpfCnpj(item.cnpj ?? '') }}</template>
           <template #item.ativo="{ item }">
             <v-chip :color="item.ativo ? 'success' : 'error'" size="small">
               {{ item.ativo ? 'Ativo' : 'Inativo' }}
@@ -100,16 +111,15 @@
                 <div class="cad-secao-body">
                   <v-row dense>
                     <v-col cols="12" md="4">
-                      <v-text-field v-model="form.cnpj" label="CNPJ *"
+                      <v-text-field v-model="form.cnpj" label="CPF / CNPJ"
                         variant="outlined" density="compact"
-                        placeholder="00.000.000/0000-00"
-                        :rules="[r => !!r || 'Obrigatório']"
+                        placeholder="000.000.000-00 ou 00.000.000/0000-00"
                         :loading="buscandoCnpj"
                         :append-inner-icon="cnpjStatus === 'ok' ? 'mdi-check-circle' : cnpjStatus === 'erro' ? 'mdi-alert-circle-outline' : undefined"
                         :color="cnpjStatus === 'ok' ? 'success' : cnpjStatus === 'erro' ? 'error' : undefined"
-                        hint="Preenche dados automaticamente"
+                        hint="Preenche dados automaticamente para CNPJ"
                         persistent-hint
-                        @input="form.cnpj = maskCnpj(($event.target as HTMLInputElement).value); cnpjStatus = 'idle'"
+                        @input="form.cnpj = maskCpfCnpj(($event.target as HTMLInputElement).value); cnpjStatus = 'idle'"
                         @blur="buscarCnpj" />
                     </v-col>
                     <v-col cols="12" md="8">
@@ -132,9 +142,13 @@
                       <v-text-field v-model="form.celular" label="Celular" v-mask="'(##) #####-####'"
                         variant="outlined" density="compact" />
                     </v-col>
-                    <v-col cols="12" md="4">
-                      <v-text-field v-model="form.prazoEntregaDias" label="Prazo de Entrega (dias)" type="number"
-                        variant="outlined" density="compact" />
+                    <v-col cols="12" md="6">
+                      <v-text-field v-model="form.contato" label="Pessoa de Contato"
+                        variant="outlined" density="compact" placeholder="Nome do responsável" />
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-text-field v-model.number="form.prazoPagamentoDias" label="Prazo de Pagamento (dias)" type="number"
+                        variant="outlined" density="compact" hint="Prazo padrão para pagamento das compras" persistent-hint />
                     </v-col>
                   </v-row>
                 </div>
@@ -189,15 +203,27 @@
 </template>
 
 <script setup lang="ts">
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
-import { cnpjRaw, maskCnpj, formatarCnpj } from '@/utils/documento'
+import { cnpjRaw, maskCpfCnpj, formatarCpfCnpj } from '@/utils/documento'
 
 
 const notif = useNotifStore()
 const auth = useAuthStore()
+
+// Monta uma mensagem legível a partir de qualquer formato de erro do backend
+function msgErro(e: any, fallback: string): string {
+  const d = e?.response?.data
+  if (!d) return e?.message ?? fallback
+  if (typeof d === 'string') return d
+  if (Array.isArray(d?.erros) && d.erros.length)
+    return d.erros.map((x: any) => `${x.campo ? x.campo + ': ' : ''}${x.mensagem}`).join(' | ')
+  if (d?.detalhe) return `${d.mensagem ?? 'Erro'} — ${d.detalhe}`
+  return d?.mensagem ?? fallback
+}
 
 const fornecedores = ref<any[]>([])
 const carregando = ref(false)
@@ -239,7 +265,7 @@ function toggleTipo(v: string) {
 const headers = [
   { title: 'Razão Social', key: 'razaoSocial' },
   { title: 'Tipos', key: 'tipos', sortable: false },
-  { title: 'CNPJ', key: 'cnpj' },
+  { title: 'CPF/CNPJ', key: 'cnpj' },
   { title: 'Telefone', key: 'telefone' },
   { title: 'Status', key: 'ativo', align: 'center' as const },
   { title: 'Ações', key: 'acoes', sortable: false, align: 'end' as const },
@@ -260,16 +286,21 @@ async function listar() {
 
 function abrirNovo() {
   editando.value = null
-  form.value = { ativo: true, tipos: ['Fornecedor'] }
+  form.value = { ativo: true, tipos: ['Fornecedor'], prazoPagamentoDias: 30 }
   cnpjStatus.value = 'idle'
   dialog.value = true
 }
 
-function editar(item: any) {
+async function editar(item: any) {
   editando.value = item.id
-  form.value = { ...item }
+  form.value = { ...item }   // dados imediatos da lista
   cnpjStatus.value = 'idle'
   dialog.value = true
+  // Busca o registro completo (endereço, IE, observação) para não perder campos ao salvar
+  try {
+    const { data } = await api.get(`/fornecedores/${item.id}`)
+    form.value = { ...data }
+  } catch { /* mantém dados da lista */ }
 }
 
 async function salvar() {
@@ -277,16 +308,23 @@ async function salvar() {
   if (!valid) return
   salvando.value = true
   try {
+    const payload = {
+      ...form.value,
+      tipos: (form.value.tipos ?? []).join(','),
+      cep: (form.value.cep ?? '').replace(/\D/g, '') || null,   // só dígitos (coluna tem 8)
+      telefone: (form.value.telefone ?? '').slice(0, 20) || null,
+      celular: (form.value.celular ?? '').slice(0, 20) || null,
+    }
     if (editando.value) {
-      await api.put(`/fornecedores/${editando.value}`, form.value)
+      await api.put(`/fornecedores/${editando.value}`, payload)
     } else {
-      await api.post('/fornecedores', { ...form.value, empresaId: auth.empresaId })
+      await api.post('/fornecedores', { ...payload, empresaId: auth.empresaId })
     }
     notif.ok('Fornecedor salvo com sucesso!')
     dialog.value = false
     await listar()
-  } catch {
-    notif.erro('Erro ao salvar fornecedor.')
+  } catch (e: any) {
+    notif.erro(msgErro(e, 'Erro ao salvar fornecedor.'))
   } finally {
     salvando.value = false
   }
@@ -322,7 +360,7 @@ async function buscarCep() {
 
 async function buscarCnpj() {
   const cnpj = cnpjRaw(form.value.cnpj ?? '')
-  if (cnpj?.length !== 14) return
+  if (cnpj.length !== 14) return  // CPF = 11 chars, não tem lookup
   buscandoCnpj.value = true
   cnpjStatus.value = 'idle'
   try {
@@ -343,7 +381,6 @@ async function buscarCnpj() {
   finally { buscandoCnpj.value = false }
 }
 
-// formatarCnpj e maskCnpj importados de @/utils/documento
 
 onMounted(listar)
 </script>

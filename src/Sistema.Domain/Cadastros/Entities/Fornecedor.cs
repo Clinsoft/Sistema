@@ -7,11 +7,13 @@ public class Fornecedor : Entity
     public Guid EmpresaId { get; private set; }
     public string RazaoSocial { get; private set; } = null!;
     public string? NomeFantasia { get; private set; }
-    public string Cnpj { get; private set; } = null!;
+    public string? Cnpj { get; private set; }
     public string? InscricaoEstadual { get; private set; }
     public string? Email { get; private set; }
     public string? Telefone { get; private set; }
+    public string? Celular { get; private set; }
     public string? Contato { get; private set; }
+    public string? Tipos { get; private set; }   // CSV: Fornecedor,Transportadora,Representante,ParceiroCom
     public string? Logradouro { get; private set; }
     public string? Numero { get; private set; }
     public string? Complemento { get; private set; }
@@ -25,7 +27,7 @@ public class Fornecedor : Entity
 
     private Fornecedor() { }
 
-    public static Fornecedor Criar(Guid empresaId, string razaoSocial, string cnpj,
+    public static Fornecedor Criar(Guid empresaId, string razaoSocial, string? cnpj = null,
         string? nomeFantasia = null, string? email = null, string? telefone = null)
         => new()
         {
@@ -41,13 +43,16 @@ public class Fornecedor : Entity
         string? telefone, string? contato, int prazoPagamentoDias,
         string? logradouro = null, string? numero = null, string? complemento = null,
         string? bairro = null, string? cidade = null, string? uf = null,
-        string? cep = null, string? inscricaoEstadual = null, string? observacao = null)
+        string? cep = null, string? inscricaoEstadual = null, string? observacao = null,
+        string? celular = null, string? tipos = null)
     {
         RazaoSocial = razaoSocial;
         NomeFantasia = nomeFantasia;
         Email = email;
         Telefone = telefone;
+        Celular = celular;
         Contato = contato;
+        Tipos = tipos;
         PrazoPagamentoDias = prazoPagamentoDias;
         Logradouro = logradouro;
         Numero = numero;

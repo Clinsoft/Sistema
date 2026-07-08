@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.Domain.Cadastros.Entities;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Fiscal.Entities;
@@ -47,7 +48,68 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .Include(e => e.Itens)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
         if (entrada is null) return NotFound();
-        return Ok(entrada);
+
+        return Ok(new
+        {
+            entrada.Id,
+            entrada.EmpresaId,
+            entrada.NotaFiscalRecebidaId,
+            entrada.ChaveAcesso,
+            entrada.EmitenteNome,
+            entrada.EmitenteCnpj,
+            entrada.DataEmissao,
+            entrada.DataEntrada,
+            entrada.DataProcessamento,
+            entrada.LocalEstoqueId,
+            entrada.FornecedorId,
+            entrada.PedidoCompraId,
+            entrada.NaturezaOperacao,
+            Status = entrada.Status.ToString(),
+            entrada.ValorProdutos,
+            entrada.ValorFrete,
+            entrada.ValorFreteManual,
+            entrada.ValorSeguro,
+            entrada.ValorDesconto,
+            entrada.ValorIpi,
+            entrada.ValorIcmsSt,
+            entrada.ValorTotal,
+            FreteTotal = entrada.FreteTotal,
+            Duplicatas = string.IsNullOrEmpty(entrada.DuplicatasJson)
+                ? null
+                : System.Text.Json.JsonSerializer.Deserialize<object>(entrada.DuplicatasJson),
+            Itens = entrada.Itens.Select(i => new
+            {
+                i.Id,
+                i.EntradaNFeId,
+                i.NumeroItem,
+                i.CfopXml,
+                i.CfopUtilizado,
+                i.NcmXml,
+                i.DescricaoXml,
+                i.QuantidadeXml,
+                i.UnidadeXml,
+                i.ValorUnitarioXml,
+                i.ValorTotalXml,
+                i.CodigoFornecedor,
+                i.CodigoBarras,
+                i.ValorIpi,
+                i.ValorIcmsSt,
+                i.ProdutoId,
+                i.ProdutoDescricao,
+                i.FatorConversao,
+                i.UnidadeEstoque,
+                i.QuantidadeEstoque,
+                i.NumeroLote,
+                i.LoteId,
+                i.Validade,
+                i.Tags,
+                i.CustoUnitarioFinal,
+                i.ValorFreteProporcional,
+                i.PrecoVendaSugerido,
+                i.MarkupSugerido,
+                i.EstoqueMovimentado,
+            }).OrderBy(i => i.NumeroItem).ToList()
+        });
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -96,8 +158,16 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         catch (Exception ex) { return BadRequest(new { mensagem = $"Erro ao interpretar XML: {ex.Message}" }); }
 
         // Evitar duplicata
-        if (await db.EntradasNFe.AnyAsync(e => e.ChaveAcesso == parsed.ChaveAcesso && e.EmpresaId == empresaId, ct))
-            return Conflict(new { mensagem = $"NF-e {parsed.NumeroNF} já importada (chave: {parsed.ChaveAcesso})." });
+        var entradaExistente = await db.EntradasNFe
+            .Where(e => e.ChaveAcesso == parsed.ChaveAcesso && e.EmpresaId == empresaId)
+            .Select(e => new { e.Id, e.Status })
+            .FirstOrDefaultAsync(ct);
+        if (entradaExistente is not null)
+            return Conflict(new {
+                mensagem = $"NF-e {parsed.NumeroNF} já importada.",
+                entradaId = entradaExistente.Id,
+                status = entradaExistente.Status.ToString()
+            });
 
         // Criar ou reusar NotaFiscalRecebida
         var notaRecebida = await db.NotasFiscaisRecebidas
@@ -131,9 +201,32 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             valTotal: parsed.ValorTotal,
             natureza: parsed.NaturezaOperacao);
 
-        // Tentar vincular fornecedor por CNPJ
+        // Vincular ou criar fornecedor automaticamente pelo CNPJ do emitente
+        var cnpjForn = CnpjRaw(parsed.EmitenteCnpj);
         var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(
-            f => f.EmpresaId == empresaId && f.Cnpj == CnpjRaw(parsed.EmitenteCnpj), ct);
+            f => f.EmpresaId == empresaId && f.Cnpj == cnpjForn, ct);
+
+        if (fornecedor is null && !string.IsNullOrWhiteSpace(cnpjForn))
+        {
+            fornecedor = Fornecedor.Criar(
+                empresaId,
+                razaoSocial: parsed.EmitenteNome,
+                cnpj: cnpjForn,
+                nomeFantasia: parsed.EmitenteNomeFantasia);
+
+            // Endereço completo do XML
+            if (parsed.EmitenteEndereco is { } end)
+                fornecedor.Editar(
+                    razaoSocial: parsed.EmitenteNome,
+                    nomeFantasia: parsed.EmitenteNomeFantasia,
+                    email: null, telefone: null, contato: null, prazoPagamentoDias: 0,
+                    logradouro: end.Logradouro, numero: end.Numero, complemento: end.Complemento,
+                    bairro: end.Bairro, cidade: end.Municipio, uf: end.UF, cep: end.Cep,
+                    inscricaoEstadual: parsed.EmitenteIE);
+
+            db.Fornecedores.Add(fornecedor);
+        }
+
         if (fornecedor is not null)
             entrada.VincularFornecedor(fornecedor.Id);
 
@@ -143,6 +236,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 
         if (freteManual > 0)
             entrada.DefinirFreteManual(freteManual);
+
+        if (parsed.Duplicatas.Count > 0)
+        {
+            var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+            entrada.DefinirDuplicatas(System.Text.Json.JsonSerializer.Serialize(parsed.Duplicatas, jsonOpts));
+        }
 
         db.EntradasNFe.Add(entrada);
         await db.SaveChangesAsync(ct);
@@ -162,6 +261,19 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .Where(p => p.EmpresaId == empresaId && codsFornecedor.Contains(p.Codigo))
             .ToDictionaryAsync(p => p.Codigo, ct);
 
+        // De-para: produtos que já memorizaram o código deste emitente em entradas anteriores.
+        var cnpjEmitente = CnpjRaw(parsed.EmitenteCnpj);
+        var fornecedorEntrada = await db.Fornecedores.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.EmpresaId == empresaId && f.Cnpj == cnpjEmitente, ct);
+        var produtosPorDePara = fornecedorEntrada is not null && codsFornecedor.Any()
+            ? await db.Produtos.AsNoTracking()
+                .Where(p => p.EmpresaId == empresaId
+                    && p.FornecedorPrincipalId == fornecedorEntrada.Id
+                    && p.CodigoFornecedorPrincipal != null
+                    && codsFornecedor.Contains(p.CodigoFornecedorPrincipal))
+                .ToDictionaryAsync(p => p.CodigoFornecedorPrincipal!, ct)
+            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+
         var produtosPorBarras = codsBarras.Any()
             ? await db.Produtos.AsNoTracking()
                 .Where(p => p.EmpresaId == empresaId && codsBarras.Contains(p.CodigoBarras!))
@@ -174,6 +286,8 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             Domain.Estoque.Entities.Produto? prod = null;
             if (item.CodigoBarras != null && produtosPorBarras.TryGetValue(item.CodigoBarras, out var pBarras))
                 prod = pBarras;
+            else if (item.CodigoFornecedor != null && produtosPorDePara.TryGetValue(item.CodigoFornecedor, out var pDePara))
+                prod = pDePara;
             else if (item.CodigoFornecedor != null && produtosPorCodForn.TryGetValue(item.CodigoFornecedor, out var pCod))
                 prod = pCod;
 
@@ -303,19 +417,53 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 
         if (req.CfopUtilizado is not null) item.DefinirCfop(req.CfopUtilizado);
         if (req.ProdutoId.HasValue) item.VincularProduto(req.ProdutoId.Value, req.ProdutoDescricao ?? "");
-        if (req.FatorConversao.HasValue && req.UnidadeEstoque is not null)
-            item.DefinirConversao(req.FatorConversao.Value, req.UnidadeEstoque);
+        if (req.FatorConversao.HasValue)
+            item.DefinirConversao(req.FatorConversao.Value, req.UnidadeEstoque ?? item.UnidadeEstoque ?? item.UnidadeXml);
         if (req.NumeroLote is not null)
             item.DefinirLote(req.NumeroLote, req.Validade);
         if (req.Tags is not null) item.DefinirTags(req.Tags);
-        if (req.MarkupSugerido.HasValue)
+        if (req.FatorConversao.HasValue || req.MarkupSugerido.HasValue)
         {
-            item.CalcularCusto(item.ValorFreteProporcional);
+            // Frete total (XML + manual) dividido igualmente por nº de itens
+            var nItens = entrada.Itens.Count;
+            var fretePorItem = nItens > 0 ? entrada.FreteTotal / nItens : 0m;
+            item.CalcularCusto(fretePorItem);
+        }
+        if (req.MarkupSugerido.HasValue)
             item.SugerirPreco(req.MarkupSugerido.Value);
+
+        // De-para fornecedor→produto: memoriza o código do produto na nota do emitente,
+        // para que próximas entradas do mesmo fornecedor vinculem automaticamente.
+        if (req.ProdutoId.HasValue && !string.IsNullOrWhiteSpace(item.CodigoFornecedor))
+        {
+            var cnpjLimpo = CnpjRaw(entrada.EmitenteCnpj);
+            var fornecedor = await db.Fornecedores
+                .FirstOrDefaultAsync(f => f.EmpresaId == entrada.EmpresaId && f.Cnpj == cnpjLimpo, ct);
+            if (fornecedor is not null)
+            {
+                var produto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == req.ProdutoId.Value, ct);
+                produto?.VincularReferenciaFornecedor(fornecedor.Id, item.CodigoFornecedor);
+            }
         }
 
         await db.SaveChangesAsync(ct);
         return Ok(item);
+    }
+
+    [HttpPatch("{id:guid}/local-estoque")]
+    public async Task<IActionResult> DefinirLocalEstoque(
+        Guid id, [FromBody] LocalEstoqueRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (entrada.Status == StatusEntradaNFe.Processada)
+            return BadRequest(new { mensagem = "Entrada já processada." });
+
+        entrada.DefinirLocalEstoque(req.LocalEstoqueId);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpPatch("{id:guid}/frete-manual")]
@@ -411,17 +559,21 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         }
 
         // 2. Lançar faturas em contas a pagar
+        var nNF = entrada.ChaveAcesso.Length >= 34
+            ? int.Parse(entrada.ChaveAcesso.Substring(25, 9)).ToString()
+            : entrada.ChaveAcesso;
         var grupo = Guid.NewGuid().ToString();
         for (int i = 0; i < req.Faturas.Count; i++)
         {
             var f = req.Faturas[i];
+            var parcela = i + 1;
             var lanc = LancamentoFinanceiro.Criar(
                 entrada.EmpresaId, TipoLancamento.ContaPagar,
-                $"NF {entrada.ChaveAcesso[^9..]} – {entrada.EmitenteNome}",
+                $"{nNF}/{parcela:D3} – {entrada.EmitenteNome}",
                 f.Valor, f.Vencimento,
                 fornecedorId: entrada.FornecedorId,
                 documentoOrigem: entrada.ChaveAcesso,
-                parcela: i + 1, totalParcelas: req.Faturas.Count,
+                parcela: parcela, totalParcelas: req.Faturas.Count,
                 grupoParcelamento: grupo);
             db.LancamentosFinanceiros.Add(lanc);
         }
@@ -452,7 +604,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             var mov = MovimentacaoEstoque.Criar(
                 entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
                 TipoMovimentacao.Saida, item.QuantidadeEstoque, item.CustoUnitarioFinal,
-                documentoOrigem: $"ESTORNO-{entrada.ChaveAcesso}",
+                documentoOrigem: entrada.ChaveAcesso,
                 observacao: $"Estorno de entrada: {req.Motivo}");
             db.MovimentacoesEstoque.Add(mov);
 
@@ -692,7 +844,19 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         var emit = infNFe.Element(ns + "emit");
         result.EmitenteCnpj = emit?.Element(ns + "CNPJ")?.Value ?? emit?.Element(ns + "CPF")?.Value ?? "";
         result.EmitenteNome = emit?.Element(ns + "xNome")?.Value ?? "";
+        result.EmitenteNomeFantasia = emit?.Element(ns + "xFant")?.Value;
+        result.EmitenteIE = emit?.Element(ns + "IE")?.Value;
         result.EmitenteUF = emit?.Element(ns + "enderEmit")?.Element(ns + "UF")?.Value;
+        var enderEmit = emit?.Element(ns + "enderEmit");
+        if (enderEmit is not null)
+            result.EmitenteEndereco = new EnderecoXml(
+                Logradouro: enderEmit.Element(ns + "xLgr")?.Value,
+                Numero: enderEmit.Element(ns + "nro")?.Value,
+                Complemento: enderEmit.Element(ns + "xCpl")?.Value,
+                Bairro: enderEmit.Element(ns + "xBairro")?.Value,
+                Municipio: enderEmit.Element(ns + "xMun")?.Value,
+                UF: enderEmit.Element(ns + "UF")?.Value,
+                Cep: enderEmit.Element(ns + "CEP")?.Value);
 
         var icmsTot = infNFe.Element(ns + "total")?.Element(ns + "ICMSTot");
         result.ValorProdutos = Dec(icmsTot?.Element(ns + "vProd")?.Value);
@@ -815,7 +979,10 @@ public class NFeParseResult
     public DateTime DataEmissao { get; set; }
     public string EmitenteCnpj { get; set; } = "";
     public string EmitenteNome { get; set; } = "";
+    public string? EmitenteNomeFantasia { get; set; }
+    public string? EmitenteIE { get; set; }
     public string? EmitenteUF { get; set; }
+    public EnderecoXml? EmitenteEndereco { get; set; }
     public decimal ValorProdutos { get; set; }
     public decimal ValorFrete { get; set; }
     public decimal ValorSeguro { get; set; }
@@ -833,6 +1000,8 @@ public class NFeParseResult
 }
 
 public record DuplicataXml(string Numero, decimal Valor, DateTime Vencimento);
+public record EnderecoXml(string? Logradouro, string? Numero, string? Complemento,
+    string? Bairro, string? Municipio, string? UF, string? Cep);
 
 // ── Requests ──────────────────────────────────────────────────────────
 public record IniciarEntradaRequest(Guid EmpresaId, Guid LocalEstoqueId);
@@ -848,6 +1017,7 @@ public record EditarItemRequest(
     string? Tags,
     decimal? MarkupSugerido);
 
+public record LocalEstoqueRequest(Guid LocalEstoqueId);
 public record FreteManualRequest(decimal Valor);
 public record VincularFornecedorRequest(Guid FornecedorId);
 public record VincularPedidoRequest(Guid PedidoCompraId);

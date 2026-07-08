@@ -33,15 +33,26 @@
             style="max-width:180px"
             @update:model-value="carregar"
           />
-          <v-btn
-            prepend-icon="mdi-printer-outline"
-            variant="tonal"
-            color="primary"
-            @click="imprimir"
-          >Exportar</v-btn>
+          <v-btn prepend-icon="mdi-content-save-outline" color="success"
+            :loading="salvando" @click="salvarPlano">Salvar Plano</v-btn>
+          <v-btn prepend-icon="mdi-delete-outline" variant="tonal" color="error"
+            @click="limparPlano">Limpar</v-btn>
+          <v-btn prepend-icon="mdi-printer-outline" variant="tonal" color="primary"
+            @click="imprimir">Exportar</v-btn>
         </div>
       </v-col>
     </v-row>
+
+    <GuiaPassos
+      id="planejamento-anual"
+      titulo="Como usar o Planejamento Anual"
+      :passos="[
+        'Escolha o <b>Ano base</b> (realizado) e a <b>Meta de crescimento %</b> — o sistema sugere a meta de cada mês para o próximo ano.',
+        'Você pode <b>editar a meta de cada mês</b> diretamente na coluna <b>Meta</b> da tabela (sobrescreve a sugestão automática).',
+        'Clique em <b>Salvar Plano</b> para gravar as metas do ano-alvo. Elas passam a aparecer no <b>Dashboard</b> e no acompanhamento em tempo real.',
+        'Use <b>Limpar</b> para excluir o plano salvo e voltar à sugestão automática. <b>Exportar</b> imprime o planejamento.',
+      ]"
+    />
 
     <!-- Cards de totais -->
     <v-row class="mb-4">
@@ -199,10 +210,14 @@
               </v-chip>
               <span v-else class="text-medium-emphasis">—</span>
             </td>
-            <td class="text-right px-3 font-weight-bold text-teal">{{ fmtR(m.meta) }}</td>
+            <td class="text-right px-3 font-weight-bold text-teal" style="min-width:130px">
+              <v-text-field v-model.number="m.meta" type="number" density="compact" variant="plain"
+                hide-details prefix="R$" reverse class="dre-meta-input"
+                @update:model-value="recomputarMetas" />
+            </td>
             <td class="text-right px-3">
               <span class="text-caption font-weight-medium text-deep-purple">
-                +{{ meta }}%
+                {{ m.realizado > 0 ? (m.meta >= m.realizado ? '+' : '') + Math.round((m.meta / m.realizado - 1) * 100) + '%' : '—' }}
               </span>
             </td>
           </tr>
@@ -236,9 +251,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
+const salvando = ref(false)
+const anoAlvo = computed(() => ano.value + 1)
 
 const barCanvas  = ref<HTMLCanvasElement>()
 const lineCanvas = ref<HTMLCanvasElement>()
@@ -347,6 +367,21 @@ async function _carregar() {
       ...d.totais,
       totalDesconto: d.meses.reduce((s: number, m: MesData) => s + m.totalDesconto, 0)
     }
+
+    // Sobrepõe com metas SALVAS do ano-alvo, se existirem
+    try {
+      const rp = await api.get('/relatorios/planejamento-anual', {
+        params: { empresaId: auth.empresaId, ano: anoAlvo.value },
+      })
+      const salvo = rp.data
+      if (salvo?.meses?.length) {
+        const mapa: Record<number, number> = {}
+        salvo.meses.forEach((m: any) => { mapa[m.mes] = m.meta })
+        meses.value.forEach(m => { if (mapa[m.mes] != null && mapa[m.mes] > 0) m.meta = mapa[m.mes] })
+        recomputarTotaisMetas()
+      }
+    } catch { /* sem plano salvo — usa a sugestão automática */ }
+
     await nextTick()
     desenharBarras()
     desenharLinha()
@@ -356,6 +391,52 @@ async function _carregar() {
   } finally {
     carregando.value = false
   }
+}
+
+// Recalcula totais/acumulados de meta a partir das metas (editadas) e redesenha
+function recomputarTotaisMetas() {
+  const totalMeta = meses.value.reduce((s, m) => s + (m.meta ?? 0), 0)
+  totais.value.totalMeta = totalMeta
+  totais.value.crescimentoNecessario = totais.value.totalRealizadoAno > 0
+    ? Math.round((totalMeta - totais.value.totalRealizadoAno) / totais.value.totalRealizadoAno * 100)
+    : 0
+  let acumMeta = 0
+  acumulados.value = meses.value.map(m => {
+    acumMeta += m.meta ?? 0
+    const a = acumulados.value.find(x => x.mes === m.mes)
+    return { mes: m.mes, acumAno: a?.acumAno ?? 0, acumMeta }
+  })
+}
+
+let redrawTimer: ReturnType<typeof setTimeout>
+function recomputarMetas() {
+  recomputarTotaisMetas()
+  clearTimeout(redrawTimer)
+  redrawTimer = setTimeout(() => { desenharBarras(); desenharLinha(); desenharGauge() }, 250)
+}
+
+async function salvarPlano() {
+  salvando.value = true
+  try {
+    await api.post('/relatorios/planejamento-anual', {
+      empresaId: auth.empresaId,
+      ano: anoAlvo.value,
+      metas: meses.value.map(m => ({ mes: m.mes, valor: m.meta ?? 0 })),
+    })
+    notif.ok(`Plano de ${anoAlvo.value} salvo!`)
+  } catch { notif.erro('Erro ao salvar o plano.') }
+  finally { salvando.value = false }
+}
+
+async function limparPlano() {
+  if (!confirm(`Excluir o plano salvo de ${anoAlvo.value}? As metas voltam à sugestão automática.`)) return
+  try {
+    await api.delete('/relatorios/planejamento-anual', {
+      params: { empresaId: auth.empresaId, ano: anoAlvo.value },
+    })
+    notif.ok('Plano excluído.')
+    await _carregar()
+  } catch { notif.erro('Erro ao excluir o plano.') }
 }
 
 // ── Gráfico de barras agrupadas ───────────────────────────────────────────────
@@ -509,7 +590,9 @@ function imprimir() {
 </script>
 
 <style scoped>
+.dre-meta-input :deep(input) { text-align: right; font-weight: 700; color: rgb(var(--v-theme-teal, 0 137 123)); font-size: 0.875rem; }
 @media print {
-  .v-btn, .v-select, .v-text-field { display: none !important; }
+  .v-btn, .v-select { display: none !important; }
+  .dre-meta-input :deep(.v-field__prepend-inner) { display: none; }
 }
 </style>

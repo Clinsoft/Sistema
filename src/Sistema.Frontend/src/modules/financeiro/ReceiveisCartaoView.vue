@@ -12,6 +12,17 @@
       </v-btn>
     </div>
 
+    <GuiaPassos
+      id="recebiveis-cartao"
+      titulo="Como usar os Recebíveis de Cartão"
+      :passos="[
+        'Os recebíveis são gerados automaticamente pelas <b>vendas no cartão</b> do PDV — cada venda vira um recebível com taxa da operadora e data prevista de crédito.',
+        'Filtre por período, <b>operadora</b>, forma de pagamento ou <b>status</b> (A Receber, Recebido, Antecipado) e clique em <b>Buscar</b>.',
+        'Selecione linhas (caixas à esquerda) para <b>Marcar como Recebido</b> (quando a operadora repassar), <b>Antecipar</b> (com desconto da taxa) ou <b>Cancelar</b>.',
+        'Clique no 👁 para ver o <b>detalhamento</b> de taxas e o valor líquido. Configure taxas e prazos em <b>Operadoras</b>.',
+      ]"
+    />
+
     <!-- Cards de resumo -->
     <v-row class="mb-4">
       <v-col v-for="c in cards" :key="c.label" cols="6" md="3" sm="6">
@@ -98,12 +109,19 @@
               @click="confirmarRecebimento">
               Marcar como Recebido
             </v-btn>
+            <v-btn color="error" size="small" variant="tonal"
+              prepend-icon="mdi-cancel"
+              @click="cancelarSelecionados">
+              Cancelar
+            </v-btn>
           </div>
         </template>
 
         <template #item.venda="{ item }">
           <span class="font-weight-bold text-primary">Venda #{{ item.numeroVenda }}</span>
         </template>
+
+        <template #item.dataVenda="{ item }">{{ fmtData(item.dataVenda) }}</template>
 
         <template #item.operadora="{ item }">
           <div class="d-flex align-center gap-1">
@@ -287,6 +305,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -306,7 +325,7 @@ const itemDetalhe = ref<any>(null)
 
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
-  fim: new Date().toISOString().slice(0, 10),
+  fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   operadoraId: null as string | null,
   formaPagamento: null as string | null,
   status: null as string | null,
@@ -315,7 +334,7 @@ const filtros = ref({
 const antecipacao = ref({ taxaAm: 0, dataCredito: new Date().toISOString().slice(0, 10), desconto: 0, liquido: 0 })
 
 const formasPagamento = ['Débito', 'Crédito à Vista', 'Crédito Parcelado', 'Pix']
-const statusOpcoes = ['A Receber', 'Recebido', 'Antecipado']
+const statusOpcoes = ['A Receber', 'Recebido', 'Antecipado', 'Cancelado']
 
 const headers = [
   { title: 'Venda',        key: 'venda',               sortable: false, width: 110 },
@@ -422,15 +441,27 @@ async function confirmarAntecipacao() {
   try {
     await api.post('/financeiro/recebiveis-cartao/antecipar', {
       ids: selecionadosAReceberIds.value,
-      taxaAntecipacaoAm: antecipacao.value.taxaAm,
-      dataCredito: antecipacao.value.dataCredito,
-      valorDescontoAntecipacao: antecipacao.value.desconto,
+      taxaAntecipacao: antecipacao.value.taxaAm,
     })
     notif.ok('Antecipação registrada!')
     dialogAntecipar.value = false
     selecionados.value = []
     await carregar()
   } catch { notif.erro('Erro ao registrar antecipação.') }
+  finally { salvando.value = false }
+}
+
+async function cancelarSelecionados() {
+  const ids = selecionados.value.filter(s => s.status !== 'Cancelado').map(s => s.id)
+  if (!ids.length) return
+  if (!confirm(`Cancelar ${ids.length} recebível(is) de cartão?`)) return
+  salvando.value = true
+  try {
+    await api.post('/financeiro/recebiveis-cartao/cancelar', { ids })
+    notif.ok('Recebível(is) cancelado(s).')
+    selecionados.value = []
+    await carregar()
+  } catch { notif.erro('Erro ao cancelar.') }
   finally { salvando.value = false }
 }
 

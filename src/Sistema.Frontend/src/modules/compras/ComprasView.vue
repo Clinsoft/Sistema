@@ -8,6 +8,17 @@
       </v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Novo Pedido</v-btn>
     </div>
+
+    <GuiaPassos
+      id="compras"
+      titulo="Como usar os Pedidos de Compra"
+      :passos="[
+        'Clique em <b>Novo Pedido</b>, escolha o <b>fornecedor</b> e adicione itens. Os produtos <b>abaixo do estoque mínimo</b> são sugeridos automaticamente — clique para incluí-los.',
+        'Salve como <b>Rascunho</b>. Depois use <b>➤ Enviar</b> para marcar como enviado ao fornecedor.',
+        'Quando a mercadoria chegar, use <b>📦 Receber</b>, escolha o <b>local de estoque</b> e confirme — o estoque é atualizado automaticamente.',
+        'Use <b>🚫 Cancelar</b> em pedidos ainda não recebidos. Filtre por status e período para consultar o histórico.',
+      ]"
+    />
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
       <v-row dense>
         <v-col cols="12" sm="4">
@@ -43,6 +54,8 @@
             color="primary" @click="enviar(item)" title="Enviar" />
           <v-btn v-if="item.status==='Enviado'" icon="mdi-package-check" size="x-small" variant="text"
             color="success" @click="abrirRecebimento(item)" title="Receber" />
+          <v-btn v-if="item.status==='Rascunho' || item.status==='Enviado'" icon="mdi-cancel"
+            size="x-small" variant="text" color="error" @click="cancelar(item)" title="Cancelar pedido" />
         </template>
       </v-data-table>
     </v-card>
@@ -172,6 +185,12 @@
         <v-card-title class="pa-4">Receber Pedido</v-card-title>
         <v-card-text class="pa-4">
           <v-row dense class="mb-3">
+            <v-col cols="12">
+              <v-select v-model="rec.localEstoqueId" :items="locaisEstoque"
+                item-title="nome" item-value="id" label="Local de estoque (entrada) *"
+                variant="outlined" density="compact" hide-details
+                hint="Onde as mercadorias serão lançadas" persistent-hint />
+            </v-col>
             <v-col cols="6">
               <v-text-field v-model="rec.dataRecebimento" label="Data Recebimento"
                 type="date" variant="outlined" density="compact" />
@@ -203,6 +222,7 @@
 </template>
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -211,6 +231,7 @@ import { useNotifStore } from '@/stores/notif'
 const auth = useAuthStore(); const notif = useNotifStore()
 const carregando = ref(false); const salvando = ref(false)
 const pedidos = ref<any[]>([]); const forns = ref<any[]>([]); const prods = ref<any[]>([])
+const locaisEstoque = ref<any[]>([])
 const dialog = ref(false); const dialogRec = ref(false)
 const buscaForn = ref(''); const buscaProd = ref('')
 const produtosBaixoEstoque = ref<any[]>([])
@@ -245,10 +266,16 @@ async function abrirNovo() {
   try {
     const r = await api.get('/estoque/posicao', { params: { empresaId: auth.empresaId, apenasAbaixoMinimo: true } })
     const lista: any[] = r.data?.produtos ?? r.data ?? []
-    produtosBaixoEstoque.value = lista
-    lista.forEach((p: any) => {
-      const falta = (p.estoqueMinimo ?? 0) - (p.quantidadeAtual ?? 0)
-      qtdSugestao.value[p.produtoId] = Math.max(1, falta)
+    // A posição retorna id/estoqueAtual/estoqueMinimo — normaliza para o formato usado aqui
+    produtosBaixoEstoque.value = lista.map((p: any) => ({
+      produtoId: p.id ?? p.produtoId,
+      descricao: p.descricao,
+      quantidadeAtual: p.estoqueAtual ?? p.quantidadeAtual ?? 0,
+      estoqueMinimo: p.estoqueMinimo ?? 0,
+      custoUnitario: p.custoUnitario ?? 0,
+    }))
+    produtosBaixoEstoque.value.forEach((p: any) => {
+      qtdSugestao.value[p.produtoId] = Math.max(1, (p.estoqueMinimo ?? 0) - (p.quantidadeAtual ?? 0))
     })
   } catch { produtosBaixoEstoque.value = [] }
 }
@@ -267,19 +294,68 @@ function addSugestao(p: any) {
 function addTodasSugestoes() {
   produtosBaixoEstoque.value.forEach((p: any) => addSugestao(p))
 }
-async function salvar() { salvando.value=true; try { await api.post('/pedidos-compra', {...np.value, empresaId:auth.empresaId}); notif.ok('Pedido criado!'); dialog.value=false; await carregar() } finally { salvando.value=false } }
-async function enviar(item: any) { await api.post(`/pedidos-compra/${item.id}/enviar`); notif.ok('Pedido enviado!'); await carregar() }
+async function salvar() {
+  salvando.value = true
+  try {
+    await api.post('/pedidos-compra', {
+      empresaId: auth.empresaId,
+      fornecedorId: np.value.fornecedorId,
+      usuarioId: auth.usuario?.id,
+      previsaoEntrega: np.value.previsaoEntrega || null,
+      observacao: np.value.observacoes || null,
+      itens: np.value.itens.map((i: any) => ({
+        produtoId: i.produtoId, descricao: i.descricao,
+        quantidade: i.quantidade, precoUnitario: i.precoUnitario,
+      })),
+    })
+    notif.ok('Pedido criado!')
+    dialog.value = false
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao criar pedido.') }
+  finally { salvando.value = false }
+}
+async function enviar(item: any) {
+  await api.post(`/pedidos-compra/${item.id}/enviar`, null, { params: { empresaId: auth.empresaId } })
+  notif.ok('Pedido enviado!'); await carregar()
+}
+async function cancelar(item: any) {
+  if (!confirm(`Cancelar o pedido ${item.numero}?`)) return
+  try {
+    await api.post(`/pedidos-compra/${item.id}/cancelar`, null, { params: { empresaId: auth.empresaId } })
+    notif.ok('Pedido cancelado.'); await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar.') }
+}
 async function abrirRecebimento(item: any) {
   try {
     const r = await api.get(`/pedidos-compra/${item.id}`)
     const detalhe = r.data
-    rec.value = { pedidoId: item.id, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '',
+    const localPadrao = locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
+    rec.value = { pedidoId: item.id, localEstoqueId: localPadrao, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '',
       itens: (detalhe.itens ?? []).map((i: any) => ({ itemPedidoId: i.id, descricao: i.descricao ?? i.produtoNome, quantidadePedida: i.quantidade, quantidadeRecebida: i.quantidade })) }
   } catch {
-    rec.value = { pedidoId: item.id, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '', itens: [] }
+    rec.value = { pedidoId: item.id, localEstoqueId: locaisEstoque.value[0]?.id ?? null, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '', itens: [] }
   }
   dialogRec.value = true
 }
-async function confirmarRec() { salvando.value=true; try { await api.post(`/pedidos-compra/${rec.value.pedidoId}/receber`, rec.value); notif.ok('Recebimento registrado!'); dialogRec.value=false; await carregar() } finally { salvando.value=false } }
-onMounted(carregar)
+async function confirmarRec() {
+  if (!rec.value.localEstoqueId) { notif.erro('Selecione o local de estoque para dar entrada.'); return }
+  salvando.value = true
+  try {
+    await api.post(`/pedidos-compra/${rec.value.pedidoId}/receber`, {
+      localEstoqueId: rec.value.localEstoqueId,
+      usuarioId: auth.usuario?.id,
+    })
+    notif.ok('Recebimento registrado! Estoque atualizado.')
+    dialogRec.value = false
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao receber pedido.') }
+  finally { salvando.value = false }
+}
+async function carregarLocais() {
+  try {
+    const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
+    locaisEstoque.value = r.data ?? []
+  } catch { locaisEstoque.value = [] }
+}
+onMounted(() => { carregar(); carregarLocais() })
 </script>

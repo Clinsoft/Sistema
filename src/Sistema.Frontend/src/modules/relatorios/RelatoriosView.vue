@@ -1,6 +1,18 @@
 ﻿<template>
   <div>
     <div class="text-h6 font-weight-bold mb-4">Relatórios</div>
+
+    <GuiaPassos
+      id="relatorios"
+      titulo="Como usar os Relatórios"
+      :passos="[
+        'Clique no relatório desejado. Os marcados como <b>PDF</b> abrem/baixam um documento pronto para impressão.',
+        'Ao escolher um relatório com período, informe <b>Data início</b> e <b>Data fim</b> (ou use o seletor de mês) e confirme.',
+        'Relatórios de <b>dados</b> baixam um arquivo <b>.json</b> com os registros; relatórios de <b>tela</b> (DRE, Fluxo, Contas, Validades) abrem a página correspondente para consulta e filtro.',
+        'As <b>exportações de balança</b> geram o arquivo no formato do fabricante (Filizola, Toledo, Urano) com os produtos marcados como Balança.',
+      ]"
+    />
+
     <v-row>
       <v-col v-for="g in grupos" :key="g.titulo" cols="12" md="6">
         <v-card rounded="xl" elevation="1">
@@ -9,11 +21,14 @@
           </v-card-title>
           <v-list density="compact" nav class="pa-2">
             <v-list-item v-for="r in g.relatorios" :key="r.label"
-              :prepend-icon="r.pdf ? 'mdi-file-pdf-box' : 'mdi-file-chart-outline'"
-              :title="r.label" :subtitle="r.pdf ? 'PDF' : 'Dados'"
+              :prepend-icon="iconeRel(r)"
+              :title="r.label" :subtitle="tipoRel(r)"
               color="primary" rounded="lg" @click="gerarRelatorio(r)">
               <template #append>
                 <v-icon v-if="r.pdf" icon="mdi-download" size="small" color="red" />
+                <v-icon v-else-if="r.rota" icon="mdi-arrow-right" size="small" color="primary" />
+                <v-icon v-else-if="r.blob" icon="mdi-file-download-outline" size="small" color="grey" />
+                <v-icon v-else icon="mdi-code-json" size="small" color="grey" />
               </template>
             </v-list-item>
           </v-list>
@@ -64,6 +79,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/composables/useApi'
@@ -88,37 +104,60 @@ const grupos = [
       { label: 'Planejamento Anual de Vendas', rota: '/relatorios/planejamento-anual', destaque: true },
       { label: 'Vendas realizadas (PDF)', endpoint: '/relatorios/pdf/vendas', pdf: true },
       { label: 'Curva ABC de Produtos (PDF)', endpoint: '/relatorios/pdf/curva-abc-produtos', pdf: true },
-      { label: 'Curva ABC de Clientes', endpoint: '/relatorios/vendas/curva-abc-clientes' },
-      { label: 'Vendas por hora', endpoint: '/relatorios/vendas/por-hora' },
-      { label: 'Ticket médio diário', endpoint: '/relatorios/vendas/ticket-medio' },
-      { label: 'Devoluções do período', endpoint: '/devolucoes' },
+      { label: 'Curva ABC de Clientes (dados)', endpoint: '/relatorios/clientes/ranking', json: true },
+      { label: 'Vendas por hora (dados)', endpoint: '/relatorios/vendas/por-hora', json: true },
+      { label: 'Ticket médio diário (dados)', endpoint: '/relatorios/vendas/ticket-medio', json: true },
+      { label: 'Devoluções do período', rota: '/pdv/devolucoes' },
     ],
   },
   {
     titulo: 'Estoque', icon: 'mdi-package-variant-closed', relatorios: [
       { label: 'Posição de Estoque (PDF)', endpoint: '/relatorios/pdf/posicao-estoque', pdf: true, semPeriodo: true },
       { label: 'Estoque abaixo do mínimo (PDF)', endpoint: '/relatorios/pdf/posicao-estoque', pdf: true, semPeriodo: true, extra: { apenasAbaixoMinimo: true } },
-      { label: 'Movimentação de estoque', endpoint: '/estoque/movimentacoes' },
-      { label: 'Validades (próximos 30 dias)', endpoint: '/lotes/vencimentos' },
+      { label: 'Movimentação de estoque (dados)', endpoint: '/movimentacoes', json: true },
+      { label: 'Validades (próximos 30 dias)', rota: '/estoque/validade' },
     ],
   },
   {
     titulo: 'Financeiro', icon: 'mdi-currency-usd', relatorios: [
       { label: 'Contas a Receber (PDF)', endpoint: '/relatorios/pdf/contas-receber', pdf: true, semPeriodo: true },
-      { label: 'Contas a Pagar', endpoint: '/contas-pagar' },
-      { label: 'DRE do período', endpoint: '/financeiro/dre' },
-      { label: 'Fluxo de Caixa', endpoint: '/financeiro/fluxo-caixa' },
+      { label: 'Contas a Pagar', rota: '/financeiro/contas-pagar' },
+      { label: 'DRE do período', rota: '/financeiro/dre' },
+      { label: 'Fluxo de Caixa', rota: '/financeiro/fluxo-caixa' },
     ],
   },
   {
     titulo: 'Exportações', icon: 'mdi-export', relatorios: [
       { label: 'Balança Filizola', endpoint: '/balanca/exportar', extra: { modelo: 'filizola' }, semPeriodo: true, blob: true },
-      { label: 'Balança Toledo MGV6', endpoint: '/balanca/exportar', extra: { modelo: 'toledo-mgv6' }, semPeriodo: true, blob: true },
+      { label: 'Balança Toledo MGV6', endpoint: '/balanca/exportar', extra: { modelo: 'toledo_mgv6' }, semPeriodo: true, blob: true },
       { label: 'Balança Urano', endpoint: '/balanca/exportar', extra: { modelo: 'urano' }, semPeriodo: true, blob: true },
       { label: 'Etiquetas (abre editor)', rota: '/estoque/etiquetas', semPeriodo: true },
     ],
   },
 ]
+
+function iconeRel(r: any) {
+  if (r.pdf) return 'mdi-file-pdf-box'
+  if (r.rota) return 'mdi-open-in-app'
+  if (r.blob) return 'mdi-scale-balance'
+  return 'mdi-file-chart-outline'
+}
+function tipoRel(r: any) {
+  if (r.pdf) return 'PDF'
+  if (r.rota) return 'Abrir tela'
+  if (r.blob) return 'Arquivo p/ balança'
+  return 'Dados (.json)'
+}
+
+function baixar(blob: Blob, nome: string, novaAba: boolean) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  if (novaAba) a.target = '_blank'
+  a.download = nome
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function gerarRelatorio(r: any) {
   if (r.rota) { router.push(r.rota); return }
@@ -140,24 +179,18 @@ async function executarRelatorio() {
       responseType: useBlob ? 'blob' : 'json',
     })
 
+    const nomeArq = relSel.value.label.replace(/[^a-z0-9]/gi, '_')
+
     if (relSel.value.pdf) {
-      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
-      const a = document.createElement('a')
-      a.href = url
-      a.target = '_blank'
-      a.download = relSel.value.label.replace(/[^a-z0-9]/gi, '_') + '.pdf'
-      a.click()
-      URL.revokeObjectURL(url)
+      baixar(new Blob([r.data], { type: 'application/pdf' }), nomeArq + '.pdf', true)
     } else if (relSel.value.blob) {
-      const url = URL.createObjectURL(new Blob([r.data]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = relSel.value.label.replace(/[^a-z0-9]/gi, '_') + '.txt'
-      a.click()
-      URL.revokeObjectURL(url)
+      baixar(new Blob([r.data]), nomeArq + '.txt', false)
     } else {
-      const qtd = Array.isArray(r.data) ? r.data.length : (r.data?.itens?.length ?? 1)
-      notif.ok(`Relatório gerado: ${qtd} registro(s)`)
+      // Relatório de dados: baixa como JSON e informa a quantidade
+      const dados = Array.isArray(r.data) ? r.data : (r.data?.itens ?? r.data?.linhas ?? r.data)
+      const qtd = Array.isArray(dados) ? dados.length : 1
+      baixar(new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' }), nomeArq + '.json', false)
+      notif.ok(`Relatório gerado: ${qtd} registro(s) — arquivo baixado.`)
     }
     dialogParams.value = false
   } catch (e: any) {

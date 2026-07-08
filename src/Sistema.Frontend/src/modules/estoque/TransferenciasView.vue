@@ -9,6 +9,17 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="transferencias"
+      titulo="Como usar as Transferências"
+      :passos="[
+        'Clique em <b>Nova Transferência</b>, busque o <b>produto</b> e selecione o <b>local de origem</b> e o <b>local de destino</b> (devem ser diferentes).',
+        'Informe a <b>quantidade</b> (não pode passar do estoque disponível) e uma observação, e clique em <b>Transferir</b>.',
+        'A transferência gera <b>duas movimentações</b> — saída na origem e entrada no destino — que aparecem no histórico abaixo com o <b>local</b> de cada uma.',
+        'O estoque total do produto não muda (só muda de local). Filtre o histórico por período. Para corrigir, faça uma nova transferência ou um ajuste.',
+      ]"
+    />
+
     <!-- Histórico de transferências via movimentações -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -99,6 +110,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -135,7 +147,8 @@ const locaisDestino = computed(() =>
 )
 
 const headers = [
-  { title: 'Produto', key: 'produto' },
+  { title: 'Produto', key: 'produtoNome' },
+  { title: 'Local', key: 'localEstoque', width: 140 },
   { title: 'Quantidade', key: 'quantidade', width: 110 },
   { title: 'Documento', key: 'documentoOrigem' },
   { title: 'Observação', key: 'observacao' },
@@ -195,6 +208,7 @@ async function transferir() {
       localOrigemId: form.value.localOrigemId,
       localDestinoId: form.value.localDestinoId,
       quantidade: form.value.quantidade,
+      usuarioId: auth.usuario?.id,
       observacao: form.value.observacao || null,
     })
     notif.ok('Transferência realizada com sucesso!')

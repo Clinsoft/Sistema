@@ -12,11 +12,13 @@ public class FornecedorConfiguration : IEntityTypeConfiguration<Fornecedor>
         b.HasKey(f => f.Id);
         b.Property(f => f.RazaoSocial).HasMaxLength(150).IsRequired();
         b.Property(f => f.NomeFantasia).HasMaxLength(150);
-        b.Property(f => f.Cnpj).HasMaxLength(14).IsRequired();
-        b.HasIndex(f => new { f.EmpresaId, f.Cnpj }).IsUnique();
+        b.Property(f => f.Cnpj).HasMaxLength(14);
+        b.HasIndex(f => new { f.EmpresaId, f.Cnpj }).IsUnique().HasFilter("[Cnpj] IS NOT NULL");
         b.Property(f => f.InscricaoEstadual).HasMaxLength(30);
         b.Property(f => f.Email).HasMaxLength(150);
         b.Property(f => f.Telefone).HasMaxLength(20);
+        b.Property(f => f.Celular).HasMaxLength(20);
+        b.Property(f => f.Tipos).HasMaxLength(200);
         b.Property(f => f.Contato).HasMaxLength(100);
         b.Property(f => f.Logradouro).HasMaxLength(100);
         b.Property(f => f.Numero).HasMaxLength(10);

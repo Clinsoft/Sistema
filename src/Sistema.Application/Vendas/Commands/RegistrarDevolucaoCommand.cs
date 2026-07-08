@@ -55,7 +55,8 @@ public class RegistrarDevolucaoHandler(
         var devolucao = DevolucaoVenda.Criar(
             cmd.EmpresaId, cmd.VendaId, venda.Numero, venda.ClienteId,
             cmd.Motivo,
-            cmd.Itens.Select(i => (i.ProdutoId, i.Descricao, i.Quantidade, i.ValorUnitario)));
+            cmd.Itens.Select(i => (i.ProdutoId, i.Descricao, i.Quantidade, i.ValorUnitario)),
+            cmd.ReporEstoque);
 
         await devolucaoRepo.AdicionarAsync(devolucao, ct);
 

@@ -7,6 +7,18 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="produtos"
+      titulo="Como cadastrar e manter produtos"
+      :passos="[
+        'Clique em <b>Novo Produto</b> e preencha as abas <b>Geral</b> (descrição, categoria, unidade), <b>Fiscal</b> (NCM, CFOP, CST/CSOSN) e <b>Preços</b> (custo e markup).',
+        'O <b>código interno</b> é sequencial (a partir de 3001) e é o número usado na balança — não use código aleatório.',
+        'Na aba <b>Nutricional</b>, busque o alimento na base <b>TACO</b> pelo nome para preencher a tabela automaticamente.',
+        'Produtos criados durante a importação de NF-e já vêm com dados fiscais e fornecedor vinculados — complete aqui o que faltar.',
+        'Use os ícones da tabela para <b>editar</b>, <b>inativar</b> ou <b>excluir</b>. A lista atualiza sozinha após cada ação.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -135,7 +147,8 @@
                     <v-col cols="12" md="4">
                       <v-select v-model="form.categoriaId" :items="categorias" item-title="nome" item-value="id"
                         label="Categoria *" variant="outlined" density="compact"
-                        :rules="[r => !!r || 'Obrigatório']">
+                        :rules="[r => !!r || 'Obrigatório']"
+                        @update:model-value="aplicarBalancaAuto">
                         <template #append-inner>
                           <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
                             title="Adicionar categoria" @click.stop="abrirQuickAdd('categoria')" />
@@ -155,7 +168,8 @@
                     <v-col cols="12" md="4">
                       <v-select v-model="form.unidadeMedidaId" :items="unidades" item-title="sigla" item-value="id"
                         label="Unidade *" variant="outlined" density="compact"
-                        :rules="[r => !!r || 'Obrigatório']">
+                        :rules="[r => !!r || 'Obrigatório']"
+                        @update:model-value="aplicarBalancaAuto">
                         <template #append-inner>
                           <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
                             title="Adicionar unidade" @click.stop="abrirQuickAdd('unidade')" />
@@ -493,6 +507,57 @@
                 </div>
               </div>
 
+              <!-- ── SEÇÃO: VALIDADE E LOTES ────────────────────── -->
+              <div class="prod-secao" v-if="editando && (form.controlarValidade || form.controlarLote || lotes.length > 0)">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-calendar-clock" size="16" />
+                  <span>Controle de Validade e Lotes</span>
+                </div>
+                <div class="prod-secao-body">
+                  <div class="d-flex align-center mb-3">
+                    <div class="text-caption text-medium-emphasis flex-grow-1">
+                      <v-icon size="14" class="mr-1">mdi-information-outline</v-icon>
+                      <template v-if="form.validadeEmDias">Validade padrão: <b>{{ form.validadeEmDias }} dias</b> após a fabricação.</template>
+                      <template v-else>Registre os lotes com sua data de validade para controle e alertas.</template>
+                    </div>
+                    <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus"
+                      @click="abrirNovoLote">Adicionar lote</v-btn>
+                  </div>
+
+                  <div v-if="carregandoLotes" class="d-flex justify-center pa-4">
+                    <v-progress-circular indeterminate color="primary" size="28" />
+                  </div>
+                  <div v-else-if="!lotes.length" class="text-center text-medium-emphasis pa-4">
+                    <v-icon size="32" class="mb-1">mdi-calendar-blank-outline</v-icon>
+                    <div class="text-body-2">Nenhum lote registrado. Clique em "Adicionar lote".</div>
+                  </div>
+                  <v-table v-else density="compact">
+                    <thead>
+                      <tr>
+                        <th>Lote</th><th>Fabricação</th><th>Validade</th>
+                        <th class="text-right">Qtd</th><th>Local</th><th>Situação</th><th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="l in lotes" :key="l.id">
+                        <td class="text-body-2 font-weight-medium">{{ l.numeroLote }}</td>
+                        <td class="text-body-2">{{ l.dataFabricacao ? new Date(l.dataFabricacao).toLocaleDateString('pt-BR') : '—' }}</td>
+                        <td class="text-body-2">{{ l.dataValidade ? new Date(l.dataValidade).toLocaleDateString('pt-BR') : '—' }}</td>
+                        <td class="text-right text-body-2">{{ l.quantidade }}</td>
+                        <td class="text-body-2">{{ nomeLocal(l.localEstoqueId) }}</td>
+                        <td>
+                          <v-chip :color="statusLote(l).cor" size="x-small" variant="tonal">{{ statusLote(l).label }}</v-chip>
+                        </td>
+                        <td class="text-right" style="white-space:nowrap">
+                          <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary" @click="abrirEditarLote(l)" />
+                          <v-btn icon="mdi-delete-outline" size="x-small" variant="text" color="error" @click="excluirLote(l.id)" />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </div>
+              </div>
+
             </div><!-- prod-form-body -->
           </v-form>
         </v-card-text>
@@ -500,11 +565,61 @@
         <v-divider />
         <v-card-actions class="pa-4">
           <v-btn variant="text" @click="fecharDialog">Cancelar</v-btn>
+          <v-btn v-if="editando" color="error" variant="tonal" prepend-icon="mdi-delete-outline"
+            :loading="excluindo" @click="excluirProduto">Excluir</v-btn>
+          <v-btn v-if="editando && form.ativo" color="warning" variant="tonal" prepend-icon="mdi-eye-off-outline"
+            :loading="inativando" @click="inativarProduto">Inativar</v-btn>
+          <v-btn v-if="editando && !form.ativo" color="success" variant="tonal" prepend-icon="mdi-eye-check-outline"
+            :loading="inativando" @click="reativarProduto">Reativar</v-btn>
           <v-spacer />
           <v-btn color="primary" :loading="salvando" @click="salvar"
             prepend-icon="mdi-content-save" size="large" rounded="lg">
             {{ editando ? 'Salvar Alterações' : 'Criar Produto' }}
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Mini-dialog: Lote -->
+    <v-dialog v-model="dialogLote" max-width="460" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon icon="mdi-calendar-clock" color="primary" />
+          {{ loteEditandoId ? 'Editar Lote' : 'Novo Lote' }}
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-row dense>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model="loteForm.numeroLote" label="Número do lote *"
+                variant="outlined" density="compact" autofocus />
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-select v-model="loteForm.localEstoqueId" label="Local de estoque *"
+                :items="locaisEstoque" item-title="nome" item-value="id"
+                variant="outlined" density="compact" :disabled="!!loteEditandoId" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model="loteForm.dataFabricacao" label="Fabricação" type="date"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model="loteForm.dataValidade" label="Validade" type="date"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="loteForm.quantidade" label="Quantidade" type="number"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="loteForm.custoUnitario" label="Custo unit. (R$)" type="number"
+                prefix="R$" variant="outlined" density="compact" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogLote = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvandoLote" @click="salvarLote">Salvar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -589,12 +704,15 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
 
 const carregando = ref(false)
 const salvando = ref(false)
+const excluindo = ref(false)
+const inativando = ref(false)
 const dialog = ref(false)
 const editando = ref(false)
 
@@ -603,6 +721,15 @@ const categorias = ref<any[]>([])
 const marcas = ref<any[]>([])
 const unidades = ref<any[]>([])
 const fornecedores = ref<any[]>([])
+const locaisEstoque = ref<any[]>([])
+
+// ─── Lotes / Validade ────────────────────────────────────────────
+const lotes = ref<any[]>([])
+const carregandoLotes = ref(false)
+const dialogLote = ref(false)
+const loteEditandoId = ref<string | null>(null)
+const salvandoLote = ref(false)
+const loteForm = ref<any>({})
 
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
@@ -945,18 +1072,20 @@ async function listar() {
 
 async function carregarCatalogo() {
   try {
-    const [c, m, u, f, g] = await Promise.all([
+    const [c, m, u, f, g, l] = await Promise.all([
       api.get('/categorias',     { params: { empresaId: auth.empresaId } }),
       api.get('/marcas',         { params: { empresaId: auth.empresaId } }),
       api.get('/unidades-medida',{ params: { empresaId: auth.empresaId } }),
       api.get('/fornecedores',   { params: { empresaId: auth.empresaId } }),
       api.get('/alimentos-taco/grupos'),
+      api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }),
     ])
     categorias.value = c.data
     marcas.value = m.data
     unidades.value = u.data
     fornecedores.value = f.data
     gruposTaco.value = g.data
+    locaisEstoque.value = l.data
   } catch { /* silencioso */ }
 }
 
@@ -1006,7 +1135,8 @@ async function abrirEdicao(item: any) {
     }
     embalagens.value = p.embalagens ?? []
     nutri.value = p.nutricional ? { ...nutriPadrao(), ...p.nutricional } : nutriPadrao()
-  } catch { notif.erro('Erro ao carregar produto.') }
+    await carregarLotes()
+  } catch { /* silencioso */ }
 }
 
 function fecharDialog() {
@@ -1016,6 +1146,163 @@ function fecharDialog() {
 }
 
 // ─── salvar produto ──────────────────────────────────────────────
+async function excluirProduto() {
+  if (!produtoEditandoId.value) return
+  if (!confirm('Excluir este produto definitivamente? Esta ação não pode ser desfeita.')) return
+  excluindo.value = true
+  try {
+    await api.delete(`/produtos/${produtoEditandoId.value}`)
+    notif.ok('Produto excluído.')
+    fecharDialog()
+    await listar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao excluir produto.')
+  } finally { excluindo.value = false }
+}
+
+async function inativarProduto() {
+  if (!produtoEditandoId.value) return
+  if (!confirm('Inativar este produto? Ele não aparecerá nas vendas mas o histórico será mantido.')) return
+  inativando.value = true
+  try {
+    await api.patch(`/produtos/${produtoEditandoId.value}/inativar`)
+    notif.ok('Produto inativado.')
+    fecharDialog()
+    await listar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao inativar produto.')
+  } finally { inativando.value = false }
+}
+
+async function reativarProduto() {
+  if (!produtoEditandoId.value) return
+  inativando.value = true
+  try {
+    await api.patch(`/produtos/${produtoEditandoId.value}/reativar`)
+    notif.ok('Produto reativado.')
+    fecharDialog()
+    await listar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao reativar produto.')
+  } finally { inativando.value = false }
+}
+
+// ─── Detecção automática de produto de Balança (venda por peso) ──
+// Quando a categoria é por peso (Kilo/Granel) ou a unidade é KG, o produto
+// é preparado para a balança: marca "Balança", ativa validade e sugere 60 dias.
+function aplicarBalancaAuto() {
+  const cat = categorias.value.find((c: any) => c.id === form.value.categoriaId)
+  const uni = unidades.value.find((u: any) => u.id === form.value.unidadeMedidaId)
+  const nomeCat = (cat?.nome ?? '').toLowerCase()
+  const sigla = (uni?.sigla ?? '').toUpperCase()
+  const ehPeso = /kilo|quilo|granel|peso|fracion|a\s*granel/.test(nomeCat) || sigla === 'KG'
+  if (!ehPeso || form.value.produtoBalanca) return
+
+  form.value.produtoBalanca = true
+  form.value.vendidoFracionado = true
+  if (!form.value.controlarValidade) form.value.controlarValidade = true
+  if (!form.value.validadeEmDias) form.value.validadeEmDias = 60
+  if (!form.value.codigoPlu) {
+    // PLU sugerido a partir do código numérico do produto (usado pela balança)
+    const n = parseInt(form.value.codigo ?? '', 10)
+    if (!isNaN(n)) form.value.codigoPlu = n
+  }
+  notif.aviso('Produto por peso: marcado para Balança, validade 60 dias e PLU sugerido.')
+}
+
+// ─── Lotes / Validade ────────────────────────────────────────────
+async function carregarLotes() {
+  if (!produtoEditandoId.value) { lotes.value = []; return }
+  carregandoLotes.value = true
+  try {
+    const r = await api.get(`/lotes/produto/${produtoEditandoId.value}`, { params: { empresaId: auth.empresaId } })
+    lotes.value = r.data ?? []
+  } catch { lotes.value = [] }
+  finally { carregandoLotes.value = false }
+}
+
+function statusLote(lote: any) {
+  if (!lote.dataValidade) return { label: 'Sem validade', cor: 'grey' }
+  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00')
+  const val = new Date(lote.dataValidade.slice(0, 10) + 'T12:00:00')
+  const dias = Math.round((val.getTime() - hoje.getTime()) / 86400000)
+  if (dias < 0) return { label: `Vencido há ${Math.abs(dias)}d`, cor: 'error' }
+  if (dias === 0) return { label: 'Vence hoje', cor: 'error' }
+  if (dias <= (form.value.validadeEmDias && form.value.validadeEmDias < 30 ? form.value.validadeEmDias : 30))
+    return { label: `Vence em ${dias}d`, cor: 'warning' }
+  return { label: `Vence em ${dias}d`, cor: 'success' }
+}
+
+function abrirNovoLote() {
+  loteEditandoId.value = null
+  const dataFab = new Date().toISOString().slice(0, 10)
+  const dataVal = form.value.validadeEmDias
+    ? new Date(Date.now() + form.value.validadeEmDias * 86400000).toISOString().slice(0, 10)
+    : ''
+  loteForm.value = {
+    numeroLote: '', quantidade: 0, custoUnitario: form.value.custoUnitario ?? 0,
+    dataFabricacao: dataFab, dataValidade: dataVal,
+    localEstoqueId: locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? '',
+  }
+  dialogLote.value = true
+}
+
+function abrirEditarLote(item: any) {
+  loteEditandoId.value = item.id
+  loteForm.value = {
+    numeroLote: item.numeroLote ?? '',
+    quantidade: item.quantidade ?? 0,
+    custoUnitario: item.custoUnitario ?? 0,
+    dataFabricacao: item.dataFabricacao?.slice(0, 10) ?? '',
+    dataValidade: item.dataValidade?.slice(0, 10) ?? '',
+    localEstoqueId: item.localEstoqueId ?? '',
+  }
+  dialogLote.value = true
+}
+
+async function salvarLote() {
+  if (!loteForm.value.numeroLote || !loteForm.value.localEstoqueId) {
+    notif.erro('Informe o número do lote e o local de estoque.'); return
+  }
+  salvandoLote.value = true
+  try {
+    if (loteEditandoId.value) {
+      await api.put(`/lotes/${loteEditandoId.value}`, {
+        numeroLote: loteForm.value.numeroLote,
+        quantidade: loteForm.value.quantidade,
+        custoUnitario: loteForm.value.custoUnitario,
+        dataFabricacao: loteForm.value.dataFabricacao || null,
+        dataValidade: loteForm.value.dataValidade || null,
+      })
+    } else {
+      await api.post('/lotes', {
+        empresaId: auth.empresaId, produtoId: produtoEditandoId.value,
+        localEstoqueId: loteForm.value.localEstoqueId,
+        numeroLote: loteForm.value.numeroLote,
+        quantidade: loteForm.value.quantidade,
+        custoUnitario: loteForm.value.custoUnitario,
+        dataFabricacao: loteForm.value.dataFabricacao || null,
+        dataValidade: loteForm.value.dataValidade || null,
+      })
+    }
+    notif.ok('Lote salvo!')
+    dialogLote.value = false
+    await carregarLotes()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao salvar lote.') }
+  finally { salvandoLote.value = false }
+}
+
+async function excluirLote(id: string) {
+  if (!confirm('Excluir este lote?')) return
+  try {
+    await api.delete(`/lotes/${id}`)
+    notif.ok('Lote excluído.')
+    await carregarLotes()
+  } catch { notif.erro('Erro ao excluir lote.') }
+}
+
+const nomeLocal = (id: string) => locaisEstoque.value.find((l: any) => l.id === id)?.nome ?? '—'
+
 async function salvar() {
   const ok = await formulario.value?.validate()
   if (!ok?.valid) return

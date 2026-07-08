@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Financeiro.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
+using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers.Financeiro;
 
@@ -12,6 +14,7 @@ namespace Sistema.API.Controllers.Financeiro;
 public class ContasPagarController(
     ILancamentoFinanceiroRepository repo,
     IContaBancariaRepository contaRepo,
+    SistemaDbContext db,
     IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]
@@ -27,12 +30,23 @@ public class ContasPagarController(
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             lancamentos = lancamentos.Where(l => l.Status == st);
 
-        return Ok(lancamentos.Select(l => new
+        var lista = lancamentos.ToList();
+        var fornecedorIds = lista.Where(l => l.FornecedorId.HasValue)
+            .Select(l => l.FornecedorId!.Value).Distinct().ToList();
+        var fornecedores = fornecedorIds.Any()
+            ? await db.Fornecedores.AsNoTracking()
+                .Where(f => fornecedorIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct)
+            : new Dictionary<Guid, string>();
+
+        return Ok(lista.Select(l => new
         {
             l.Id, l.Descricao, l.ValorOriginal, l.ValorPago,
             saldo = l.Saldo, l.DataVencimento, l.DataPagamento,
-            l.Status, l.Parcela, l.TotalParcelas,
-            l.FornecedorId, l.DocumentoOrigem, vencido = l.Vencido
+            status = l.Status.ToString(), l.Parcela, l.TotalParcelas, l.Observacao,
+            categoria = l.Categoria, l.FornecedorId,
+            fornecedorNome = l.FornecedorId.HasValue && fornecedores.TryGetValue(l.FornecedorId.Value, out var fn) ? fn : null,
+            l.DocumentoOrigem, vencido = l.Vencido
         }));
     }
 
@@ -60,6 +74,8 @@ public class ContasPagarController(
                 contaBancariaId: req.ContaBancariaId,
                 documentoOrigem: req.DocumentoOrigem,
                 parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo);
+
+            l.DefinirClassificacao(req.Categoria, null, req.Observacao);
 
             await repo.AdicionarAsync(l, ct);
             ids.Add(l.Id);
@@ -92,6 +108,29 @@ public class ContasPagarController(
         return NoContent();
     }
 
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Editar(Guid id, [FromBody] EditarLancamentoRequest req, CancellationToken ct)
+    {
+        var lancamento = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Lançamento não encontrado.");
+        lancamento.Editar(req.Descricao, req.ValorOriginal, req.DataVencimento, req.Observacao, req.FornecedorId);
+        lancamento.DefinirClassificacao(req.Categoria, lancamento.ClienteNome, req.Observacao);
+        repo.Atualizar(lancamento);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/renegociar")]
+    public async Task<IActionResult> Renegociar(Guid id, [FromBody] RenegociarPagarRequest req, CancellationToken ct)
+    {
+        var lancamento = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Lançamento não encontrado.");
+        lancamento.Renegociar(req.NovoValor, req.NovoVencimento, req.Motivo);
+        repo.Atualizar(lancamento);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/cancelar")]
     public async Task<IActionResult> Cancelar(Guid id, CancellationToken ct)
     {
@@ -104,8 +143,12 @@ public class ContasPagarController(
     }
 }
 
+public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null);
+public record RenegociarPagarRequest(decimal NovoValor, DateTime NovoVencimento, string? Motivo = null);
+
 public record CriarContaPagarRequest(
     Guid EmpresaId, string Descricao, decimal Valor,
     DateTime PrimeiroVencimento, int TotalParcelas = 1,
     Guid? FornecedorId = null, Guid? CategoriaId = null,
-    Guid? ContaBancariaId = null, string? DocumentoOrigem = null);
+    Guid? ContaBancariaId = null, string? DocumentoOrigem = null,
+    string? Categoria = null, string? Observacao = null);

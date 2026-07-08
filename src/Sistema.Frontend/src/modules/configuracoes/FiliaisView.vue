@@ -192,9 +192,7 @@ async function carregar() {
   try {
     const r = await api.get(`/empresas/${auth.empresaId}/grupo`)
     grupo.value = r.data
-  } catch {
-    notif.erro('Erro ao carregar unidades.')
-  } finally {
+  } catch { /* silencioso */ } finally {
     carregando.value = false
   }
 }

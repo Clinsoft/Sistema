@@ -2,6 +2,17 @@
   <div>
     <div class="text-h6 font-weight-bold mb-4">Contabilidade</div>
 
+    <GuiaPassos
+      id="contabilidade"
+      titulo="Como usar a Contabilidade"
+      :passos="[
+        '<b>Plano de Contas</b>: gere o plano padrão CFC (botão) ou cadastre contas. Só contas <b>analíticas</b> aceitam lançamentos.',
+        '<b>Lançamentos</b>: clique em <b>Novo</b> e registre as partidas dobradas — <b>débitos</b> e <b>créditos</b> que devem se <b>equilibrar</b>. Use ↩ para estornar.',
+        '<b>Balancete</b>: escolha o período e clique em Gerar para ver saldos por conta (débito/crédito).',
+        '<b>Download XML</b>: baixe os XMLs de NF-e/NFC-e por competência (ZIP) para o contador. <b>Contadores</b>: cadastre o escritório com acesso ao Painel do Contador.',
+      ]"
+    />
+
     <v-tabs v-model="aba" bg-color="transparent" class="mb-4">
       <v-tab value="plano">Plano de Contas</v-tab>
       <v-tab value="lancamentos">Lançamentos</v-tab>
@@ -208,6 +219,68 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog novo lançamento contábil -->
+    <v-dialog v-model="dialogLanc" max-width="720" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon icon="mdi-book-plus-outline" color="primary" />
+          Novo Lançamento Contábil
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2" style="max-height:74vh">
+          <v-row dense>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model="novoLanc.dataCompetencia" label="Competência *" type="date"
+                variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="8">
+              <v-text-field v-model="novoLanc.historico" label="Histórico *"
+                variant="outlined" density="compact" placeholder="Ex.: Pagamento de fornecedor" />
+            </v-col>
+          </v-row>
+
+          <!-- Débitos -->
+          <div class="text-caption font-weight-bold text-primary mt-3 mb-1" style="text-transform:uppercase;letter-spacing:.05em">
+            <v-icon size="14" color="primary">mdi-arrow-down-bold</v-icon> Débitos
+          </div>
+          <div v-for="(d, i) in novoLanc.debitos" :key="'d'+i" class="d-flex gap-2 mb-2">
+            <v-autocomplete v-model="d.contaId" :items="contasAnaliticas" item-title="label" item-value="id"
+              label="Conta" variant="outlined" density="compact" hide-details class="flex-grow-1" />
+            <v-text-field v-model.number="d.valor" label="Valor" type="number" prefix="R$"
+              variant="outlined" density="compact" hide-details style="max-width:150px" />
+            <v-btn icon="mdi-close" size="small" variant="text" color="error" @click="novoLanc.debitos.splice(i,1)" />
+          </div>
+          <v-btn size="x-small" variant="tonal" prepend-icon="mdi-plus" @click="novoLanc.debitos.push({ contaId:null, valor:0 })">Adicionar débito</v-btn>
+
+          <!-- Créditos -->
+          <div class="text-caption font-weight-bold text-teal mt-4 mb-1" style="text-transform:uppercase;letter-spacing:.05em">
+            <v-icon size="14" color="teal">mdi-arrow-up-bold</v-icon> Créditos
+          </div>
+          <div v-for="(c, i) in novoLanc.creditos" :key="'c'+i" class="d-flex gap-2 mb-2">
+            <v-autocomplete v-model="c.contaId" :items="contasAnaliticas" item-title="label" item-value="id"
+              label="Conta" variant="outlined" density="compact" hide-details class="flex-grow-1" />
+            <v-text-field v-model.number="c.valor" label="Valor" type="number" prefix="R$"
+              variant="outlined" density="compact" hide-details style="max-width:150px" />
+            <v-btn icon="mdi-close" size="small" variant="text" color="error" @click="novoLanc.creditos.splice(i,1)" />
+          </div>
+          <v-btn size="x-small" variant="tonal" prepend-icon="mdi-plus" @click="novoLanc.creditos.push({ contaId:null, valor:0 })">Adicionar crédito</v-btn>
+
+          <!-- Balanceamento -->
+          <v-alert :type="balanceado ? 'success' : 'warning'" variant="tonal" density="compact" class="mt-4">
+            <div class="d-flex justify-space-between">
+              <span>Total Débitos: <b>R$ {{ fmt(totalDebitos) }}</b></span>
+              <span>Total Créditos: <b>R$ {{ fmt(totalCreditos) }}</b></span>
+              <span>{{ balanceado ? 'Balanceado ✓' : 'Débitos ≠ Créditos' }}</span>
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogLanc=false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvandoLanc" :disabled="!balanceado || totalDebitos===0" @click="salvarLanc">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog contador -->
     <v-dialog v-model="dialogContador" max-width="540" persistent>
       <v-card rounded="xl">
@@ -256,7 +329,8 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
-import { ref, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -317,7 +391,57 @@ async function carregarLancamentos() {
 async function estornar(item: any) {
   await api.post(`/contabilidade/lancamentos/${item.id}/estornar`); notif.ok('Estorno criado!'); await carregarLancamentos()
 }
-function abrirNovoLanc() { /* TODO: dialog partidas */ }
+// ── Novo lançamento contábil ──────────────────────────────────────
+const dialogLanc = ref(false)
+const salvandoLanc = ref(false)
+const novoLanc = ref<{ dataCompetencia: string; historico: string; debitos: any[]; creditos: any[] }>({
+  dataCompetencia: new Date().toISOString().slice(0, 10), historico: '',
+  debitos: [{ contaId: null, valor: 0 }], creditos: [{ contaId: null, valor: 0 }],
+})
+const contasAnaliticas = computed(() =>
+  contas.value.filter((c: any) => c.aceitaLancamento || c.tipo === 'Analitica')
+    .map((c: any) => ({ id: c.id, label: `${c.codigo} — ${c.nome}` }))
+)
+const totalDebitos = computed(() => novoLanc.value.debitos.reduce((s, d) => s + (d.valor || 0), 0))
+const totalCreditos = computed(() => novoLanc.value.creditos.reduce((s, c) => s + (c.valor || 0), 0))
+const balanceado = computed(() => Math.abs(totalDebitos.value - totalCreditos.value) < 0.005 && totalDebitos.value > 0)
+
+async function abrirNovoLanc() {
+  if (!contas.value.length) await carregarPlano()
+  if (!contasAnaliticas.value.length) {
+    notif.erro('Cadastre o Plano de Contas antes de lançar (aba Plano de Contas → Gerar Plano Padrão CFC).')
+    aba.value = 'plano'
+    return
+  }
+  novoLanc.value = {
+    dataCompetencia: new Date().toISOString().slice(0, 10), historico: '',
+    debitos: [{ contaId: null, valor: 0 }], creditos: [{ contaId: null, valor: 0 }],
+  }
+  dialogLanc.value = true
+}
+
+async function salvarLanc() {
+  const l = novoLanc.value
+  if (!l.historico) { notif.erro('Informe o histórico.'); return }
+  const debitos = l.debitos.filter(d => d.contaId && d.valor > 0)
+  const creditos = l.creditos.filter(c => c.contaId && c.valor > 0)
+  if (!debitos.length || !creditos.length) { notif.erro('Informe ao menos um débito e um crédito.'); return }
+  salvandoLanc.value = true
+  try {
+    await api.post('/contabilidade/lancamentos', {
+      empresaId: auth.empresaId,
+      dataCompetencia: l.dataCompetencia,
+      historico: l.historico,
+      debitos: debitos.map(d => ({ contaId: d.contaId, valor: d.valor })),
+      creditos: creditos.map(c => ({ contaId: c.contaId, valor: c.valor })),
+    })
+    notif.ok('Lançamento contábil registrado!')
+    dialogLanc.value = false
+    await carregarLancamentos()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao salvar lançamento.')
+  } finally { salvandoLanc.value = false }
+}
 async function carregarBalancete() {
   carregandoBalancete.value = true
   try { const r = await api.get('/contabilidade/lancamentos/balancete', { params:{ empresaId:auth.empresaId, ...filtros.value } }); balancete.value = r.data }

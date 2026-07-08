@@ -46,6 +46,8 @@ const router = createRouter({
       meta: { titulo: 'Controle de Validade' } },
     { path: '/estoque/validade/config', component: () => import('@/modules/estoque/ValidadeConfigView.vue'),
       meta: { titulo: 'Configurações de Validade' } },
+    { path: '/estoque/alterar-precos', component: () => import('@/modules/estoque/AlteracaoPrecosView.vue'),
+      meta: { titulo: 'Alterar Preços' } },
 
     // Página pública (sem auth guard)
     { path: '/produto/:id', component: () => import('@/modules/publico/ProdutoPublicoView.vue'),

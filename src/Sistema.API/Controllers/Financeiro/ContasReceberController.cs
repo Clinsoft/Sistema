@@ -31,8 +31,9 @@ public class ContasReceberController(
         {
             l.Id, l.Descricao, l.ValorOriginal, l.ValorPago,
             saldo = l.Saldo, l.DataVencimento, l.DataPagamento,
-            l.Status, l.Parcela, l.TotalParcelas,
-            l.ClienteId, l.DocumentoOrigem, vencido = l.Vencido
+            status = l.Status.ToString(), l.Parcela, l.TotalParcelas,
+            l.ClienteId, l.ClienteNome, categoria = l.Categoria, l.Observacao,
+            l.DocumentoOrigem, vencido = l.Vencido
         }));
     }
 
@@ -72,6 +73,8 @@ public class ContasReceberController(
                 contaBancariaId: req.ContaBancariaId,
                 documentoOrigem: req.DocumentoOrigem,
                 parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo);
+
+            l.DefinirClassificacao(req.Categoria, req.ClienteNome, req.Observacao);
 
             lancamentos.Add(l);
             await repo.AdicionarAsync(l, ct);
@@ -116,6 +119,7 @@ public class ContasReceberController(
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/renegociar")]
     [HttpPut("{id:guid}/renegociar")]
     public async Task<IActionResult> Renegociar(Guid id, [FromBody] RenegociarRequest req, CancellationToken ct)
     {
@@ -132,7 +136,8 @@ public record CriarLancamentoRequest(
     Guid EmpresaId, string Descricao, decimal Valor,
     DateTime PrimeiroVencimento, int TotalParcelas = 1,
     Guid? PessoaId = null, Guid? CategoriaId = null,
-    Guid? ContaBancariaId = null, string? DocumentoOrigem = null);
+    Guid? ContaBancariaId = null, string? DocumentoOrigem = null,
+    string? Categoria = null, string? ClienteNome = null, string? Observacao = null);
 
 public record BaixarLancamentoRequest(decimal ValorPago, DateTime DataPagamento, Guid? ContaBancariaId = null);
 public record RenegociarRequest(decimal NovoValor, DateTime NovoVencimento, string? Observacao = null);

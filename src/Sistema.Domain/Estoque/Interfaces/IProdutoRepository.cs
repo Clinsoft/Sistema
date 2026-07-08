@@ -11,4 +11,9 @@ public interface IProdutoRepository : IRepository<Produto>
     Task<int> ContarAsync(Guid empresaId, string? termo, Guid? categoriaId, bool? ativo, CancellationToken ct = default);
     Task<IReadOnlyList<Produto>> ListarEstoqueAbaixoMinimoAsync(Guid empresaId, CancellationToken ct = default);
     Task<IReadOnlyList<Produto>> ListarComValidadeProximaAsync(Guid empresaId, int dias, CancellationToken ct = default);
+
+    /// <summary>Retorna os nomes/siglas de unidades, categorias e marcas da empresa para enriquecer DTOs.</summary>
+    Task<(IReadOnlyDictionary<Guid, string> Unidades,
+          IReadOnlyDictionary<Guid, string> Categorias,
+          IReadOnlyDictionary<Guid, string> Marcas)> ObterLookupsAsync(Guid empresaId, CancellationToken ct = default);
 }

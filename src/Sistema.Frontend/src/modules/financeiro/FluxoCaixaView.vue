@@ -8,6 +8,17 @@
       </v-btn-toggle>
     </div>
 
+    <GuiaPassos
+      id="fluxo-caixa"
+      titulo="Como usar o Fluxo de Caixa"
+      :passos="[
+        'Escolha <b>Realizado</b> (entradas e saídas já efetivadas) ou <b>Projetado</b> (contas em aberto por vencimento).',
+        'Selecione o período (mês ou datas) e clique na <b>lupa</b> para atualizar. Filtre por <b>categoria</b> se quiser.',
+        'O <b>Realizado</b> soma vendas do PDV, recebimentos baixados e pagamentos efetuados. O <b>Projetado</b> mostra o que vai entrar/sair pelas contas em aberto.',
+        'É um <b>relatório</b>: para alterar um valor, edite a venda no PDV ou o lançamento em <b>Contas a Pagar/Receber</b>. O <b>Saldo Acumulado</b> parte do saldo das contas bancárias.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
       <v-row dense align="center">
@@ -85,6 +96,10 @@
         items-per-page="-1"
         hide-default-footer
       >
+        <template #item.data="{ item }">
+          {{ item.data ? new Date(item.data + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }}
+        </template>
+
         <template #item.categoria="{ item }">
           <v-chip v-if="item.categoria"
             :color="corCategoria(item.categoria)"
@@ -136,6 +151,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -147,7 +163,7 @@ const dados = ref<any>(null)
 
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
-  fim: new Date().toISOString().slice(0, 10),
+  fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: null as string | null,
 })
 
@@ -161,10 +177,7 @@ const headers = [
   { title: 'Acumulado',      key: 'acumulado',  width: 130 },
 ]
 
-const linhas = computed(() => {
-  if (!dados.value) return []
-  return tipo.value === 'realizado' ? (dados.value.dias ?? dados.value.linhas ?? []) : (dados.value.periodos ?? dados.value.linhas ?? [])
-})
+const linhas = computed(() => dados.value?.linhas ?? [])
 
 const linhasFiltradas = computed(() => {
   if (!filtros.value.categoria || filtros.value.categoria === 'Todas') return linhas.value

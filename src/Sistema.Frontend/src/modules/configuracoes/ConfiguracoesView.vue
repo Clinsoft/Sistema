@@ -1,6 +1,18 @@
 ﻿<template>
   <div>
     <div class="text-h6 font-weight-bold mb-4">Configurações</div>
+
+    <GuiaPassos
+      id="configuracoes"
+      titulo="Como usar as Configurações"
+      :passos="[
+        '<b>Empresa</b>: preencha razão social, CNPJ, inscrição estadual e endereço (o CEP preenche o endereço automaticamente). Clique em <b>Salvar</b> — esses dados vão para o XML das notas.',
+        '<b>Configuração Fiscal</b>: 1º defina o <b>regime</b>, <b>ambiente</b> (Homologação p/ testes, Produção p/ valor fiscal), séries e próximos números de NF-e/NFC-e; clique em <b>Salvar Configurações Fiscais</b>.',
+        'Depois instale o <b>Certificado Digital A1</b> (.pfx/.p12): arraste o arquivo, informe a senha e use <b>Validar</b> para conferir e <b>Instalar</b>. Configure CSC da NFC-e, DANFE, tributação padrão e, se usar, NFS-e e MDF-e.',
+        '<b>Usuários</b>: cadastre colaboradores com <b>nível de acesso</b> (Administrador, Vendedor, Financeiro, Contador). No menu ⋮ você pode <b>alterar o perfil</b>, <b>redefinir a senha</b> e <b>ativar/desativar</b> o acesso.',
+      ]"
+    />
+
     <v-tabs v-model="aba" bg-color="transparent" class="mb-4">
       <v-tab value="empresa">Empresa</v-tab>
       <v-tab value="fiscal">Configuração Fiscal</v-tab>
@@ -800,6 +812,7 @@
 </template>
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -1121,9 +1134,7 @@ async function carregarUsuarios() {
   try {
     const r = await api.get('/usuarios', { params: { empresaId: auth.empresaId } })
     usuarios.value = r.data
-  } catch {
-    notif.erro('Erro ao carregar colaboradores.')
-  } finally {
+  } catch { /* silencioso */ } finally {
     carregandoUsr.value = false
   }
 }
@@ -1238,9 +1249,16 @@ async function salvarEmpresa() {
 async function salvarFiscal() {
   salvando.value = true
   try {
-    if (fiscal.value.id) await api.put(`/fiscal/configuracao/${fiscal.value.id}`, fiscal.value)
-    else await api.post('/fiscal/configuracao', { ...fiscal.value, empresaId: auth.empresaId })
+    if (fiscal.value.id) {
+      await api.put(`/fiscal/configuracao/${fiscal.value.id}`, fiscal.value)
+    } else {
+      const r = await api.post('/fiscal/configuracao', { ...fiscal.value, empresaId: auth.empresaId })
+      // Guarda o id retornado para que próximos salvamentos usem PUT (evita erro "já existe")
+      if (r.data?.id) fiscal.value.id = r.data.id
+    }
     notif.ok('Configuração fiscal salva!')
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? e.response?.data?.detalhe ?? 'Erro ao salvar configuração fiscal.')
   } finally { salvando.value = false }
 }
 
@@ -1261,8 +1279,7 @@ async function abrirDialogAplicarTrib() {
     const r = await api.get(`/fiscal/configuracao/${fiscal.value.id}/tributacao-padrao`)
     tribPreview.value = r.data
     dialogTrib.value  = true
-  } catch { notif.erro('Erro ao carregar prévia.') }
-  finally { carregandoTrib.value = false }
+  } catch { /* silencioso */ } finally { carregandoTrib.value = false }
 }
 
 async function aplicarTributacao() {

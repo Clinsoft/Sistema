@@ -4,6 +4,17 @@
       <div class="text-h6 font-weight-bold flex-grow-1">Documentos Fiscais</div>
     </div>
 
+    <GuiaPassos
+      id="documentos-fiscais"
+      titulo="Como usar os Documentos Fiscais"
+      :passos="[
+        '<b>NF-e Recebidas</b>: clique em <b>Consultar SEFAZ</b> (☁) para buscar as notas emitidas pelos seus fornecedores contra o seu CNPJ (exige certificado A1 configurado).',
+        'No menu ⋮ de cada nota, <b>manifeste</b>: Ciência, Confirmação, Desconhecimento ou Operação Não Realizada. Só após Confirmar/dar Ciência o <b>XML completo</b> fica disponível para baixar.',
+        'Use <b>Escriturar Entrada</b> para lançar a nota no <b>estoque e financeiro</b> (escolhe o local e abre a tela de conferência).',
+        '<b>NF-e Emitidas</b>: acompanhe suas notas de saída. <b>Importar XML</b>: escriture uma entrada a partir do arquivo XML do fornecedor.',
+      ]"
+    />
+
     <v-tabs v-model="aba" bg-color="transparent" class="mb-4">
       <v-tab value="emitidas" prepend-icon="mdi-file-send-outline">NF-e Emitidas</v-tab>
       <v-tab value="recebidas" prepend-icon="mdi-file-download-outline">
@@ -17,6 +28,17 @@
 
     <!-- ─────────────── ABA: EMITIDAS ─────────────── -->
     <div v-if="aba === 'emitidas'">
+      <GuiaPassos
+        id="fiscal-nfe-emitidas"
+        titulo="Como emitir e gerenciar NF-e"
+        :passos="[
+          'Clique no botão <b>+</b> (canto inferior direito) → <b>Nova NF-e</b>. Preencha em 4 etapas: <b>destinatário</b>, <b>itens</b> (busque produtos ou digite manualmente), <b>impostos/pagamento</b> e <b>revisão</b>.',
+          'Ao <b>Emitir</b>, a nota é criada <b>Em Digitação</b> e transmitida à SEFAZ automaticamente (exige certificado A1 configurado). O status muda para <b>Autorizada</b>, <b>Rejeitada</b> ou permanece em digitação.',
+          'Na tabela, use os ícones da linha: <b>Transmitir</b> (se ficou em digitação), <b>Baixar XML</b> e <b>Baixar DANFE</b> (autorizadas) e <b>Cancelar</b> (informando justificativa de 15+ caracteres).',
+          'Filtre por período e status. Uma nota autorizada <b>não pode ser editada nem excluída</b> (regra fiscal) — apenas cancelada. Use o menu <b>+</b> para <b>Inutilizar numeração</b>, gerar <b>SPED</b> ou baixar os <b>XMLs do período</b>.',
+        ]"
+      />
+
       <v-row class="mb-3">
         <v-col v-for="c in cardsEmitidas" :key="c.label" cols="6" sm="3">
           <v-card rounded="xl" elevation="1">
@@ -204,7 +226,7 @@
 
       <!-- Tabela NF-e recebidas -->
       <v-card rounded="xl" elevation="1">
-        <v-data-table :headers="headersRecebidas" :items="notasRecebidas"
+        <v-data-table :headers="headersRecebidas" :items="notasRecebidasExibidas"
           :loading="carregandoRec" density="comfortable" hover
           no-data-text="Nenhuma NF-e recebida. Clique no botão ☁ para consultar a SEFAZ.">
           <template #item.emitente="{ item }">
@@ -280,6 +302,17 @@
 
     <!-- ─────────────── ABA: ENTRADAS ESCRITURADAS ─────────────── -->
     <div v-if="aba === 'entradas'">
+      <GuiaPassos
+        id="fiscal-importar-xml"
+        titulo="Como importar o XML de uma NF-e de entrada"
+        :passos="[
+          'Clique em <b>Importar XML</b>, selecione o arquivo <b>.xml</b> autorizado pela SEFAZ e o <b>local de estoque</b> de destino. Se houver frete não incluso no XML, informe em <b>Frete adicional</b> (é rateado no custo dos itens).',
+          'O sistema extrai automaticamente <b>emitente, itens, totais e duplicatas</b>, cadastra o <b>fornecedor</b> pelo CNPJ (se novo) e tenta <b>vincular os produtos</b> por código de barras ou código do fornecedor.',
+          'Itens não vinculados aparecem como <b>pendentes</b>. Clique em <b>Abrir Entrada</b> para conferir: vincule/cadastre os produtos, ajuste conversão de unidade, lote/validade e o preço de venda sugerido.',
+          'Ao <b>Processar</b> a entrada, o estoque é movimentado e as <b>duplicatas viram contas a pagar</b>. A entrada pode ser <b>editada</b> enquanto Em Edição, ou <b>estornada/excluída</b> (Administrador) depois. Use o filtro por status para localizar entradas.',
+        ]"
+      />
+
       <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
         <v-row dense align="center">
           <v-col cols="12" sm="2">
@@ -303,7 +336,7 @@
               Buscar
             </v-btn>
             <v-btn color="success" rounded="lg" prepend-icon="mdi-file-import-outline"
-              @click="dlgImportarXml = true">
+              @click="dlgImportarXml = true; importacaoResultado = null">
               Importar XML
             </v-btn>
           </v-col>
@@ -711,43 +744,116 @@
     </v-dialog>
 
     <!-- Dialog: Importar XML diretamente -->
-    <v-dialog v-model="dlgImportarXml" max-width="500" persistent>
+    <v-dialog v-model="dlgImportarXml" max-width="540" persistent>
       <v-card rounded="xl">
         <v-card-title class="pa-4 pb-0">
           <v-icon start color="primary">mdi-file-xml-box</v-icon>
-          Importar XML de NF-e
+          {{ importacaoResultado ? 'XML Importado' : 'Importar XML de NF-e' }}
         </v-card-title>
         <v-card-text>
-          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
-            Faça o upload do arquivo XML autorizado pela SEFAZ. O sistema irá extrair
-            emitente, itens, totais e duplicatas automaticamente.
-          </v-alert>
+          <!-- Passo 1: Formulário -->
+          <template v-if="!importacaoResultado">
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              Faça o upload do arquivo XML autorizado pela SEFAZ. O sistema irá extrair
+              emitente, itens, totais e duplicatas automaticamente.
+            </v-alert>
 
-          <v-file-input v-model="xmlFile" label="Arquivo XML da NF-e *"
-            accept=".xml,text/xml,application/xml"
-            variant="outlined" density="compact" prepend-icon="mdi-paperclip"
-            hint="Selecione o arquivo .xml da NF-e autorizada" persistent-hint
-            :rules="[r => !!r || 'Selecione o arquivo XML']" />
+            <v-file-input v-model="xmlFile" label="Arquivo XML da NF-e *"
+              accept=".xml,text/xml,application/xml"
+              variant="outlined" density="compact" prepend-icon="mdi-paperclip"
+              hint="Selecione o arquivo .xml da NF-e autorizada" persistent-hint
+              :rules="[r => !!r || 'Selecione o arquivo XML']" />
 
-          <v-select v-model="localImportacaoId" label="Local de estoque de destino *"
-            :items="locaisEstoque" item-title="nome" item-value="id"
-            variant="outlined" density="compact" class="mt-3"
-            :rules="[r => !!r || 'Selecione o local de estoque']" />
+            <v-select v-model="localImportacaoId" label="Local de estoque de destino *"
+              :items="locaisEstoque" item-title="nome" item-value="id"
+              variant="outlined" density="compact" class="mt-3"
+              :rules="[r => !!r || 'Selecione o local de estoque']" />
 
-          <v-text-field v-model.number="freteManualImportacao" label="Frete adicional (R$)"
-            variant="outlined" density="compact" class="mt-3" type="number" min="0" step="0.01"
-            prefix="R$"
-            hint="Frete não incluso no XML — será rateado proporcionalmente entre os itens no custo"
-            persistent-hint />
+            <v-text-field v-model.number="freteManualImportacao" label="Frete adicional (R$)"
+              variant="outlined" density="compact" class="mt-3" type="number" min="0" step="0.01"
+              prefix="R$"
+              hint="Frete não incluso no XML — será rateado proporcionalmente entre os itens no custo"
+              persistent-hint />
+          </template>
+
+          <!-- Passo 2: Resultado + Duplicatas -->
+          <template v-else>
+            <!-- Caso: já importada anteriormente -->
+            <template v-if="importacaoResultado._jaImportada">
+              <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+                <strong>{{ importacaoResultado.mensagem }}</strong><br>
+                <span class="text-caption">Status atual: {{ importacaoResultado.status }}</span>
+              </v-alert>
+              <div class="text-body-2 text-medium-emphasis">
+                Esta NF-e já foi escriturada. Clique em "Abrir Entrada" para visualizar e editar.
+              </div>
+            </template>
+
+            <!-- Caso: importada agora com sucesso -->
+            <template v-else>
+            <v-alert type="success" variant="tonal" density="compact" class="mb-4">
+              <strong>NF {{ importacaoResultado.numeroNF }}</strong> — {{ importacaoResultado.emitente }}<br>
+              {{ importacaoResultado.totalItens }} itens · R$ {{ fmt(importacaoResultado.valorTotal) }}
+              <span v-if="importacaoResultado.itensPendentes > 0" class="text-warning d-block mt-1">
+                ⚠ {{ importacaoResultado.itensPendentes }} produto(s) precisam de vinculação manual
+              </span>
+            </v-alert>
+
+            <div v-if="importacaoResultado.duplicatas?.length">
+              <div class="text-subtitle-2 mb-2">
+                <v-icon size="16" class="mr-1">mdi-receipt-text-outline</v-icon>
+                Faturas / Duplicatas
+              </div>
+              <v-table density="compact">
+                <thead>
+                  <tr>
+                    <th>Nº</th>
+                    <th>Vencimento</th>
+                    <th class="text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="d in importacaoResultado.duplicatas" :key="d.numero">
+                    <td>{{ d.numero }}</td>
+                    <td>{{ new Date(d.vencimento).toLocaleDateString('pt-BR') }}</td>
+                    <td class="text-right">R$ {{ fmt(d.valor) }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+              <div class="text-caption text-medium-emphasis mt-1">
+                As faturas serão lançadas em Contas a Pagar ao processar a entrada.
+              </div>
+            </div>
+            <div v-else class="text-medium-emphasis text-body-2">
+              Nenhuma duplicata informada no XML.
+            </div>
+
+            <div v-if="importacaoResultado.avisos?.length" class="mt-3">
+              <v-alert v-for="a in importacaoResultado.avisos" :key="a"
+                type="warning" variant="tonal" density="compact" class="mb-1 text-caption">
+                {{ a }}
+              </v-alert>
+            </div>
+            </template> <!-- fim v-else sucesso -->
+          </template> <!-- fim passo 2 -->
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn variant="text" @click="dlgImportarXml = false" :disabled="importando">Cancelar</v-btn>
-          <v-btn color="primary" rounded="lg" :loading="importando"
-            :disabled="!xmlFile || !localImportacaoId" @click="importarXml">
-            <v-icon start>mdi-upload</v-icon>
-            Importar
-          </v-btn>
+          <template v-if="!importacaoResultado">
+            <v-btn variant="text" @click="dlgImportarXml = false" :disabled="importando">Cancelar</v-btn>
+            <v-btn color="primary" rounded="lg" :loading="importando"
+              :disabled="!xmlFile || !localImportacaoId" @click="importarXml">
+              <v-icon start>mdi-upload</v-icon>
+              Importar
+            </v-btn>
+          </template>
+          <template v-else>
+            <v-btn variant="text" @click="dlgImportarXml = false; importacaoResultado = null">Fechar</v-btn>
+            <v-btn color="primary" rounded="lg" @click="irParaEntrada">
+              <v-icon start>mdi-arrow-right</v-icon>
+              Abrir Entrada
+            </v-btn>
+          </template>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -894,6 +1000,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/composables/useApi'
@@ -957,12 +1064,20 @@ const filtrosRec = ref({
 })
 
 const opcoesManifestacaoFiltro = [
-  { title: 'Pendentes', value: null },
+  { title: 'Todas', value: null },
+  { title: 'Pendentes (sem manifestação)', value: 'PENDENTE' },
   { title: 'Ciência da Operação', value: 'CienciaOperacao' },
   { title: 'Confirmação da Operação', value: 'ConfirmacaoOperacao' },
   { title: 'Desconhecimento', value: 'DesconhecimentoOperacao' },
   { title: 'Operação Não Realizada', value: 'OperacaoNaoRealizada' },
 ]
+
+// "PENDENTE" é filtrado no cliente (o backend só filtra por tipo de manifestação real)
+const notasRecebidasExibidas = computed(() =>
+  filtrosRec.value.manifestacao === 'PENDENTE'
+    ? notasRecebidas.value.filter((n: any) => !n.manifestacao)
+    : notasRecebidas.value
+)
 
 const headersRecebidas = [
   { title: 'Emitente', key: 'emitente', sortable: false },
@@ -1005,15 +1120,15 @@ async function carregarEmitidas() {
 async function carregarRecebidas() {
   carregandoRec.value = true
   try {
+    // 'PENDENTE' é um filtro local — não vai para a API
+    const manif = filtrosRec.value.manifestacao === 'PENDENTE' ? null : filtrosRec.value.manifestacao
     const [notasRes, resumoRes] = await Promise.all([
-      api.get('/fiscal/nfes-recebidas', { params: { empresaId: auth.empresaId, ...filtrosRec.value } }),
+      api.get('/fiscal/nfes-recebidas', { params: { empresaId: auth.empresaId, ...filtrosRec.value, manifestacao: manif } }),
       api.get('/fiscal/nfes-recebidas/resumo', { params: { empresaId: auth.empresaId } }),
     ])
     notasRecebidas.value = notasRes.data
     resumoRecebidas.value = resumoRes.data
-  } catch {
-    notif.erro('Erro ao carregar NF-e recebidas.')
-  } finally { carregandoRec.value = false }
+  } catch { /* silencioso */ } finally { carregandoRec.value = false }
 }
 
 async function habilitarNFe() {
@@ -1139,15 +1254,31 @@ async function confirmarInutilizar() {
 }
 
 async function transmitir(nota: any) {
-  await api.post(`/fiscal/notas/${nota.id}/transmitir`)
-  notif.ok('NF-e transmitida!')
-  await carregarEmitidas()
+  try {
+    const r = await api.post(`/fiscal/notas/${nota.id}/transmitir`)
+    notif.ok(r.data?.mensagem ?? 'NF-e transmitida!')
+    await carregarEmitidas()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? e.response?.data?.detalhe ?? 'Erro ao transmitir NF-e.')
+  }
 }
 
 async function cancelar(nota: any) {
-  await api.post(`/fiscal/notas/${nota.id}/cancelar`, { motivo: 'Cancelamento solicitado pelo emissor' })
-  notif.ok('NF-e cancelada.')
-  await carregarEmitidas()
+  const justificativa = window.prompt(
+    'Justificativa do cancelamento (mínimo 15 caracteres):',
+    'Cancelamento solicitado pelo emissor da nota fiscal')
+  if (justificativa === null) return
+  if (justificativa.trim().length < 15) {
+    notif.erro('A justificativa deve ter no mínimo 15 caracteres.')
+    return
+  }
+  try {
+    await api.post(`/fiscal/notas/${nota.id}/cancelar`, { justificativa: justificativa.trim() })
+    notif.ok('NF-e cancelada.')
+    await carregarEmitidas()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? e.response?.data?.detalhe ?? 'Erro ao cancelar NF-e.')
+  }
 }
 
 async function baixarXml(nota: any) {
@@ -1185,13 +1316,14 @@ async function baixarSped() {
 const carregandoEnt = ref(false)
 const importando = ref(false)
 const dlgImportarXml = ref(false)
+const importacaoResultado = ref<any>(null)
 const entradas = ref<any[]>([])
 const xmlFile = ref<File | null>(null)
 const localImportacaoId = ref<string | null>(null)
 const freteManualImportacao = ref(0)
 
 const filtrosEnt = ref({
-  dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+  dataInicio: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   dataFim: new Date().toISOString().slice(0, 10),
   status: null as string | null,
 })
@@ -1222,9 +1354,7 @@ async function carregarEntradas() {
     if (!params.status) delete params.status
     const r = await api.get('/fiscal/entradas', { params })
     entradas.value = r.data
-  } catch {
-    notif.erro('Erro ao carregar entradas.')
-  } finally { carregandoEnt.value = false }
+  } catch { /* silencioso */ } finally { carregandoEnt.value = false }
 }
 
 async function importarXml() {
@@ -1238,21 +1368,32 @@ async function importarXml() {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     const res = r.data
-    const aviso = res.itensPendentes > 0
-      ? `${res.itensPendentes} produto(s) precisam de vinculação manual.`
-      : 'Todos os produtos foram vinculados automaticamente.'
-    notif.ok(`NF ${res.numeroNF} importada — ${res.totalItens} itens. ${aviso}`)
-    if (res.avisos?.length) res.avisos.forEach((a: string) => notif.aviso(a))
-    if (res.duplicatas?.length)
-      sessionStorage.setItem(`entrada_duplicatas_${res.id}`, JSON.stringify(res.duplicatas))
-    dlgImportarXml.value = false
+    importacaoResultado.value = res
     xmlFile.value = null
     freteManualImportacao.value = 0
     localImportacaoId.value = locaisEstoque.value[0]?.id ?? null
-    router.push(`/fiscal/entradas/${res.id}`)
+    carregarEntradas()
   } catch (e: any) {
-    notif.erro(e.response?.data?.mensagem ?? 'Erro ao importar XML.')
+    const data = e.response?.data
+    if (e.response?.status === 409 && data?.entradaId) {
+      // NF-e já importada — mostra resultado com link direto
+      importacaoResultado.value = {
+        _jaImportada: true,
+        id: data.entradaId,
+        mensagem: data.mensagem,
+        status: data.status,
+      }
+    } else {
+      notif.erro(data?.mensagem ?? 'Erro ao importar XML.')
+    }
   } finally { importando.value = false }
+}
+
+function irParaEntrada() {
+  const id = importacaoResultado.value?.id
+  dlgImportarXml.value = false
+  importacaoResultado.value = null
+  if (id) router.push(`/fiscal/entradas/${id}`)
 }
 
 function abrirEntrada(item: any) {
@@ -1397,12 +1538,12 @@ function abrirAddItem() {
   dlgAddItem.value = true
 }
 
-async function buscarProdutos(busca: string) {
-  if (!busca || busca.length < 2) return
+async function buscarProdutos(termo: string) {
+  if (!termo || termo.length < 2) return
   buscandoProduto.value = true
   try {
-    const r = await api.get('/produtos', { params: { empresaId: auth.empresaId, busca } })
-    produtosBusca.value = r.data
+    const r = await api.get('/produtos', { params: { empresaId: auth.empresaId, termo } })
+    produtosBusca.value = r.data?.itens ?? r.data ?? []
   } catch {
     produtosBusca.value = []
   } finally { buscandoProduto.value = false }
@@ -1411,11 +1552,11 @@ async function buscarProdutos(busca: string) {
 function preencherItemDeProduto(produto: any) {
   if (!produto) return
   itemForm.value.produtoId = produto.id
-  itemForm.value.codigo = produto.codigoInterno ?? produto.codigoBarras ?? ''
-  itemForm.value.descricao = produto.descricao ?? produto.nome ?? ''
+  itemForm.value.codigo = produto.codigo ?? produto.codigoBarras ?? ''
+  itemForm.value.descricao = produto.descricao ?? ''
   itemForm.value.ncm = produto.ncm ?? ''
   itemForm.value.cfop = nfeCfopPadrao.value || '5102'
-  itemForm.value.unidade = produto.unidadeMedida ?? 'UN'
+  itemForm.value.unidade = produto.unidadeSigla ?? 'UN'
   itemForm.value.valorUnitario = produto.precoVenda ?? 0
 }
 

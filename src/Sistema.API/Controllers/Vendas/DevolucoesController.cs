@@ -34,11 +34,60 @@ public class DevolucoesController(IMediator mediator, SistemaDbContext db) : Con
             .Select(d => new
             {
                 d.Id, d.NumeroVenda, d.VendaId, d.DataHora,
-                d.Motivo, d.TotalDevolvido, d.ClienteId,
+                d.Motivo, d.TotalDevolvido, d.ClienteId, d.ReporEstoque,
             })
             .ToListAsync(ct);
 
-        return Ok(lista);
+        var clienteIds = lista.Where(d => d.ClienteId.HasValue)
+            .Select(d => d.ClienteId!.Value).Distinct().ToList();
+        var nomes = clienteIds.Count > 0
+            ? await db.Clientes.AsNoTracking()
+                .Where(c => clienteIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Nome, ct)
+            : new Dictionary<Guid, string>();
+
+        return Ok(lista.Select(d => new
+        {
+            d.Id, d.NumeroVenda, d.VendaId, d.DataHora,
+            d.Motivo, d.TotalDevolvido, d.ClienteId, d.ReporEstoque,
+            clienteNome = d.ClienteId.HasValue && nomes.TryGetValue(d.ClienteId.Value, out var n) ? n : null,
+        }));
+    }
+
+    /// <summary>Exclui (estorna) uma devolução: remove o crédito e reverte a reposição de estoque, se houve.</summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Excluir(Guid id, CancellationToken ct)
+    {
+        var dev = await db.DevolucoesVenda
+            .Include(d => d.Itens)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (dev is null) return NotFound(new { mensagem = "Devolução não encontrada." });
+
+        // Se a devolução repôs estoque, reverte: baixa a quantidade e registra movimentação de estorno.
+        if (dev.ReporEstoque)
+        {
+            var localVenda = await db.Vendas.AsNoTracking()
+                .Where(v => v.Id == dev.VendaId).Select(v => v.LocalEstoqueId).FirstOrDefaultAsync(ct);
+
+            foreach (var item in dev.Itens)
+            {
+                var produto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == item.ProdutoId, ct);
+                if (produto is not null)
+                {
+                    produto.AjustarEstoque(-item.Quantidade);
+                    db.MovimentacoesEstoque.Add(Domain.Estoque.Entities.MovimentacaoEstoque.Criar(
+                        dev.EmpresaId, item.ProdutoId, localVenda,
+                        Domain.Estoque.Entities.TipoMovimentacao.Saida, item.Quantidade,
+                        item.ValorUnitario, documentoOrigem: $"EST-DEV-{dev.NumeroVenda}",
+                        observacao: "Estorno de devolução excluída"));
+                }
+            }
+        }
+
+        db.ItensDevolucoesVenda.RemoveRange(dev.Itens);
+        db.DevolucoesVenda.Remove(dev);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpGet("{id:guid}")]

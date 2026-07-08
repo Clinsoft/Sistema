@@ -20,6 +20,8 @@ public class LancamentoFinanceiro : Entity
     public StatusLancamento Status { get; private set; }
     public string? DocumentoOrigem { get; private set; }   // Nº NF, Venda, etc.
     public string? Observacao { get; private set; }
+    public string? Categoria { get; private set; }         // subcategoria (texto): Vendas, Serviços, Despesas Fixas…
+    public string? ClienteNome { get; private set; }       // nome do pagador/cliente informado manualmente
     public int Parcela { get; private set; } = 1;
     public int TotalParcelas { get; private set; } = 1;
     public string? GrupoParcelamento { get; private set; } // GUID para agrupar parcelas do mesmo título
@@ -43,6 +45,13 @@ public class LancamentoFinanceiro : Entity
             GrupoParcelamento = grupoParcelamento ?? Guid.NewGuid().ToString()
         };
 
+    public void DefinirClassificacao(string? categoria, string? clienteNome, string? observacao)
+    {
+        Categoria = categoria;
+        ClienteNome = clienteNome;
+        Observacao = observacao;
+    }
+
     public void Baixar(decimal valorPago, DateTime dataPagamento, Guid? contaBancariaId = null)
     {
         if (Status == StatusLancamento.Pago)
@@ -59,6 +68,15 @@ public class LancamentoFinanceiro : Entity
         if (Status == StatusLancamento.Pago)
             throw new InvalidOperationException("Não é possível cancelar um lançamento já pago.");
         Status = StatusLancamento.Cancelado;
+    }
+
+    public void Editar(string descricao, decimal valorOriginal, DateTime dataVencimento, string? observacao, Guid? fornecedorId = null)
+    {
+        Descricao = descricao;
+        ValorOriginal = valorOriginal;
+        DataVencimento = dataVencimento;
+        Observacao = observacao;
+        if (fornecedorId.HasValue) FornecedorId = fornecedorId;
     }
 
     public void Renegociar(decimal novoValor, DateTime novoVencimento, string? observacao = null)

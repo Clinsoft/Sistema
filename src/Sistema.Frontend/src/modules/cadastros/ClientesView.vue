@@ -4,10 +4,26 @@
       <div class="text-h6 font-weight-bold flex-grow-1">Clientes</div>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Novo Cliente</v-btn>
     </div>
+
+    <GuiaPassos
+      id="clientes"
+      titulo="Como usar o cadastro de Clientes"
+      :passos="[
+        'Clique em <b>Novo Cliente</b>. Digite o <b>CPF/CNPJ</b> — para CNPJ, os dados da Receita são preenchidos automaticamente.',
+        'Preencha nome, contato e <b>endereço</b> (o CEP completa o restante). Defina o <b>limite de crediário</b> se o cliente for comprar a prazo.',
+        'Use ✎ para <b>editar</b>, 🕘 para ver o <b>histórico de compras</b> e 🚫 para <b>inativar</b> o cliente.',
+        'Ative <b>Mostrar inativos</b> para ver e <b>reativar</b> clientes desativados.',
+      ]"
+    />
+
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
-      <v-text-field v-model="busca" placeholder="Buscar por nome, CPF/CNPJ ou telefone..."
-        prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable
-        @update:model-value="carregar" />
+      <div class="d-flex align-center ga-3">
+        <v-text-field v-model="busca" placeholder="Buscar por nome, CPF/CNPJ ou telefone..."
+          prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable
+          class="flex-grow-1" @update:model-value="carregar" />
+        <v-switch v-model="mostrarInativos" label="Mostrar inativos" color="primary"
+          density="compact" hide-details @update:model-value="carregar" />
+      </div>
     </v-card>
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="clientes" :loading="carregando" density="compact" hover>
@@ -17,9 +33,14 @@
           </v-chip>
         </template>
         <template #item.actions="{ item }">
-          <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" @click="abrirEdicao(item)" />
+          <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary"
+            @click="abrirEdicao(item)" title="Editar" />
           <v-btn icon="mdi-history" size="x-small" variant="text" color="info"
             @click="verHistorico(item)" title="Histórico de compras" />
+          <v-btn v-if="item.ativo" icon="mdi-account-cancel-outline" size="x-small" variant="text" color="error"
+            @click="inativar(item)" title="Inativar cliente" />
+          <v-btn v-else icon="mdi-account-check-outline" size="x-small" variant="text" color="success"
+            @click="reativar(item)" title="Reativar cliente" />
         </template>
       </v-data-table>
     </v-card>
@@ -66,14 +87,10 @@
                         :items="[{title:'Pessoa Física',value:'Fisica'},{title:'Pessoa Jurídica',value:'Juridica'}]"
                         variant="outlined" density="compact" />
                     </v-col>
-                    <v-col cols="12" sm="8">
+                    <v-col cols="12">
                       <v-text-field v-model="fd.nome" label="Nome / Razão Social *"
                         variant="outlined" density="compact" :rules="[r => !!r || 'Obrigatório']"
                         :loading="buscandoDoc" />
-                    </v-col>
-                    <v-col cols="12" sm="4">
-                      <v-text-field v-model="fd.nomeFantasia" label="Nome Fantasia"
-                        variant="outlined" density="compact" />
                     </v-col>
                     <v-col cols="12" sm="6">
                       <v-text-field v-model="fd.telefone" label="Telefone / WhatsApp"
@@ -149,18 +166,17 @@
     <v-dialog v-model="dialogHistorico" max-width="700">
       <v-card rounded="xl">
         <v-card-title class="pa-4">Histórico — {{ clienteSel?.nome }}</v-card-title>
-        <v-data-table :headers="headersHist" :items="historico" density="compact" :loading="loadHist">
+        <v-data-table :headers="headersHist" :items="historico" density="compact" :loading="loadHist"
+          no-data-text="Nenhuma compra registrada para este cliente.">
           <template #item.total="{ item }">R$ {{ fmt(item.total) }}</template>
-          <template #item.criadoEm="{ item }">{{ new Date(item.criadoEm).toLocaleDateString('pt-BR') }}</template>
-          <template #item.status="{ item }">
-            <v-chip :color="item.status==='Finalizada'?'success':'error'" size="small" variant="tonal">{{ item.status }}</v-chip>
-          </template>
+          <template #item.dataHora="{ item }">{{ new Date(item.dataHora).toLocaleString('pt-BR') }}</template>
         </v-data-table>
       </v-card>
     </v-dialog>
   </div>
 </template>
 <script setup lang="ts">
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -172,24 +188,28 @@ const carregando = ref(false); const salvando = ref(false); const buscandoCep = 
 const buscandoDoc = ref(false)
 const docStatus = ref<'idle'|'ok'|'erro'>('idle')
 const clientes = ref<any[]>([]); const busca = ref(''); const dialog = ref(false)
+const mostrarInativos = ref(false)
 const editando = ref(false); const dialogHistorico = ref(false)
 const historico = ref<any[]>([]); const loadHist = ref(false); const clienteSel = ref<any>(null)
 const form = ref()
-const fd = ref({ id:'', nome:'', nomeFantasia:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
+const fd = ref({ id:'', nome:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
   cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', dataNascimento:'', limiteCredito:0 })
 const headers = [
   { title:'Nome', key:'nome', sortable:true }, { title:'CPF/CNPJ', key:'cpfCnpj' },
   { title:'Telefone', key:'telefone' }, { title:'Cidade', key:'cidade' },
   { title:'Status', key:'ativo' }, { title:'Ações', key:'actions', sortable:false },
 ]
-const headersHist = [{ title:'Data', key:'criadoEm' }, { title:'Total', key:'total' }, { title:'Status', key:'status' }]
+const headersHist = [{ title:'Nº', key:'numero' }, { title:'Data', key:'dataHora' }, { title:'Itens', key:'qtdItens' }, { title:'Total', key:'total' }]
 const fmt = (v: number) => (v??0).toLocaleString('pt-BR', { minimumFractionDigits:2 })
 async function carregar() {
   carregando.value = true
-  try { const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, q: busca.value } }); clientes.value = r.data }
+  try {
+    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, termo: busca.value, incluirInativos: mostrarInativos.value } })
+    clientes.value = r.data?.itens ?? r.data ?? []
+  }
   finally { carregando.value = false }
 }
-const fdPadrao = () => ({ id:'', nome:'', nomeFantasia:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
+const fdPadrao = () => ({ id:'', nome:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
   cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', dataNascimento:'', limiteCredito:0 })
 function abrirNovo() { editando.value=false; fd.value=fdPadrao(); docStatus.value='idle'; dialog.value=true }
 function abrirEdicao(item: any) { editando.value=true; fd.value={...fdPadrao(),...item}; docStatus.value='idle'; dialog.value=true }
@@ -243,16 +263,39 @@ async function buscarDoc() {
 async function salvar() {
   const { valid } = await form.value.validate(); if (!valid) return; salvando.value=true
   try {
-    if (editando.value) { await api.put(`/clientes/${fd.value.id}`, {...fd.value, empresaId:auth.empresaId}); notif.ok('Cliente atualizado!') }
-    else { await api.post('/clientes', {...fd.value, empresaId:auth.empresaId}); notif.ok('Cliente cadastrado!') }
+    const payload = { ...fd.value, empresaId: auth.empresaId, cep: (fd.value.cep ?? '').replace(/\D/g,'') || null }
+    if (editando.value) { await api.put(`/clientes/${fd.value.id}`, payload); notif.ok('Cliente atualizado!') }
+    else { await api.post('/clientes', payload); notif.ok('Cliente cadastrado!') }
     dialog.value=false; await carregar()
-  } finally { salvando.value=false }
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? e?.response?.data ?? 'Erro ao salvar cliente.') }
+  finally { salvando.value=false }
 }
 async function verHistorico(item: any) {
-  clienteSel.value=item; dialogHistorico.value=true; loadHist.value=true
-  try { const r = await api.get('/vendas', { params: { empresaId:auth.empresaId, clienteId:item.id } }); historico.value=r.data }
+  clienteSel.value=item; dialogHistorico.value=true; loadHist.value=true; historico.value=[]
+  try {
+    const r = await api.get(`/clientes/${item.id}/historico-compras`, { params: { empresaId:auth.empresaId } })
+    historico.value = r.data?.vendas ?? []
+  }
   finally { loadHist.value=false }
 }
+
+async function inativar(item: any) {
+  if (!confirm(`Inativar o cliente "${item.nome}"?`)) return
+  try {
+    await api.delete(`/clientes/${item.id}`)
+    notif.ok('Cliente inativado.')
+    await carregar()
+  } catch { notif.erro('Erro ao inativar.') }
+}
+
+async function reativar(item: any) {
+  try {
+    await api.post(`/clientes/${item.id}/reativar`)
+    notif.ok('Cliente reativado.')
+    await carregar()
+  } catch { notif.erro('Erro ao reativar.') }
+}
+
 onMounted(carregar)
 </script>
 

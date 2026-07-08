@@ -20,6 +20,18 @@
       </div>
     </div>
 
+    <GuiaPassos
+      id="sessoes-caixa"
+      titulo="Como usar as Sessões de Caixa"
+      :passos="[
+        '<b>Abrir Caixa</b>: selecione o <b>local de estoque</b> e informe o <b>fundo de troco</b> (dinheiro que já está na gaveta).',
+        'Durante o turno, registre <b>Suprimento</b> (entrada de dinheiro) ou <b>Sangria</b> (retirada) conforme necessário.',
+        'O banner mostra em tempo real as vendas por forma de pagamento e o <b>saldo esperado</b> em dinheiro.',
+        '<b>Fechar Caixa</b>: conte o dinheiro físico e informe o valor. O sistema calcula a <b>diferença</b> (sobra/falta) automaticamente.',
+        'Use o filtro por período para consultar o <b>histórico</b> de fechamentos e conferir diferenças de caixas anteriores.',
+      ]"
+    />
+
     <!-- Banner sessão ativa -->
     <v-card v-if="sessaoAtiva" rounded="xl" elevation="1" class="mb-4" color="success" variant="tonal">
       <v-card-text class="pa-4">
@@ -315,6 +327,7 @@
 
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -480,7 +493,7 @@ async function salvarOperacao() {
   }
   salvandoOperacao.value = true
   try {
-    await api.post(`/pdv/sessoes/${sessaoAtiva.value.id}/${tipoOperacao.value}`, {
+    await api.post(`/caixa/sessoes/${sessaoAtiva.value.id}/${tipoOperacao.value}`, {
       valor: operacao.value.valor,
       descricao: operacao.value.descricao || null,
     })

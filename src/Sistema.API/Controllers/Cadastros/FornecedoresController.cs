@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Cadastros.Commands;
 using Sistema.Domain.Cadastros.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
@@ -16,13 +17,23 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
 {
     [HttpGet]
     public async Task<IActionResult> Listar(
-        [FromQuery] Guid empresaId, [FromQuery] string? termo, CancellationToken ct = default)
+        [FromQuery] Guid empresaId, [FromQuery] string? q, [FromQuery] string? termo,
+        [FromQuery] bool? ativo, CancellationToken ct = default)
     {
-        var fornecedores = await repo.PesquisarAsync(empresaId, termo, ct);
+        var busca = q ?? termo;
+        var query = db.Fornecedores.AsNoTracking().Where(f => f.EmpresaId == empresaId);
+        if (ativo.HasValue) query = query.Where(f => f.Ativo == ativo.Value);
+        if (!string.IsNullOrWhiteSpace(busca))
+            query = query.Where(f => f.RazaoSocial.Contains(busca)
+                || (f.NomeFantasia != null && f.NomeFantasia.Contains(busca))
+                || (f.Cnpj != null && f.Cnpj.Contains(busca)));
+
+        var fornecedores = await query.OrderBy(f => f.RazaoSocial).ToListAsync(ct);
         return Ok(fornecedores.Select(f => new
         {
             f.Id, f.RazaoSocial, f.NomeFantasia, f.Cnpj,
-            f.Email, f.Telefone, f.Contato, f.Cidade, f.Uf,
+            f.Email, f.Telefone, f.Celular, f.Contato, f.Cidade, f.Uf,
+            tipos = string.IsNullOrEmpty(f.Tipos) ? new[] { "Fornecedor" } : f.Tipos.Split(','),
             f.PrazoPagamentoDias, f.Ativo
         }));
     }
@@ -35,7 +46,8 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
         return Ok(new
         {
             f.Id, f.EmpresaId, f.RazaoSocial, f.NomeFantasia, f.Cnpj,
-            f.InscricaoEstadual, f.Email, f.Telefone, f.Contato,
+            f.InscricaoEstadual, f.Email, f.Telefone, f.Celular, f.Contato,
+            tipos = string.IsNullOrEmpty(f.Tipos) ? new[] { "Fornecedor" } : f.Tipos.Split(','),
             f.Logradouro, f.Numero, f.Complemento, f.Bairro, f.Cidade, f.Uf, f.Cep,
             f.PrazoPagamentoDias, f.Observacao, f.Ativo
         });
@@ -56,7 +68,8 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
 
         f.Editar(req.RazaoSocial, req.NomeFantasia, req.Email, req.Telefone, req.Contato,
             req.PrazoPagamentoDias, req.Logradouro, req.Numero, req.Complemento,
-            req.Bairro, req.Cidade, req.Uf, req.Cep, req.InscricaoEstadual, req.Observacao);
+            req.Bairro, req.Cidade, req.Uf, req.Cep, req.InscricaoEstadual, req.Observacao,
+            req.Celular, req.Tipos);
 
         db.Fornecedores.Update(f);
         await uow.SalvarAsync(ct);
@@ -91,4 +104,5 @@ public record EditarFornecedorRequest(
     string? Telefone, string? Contato, int PrazoPagamentoDias,
     string? Logradouro = null, string? Numero = null, string? Complemento = null,
     string? Bairro = null, string? Cidade = null, string? Uf = null,
-    string? Cep = null, string? InscricaoEstadual = null, string? Observacao = null);
+    string? Cep = null, string? InscricaoEstadual = null, string? Observacao = null,
+    string? Celular = null, string? Tipos = null);

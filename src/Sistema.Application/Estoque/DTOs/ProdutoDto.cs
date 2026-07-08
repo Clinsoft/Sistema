@@ -9,7 +9,10 @@ public record ProdutoDto(
     decimal Markup, decimal MargemLucro,
     decimal EstoqueAtual, decimal EstoqueMinimo,
     string? Ncm, string? Cest, bool ControlarLote, bool ControlarValidade,
-    bool ProdutoBalanca, int? CodigoPlu, bool Ativo, DateTime CriadoEm);
+    bool ProdutoBalanca, int? CodigoPlu, bool Ativo, DateTime CriadoEm,
+    // Campos usados na tela de Alterar Preços (formação de preço completa)
+    string? Referencia = null, decimal PrecoFornecedor = 0,
+    decimal MarkupMinimo = 0, decimal PrecoMinimo = 0, decimal? MarkupAtacado = null);
 
 public record ListaPaginadaDto<T>(IReadOnlyList<T> Itens, int Total, int Pagina, int TamanhoPagina)
 {

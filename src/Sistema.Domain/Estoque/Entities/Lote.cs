@@ -35,4 +35,14 @@ public class Lote : Entity
     public void Baixar(decimal quantidade) => Quantidade = Math.Max(0, Quantidade - quantidade);
     public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
     public void AtualizarValidade(DateTime dataValidade) => DataValidade = dataValidade;
+
+    public void Editar(string numeroLote, decimal quantidade, decimal custoUnitario,
+        DateTime? dataFabricacao, DateTime? dataValidade)
+    {
+        NumeroLote = numeroLote;
+        Quantidade = Math.Max(0, quantidade);
+        CustoUnitario = custoUnitario;
+        DataFabricacao = dataFabricacao;
+        DataValidade = dataValidade;
+    }
 }

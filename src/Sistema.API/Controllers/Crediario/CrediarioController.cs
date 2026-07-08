@@ -61,7 +61,8 @@ public class CrediarioController(IMediator mediator, ICrediarioRepository repo, 
         return Ok(crediario.Parcelas.OrderBy(p => p.Numero).Select(p => new
         {
             p.Id, p.Numero, p.Valor, p.DataVencimento,
-            p.DataPagamento, p.ValorPago, p.Status,
+            p.DataPagamento, p.ValorPago,
+            status = p.Status.ToString(),
             ValorAtualizado = p.ValorAtualizado()
         }));
     }

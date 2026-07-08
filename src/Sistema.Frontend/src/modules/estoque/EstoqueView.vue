@@ -2,6 +2,17 @@
   <div>
     <div class="text-h6 font-weight-bold mb-4">Estoque</div>
 
+    <GuiaPassos
+      id="painel-estoque"
+      titulo="Como usar o Painel de Estoque"
+      :passos="[
+        'Os <b>cards</b> mostram o resumo em tempo real: produtos ativos, itens abaixo do mínimo, lotes vencidos/próximos e o custo total do estoque. Clique num card para abrir o detalhe.',
+        'A seção <b>Lotes com Vencimento Próximo</b> alerta o que vence em 30 dias (ou já vencido) — clique em Ver todos para o Controle de Validade.',
+        'Use os <b>Módulos</b> para navegar: Produtos, Movimentações, Posição, Transferências, Ajuste em lote, Validade, Balança e Etiquetas.',
+        'Para <b>editar/alterar</b> itens, entre em <b>Produtos</b> (cadastro) ou <b>Ajuste/Transferências</b> (quantidades). Este painel é de consulta e navegação.',
+      ]"
+    />
+
     <!-- Cards com dados reais -->
     <v-row>
       <v-col v-for="c in cards" :key="c.label" cols="6" sm="3">
@@ -35,7 +46,10 @@
           :subtitle="`Lote ${lote.numeroLote} — ${lote.quantidade} unidades`"
           :base-color="lote.vencido ? 'error' : 'warning'">
           <template #title>
-            <span class="text-body-2">{{ lote.numeroProduto ?? 'Produto' }}</span>
+            <span class="text-body-2">
+              {{ lote.produtoDescricao ?? 'Produto' }}
+              <span v-if="lote.produtoCodigo" class="text-caption text-medium-emphasis">({{ lote.produtoCodigo }})</span>
+            </span>
           </template>
           <template #append>
             <v-chip size="x-small" :color="lote.vencido ? 'error' : 'warning'" variant="tonal">
@@ -63,6 +77,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 
@@ -94,7 +109,8 @@ const atalhos = [
 ]
 
 function fmtVal(v: number) {
-  if (v >= 1000) return 'R$ ' + (v / 1000).toFixed(1) + 'K'
+  if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(1).replace('.', ',') + 'M'
+  if (v >= 1000) return 'R$ ' + (v / 1000).toFixed(1).replace('.', ',') + 'K'
   return 'R$ ' + v.toFixed(0)
 }
 

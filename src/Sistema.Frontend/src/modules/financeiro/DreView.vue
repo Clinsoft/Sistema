@@ -2,13 +2,24 @@
   <div>
     <div class="d-flex align-center mb-4">
       <div class="text-h6 font-weight-bold flex-grow-1">DRE — Demonstrativo de Resultados</div>
-      <v-btn-toggle v-model="modo" mandatory density="compact" rounded="lg" class="mr-2">
+      <v-btn-toggle v-model="modo" mandatory density="compact" rounded="lg" class="mr-2" @update:model-value="carregar">
         <v-btn value="mensal">Mensal</v-btn>
         <v-btn value="anual">Anual</v-btn>
       </v-btn-toggle>
       <v-btn color="primary" variant="tonal" prepend-icon="mdi-magnify"
         :loading="carregando" @click="carregar">Gerar</v-btn>
     </div>
+
+    <GuiaPassos
+      id="dre"
+      titulo="Como usar o DRE"
+      :passos="[
+        'Escolha <b>Mensal</b> ou <b>Anual</b>, selecione o período e clique em <b>Gerar</b>.',
+        'O DRE é um <b>relatório</b>: os valores vêm dos lançamentos de <b>Contas a Receber</b> (recebimentos) e <b>Contas a Pagar</b> (despesas), agrupados por categoria.',
+        'Para <b>alterar</b> um valor, edite o lançamento correspondente em Contas a Pagar/Receber e defina a <b>categoria</b> certa (Despesas Fixas, Variáveis, Pessoas, Impostos).',
+        'O <b>Resultado Líquido</b> = Recebimentos − (Fixas + Variáveis + Pessoas + Impostos), com a margem em %.',
+      ]"
+    />
 
     <!-- Seletor de período -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
@@ -184,7 +195,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 
@@ -228,6 +240,8 @@ async function carregar() {
     dre.value = res.data
   } finally { carregando.value = false }
 }
+
+onMounted(carregar)
 </script>
 
 <style scoped>

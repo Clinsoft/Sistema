@@ -47,6 +47,18 @@
       <v-tab value="financeiro">Financeiro / Faturas</v-tab>
     </v-tabs>
 
+    <GuiaPassos
+      id="entrada-nfe"
+      titulo="Como escriturar esta entrada"
+      :passos="[
+        '<b>Dados da Nota</b>: confira o emitente e selecione o <b>Local de Estoque</b> (obrigatório). Ajuste o <b>Frete Manual</b> se houver.',
+        '<b>Itens</b>: para cada item sem vínculo, selecione o produto no campo <b>Produto cadastrado</b> ou clique em <b>+</b> para criar a partir do XML.',
+        'Ajuste <b>Markup</b>, <b>Fator de conversão</b>, <b>Unid. estoque</b> e <b>Validade</b> de cada item, depois clique em <b>Salvar todos</b>.',
+        '<b>Financeiro / Faturas</b>: confira as parcelas (vêm das duplicatas do XML) e o fornecedor.',
+        'Clique em <b>Processar</b> para dar entrada no estoque e gerar as contas a pagar. Depois disso a nota fica travada — use <b>Estornar</b> para reverter.',
+      ]"
+    />
+
     <!-- ─── ABA: DADOS DA NOTA ─── -->
     <div v-if="aba === 'dados'">
       <v-row>
@@ -57,10 +69,6 @@
               variant="outlined" density="compact" readonly />
             <v-text-field :model-value="fmtCnpj(entrada?.emitenteCnpj)" label="CNPJ"
               variant="outlined" density="compact" readonly />
-            <v-autocomplete v-model="fornecedorId" label="Vincular ao fornecedor cadastrado"
-              :items="fornecedores" item-title="razaoSocial" item-value="id"
-              variant="outlined" density="compact" clearable
-              @update:model-value="salvarFornecedor" />
           </v-card>
         </v-col>
         <v-col cols="12" md="6">
@@ -79,7 +87,8 @@
                 <v-select v-model="localEstoqueId" label="Local de Estoque *"
                   :items="locaisEstoque" item-title="nome" item-value="id"
                   variant="outlined" density="compact"
-                  :disabled="entrada?.status === 'Processada'" />
+                  :disabled="entrada?.status === 'Processada'"
+                  @update:model-value="salvarLocalEstoque" />
               </v-col>
               <v-col cols="12">
                 <v-autocomplete v-model="pedidoCompraId" label="Vincular Ordem de Compra"
@@ -103,10 +112,15 @@
                   variant="outlined" density="compact" readonly prefix="R$" />
               </v-col>
               <v-col cols="6" sm="2">
-                <v-text-field v-model.number="freteManual" label="Frete Manual"
-                  type="number" variant="outlined" density="compact" prefix="R$"
-                  :disabled="entrada?.status === 'Processada'"
-                  @blur="salvarFreteManual" />
+                <v-text-field
+                  :model-value="'R$ ' + fmt(entrada?.valorFreteManual)"
+                  label="Frete Manual"
+                  variant="outlined" density="compact" readonly
+                  :append-inner-icon="entrada?.status !== 'Processada' ? 'mdi-pencil' : undefined"
+                  @click:append-inner="abrirDlgFrete"
+                  @click="abrirDlgFrete"
+                  style="cursor:pointer"
+                />
               </v-col>
               <v-col cols="6" sm="2">
                 <v-text-field :model-value="fmt(entrada?.valorIpi)" label="IPI"
@@ -129,63 +143,182 @@
 
     <!-- ─── ABA: ITENS ─── -->
     <div v-if="aba === 'itens'">
-      <v-card rounded="xl" elevation="1">
-        <v-data-table :headers="headersItens" :items="entrada?.itens ?? []"
-          density="comfortable" :items-per-page="50">
-          <template #item.descricaoXml="{ item }">
-            <div class="text-body-2 font-weight-medium">{{ item.descricaoXml }}</div>
-            <div class="text-caption text-medium-emphasis">
-              NCM: {{ item.ncmXml }} · Cód. Fornecedor: {{ item.codigoFornecedor ?? '-' }}
-            </div>
-          </template>
 
-          <template #item.cfop="{ item }">
-            <v-chip size="small" variant="tonal"
-              :color="item.cfopUtilizado !== item.cfopXml ? 'warning' : 'default'">
-              {{ item.cfopUtilizado }}
-            </v-chip>
-            <div v-if="item.cfopUtilizado !== item.cfopXml"
-              class="text-caption text-medium-emphasis">XML: {{ item.cfopXml }}</div>
-          </template>
+      <!-- Barra de ações -->
+      <div class="d-flex align-center gap-3 pa-3 mb-3 rounded-lg"
+           style="background:#1e1e2e; border:1px solid rgba(255,255,255,0.08)">
 
-          <template #item.quantidade="{ item }">
-            <div class="text-body-2">{{ item.quantidadeXml }} {{ item.unidadeXml }}</div>
-            <div v-if="item.fatorConversao !== 1" class="text-caption text-success">
-              → {{ item.quantidadeEstoque }} {{ item.unidadeEstoque }}
-            </div>
-          </template>
+        <span class="text-body-2" style="color:rgba(255,255,255,0.7); white-space:nowrap">
+          <v-icon size="14" class="mr-1" color="white">mdi-alert-circle-outline</v-icon>
+          {{ itensSemProduto }} sem vínculo
+          <span v-if="itensAlterados > 0" style="color:#ffa726" class="ml-2 font-weight-medium">
+            · {{ itensAlterados }} alterado(s)
+          </span>
+        </span>
 
-          <template #item.valores="{ item }">
-            <div class="text-body-2">R$ {{ fmt(item.valorUnitarioXml) }}</div>
-            <div class="text-caption text-medium-emphasis">Total: R$ {{ fmt(item.valorTotalXml) }}</div>
-          </template>
+        <v-spacer />
 
-          <template #item.produto="{ item }">
-            <div v-if="item.produtoId" class="d-flex align-center gap-1">
-              <v-icon color="success" size="16">mdi-check-circle</v-icon>
-              <span class="text-body-2">{{ item.produtoDescricao }}</span>
-            </div>
-            <v-chip v-else color="warning" size="small" variant="tonal">
-              <v-icon start size="14">mdi-alert</v-icon>
-              Sem vínculo
-            </v-chip>
-          </template>
+        <template v-if="entrada?.status === 'EmEdicao'">
+          <!-- Menu ações em lote -->
+          <v-menu :close-on-content-click="false">
+            <template #activator="{ props }">
+              <v-btn v-bind="props" size="small" variant="outlined"
+                append-icon="mdi-chevron-down"
+                style="color:white; border-color:rgba(255,255,255,0.3)">
+                Ações em lote
+              </v-btn>
+            </template>
+            <v-list density="compact" min-width="320">
+              <v-list-subheader>Aplicar a todos os itens vinculados</v-list-subheader>
+              <v-list-item prepend-icon="mdi-tag-outline"
+                title="Manter markup atual de cada produto"
+                subtitle="Preço = custo × (1 + markup% / 100) do cadastro"
+                @click="aplicarModoMarkup('manter_markup')" />
+              <v-list-item prepend-icon="mdi-currency-usd"
+                title="Manter preço atual de cada produto"
+                subtitle="Markup = preço salvo ÷ custo do XML"
+                @click="aplicarModoMarkup('manter_preco')" />
+              <v-divider class="my-1" />
+              <v-list-subheader>Markup único para todos</v-list-subheader>
+              <v-list-item>
+                <div class="d-flex align-center gap-2 py-1">
+                  <v-text-field v-model.number="markupGlobal" type="number" min="0" step="5"
+                    label="Markup %" suffix="%" variant="outlined" density="compact" hide-details
+                    style="width:110px" />
+                  <v-btn size="small" color="primary" variant="flat" @click="aplicarMarkupGlobal">
+                    Aplicar
+                  </v-btn>
+                </div>
+              </v-list-item>
+            </v-list>
+          </v-menu>
 
-          <template #item.lote="{ item }">
-            <div v-if="item.numeroLote" class="text-caption">
-              <div>{{ item.numeroLote }}</div>
-              <div class="text-medium-emphasis">Val: {{ fmtData(item.validade) }}</div>
-            </div>
-            <span v-else class="text-caption text-medium-emphasis">—</span>
-          </template>
+          <v-btn variant="outlined" size="small"
+            :disabled="itensAlterados === 0"
+            style="color:#ef9a9a; border-color:rgba(239,154,154,0.4)"
+            @click="descartarItens">
+            <v-icon start>mdi-undo</v-icon> Descartar
+          </v-btn>
 
-          <template #item.acoes="{ item }">
-            <v-btn icon="mdi-pencil-outline" size="small" variant="text"
-              @click="abrirEditarItem(item)"
-              :disabled="entrada?.status === 'Processada'" />
-          </template>
-        </v-data-table>
-      </v-card>
+          <v-btn color="primary" size="small" variant="flat"
+            :loading="salvandoTodos" :disabled="itensAlterados === 0"
+            @click="salvarTodos">
+            <v-icon start>mdi-content-save</v-icon>
+            Salvar todos ({{ itensAlterados }})
+          </v-btn>
+        </template>
+      </div>
+
+      <!-- Grid editável -->
+      <div v-for="item in itensEditaveis" :key="item.id">
+        <v-card rounded="lg" elevation="1" class="mb-2 pa-3"
+          :class="{ 'border-warning': !item._produtoId, 'border-success': item._alterado }">
+          <v-row dense align="center">
+
+            <!-- # e descrição -->
+            <v-col cols="12" sm="4">
+              <div class="text-caption text-medium-emphasis">#{{ item.numeroItem }}</div>
+              <div class="text-body-2 font-weight-medium">{{ item.descricaoXml }}</div>
+              <div class="text-caption text-medium-emphasis">
+                NCM: {{ item.ncmXml }} · Cód: {{ item.codigoFornecedor ?? '—' }}
+              </div>
+              <div class="text-caption">
+                <strong>XML:</strong> {{ item.quantidadeXml }} {{ item.unidadeXml }}
+                · R$ {{ fmt(item.valorUnitarioXml) }} = R$ {{ fmt(item.valorTotalXml) }}
+              </div>
+            </v-col>
+
+            <!-- Produto -->
+            <v-col cols="12" sm="4">
+              <div class="d-flex gap-2 align-center">
+                <v-autocomplete
+                  v-model="item._produtoId"
+                  label="Produto cadastrado *"
+                  :items="produtos" item-title="descricao" item-value="id"
+                  variant="outlined" density="compact" clearable hide-details
+                  :disabled="entrada?.status === 'Processada'"
+                  :color="item._produtoId ? 'success' : 'warning'"
+                  @update:model-value="onProdutoInline(item, $event)"
+                />
+                <v-btn v-if="!item._produtoId && entrada?.status !== 'Processada'"
+                  icon="mdi-plus" size="small" color="primary" variant="tonal"
+                  title="Criar produto a partir dos dados do XML"
+                  @click="abrirCriarProduto(item)" />
+              </div>
+            </v-col>
+
+            <!-- CFOP -->
+            <v-col cols="6" sm="1">
+              <v-text-field v-model="item._cfop" label="CFOP"
+                variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+
+            <!-- Custo unitário calculado -->
+            <v-col cols="6" sm="2">
+              <v-text-field
+                :model-value="fmt(custoDisplay(item))"
+                label="Custo unit." prefix="R$"
+                variant="outlined" density="compact" hide-details readonly
+                :hint="`Frete rateado: R$ ${fmt(((entrada?.freteTotal ?? entrada?.valorFreteManual ?? 0) * (item.valorTotalXml / (entrada?.valorProdutos || 1)))  / (item.quantidadeXml * (item._fator || 1)))}`"
+              />
+            </v-col>
+
+            <!-- Markup -->
+            <v-col cols="6" sm="1">
+              <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
+                type="number" min="0" step="1" variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+
+            <!-- Preço sugerido -->
+            <v-col cols="6" sm="2">
+              <v-text-field
+                :model-value="fmt(custoDisplay(item) * (1 + (item._markup || 0) / 100))"
+                label="Preço Sugerido" prefix="R$"
+                variant="outlined" density="compact" hide-details readonly />
+            </v-col>
+
+            <!-- Conversão -->
+            <v-col cols="4" sm="1">
+              <v-text-field v-model.number="item._fator" label="Fator conv."
+                type="number" min="0.001" step="0.001"
+                variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+            <v-col cols="4" sm="1">
+              <v-autocomplete v-model="item._unidade" label="Unid. estoque"
+                :items="unidades" variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                auto-select-first
+                @update:model-value="item._alterado = true" />
+            </v-col>
+            <v-col cols="4" sm="2">
+              <v-text-field
+                :model-value="`${fmtQtd(item.quantidadeXml * (item._fator || 1))} ${item._unidade}`"
+                label="Qtd. estoque" variant="outlined" density="compact" hide-details readonly />
+            </v-col>
+
+            <!-- Lote e Validade -->
+            <v-col cols="6" sm="2">
+              <v-text-field v-model="item._lote" label="Lote"
+                variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+            <v-col cols="6" sm="2">
+              <v-text-field v-model="item._validade" label="Validade" type="date"
+                variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+
+          </v-row>
+        </v-card>
+      </div>
     </div>
 
     <!-- ─── ABA: FINANCEIRO ─── -->
@@ -244,93 +377,159 @@
       </v-btn>
     </div>
 
-    <!-- ─── Dialog: Editar Item ─── -->
-    <v-dialog v-model="dlgItem" max-width="600" persistent>
-      <v-card rounded="xl" v-if="itemEditando">
+
+    <!-- Dialog: Frete Manual -->
+    <v-dialog v-model="dlgFrete" max-width="360" persistent>
+      <v-card rounded="xl">
         <v-card-title class="pa-4 pb-0">
-          <v-icon start color="primary">mdi-pencil</v-icon>
-          Editar Item {{ itemEditando.numeroItem }}
+          <v-icon start color="primary">mdi-truck-outline</v-icon>
+          Frete Manual
         </v-card-title>
         <v-card-text>
-          <div class="text-caption text-medium-emphasis mb-3">{{ itemEditando.descricaoXml }}</div>
-          <v-row dense>
-            <v-col cols="6">
-              <v-text-field v-model="itemForm.cfopUtilizado" label="CFOP"
-                variant="outlined" density="compact" hint="Ex: 1102, 2102" persistent-hint />
-            </v-col>
-            <v-col cols="6">
-              <v-autocomplete v-model="itemForm.produtoId" label="Produto cadastrado"
-                :items="produtos" item-title="descricao" item-value="id"
-                variant="outlined" density="compact" clearable
-                @update:model-value="onProdutoSelecionado" />
-            </v-col>
-
-            <!-- Conversão de unidade -->
-            <v-col cols="12">
-              <div class="text-caption font-weight-medium mb-1">
-                Conversão de Unidade
-                <span class="text-medium-emphasis">({{ itemEditando.quantidadeXml }} {{ itemEditando.unidadeXml }} no XML)</span>
-              </div>
-            </v-col>
-            <v-col cols="4">
-              <v-text-field v-model.number="itemForm.fatorConversao" label="Fator"
-                type="number" variant="outlined" density="compact"
-                hint="1 = sem conversão" persistent-hint />
-            </v-col>
-            <v-col cols="4">
-              <v-text-field v-model="itemForm.unidadeEstoque" label="Unidade Estoque"
-                variant="outlined" density="compact" hint="Ex: KG, UN, L" persistent-hint />
-            </v-col>
-            <v-col cols="4">
-              <v-text-field
-                :model-value="fmt(itemEditando.quantidadeXml * (itemForm.fatorConversao || 1))"
-                label="Qtd. Estoque" variant="outlined" density="compact" readonly
-                :suffix="itemForm.unidadeEstoque" />
-            </v-col>
-
-            <!-- Lote e Validade -->
-            <v-col cols="6">
-              <v-text-field v-model="itemForm.numeroLote" label="Número do Lote"
-                variant="outlined" density="compact" />
-            </v-col>
-            <v-col cols="6">
-              <v-text-field v-model="itemForm.validade" label="Validade" type="date"
-                variant="outlined" density="compact" />
-            </v-col>
-
-            <!-- Formação de Preço -->
-            <v-col cols="12">
-              <div class="text-caption font-weight-medium mb-1">Formação de Preço</div>
-            </v-col>
-            <v-col cols="4">
-              <v-text-field :model-value="fmt(itemEditando.custoUnitarioFinal || itemEditando.valorUnitarioXml)"
-                label="Custo c/ rateio" variant="outlined" density="compact" readonly prefix="R$" />
-            </v-col>
-            <v-col cols="4">
-              <v-text-field v-model.number="itemForm.markupSugerido" label="Markup"
-                type="number" variant="outlined" density="compact"
-                hint="Ex: 2.5 = 150% margem" persistent-hint />
-            </v-col>
-            <v-col cols="4">
-              <v-text-field
-                :model-value="fmt((itemEditando.custoUnitarioFinal || itemEditando.valorUnitarioXml) * (itemForm.markupSugerido || 1))"
-                label="Preço Sugerido" variant="outlined" density="compact" readonly prefix="R$" />
-            </v-col>
-
-            <!-- Tags -->
-            <v-col cols="12">
-              <v-combobox v-model="itemFormTags" label="Tags do produto"
-                multiple chips closable-chips
-                variant="outlined" density="compact"
-                hint="Enter para adicionar tag" persistent-hint />
-            </v-col>
-          </v-row>
+          <v-text-field v-model="freteManualStr" label="Valor do frete (R$)"
+            variant="outlined" density="compact" autofocus
+            placeholder="0,00"
+            @keydown.enter="salvarFreteManual" />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn variant="text" @click="dlgItem = false" :disabled="salvandoItem">Cancelar</v-btn>
-          <v-btn color="primary" rounded="lg" :loading="salvandoItem" @click="salvarItem">
+          <v-btn variant="text" @click="dlgFrete = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoFrete" @click="salvarFreteManual">
             Salvar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Criar produto a partir do XML -->
+    <v-dialog v-model="dlgCriarProduto" max-width="620" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="primary">mdi-package-variant-plus</v-icon>Criar produto
+          <div class="text-caption text-medium-emphasis mt-1">Dados pré-preenchidos do XML da NF-e</div>
+        </v-card-title>
+        <v-card-text class="pt-2">
+          <v-tabs v-model="abaCriarProduto" density="compact" class="mb-3">
+            <v-tab value="geral">Geral</v-tab>
+            <v-tab value="fiscal">Fiscal</v-tab>
+            <v-tab value="fornecedor">Fornecedor</v-tab>
+          </v-tabs>
+
+          <!-- Aba Geral -->
+          <v-window v-model="abaCriarProduto">
+            <v-window-item value="geral">
+              <v-row dense>
+                <v-col cols="12">
+                  <v-text-field v-model="novoProduto.descricao" label="Descrição *"
+                    variant="outlined" density="compact" />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model="novoProduto.codigo" label="Código interno"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model="novoProduto.codigoBarras" label="Código de barras (EAN)"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-select v-model="novoProduto.unidadeMedidaId" label="Unidade *"
+                    :items="unidadesMedida" item-title="sigla" item-value="id"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-select v-model="novoProduto.categoriaId" label="Categoria"
+                    :items="categorias" item-title="nome" item-value="id"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-select v-model="novoProduto.marcaId" label="Marca"
+                    :items="marcas" item-title="nome" item-value="id"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-text-field v-model.number="novoProduto.custoUnitario" label="Custo unit. (R$)"
+                    type="number" variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-text-field v-model.number="novoProduto.precoVenda" label="Preço de venda (R$)"
+                    type="number" variant="outlined" density="compact" hide-details />
+                </v-col>
+              </v-row>
+            </v-window-item>
+
+            <!-- Aba Fiscal -->
+            <v-window-item value="fiscal">
+              <v-row dense>
+                <v-col cols="6">
+                  <v-text-field v-model="novoProduto.ncm" label="NCM"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6">
+                  <v-text-field v-model="novoProduto.cfop" label="CFOP"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-text-field v-model="novoProduto.csosnIcms" label="CSOSN (Simples Nac.)"
+                    variant="outlined" density="compact" hide-details
+                    hint="Ex: 400 = outras operações" />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-text-field v-model="novoProduto.cstIcms" label="CST ICMS (Lucro Pres.)"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-text-field v-model="novoProduto.cstPisCofins" label="CST PIS/COFINS"
+                    variant="outlined" density="compact" hide-details
+                    hint="Ex: 07 = isento" />
+                </v-col>
+                <v-col cols="6" class="mt-3">
+                  <v-select v-model="novoProduto.origem" label="Origem"
+                    :items="[{t:'0 - Nacional',v:'0'},{t:'1 - Estrangeira (importação direta)',v:'1'},{t:'2 - Estrangeira (mercado interno)',v:'2'}]"
+                    item-title="t" item-value="v"
+                    variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="4" class="mt-3">
+                  <v-text-field v-model.number="novoProduto.aliquotaIcms" label="Alíq. ICMS %"
+                    type="number" variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="4" class="mt-3">
+                  <v-text-field v-model.number="novoProduto.aliquotaPis" label="Alíq. PIS %"
+                    type="number" variant="outlined" density="compact" hide-details />
+                </v-col>
+                <v-col cols="4" class="mt-3">
+                  <v-text-field v-model.number="novoProduto.aliquotaCofins" label="Alíq. COFINS %"
+                    type="number" variant="outlined" density="compact" hide-details />
+                </v-col>
+              </v-row>
+            </v-window-item>
+
+            <!-- Aba Fornecedor -->
+            <v-window-item value="fornecedor">
+              <div v-if="novoProduto._fornecedorExistente">
+                <v-alert type="success" variant="tonal" rounded="lg" class="mb-3">
+                  <strong>Fornecedor já cadastrado</strong><br>
+                  {{ novoProduto._fornecedorExistente.razaoSocial }}
+                </v-alert>
+                <v-checkbox v-model="novoProduto._vincularFornecedor"
+                  label="Definir como fornecedor principal deste produto" hide-details />
+              </div>
+              <div v-else>
+                <v-alert type="info" variant="tonal" rounded="lg" class="mb-3">
+                  <strong>Emitente da NF-e</strong><br>
+                  {{ entrada?.emitenteNome }}<br>
+                  <span class="text-caption">CNPJ: {{ entrada?.emitenteCnpj }}</span>
+                </v-alert>
+                <v-checkbox v-model="novoProduto._cadastrarFornecedor"
+                  label="Cadastrar como fornecedor e definir como principal" hide-details />
+              </div>
+            </v-window-item>
+          </v-window>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgCriarProduto = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoProduto" @click="salvarNovoProduto">
+            Criar e vincular
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -424,6 +623,7 @@ import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import { formatarCnpj } from '@/utils/documento'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -435,7 +635,6 @@ const entrada = ref<any>(null)
 const aba = ref('dados')
 const processando = ref(false)
 const estornando = ref(false)
-const salvandoItem = ref(false)
 const devolvendo = ref(false)
 const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
@@ -443,15 +642,25 @@ const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
 
 // Listas auxiliares
-const fornecedores = ref<any[]>([])
 const locaisEstoque = ref<any[]>([])
+const unidades = ref<string[]>([])
+const unidadesMedida = ref<any[]>([])
+const categorias = ref<any[]>([])
+const marcas = ref<any[]>([])
 const pedidosCompra = ref<any[]>([])
 const produtos = ref<any[]>([])
 const templatesEtiqueta = ref<any[]>([])
 
+// Dialog criar produto a partir do XML
+const dlgCriarProduto = ref(false)
+const itemCriando = ref<any>(null)
+const novoProduto = ref<any>({})
+const salvandoProduto = ref(false)
+const abaCriarProduto = ref('geral')
+
 // Formulário frete e vínculos
 const freteManual = ref(0)
-const fornecedorId = ref<string | null>(null)
+const freteManualStr = ref('0')
 const localEstoqueId = ref<string | null>(null)
 const pedidoCompraId = ref<string | null>(null)
 
@@ -460,66 +669,66 @@ const faturas = ref<{ label: string; valor: number; vencimento: string }[]>([])
 const totalFaturas = computed(() => faturas.value.reduce((s, f) => s + (f.valor || 0), 0))
 
 // Dialogs
-const dlgItem = ref(false)
+const dlgFrete = ref(false)
 const dlgEstorno = ref(false)
 const dlgEtiquetas = ref(false)
 const motivoEstorno = ref('')
 const templateEtiqueta = ref<string | null>(null)
-const itemEditando = ref<any>(null)
-const itemFormTags = ref<string[]>([])
-const itemForm = ref({
-  cfopUtilizado: '',
-  produtoId: null as string | null,
-  produtoDescricao: '',
-  fatorConversao: 1,
-  unidadeEstoque: '',
-  numeroLote: '',
-  validade: '',
-  markupSugerido: 2.5,
-})
+
+// Grid editável de itens
+const itensEditaveis = ref<any[]>([])
+const salvandoTodos = ref(false)
+const salvandoFrete = ref(false)
+const markupGlobal = ref(150)
 
 const itensSemProduto = computed(
-  () => entrada.value?.itens?.filter((i: any) => !i.produtoId).length ?? 0)
+  () => itensEditaveis.value.filter((i: any) => !i._produtoId).length)
 
-const headersItens = [
-  { title: '#', key: 'numeroItem', width: 40 },
-  { title: 'Produto / Descrição XML', key: 'descricaoXml' },
-  { title: 'CFOP', key: 'cfop' },
-  { title: 'Quantidade', key: 'quantidade' },
-  { title: 'Valor', key: 'valores' },
-  { title: 'Produto Cadastrado', key: 'produto' },
-  { title: 'Lote / Validade', key: 'lote' },
-  { title: '', key: 'acoes', sortable: false, align: 'end' as const },
-]
+const itensAlterados = computed(
+  () => itensEditaveis.value.filter((i: any) => i._alterado).length)
 
 function corStatus(s: string) {
   return ({ EmEdicao: 'warning', Processada: 'success', Estornada: 'error' } as any)[s] ?? 'default'
 }
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+const fmtQtd = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
 const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 const fmtCnpj = formatarCnpj
+
+function popularItensEditaveis(itens: any[]) {
+  itensEditaveis.value = itens.map((i: any) => ({
+    ...i,
+    _produtoId: i.produtoId ?? null,
+    _produtoDescricao: i.produtoDescricao ?? '',
+    _cfop: i.cfopUtilizado,
+    _fator: i.fatorConversao ?? 1,
+    _unidade: i.unidadeEstoque ?? i.unidadeXml,
+    _lote: i.numeroLote ?? '',
+    _validade: i.validade ? i.validade.slice(0, 10) : '',
+    _markup: i.markupSugerido ? Math.round((i.markupSugerido - 1) * 10000) / 100 : 150,
+    _alterado: false,
+  }))
+}
 
 async function carregar() {
   const r = await api.get(`/fiscal/entradas/${entradaId}`)
   entrada.value = r.data
   freteManual.value = r.data.valorFreteManual ?? 0
-  fornecedorId.value = r.data.fornecedorId ?? null
+  freteManualStr.value = String(freteManual.value)
   localEstoqueId.value = r.data.localEstoqueId ?? null
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
+  popularItensEditaveis(r.data.itens ?? [])
 
-  // Pré-popular faturas: primeiro tenta duplicatas salvas pelo import XML
+  // Pré-popular faturas a partir das duplicatas do XML (salvas no banco)
   if (faturas.value.length === 0 && r.data.status === 'EmEdicao') {
-    const chaveStorage = `entrada_duplicatas_${entradaId}`
-    const dupJson = sessionStorage.getItem(chaveStorage)
-    if (dupJson) {
-      const dups = JSON.parse(dupJson)
+    const dups: any[] = r.data.duplicatas ?? []
+    if (dups.length > 0) {
       faturas.value = dups.map((d: any, i: number) => ({
-        label: d.numero || String(i + 1),
-        valor: d.valor,
-        vencimento: d.vencimento?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+        label: d.numero ?? d.Numero ?? String(i + 1),
+        valor: d.valor ?? d.Valor ?? 0,
+        vencimento: (d.vencimento ?? d.Vencimento ?? '')?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       }))
-      sessionStorage.removeItem(chaveStorage)
     } else {
       const venc = new Date()
       venc.setDate(venc.getDate() + 30)
@@ -533,30 +742,51 @@ async function carregar() {
 }
 
 async function carregarAuxiliares() {
-  const [forn, locais, pedidos, prods] = await Promise.all([
-    api.get('/fornecedores', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+  const [locais, pedidos, prods, unds, cats, mrcs] = await Promise.all([
     api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/compras/pedidos', { params: { empresaId: auth.empresaId, status: 'Enviado' } }).catch(() => ({ data: [] })),
     api.get('/estoque/produtos', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    api.get('/categorias', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    api.get('/marcas', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
   ])
-  fornecedores.value = forn.data
   locaisEstoque.value = locais.data
   pedidosCompra.value = pedidos.data.map((p: any) => ({
     ...p,
     label: `OC #${p.numero} – ${fmtData(p.dataPedido)}`,
   }))
-  produtos.value = prods.data
+  produtos.value = prods.data?.items ?? prods.data ?? []
+  unidadesMedida.value = unds.data.items ?? unds.data
+  unidades.value = unidadesMedida.value.map((u: any) => u.sigla ?? u.nome ?? u)
+  categorias.value = cats.data.items ?? cats.data
+  marcas.value = mrcs.data.items ?? mrcs.data
+}
+
+function abrirDlgFrete() {
+  if (entrada.value?.status === 'Processada') return
+  freteManualStr.value = String(freteManual.value)
+  dlgFrete.value = true
+}
+
+async function salvarLocalEstoque(id: string | null) {
+  if (!id) return
+  await api.patch(`/fiscal/entradas/${entradaId}/local-estoque`, { localEstoqueId: id })
+    .catch(() => {})
 }
 
 async function salvarFreteManual() {
-  await api.patch(`/fiscal/entradas/${entradaId}/frete-manual`, { valor: freteManual.value })
-  notif.ok('Frete atualizado.')
-  await carregar()
-}
-
-async function salvarFornecedor(id: string | null) {
-  if (!id) return
-  await api.patch(`/fiscal/entradas/${entradaId}/fornecedor`, { fornecedorId: id })
+  const valor = parseFloat(freteManualStr.value.replace(',', '.')) || 0
+  salvandoFrete.value = true
+  try {
+    await api.patch(`/fiscal/entradas/${entradaId}/frete-manual`, { valor })
+    notif.ok('Frete atualizado.')
+    dlgFrete.value = false
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao salvar frete.')
+  } finally {
+    salvandoFrete.value = false
+  }
 }
 
 async function salvarPedidoCompra(id: string | null) {
@@ -565,44 +795,274 @@ async function salvarPedidoCompra(id: string | null) {
     .then(() => notif.ok('Ordem de compra vinculada.'))
 }
 
-function abrirEditarItem(item: any) {
-  itemEditando.value = item
-  itemForm.value = {
-    cfopUtilizado: item.cfopUtilizado,
-    produtoId: item.produtoId ?? null,
-    produtoDescricao: item.produtoDescricao ?? '',
-    fatorConversao: item.fatorConversao ?? 1,
-    unidadeEstoque: item.unidadeEstoque ?? item.unidadeXml,
-    numeroLote: item.numeroLote ?? '',
-    validade: item.validade ? item.validade.slice(0, 10) : '',
-    markupSugerido: item.markupSugerido ?? 2.5,
-  }
-  itemFormTags.value = item.tags ? item.tags.split(',').map((t: string) => t.trim()) : []
-  dlgItem.value = true
-}
-
-function onProdutoSelecionado(id: string | null) {
+function onProdutoInline(item: any, id: string | null) {
   const prod = produtos.value.find((p: any) => p.id === id)
   if (prod) {
-    itemForm.value.produtoDescricao = prod.descricao
-    if (!itemForm.value.unidadeEstoque) itemForm.value.unidadeEstoque = prod.unidadeMedida ?? ''
+    item._produtoDescricao = prod.descricao
+    if (!item._unidade) item._unidade = prod.unidadeMedida ?? item.unidadeXml
+  }
+  item._alterado = true
+}
+
+const CATEGORIA_KEYWORDS: Record<string, string[]> = {
+  'Grãos integrais':            ['arroz','feijao','feijão','lentilha','milho','quinoa','aveia','trigo','cevada','centeio','ervilha','grao','grão','grao-de-bico','graodebi','chia','linhaca','linhaça','farro','sorgo','amaranto'],
+  'Ervas e especiarias':        ['colorau','paprica','páprica','curcuma','cúrcuma','acafrao','açafrão','pimenta','canela','gengibre','oregano','orégano','manjericao','alecrim','tomilho','cominho','coentro','noz-moscada','cravo','cardamomo','tempero','condimento','erva-doce','louro','salvia'],
+  'Frutas secas e cristalizadas':['damasco','ameixa','uva passa','uvap','tamara','tâmara','figo','cranberry','goji','maca seca','banana seca','fruta seca','cristalizada','mirtilo','blueberry','maca desidrat','banana desidrat'],
+  'Chips naturais':              ['chips','snack','palito','crocante','biscoito','crackers','bolinha'],
+  'Oleaginosas e sementes':     ['castanha','amendoim','amendoa','amêndoa','nozes','pistache','macadamia','macadâmia','avela','avelã','gergelim','girassol','abobora','abóbora','semente','mix nuts','nuts','oleaginosa'],
+  'Mel e adoçantes naturais':   ['mel','melado','rapadura','mascavo','demerara','xilitol','stevia','stévia','agave','melaco','melaço','frutose','sucralose','eritritol','coco acucar','açúcar coco'],
+  'Chás e infusões':            ['cha','chá','infusao','infusão','camomila','erva-mate','hibisco','hortela','hortelã','cidreira','boldo','capim-limao','capim-limão','erva','melissa','tilia'],
+  'Chocolates':                 ['chocolate','cacau','nibs','achocolatado','cacau em po','cacau pó','70%','meio amargo','amargo'],
+  'Zero Lactose':               ['lactose','zero lactose','s/ lactose','sem lactose'],
+  'Sem Glúten':                 ['gluten','glúten','sem gluten','s/ gluten'],
+  'Suplementos':                ['proteina','proteína','whey','creatina','vitamina','suplemento','colageno','colágeno','omega','ômega','maltodextrina','bcaa','aminoacido','aminoácido','hipercalorico','hipercalórico'],
+}
+
+function sugerirCategoria(descricao: string): string | undefined {
+  const lower = descricao.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  for (const [nome, palavras] of Object.entries(CATEGORIA_KEYWORDS)) {
+    const normalizado = palavras.map(p => p.normalize('NFD').replace(/[̀-ͯ]/g, ''))
+    if (normalizado.some(p => lower.includes(p))) {
+      return categorias.value.find((c: any) => c.nome === nome)?.id
+    }
+  }
+  return undefined
+}
+
+async function abrirCriarProduto(item: any) {
+  itemCriando.value = item
+  abaCriarProduto.value = 'geral'
+  const custo = custoDisplay(item)
+
+  // Verificar se emitente já é fornecedor cadastrado
+  let fornecedorExistente: any = null
+  if (entrada.value?.emitenteCnpj) {
+    const cnpjLimpo = entrada.value.emitenteCnpj.replace(/\D/g, '')
+    const rf = await api.get('/fornecedores', {
+      params: { empresaId: auth.empresaId, termo: cnpjLimpo },
+    }).catch(() => null)
+    const lista = rf?.data?.items ?? rf?.data ?? []
+    fornecedorExistente = lista.find((f: any) =>
+      (f.cnpj ?? '').replace(/\D/g, '') === cnpjLimpo) ?? null
+  }
+
+  novoProduto.value = {
+    // Geral
+    descricao: item.descricaoXml ?? '',
+    codigo: '',
+    codigoBarras: item.codigoBarras ?? '',
+    unidadeMedidaId: unidadesMedida.value.find((u: any) =>
+      u.sigla === item._unidade || u.sigla === item.unidadeXml)?.id ?? '',
+    categoriaId: sugerirCategoria(item.descricaoXml ?? '') ?? categorias.value[0]?.id ?? '',
+    marcaId: marcas.value[0]?.id ?? '',
+    custoUnitario: Math.round(custo * 100) / 100,
+    precoVenda: Math.round(custo * (1 + (item._markup || 150) / 100) * 100) / 100,
+    // Fiscal
+    ncm: item.ncmXml ?? '',
+    cfop: item._cfop ?? '',
+    origem: '0',
+    csosnIcms: '400',
+    cstIcms: '',
+    cstPisCofins: '07',
+    aliquotaIcms: 0,
+    aliquotaPis: 0,
+    aliquotaCofins: 0,
+    // Fornecedor
+    _fornecedorExistente: fornecedorExistente,
+    _vincularFornecedor: !!fornecedorExistente,
+    _cadastrarFornecedor: !fornecedorExistente,
+  }
+  dlgCriarProduto.value = true
+}
+
+async function salvarNovoProduto() {
+  const np = novoProduto.value
+  if (!np.descricao || !np.unidadeMedidaId) {
+    notif.erro('Preencha pelo menos Descrição e Unidade.')
+    return
+  }
+
+  // Garantir categoria
+  if (!np.categoriaId) {
+    if (!categorias.value.length) {
+      const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Geral' }).catch(() => null)
+      if (rc) { categorias.value = [rc.data]; np.categoriaId = rc.data.id }
+    } else {
+      np.categoriaId = categorias.value[0].id
+    }
+  }
+  // Garantir marca
+  if (!np.marcaId) {
+    if (!marcas.value.length) {
+      const rm = await api.post('/marcas', { empresaId: auth.empresaId, nome: 'Sem marca' }).catch(() => null)
+      if (rm) { marcas.value = [rm.data]; np.marcaId = rm.data.id }
+    } else {
+      np.marcaId = marcas.value[0].id
+    }
+  }
+  if (!np.categoriaId || !np.marcaId) {
+    notif.erro('Não foi possível obter categoria ou marca.')
+    return
+  }
+
+  salvandoProduto.value = true
+  try {
+    // 1. Cadastrar fornecedor se solicitado
+    let fornecedorId: string | null = np._fornecedorExistente?.id ?? null
+    if (!fornecedorId && np._cadastrarFornecedor && entrada.value?.emitenteCnpj) {
+      const rf = await api.post('/fornecedores', {
+        empresaId: auth.empresaId,
+        razaoSocial: entrada.value.emitenteNome,
+        cnpj: entrada.value.emitenteCnpj,
+      }, { _quiet: true } as any).catch(() => null)
+      fornecedorId = rf?.data?.id ?? null
+    } else if (np._fornecedorExistente && np._vincularFornecedor) {
+      fornecedorId = np._fornecedorExistente.id
+    }
+
+    // Sanitizar campos antes de enviar
+    const ncmLimpo = (np.ncm ?? '').replace(/\D/g, '').slice(0, 8) || null
+    const eanLimpo = /^\d{8,14}$/.test(np.codigoBarras ?? '') ? np.codigoBarras : null
+    const precoFinal = (np.precoVenda ?? 0) > 0 ? np.precoVenda : Math.round((np.custoUnitario ?? 0) * 1.5 * 100) / 100 || 0.01
+
+    // 2. Criar produto
+    const r = await api.post('/produtos', {
+      empresaId: auth.empresaId,
+      codigo: np.codigo || (np._codigoGerado = proximoCodigo()),
+      descricao: np.descricao,
+      codigoBarras: eanLimpo,
+      ncm: ncmLimpo,
+      categoriaId: np.categoriaId,
+      marcaId: np.marcaId,
+      unidadeMedidaId: np.unidadeMedidaId,
+      custoUnitario: np.custoUnitario ?? 0,
+      precoVenda: precoFinal,
+    })
+    const novoProdId = r.data.id ?? r.data.Id
+
+    // 3. Inserir na lista local para o autocomplete exibir o nome imediatamente
+    if (!produtos.value.find((p: any) => p.id === novoProdId)) {
+      produtos.value = [...produtos.value, { id: novoProdId, descricao: np.descricao, codigo: np.codigo || np._codigoGerado }]
+    }
+    // Vincular ao item e fechar dialog imediatamente
+    if (itemCriando.value) {
+      itemCriando.value._produtoId = novoProdId
+      itemCriando.value._produtoDescricao = np.descricao
+      itemCriando.value._alterado = true
+    }
+    dlgCriarProduto.value = false
+    notif.ok('Produto criado e vinculado! Acesse Produtos → aba Nutricional para preencher a tabela TACO.')
+
+    // 4. Em background: fiscal + fornecedor + reload lista (não bloqueia o dialog)
+    if (novoProdId) {
+      api.put(`/produtos/${novoProdId}`, {
+        empresaId: auth.empresaId,
+        descricao: np.descricao,
+        categoriaId: np.categoriaId,
+        marcaId: np.marcaId,
+        unidadeMedidaId: np.unidadeMedidaId,
+        custoUnitario: np.custoUnitario ?? 0,
+        precoVenda: precoFinal,
+        ncm: ncmLimpo,
+        cfop: np.cfop || null,
+        origem: np.origem ?? '0',
+        csosnIcms: np.csosnIcms || null,
+        cstIcms: np.cstIcms || null,
+        cstPisCofins: np.cstPisCofins || null,
+        aliquotaIcms: np.aliquotaIcms ?? 0,
+        aliquotaPis: np.aliquotaPis ?? 0,
+        aliquotaCofins: np.aliquotaCofins ?? 0,
+        fornecedorPrincipalId: fornecedorId,
+      }, { _quiet: true } as any).catch(() => null).then(() => {
+        api.get('/estoque/produtos', { params: { empresaId: auth.empresaId } })
+          .then(rp => { produtos.value = rp.data?.items ?? rp.data ?? [] })
+          .catch(() => null)
+      })
+    }
+  } catch (e: any) {
+    const errs = e.response?.data
+    let msg = 'Erro ao criar produto.'
+    if (typeof errs === 'string') msg = errs
+    else if (errs?.mensagem) msg = errs.mensagem
+    else if (errs?.errors) msg = Object.entries(errs.errors).map(([k, v]) => `${k}: ${(v as any[]).join(', ')}`).join(' | ')
+    else if (errs?.title) msg = errs.title
+    notif.erro(msg)
+  } finally {
+    salvandoProduto.value = false
   }
 }
 
-async function salvarItem() {
-  salvandoItem.value = true
+function proximoCodigo(): string {
+  const numeros = produtos.value
+    .map((p: any) => parseInt(p.codigo ?? '', 10))
+    .filter((n: number) => !isNaN(n) && n >= 3001)
+  const maior = numeros.length > 0 ? Math.max(...numeros) : 3000
+  return String(maior + 1)
+}
+
+function custoDisplay(item: any) {
+  // Frete rateado igualmente por item, depois dividido pelo fator de conversão
+  // Ex: R$180 frete ÷ 13 itens = R$13,84/item ÷ 5 kg = R$2,77/kg
+  const freteTotal = entrada.value?.freteTotal ?? 0
+  const nItens = itensEditaveis.value.length || 1
+  const freteItem = freteTotal / nItens
+  const total = item.valorTotalXml + (item.valorIpi || 0) + (item.valorIcmsSt || 0) + freteItem
+  const qtd = item.quantidadeXml * (item._fator || 1)
+  return qtd > 0 ? total / qtd : (item.custoUnitarioFinal || item.valorUnitarioXml)
+}
+
+function aplicarMarkupGlobal() {
+  if (!markupGlobal.value || markupGlobal.value <= 0) return
+  itensEditaveis.value.forEach(item => {
+    item._markup = markupGlobal.value   // já em %
+    item._alterado = true
+  })
+}
+
+function aplicarModoMarkup(modo: 'manter_markup' | 'manter_preco') {
+  itensEditaveis.value.forEach(item => {
+    const custo = item.custoUnitarioFinal || item.valorUnitarioXml || 0
+    if (custo <= 0 || !item._produtoId) return
+    const prod = produtos.value.find((p: any) => p.id === item._produtoId)
+    if (!prod) return
+    if (modo === 'manter_markup') {
+      // prod.markup é multiplicador (ex: 3.9253); converter para %
+      const mkp = prod.markup ?? prod.markupVenda ?? 0
+      if (mkp > 0) { item._markup = Math.round((mkp - 1) * 10000) / 100; item._alterado = true }
+    } else {
+      const preco = prod.precoVenda ?? prod.preco ?? 0
+      if (preco > 0) { item._markup = Math.round((preco / custo - 1) * 10000) / 100; item._alterado = true }
+    }
+  })
+}
+
+function descartarItens() {
+  popularItensEditaveis(entrada.value?.itens ?? [])
+}
+
+async function salvarTodos() {
+  const alterados = itensEditaveis.value.filter(i => i._alterado)
+  if (!alterados.length) return
+  salvandoTodos.value = true
   try {
-    await api.patch(`/fiscal/entradas/${entradaId}/itens/${itemEditando.value.id}`, {
-      ...itemForm.value,
-      validade: itemForm.value.validade || null,
-      tags: itemFormTags.value.join(', '),
-    })
-    notif.ok('Item atualizado.')
-    dlgItem.value = false
+    await Promise.all(alterados.map(item =>
+      api.patch(`/fiscal/entradas/${entradaId}/itens/${item.id}`, {
+        cfopUtilizado: item._cfop,
+        produtoId: item._produtoId,
+        produtoDescricao: item._produtoDescricao,
+        fatorConversao: item._fator,
+        unidadeEstoque: item._unidade,
+        numeroLote: item._lote || null,
+        validade: item._validade || null,
+        markupSugerido: 1 + item._markup / 100,   // converter % → multiplicador para o backend
+        tags: null,
+      })
+    ))
+    notif.ok(`${alterados.length} item(ns) salvos.`)
     await carregar()
   } catch (e: any) {
-    notif.erro(e.response?.data?.mensagem ?? 'Erro ao salvar item.')
-  } finally { salvandoItem.value = false }
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao salvar itens.')
+  } finally { salvandoTodos.value = false }
 }
 
 function adicionarFatura() {
@@ -683,9 +1143,14 @@ async function confirmarDevolucao() {
 }
 
 async function excluir() {
-  await api.delete(`/fiscal/entradas/${entradaId}`)
-  notif.ok('Entrada excluída.')
-  router.push('/fiscal')
+  if (!confirm('Excluir esta entrada definitivamente?')) return
+  try {
+    await api.delete(`/fiscal/entradas/${entradaId}`)
+    notif.ok('Entrada excluída.')
+    router.push('/fiscal')
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao excluir.')
+  }
 }
 
 async function imprimirEtiquetas() {

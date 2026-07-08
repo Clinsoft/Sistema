@@ -10,7 +10,9 @@ namespace Sistema.API.Controllers.Marketing;
 [ApiController]
 [Route("api/marketing")]
 [Authorize]
-public class MarketingController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
+public class MarketingController(
+    SistemaDbContext db, IUnitOfWork uow,
+    Sistema.Infrastructure.Services.GeminiImageService gemini) : ControllerBase
 {
     // ─── Templates ────────────────────────────────────────────────────────────
 
@@ -52,45 +54,190 @@ public class MarketingController(SistemaDbContext db, IUnitOfWork uow) : Control
     // ─── Artes ────────────────────────────────────────────────────────────────
 
     [HttpGet("artes")]
-    public async Task<IActionResult> ListarArtes([FromQuery] Guid empresaId, CancellationToken ct)
-        => Ok(await db.ArtesMarketing.AsNoTracking()
-            .Where(a => a.EmpresaId == empresaId)
-            .OrderByDescending(a => a.CriadoEm)
-            .ToListAsync(ct));
+    public async Task<IActionResult> ListarArtes([FromQuery] Guid empresaId,
+        [FromQuery] string? tipo, CancellationToken ct)
+    {
+        var query = db.ArtesMarketing.AsNoTracking().Where(a => a.EmpresaId == empresaId);
+        if (!string.IsNullOrWhiteSpace(tipo) && Enum.TryParse<TipoArteMarketing>(tipo, out var t))
+            query = query.Where(a => a.Tipo == t);
+
+        var lista = await query.OrderByDescending(a => a.CriadoEm).ToListAsync(ct);
+        return Ok(lista.Select(a => new
+        {
+            a.Id,
+            titulo = a.Nome,
+            tipo = a.Tipo.ToString(),
+            formato = a.Formato.ToString(),
+            thumbnailUrl = a.UrlExportada,
+            a.UrlExportada,
+            a.LayoutJson,
+            status = a.Status.ToString(),
+            a.CriadoEm,
+        }));
+    }
 
     [HttpPost("artes")]
     public async Task<IActionResult> SalvarArte([FromBody] SalvarArteRequest req, CancellationToken ct)
     {
-        // Herda tipo/formato do template
-        var template = await db.TemplatesMarketing.AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == req.TemplateId, ct);
+        // Herda tipo/formato do template (quando informado)
+        var template = req.TemplateId.HasValue
+            ? await db.TemplatesMarketing.AsNoTracking().FirstOrDefaultAsync(t => t.Id == req.TemplateId, ct)
+            : null;
 
-        var tipo = template?.Tipo ?? TipoArteMarketing.Generico;
-        var formato = template?.Formato ?? FormatoArte.FeedQuadrado;
+        var tipo = template?.Tipo
+            ?? (Enum.TryParse<TipoArteMarketing>(req.Tipo, out var tp) ? tp : TipoArteMarketing.Generico);
+        var formato = template?.Formato
+            ?? (Enum.TryParse<FormatoArte>(req.Formato, out var fm) ? fm : FormatoArte.FeedQuadrado);
 
-        var arte = ArteMarketing.Criar(req.EmpresaId, req.Nome, tipo, formato, req.LayoutJson, req.TemplateId);
+        var arte = ArteMarketing.Criar(req.EmpresaId, req.Nome ?? "Arte sem título",
+            tipo, formato, req.LayoutJson ?? "{}", req.TemplateId);
         db.ArtesMarketing.Add(arte);
         await uow.SalvarAsync(ct);
         return Ok(new { arte.Id });
+    }
+
+    [HttpPut("artes/{id:guid}")]
+    public async Task<IActionResult> AtualizarArte(Guid id, [FromBody] SalvarArteRequest req, CancellationToken ct)
+    {
+        var arte = await db.ArtesMarketing.FirstOrDefaultAsync(a => a.Id == id, ct)
+            ?? throw new KeyNotFoundException("Arte não encontrada.");
+        arte.Renomear(req.Nome ?? arte.Nome);
+        arte.AtualizarLayout(req.LayoutJson ?? "{}");
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    [HttpDelete("artes/{id:guid}")]
+    public async Task<IActionResult> ExcluirArte(Guid id, CancellationToken ct)
+    {
+        var arte = await db.ArtesMarketing.FirstOrDefaultAsync(a => a.Id == id, ct)
+            ?? throw new KeyNotFoundException("Arte não encontrada.");
+
+        // Remove o arquivo de imagem gerado, se houver
+        if (!string.IsNullOrEmpty(arte.UrlExportada))
+        {
+            var caminho = Path.Combine("wwwroot", arte.UrlExportada.TrimStart('/'));
+            if (System.IO.File.Exists(caminho)) System.IO.File.Delete(caminho);
+        }
+
+        db.ArtesMarketing.Remove(arte);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>Baixa o PNG gerado da arte.</summary>
+    [HttpGet("artes/{id:guid}/exportar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExportarArte(Guid id, CancellationToken ct)
+    {
+        var arte = await db.ArtesMarketing.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+        if (arte is null || string.IsNullOrEmpty(arte.UrlExportada))
+            return NotFound(new { mensagem = "Imagem não disponível. Gere a arte com IA primeiro." });
+
+        var caminho = Path.Combine("wwwroot", arte.UrlExportada.TrimStart('/'));
+        if (!System.IO.File.Exists(caminho)) return NotFound(new { mensagem = "Arquivo não encontrado." });
+
+        var bytes = await System.IO.File.ReadAllBytesAsync(caminho, ct);
+        return File(bytes, "image/png", $"arte_{arte.Nome}.png");
+    }
+
+    // ─── Geração de imagem com IA (Nano Banana 2 — Gemini) ────────────────────
+
+    /// <summary>Gera a imagem da arte usando o Gemini (Nano Banana 2) a partir de um prompt.</summary>
+    [HttpPost("artes/gerar-ia")]
+    public async Task<IActionResult> GerarArteIA([FromBody] GerarArteIaRequest req, CancellationToken ct)
+    {
+        if (!gemini.Configurado)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                mensagem = "Gemini (Nano Banana 2) não configurado. Defina a chave da API no servidor (Gemini:ApiKey)."
+            });
+
+        var formato = Enum.TryParse<FormatoArte>(req.Formato, out var fm) ? fm : FormatoArte.FeedQuadrado;
+        var tipo = Enum.TryParse<TipoArteMarketing>(req.Tipo, out var tp) ? tp : TipoArteMarketing.Generico;
+
+        // Enrique o prompt com a proporção do formato para melhor enquadramento
+        var proporcao = formato switch
+        {
+            FormatoArte.StoryVertical => "proporção vertical 9:16 (Story/Reels)",
+            FormatoArte.BannerHorizontal => "proporção horizontal 1200x628 (banner)",
+            _ => "proporção quadrada 1:1 (feed)"
+        };
+        var promptFinal = $"{req.Prompt}. Formato: {proporcao}. Arte publicitária profissional para redes sociais, " +
+                          "texto legível e bem posicionado, alta qualidade.";
+
+        byte[] bytes;
+        try { (bytes, _) = await gemini.GerarImagemAsync(promptFinal, ct); }
+        catch (Exception ex) { return BadRequest(new { mensagem = ex.Message }); }
+
+        // Salva o PNG em wwwroot/uploads/artes
+        var dir = Path.Combine("wwwroot", "uploads", "artes");
+        Directory.CreateDirectory(dir);
+
+        var arte = ArteMarketing.Criar(req.EmpresaId,
+            string.IsNullOrWhiteSpace(req.Titulo) ? "Arte IA" : req.Titulo,
+            tipo, formato,
+            System.Text.Json.JsonSerializer.Serialize(new { gerador = "GeminiNanoBanana2", prompt = req.Prompt }));
+
+        var nomeArquivo = $"{arte.Id}.png";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, nomeArquivo), bytes, ct);
+        arte.Finalizar($"/uploads/artes/{nomeArquivo}");
+
+        db.ArtesMarketing.Add(arte);
+        await uow.SalvarAsync(ct);
+
+        return Ok(new { id = arte.Id, url = arte.UrlExportada, modelo = gemini.ModeloAtual });
     }
 
     // ─── Agendamentos ─────────────────────────────────────────────────────────
 
     [HttpGet("agendamentos")]
     public async Task<IActionResult> ListarAgendamentos([FromQuery] Guid empresaId, CancellationToken ct)
-        => Ok(await db.AgendamentosPublicacao.AsNoTracking()
-            .Where(a => a.EmpresaId == empresaId)
-            .OrderBy(a => a.DataHoraAgendada)
-            .ToListAsync(ct));
+    {
+        var lista = await (
+            from a in db.AgendamentosPublicacao.AsNoTracking()
+            join art in db.ArtesMarketing.AsNoTracking() on a.ArteMarketingId equals art.Id into arts
+            from art in arts.DefaultIfEmpty()
+            where a.EmpresaId == empresaId
+            orderby a.DataHoraAgendada
+            select new
+            {
+                a.Id, a.ArteMarketingId,
+                arteTitulo = art != null ? art.Nome : "—",
+                plataforma = a.Rede.ToString(),
+                dataAgendamento = a.DataHoraAgendada,
+                status = a.Status.ToString(),
+                a.Legenda,
+            }).ToListAsync(ct);
+        return Ok(lista);
+    }
 
     [HttpPost("agendamentos")]
     public async Task<IActionResult> Agendar([FromBody] AgendarPublicacaoRequest req, CancellationToken ct)
     {
-        var rede = Enum.Parse<RedesSociais>(req.RedeSocial);
-        var agendamento = AgendamentoPublicacao.Criar(req.EmpresaId, req.ArteId, rede, req.DataHoraAgendada, req.Legenda);
+        // Aceita "WhatsApp Status" / "WhatsAppStatus" e nomes com espaços
+        var redeStr = (req.RedeSocial ?? req.Plataforma ?? "Instagram").Replace(" ", "");
+        if (!Enum.TryParse<RedesSociais>(redeStr, ignoreCase: true, out var rede))
+            rede = RedesSociais.Instagram;
+
+        var dataHora = req.DataHoraAgendada ?? req.DataAgendamento ?? DateTime.UtcNow;
+        if (req.ArteId == Guid.Empty)
+            return BadRequest(new { mensagem = "Selecione uma arte para agendar." });
+
+        var agendamento = AgendamentoPublicacao.Criar(req.EmpresaId, req.ArteId, rede, dataHora, req.Legenda);
         db.AgendamentosPublicacao.Add(agendamento);
         await uow.SalvarAsync(ct);
         return Ok(new { agendamento.Id });
+    }
+
+    [HttpDelete("agendamentos/{id:guid}")]
+    public async Task<IActionResult> CancelarAgendamento(Guid id, CancellationToken ct)
+    {
+        var agendamento = await db.AgendamentosPublicacao.FirstOrDefaultAsync(a => a.Id == id, ct)
+            ?? throw new KeyNotFoundException("Agendamento não encontrado.");
+        agendamento.Cancelar();
+        await uow.SalvarAsync(ct);
+        return NoContent();
     }
 
     // ─── Geração automática por promoção ─────────────────────────────────────
@@ -142,8 +289,19 @@ public class MarketingController(SistemaDbContext db, IUnitOfWork uow) : Control
 
 public record CriarTemplateRequest(Guid EmpresaId, string Nome, string Tipo, string Formato, string LayoutJson);
 public record AtualizarTemplateRequest(string LayoutJson, string? ThumbnailBase64 = null);
-public record SalvarArteRequest(Guid EmpresaId, string Nome, Guid TemplateId, string LayoutJson);
-public record AgendarPublicacaoRequest(Guid EmpresaId, Guid ArteId, string RedeSocial, DateTime DataHoraAgendada, string? Legenda = null);
+public record SalvarArteRequest(
+    Guid EmpresaId, string? Nome, Guid? TemplateId = null,
+    string? LayoutJson = null, string? Tipo = null, string? Formato = null);
+
+public record GerarArteIaRequest(
+    Guid EmpresaId, string Prompt, string? Titulo = null,
+    string? Formato = null, string? Tipo = null);
+
+public record AgendarPublicacaoRequest(
+    Guid EmpresaId, Guid ArteId,
+    string? RedeSocial = null, string? Plataforma = null,
+    DateTime? DataHoraAgendada = null, DateTime? DataAgendamento = null,
+    string? Legenda = null);
 public record GerarArtePromocaoRequest(
     Guid EmpresaId, string NomePromocao, decimal Desconto, string TipoDesconto,
     string TipoPromocao, string AplicaEm, string DataInicio, string? DataFim, bool ApenasClube);

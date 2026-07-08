@@ -38,6 +38,22 @@ public class ProdutoRepository(SistemaDbContext db) : BaseRepository<Produto>(db
             .ToListAsync(ct);
     }
 
+    public async Task<(IReadOnlyDictionary<Guid, string> Unidades,
+                       IReadOnlyDictionary<Guid, string> Categorias,
+                       IReadOnlyDictionary<Guid, string> Marcas)> ObterLookupsAsync(Guid empresaId, CancellationToken ct = default)
+    {
+        var unidades = await _db.UnidadesMedida.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId)
+            .ToDictionaryAsync(u => u.Id, u => u.Sigla, ct);
+        var categorias = await _db.Categorias.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId)
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+        var marcas = await _db.Marcas.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId)
+            .ToDictionaryAsync(m => m.Id, m => m.Nome, ct);
+        return (unidades, categorias, marcas);
+    }
+
     public async Task<int> ContarAsync(Guid empresaId, string? termo, Guid? categoriaId, bool? ativo, CancellationToken ct = default)
     {
         var query = _set.Where(p => p.EmpresaId == empresaId);

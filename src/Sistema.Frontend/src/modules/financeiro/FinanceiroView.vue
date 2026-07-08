@@ -81,18 +81,20 @@ onMounted(async () => {
   const ano = new Date().getFullYear()
   const mes = new Date().getMonth() + 1
   const hoje = new Date().toISOString().slice(0, 10)
-  const iniciomes = new Date(ano, mes - 1, 1).toISOString().slice(0, 10)
+  // Janela ampla para capturar TODOS os títulos em aberto (passados e futuros)
+  const inicioAmplo = '2000-01-01'
+  const fimAmplo = new Date(ano + 5, 11, 31).toISOString().slice(0, 10)
 
   await Promise.allSettled([
-    // Card 0 — A Receber
-    api.get('/contas-receber', { params: { empresaId: auth.empresaId, inicio: iniciomes, fim: hoje, status: 'EmAberto' } })
+    // Card 0 — A Receber (total em aberto)
+    api.get('/contas-receber', { params: { empresaId: auth.empresaId, inicio: inicioAmplo, fim: fimAmplo, status: 'EmAberto' } })
       .then(r => {
-        const total = (r.data as any[]).reduce((s, l) => s + (l.saldo ?? 0), 0)
+        const total = (r.data as any[]).filter((l: any) => l.status === 'EmAberto').reduce((s, l) => s + (l.saldo ?? 0), 0)
         cards.value[0].valor = fmt(total)
       }),
 
-    // Card 1 — A Pagar
-    api.get('/contas-pagar', { params: { empresaId: auth.empresaId, inicio: iniciomes, fim: hoje } })
+    // Card 1 — A Pagar (total em aberto)
+    api.get('/contas-pagar', { params: { empresaId: auth.empresaId, inicio: inicioAmplo, fim: fimAmplo } })
       .then(r => {
         const total = (r.data as any[]).filter((l: any) => l.status === 'EmAberto').reduce((s, l) => s + (l.saldo ?? 0), 0)
         cards.value[1].valor = fmt(total)
@@ -100,18 +102,18 @@ onMounted(async () => {
 
     // Card 2 — Vencidos (receber + pagar)
     Promise.all([
-      api.get('/contas-receber', { params: { empresaId: auth.empresaId, inicio: '2000-01-01', fim: hoje, status: 'EmAberto' } }),
-      api.get('/contas-pagar',   { params: { empresaId: auth.empresaId, inicio: '2000-01-01', fim: hoje } }),
+      api.get('/contas-receber', { params: { empresaId: auth.empresaId, inicio: inicioAmplo, fim: hoje, status: 'EmAberto' } }),
+      api.get('/contas-pagar',   { params: { empresaId: auth.empresaId, inicio: inicioAmplo, fim: hoje } }),
     ]).then(([rec, pag]) => {
-      const vencRec = (rec.data as any[]).filter((l: any) => l.dataVencimento < hoje).length
+      const vencRec = (rec.data as any[]).filter((l: any) => l.status === 'EmAberto' && l.dataVencimento < hoje).length
       const vencPag = (pag.data as any[]).filter((l: any) => l.status === 'EmAberto' && l.dataVencimento < hoje).length
       cards.value[2].valor = `${vencRec + vencPag} título(s)`
     }),
 
-    // Card 3 — DRE do mês
-    api.get('/financeiro/dre/mensal', { params: { empresaId: auth.empresaId, ano, mes } })
+    // Card 3 — Resultado operacional do mês (DRE)
+    api.get('/financeiro/dre', { params: { empresaId: auth.empresaId, ano, mes } })
       .then(r => {
-        if (r.data) cards.value[3].valor = fmt(r.data.lucroOperacional ?? 0)
+        if (r.data) cards.value[3].valor = fmt(r.data.resultadoOperacional ?? 0)
       }),
   ])
 })

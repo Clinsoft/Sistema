@@ -16,15 +16,19 @@ public class ListarProdutosHandler(IProdutoRepository repo)
     {
         var produtos = await repo.PesquisarAsync(q.EmpresaId, q.Termo, q.CategoriaId, q.MarcaId, q.Ativo, q.Pagina, q.TamanhoPagina, ct);
         var total = await repo.ContarAsync(q.EmpresaId, q.Termo, q.CategoriaId, q.Ativo, ct);
+        var (unidades, categorias, marcas) = await repo.ObterLookupsAsync(q.EmpresaId, ct);
 
         var dtos = produtos.Select(p => new ProdutoDto(
             p.Id, p.Codigo, p.CodigoBarras, p.Descricao, p.DescricaoComplementar,
-            p.CategoriaId, "", p.MarcaId, "", p.UnidadeMedidaId, "",
+            p.CategoriaId, categorias.GetValueOrDefault(p.CategoriaId, ""),
+            p.MarcaId, marcas.GetValueOrDefault(p.MarcaId, ""),
+            p.UnidadeMedidaId, unidades.GetValueOrDefault(p.UnidadeMedidaId, ""),
             p.CustoUnitario, p.PrecoVenda, p.PrecoAtacado,
             p.Markup, p.MargemLucro,
             p.EstoqueAtual, p.EstoqueMinimo,
             p.Ncm, p.Cest, p.ControlarLote, p.ControlarValidade,
-            p.ProdutoBalanca, p.CodigoPlu, p.Ativo, p.CriadoEm
+            p.ProdutoBalanca, p.CodigoPlu, p.Ativo, p.CriadoEm,
+            p.Referencia, p.PrecoFornecedor, p.MarkupMinimo, p.PrecoMinimo, p.MarkupAtacado
         )).ToList();
 
         return new ListaPaginadaDto<ProdutoDto>(dtos, total, q.Pagina, q.TamanhoPagina);

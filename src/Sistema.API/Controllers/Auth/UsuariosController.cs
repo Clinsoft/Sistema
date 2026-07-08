@@ -40,6 +40,18 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
         return NoContent();
     }
 
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarUsuarioRequest req, CancellationToken ct)
+    {
+        var usuario = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Usuário não encontrado.");
+        usuario.AlterarNome(req.Nome);
+        usuario.AlterarPerfil(req.Perfil);
+        repo.Atualizar(usuario);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpPatch("{id:guid}/desativar")]
     public async Task<IActionResult> Desativar(Guid id, CancellationToken ct)
     {
@@ -76,4 +88,5 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
 
 public record CriarUsuarioRequest(Guid EmpresaId, string Nome, string Email, string Senha, string Perfil);
 public record AlterarPerfilRequest(string Perfil);
+public record AtualizarUsuarioRequest(string Nome, string Perfil);
 public record AlterarSenhaRequest(string NovaSenha);

@@ -18,6 +18,7 @@ public class Produto : Entity
     public Guid MarcaId { get; private set; }
     public Guid UnidadeMedidaId { get; private set; }
     public Guid? FornecedorPrincipalId { get; private set; }
+    public string? CodigoFornecedorPrincipal { get; private set; }  // código deste produto no fornecedor (de-para p/ entrada NF-e)
 
     // Variação
     public string TipoVariacao { get; private set; } = "Simples"; // Simples | ComVariacao
@@ -123,6 +124,14 @@ public class Produto : Entity
         ControlarValidade = controlarValidade;
         ValidadeEmDias = validadeEmDias;
         DescricaoComplementar = descricaoComplementar;
+    }
+
+    /// <summary>Registra o de-para com o fornecedor: código do produto na nota do fornecedor.</summary>
+    public void VincularReferenciaFornecedor(Guid fornecedorId, string? codigoNoFornecedor)
+    {
+        FornecedorPrincipalId = fornecedorId;
+        if (!string.IsNullOrWhiteSpace(codigoNoFornecedor))
+            CodigoFornecedorPrincipal = codigoNoFornecedor;
     }
 
     public void EditarPrecos(decimal precoFornecedor, decimal custoUnitario,

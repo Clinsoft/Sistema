@@ -60,6 +60,8 @@ public class RecebivelCartao : Entity
         DataAntecipacao = DateTime.UtcNow;
         DataRepasse = DateTime.UtcNow;
     }
+
+    public void Cancelar() => Status = StatusRecebivelCartao.Cancelado;
 }
 
 public enum StatusRecebivelCartao

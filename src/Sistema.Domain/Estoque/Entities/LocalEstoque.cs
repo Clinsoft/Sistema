@@ -21,4 +21,7 @@ public class LocalEstoque : Entity
         Principal = principal;
         Descricao = descricao;
     }
+
+    /// <summary>Reassocia o local a outra filial (empresa) — ex.: cliente abriu nova filial.</summary>
+    public void Reassociar(Guid empresaId) => EmpresaId = empresaId;
 }

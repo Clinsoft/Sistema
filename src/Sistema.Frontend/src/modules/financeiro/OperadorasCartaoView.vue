@@ -9,6 +9,17 @@
       <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNova">Nova Operadora</v-btn>
     </div>
 
+    <GuiaPassos
+      id="operadoras-cartao"
+      titulo="Como usar as Operadoras de Cartão"
+      :passos="[
+        'Clique em <b>Nova Operadora</b> e informe o nome (Cielo, Rede, Stone…), as <b>bandeiras</b> aceitas, um ícone e uma cor.',
+        'Preencha as <b>taxas (%)</b> e os <b>prazos de repasse (D+dias)</b> de cada modalidade: Débito, Crédito à vista, Crédito parcelado e Pix.',
+        'Informe a <b>taxa de antecipação (% a.m.)</b> — usada quando você antecipar recebíveis dessa operadora.',
+        'Use ✎ para editar e 🗑 para remover. Essas taxas são aplicadas às vendas no cartão e aparecem em <b>Recebíveis de Cartão</b>.',
+      ]"
+    />
+
     <v-row>
       <v-col v-for="op in operadoras" :key="op.id" cols="12" md="6" lg="4">
         <v-card rounded="xl" elevation="1" hover>
@@ -265,6 +276,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -335,10 +347,21 @@ async function salvar() {
   if (!form.value.nome) { notif.erro('Nome é obrigatório.'); return }
   salvando.value = true
   try {
+    // Coage taxas/prazos nulos para 0 (o backend espera números)
+    const num = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? 0 : Number(v))
+    const f = form.value
+    const payload = {
+      nome: f.nome, cor: f.cor, icone: f.icone, bandeiras: f.bandeiras ?? [],
+      taxaDebito: num(f.taxaDebito), prazoDebito: num(f.prazoDebito),
+      taxaCreditoVista: num(f.taxaCreditoVista), prazoCreditoVista: num(f.prazoCreditoVista),
+      taxaCreditoParcelado: num(f.taxaCreditoParcelado), prazoCreditoParcelado: num(f.prazoCreditoParcelado),
+      taxaPix: num(f.taxaPix), prazoPix: num(f.prazoPix),
+      taxaAntecipacao: num(f.taxaAntecipacao), observacao: f.observacao || null,
+    }
     if (editando.value) {
-      await api.put(`/financeiro/operadoras-cartao/${editando.value}`, form.value)
+      await api.put(`/financeiro/operadoras-cartao/${editando.value}`, payload)
     } else {
-      await api.post('/financeiro/operadoras-cartao', { ...form.value, empresaId: auth.empresaId })
+      await api.post('/financeiro/operadoras-cartao', { ...payload, empresaId: auth.empresaId })
     }
     notif.ok('Operadora salva com sucesso!')
     dialog.value = false

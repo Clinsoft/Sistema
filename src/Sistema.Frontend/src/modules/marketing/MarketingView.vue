@@ -5,10 +5,24 @@
         <h2 class="text-h5 font-weight-bold">Marketing — Artes para Redes Sociais</h2>
         <div class="text-caption text-medium-emphasis">Crie peças visuais para Instagram, Facebook e WhatsApp</div>
       </v-col>
-      <v-col cols="auto">
+      <v-col cols="auto" class="d-flex gap-2">
+        <v-btn color="deep-purple" prepend-icon="mdi-robot-happy-outline" @click="abrirIA">
+          Gerar com IA
+        </v-btn>
         <v-btn color="primary" prepend-icon="mdi-image-plus" @click="novaArte">Nova Arte</v-btn>
       </v-col>
     </v-row>
+
+    <GuiaPassos
+      id="marketing-artes"
+      titulo="Como criar Artes para Redes Sociais"
+      :passos="[
+        'Clique em <b>Gerar com IA</b> para criar a arte automaticamente com o <b>Nano Banana 2</b> (Gemini): escolha o formato (Feed/Story/Banner), descreva a arte no <b>prompt</b> (produto, oferta, estilo, cores) e clique em <b>Gerar</b>.',
+        'A imagem gerada é salva na <b>Galeria</b>. Use <b>Nova Arte</b> ou um <b>Template</b> para montar manualmente com texto, preço e fundo.',
+        'Na galeria, cada arte tem <b>Editar</b> (✏️), <b>Baixar PNG</b> (⬇), <b>Compartilhar no WhatsApp</b> e <b>Excluir</b> (🗑️).',
+        'Na aba <b>Agendamentos</b>, escolha uma arte, a plataforma (Instagram/Facebook/WhatsApp) e a data/hora para agendar a publicação.',
+      ]"
+    />
 
     <v-tabs v-model="tab" class="mb-4">
       <v-tab value="galeria">Galeria</v-tab>
@@ -28,9 +42,9 @@
         <v-row>
           <v-col v-for="arte in artes" :key="arte.id" cols="12" sm="6" md="4" lg="3">
             <v-card>
-              <v-img :src="arte.thumbnailUrl || '/placeholder.png'" :aspect-ratio="arte.formato === 'Story' ? 9/16 : 1"
+              <v-img :src="arteThumb(arte)" :aspect-ratio="arte.formato === 'StoryVertical' ? 9/16 : 1"
                 cover>
-                <v-chip class="ma-2" size="small" :color="corFormato(arte.formato)">{{ arte.formato }}</v-chip>
+                <v-chip class="ma-2" size="small" :color="corFormato(arte.formato)">{{ labelFormato(arte.formato) }}</v-chip>
               </v-img>
               <v-card-text class="pb-1">
                 <div class="font-weight-medium text-truncate">{{ arte.titulo }}</div>
@@ -167,6 +181,59 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog Geração com IA (Nano Banana 2) -->
+    <v-dialog v-model="dialogIA" max-width="820" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center gap-2">
+          <v-avatar color="deep-purple" size="36"><v-icon color="white">mdi-robot-happy-outline</v-icon></v-avatar>
+          Gerar Arte com IA
+          <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-1">Nano Banana 2 · Gemini</v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="dialogIA = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <v-row>
+            <v-col cols="12" md="5">
+              <v-text-field v-model="iaForm.titulo" label="Título da arte"
+                variant="outlined" density="compact" class="mb-2" />
+              <v-select v-model="iaForm.formato" :items="formatosIA" item-title="label" item-value="value"
+                label="Formato" variant="outlined" density="compact" class="mb-2" />
+              <v-select v-model="iaForm.tipo" :items="tiposArte" label="Tipo" variant="outlined"
+                density="compact" class="mb-2" />
+              <v-textarea v-model="iaForm.prompt" label="Descreva a arte (prompt) *"
+                variant="outlined" density="compact" rows="5" auto-grow
+                placeholder="Ex: Banner de promoção de granola artesanal, fundo verde natural com folhas, texto '30% OFF' em destaque, estilo clean e apetitoso"
+                hint="Quanto mais detalhes (produto, oferta, cores, estilo), melhor o resultado" persistent-hint />
+              <v-btn color="deep-purple" block class="mt-3" size="large"
+                prepend-icon="mdi-auto-fix" :loading="gerandoIA"
+                :disabled="!iaForm.prompt" @click="gerarComIA">
+                Gerar Imagem
+              </v-btn>
+            </v-col>
+            <v-col cols="12" md="7">
+              <div class="ia-preview d-flex align-center justify-center">
+                <div v-if="!imagemGeradaUrl && !gerandoIA" class="text-center text-medium-emphasis pa-6">
+                  <v-icon icon="mdi-image-outline" size="60" class="mb-2" opacity="0.4" />
+                  <div>A imagem gerada aparecerá aqui</div>
+                </div>
+                <v-progress-circular v-else-if="gerandoIA" indeterminate color="deep-purple" size="64" />
+                <img v-else :src="imagemGeradaUrl" class="ia-img" />
+              </div>
+              <div v-if="imagemGeradaUrl" class="d-flex gap-2 mt-3 justify-center">
+                <v-btn color="deep-purple" variant="tonal" prepend-icon="mdi-download" @click="baixarGerada">
+                  Baixar PNG
+                </v-btn>
+                <v-btn variant="text" prepend-icon="mdi-check" @click="dialogIA = false">
+                  Concluir (salvo na galeria)
+                </v-btn>
+              </div>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog Agendamento -->
     <v-dialog v-model="dialogAgendamento" max-width="480">
       <v-card>
@@ -192,6 +259,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
@@ -199,6 +267,53 @@ import { useAuthStore } from '@/stores/auth'
 
 const notif = useNotifStore()
 const auth = useAuthStore()
+
+// ── Geração com IA (Nano Banana 2 / Gemini) ──
+const dialogIA = ref(false)
+const gerandoIA = ref(false)
+const imagemGeradaUrl = ref('')
+const arteGeradaId = ref<string | null>(null)
+const iaForm = ref({ titulo: '', formato: 'FeedQuadrado', tipo: 'Promocao', prompt: '' })
+const formatosIA = [
+  { label: 'Feed (1:1 — 1080x1080)', value: 'FeedQuadrado' },
+  { label: 'Story (9:16 — 1080x1920)', value: 'StoryVertical' },
+  { label: 'Banner (1200x628)', value: 'BannerHorizontal' },
+]
+
+function abrirIA() {
+  iaForm.value = { titulo: '', formato: 'FeedQuadrado', tipo: 'Promocao', prompt: '' }
+  imagemGeradaUrl.value = ''
+  arteGeradaId.value = null
+  dialogIA.value = true
+}
+
+async function gerarComIA() {
+  if (!iaForm.value.prompt) { notif.erro('Descreva a arte no prompt.'); return }
+  gerandoIA.value = true
+  imagemGeradaUrl.value = ''
+  try {
+    const { data } = await api.post('/marketing/artes/gerar-ia', {
+      empresaId: auth.empresaId,
+      prompt: iaForm.value.prompt,
+      titulo: iaForm.value.titulo || 'Arte IA',
+      formato: iaForm.value.formato,
+      tipo: iaForm.value.tipo,
+    })
+    arteGeradaId.value = data.id
+    // Exibe via endpoint /exportar (passa pelo proxy /api e é anônimo); cache-bust
+    imagemGeradaUrl.value = `/api/marketing/artes/${data.id}/exportar?t=${Date.now()}`
+    notif.ok(`Arte gerada com ${data.modelo}!`)
+    await listarArtes()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao gerar arte com IA.')
+  } finally {
+    gerandoIA.value = false
+  }
+}
+
+function baixarGerada() {
+  if (arteGeradaId.value) window.open(`/api/marketing/artes/${arteGeradaId.value}/exportar`, '_blank')
+}
 
 const tab = ref('galeria')
 const artes = ref<any[]>([])
@@ -326,9 +441,22 @@ function usarTemplate(tpl: any) {
   tab.value = 'galeria'
 }
 
+function formatoEnum(f: string) {
+  if (!f) return 'FeedQuadrado'
+  if (f.includes('Story') || f.includes('1920')) return 'StoryVertical'
+  if (f.includes('Banner') || f.includes('628')) return 'BannerHorizontal'
+  return 'FeedQuadrado'
+}
+
 async function salvarArte() {
   try {
-    const payload = { ...arteForm.value, empresaId: auth.empresaId }
+    const payload = {
+      empresaId: auth.empresaId,
+      nome: arteForm.value.titulo || 'Arte sem título',
+      tipo: arteForm.value.tipo,
+      formato: formatoEnum(arteForm.value.formato),
+      layoutJson: JSON.stringify(arteForm.value),
+    }
     if (arteEditando.value) {
       await api.put(`/marketing/artes/${arteEditando.value.id}`, payload)
     } else {
@@ -413,8 +541,16 @@ function formatarData(dt: string) {
   return dt ? new Date(dt).toLocaleDateString('pt-BR') : '-'
 }
 
+function arteThumb(arte: any) {
+  return arte.urlExportada ? `/api/marketing/artes/${arte.id}/exportar` : '/placeholder.png'
+}
+
+function labelFormato(formato: string) {
+  return ({ FeedQuadrado: 'Feed', StoryVertical: 'Story', BannerHorizontal: 'Banner' } as any)[formato] ?? formato
+}
+
 function corFormato(formato: string) {
-  return formato === 'Story' ? 'purple' : formato === 'Banner' ? 'blue' : 'green'
+  return formato === 'StoryVertical' ? 'purple' : formato === 'BannerHorizontal' ? 'blue' : 'green'
 }
 
 function corStatusAgendamento(status: string) {
@@ -430,6 +566,8 @@ onMounted(() => { listarArtes(); listarAgendamentos() })
 .arte-preco-de { color: rgba(255,255,255,0.6); text-decoration: line-through; margin-right: 8px; font-size: 18px; }
 .arte-preco-por { color: #FFD600; font-size: 36px; font-weight: bold; }
 .arte-logo { position: absolute; bottom: 12px; display: flex; align-items: center; opacity: 0.8; }
+.ia-preview { min-height: 340px; background: #f3f0fa; border: 1px dashed #b39ddb; border-radius: 12px; overflow: hidden; }
+.ia-img { max-width: 100%; max-height: 460px; border-radius: 8px; display: block; }
 </style>
 
 

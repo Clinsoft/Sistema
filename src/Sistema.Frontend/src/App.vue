@@ -128,6 +128,8 @@
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-currency-usd" title="Alterar Preços"
+              to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
           <v-list-item prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
@@ -235,9 +237,10 @@
     <router-view v-else />
 
     <!-- Snackbar global -->
-    <v-snackbar v-model="notif.visivel" :color="notif.cor" :timeout="3500"
-      location="bottom right">
-      {{ notif.mensagem }}
+    <v-snackbar v-model="notif.visivel" :color="notif.cor"
+      :timeout="notif.cor === 'error' ? -1 : 3500"
+      location="bottom right" multi-line>
+      <span style="white-space:pre-wrap">{{ notif.mensagem }}</span>
       <template #actions>
         <v-btn variant="text" @click="notif.fechar()">Fechar</v-btn>
       </template>

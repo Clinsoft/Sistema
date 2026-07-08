@@ -34,6 +34,9 @@ public class EntradaNFe : Entity
     // Local de estoque padrão para esta entrada
     public Guid LocalEstoqueId { get; private set; }
 
+    // Duplicatas do XML (JSON) — mantido para recarregar faturas antes de processar
+    public string? DuplicatasJson { get; private set; }
+
     // Estado
     public StatusEntradaNFe Status { get; private set; }
     public string? Observacao { get; private set; }
@@ -78,6 +81,10 @@ public class EntradaNFe : Entity
     public void AdicionarItem(ItemEntradaNFe item) => _itens.Add(item);
 
     public void DefinirFreteManual(decimal valor) => ValorFreteManual = valor;
+
+    public void DefinirLocalEstoque(Guid localId) => LocalEstoqueId = localId;
+
+    public void DefinirDuplicatas(string json) => DuplicatasJson = json;
 
     public void VincularFornecedor(Guid fornecedorId) => FornecedorId = fornecedorId;
 

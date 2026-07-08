@@ -442,9 +442,22 @@
       <v-card rounded="xl">
         <v-card-title class="pa-4 pb-2 d-flex align-center">
           <v-icon icon="mdi-keyboard-outline" class="mr-2" />
-          Atalhos de Teclado — PDV
+          Ajuda do PDV
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
+          <div class="text-subtitle-2 font-weight-bold mb-2">
+            <v-icon size="16" color="primary" class="mr-1">mdi-map-marker-path</v-icon>
+            Como operar uma venda
+          </div>
+          <ol class="pdv-passos mb-4">
+            <li>Abra o caixa informando o <b>local de estoque</b> e o fundo de troco.</li>
+            <li>Escaneie ou digite o <b>código/nome</b> do produto e tecle <kbd>Enter</kbd> para adicionar.</li>
+            <li>Ajuste as <b>quantidades</b> pelos botões +/− ou digitando; aplique <b>desconto</b> (<kbd>F2</kbd>) se necessário.</li>
+            <li>Opcional: informe o <b>cliente</b> (<kbd>F3</kbd>) e o <b>CPF/CNPJ</b> na nota (<kbd>F9</kbd>).</li>
+            <li>Escolha a <b>forma de pagamento</b> e confira o troco; use <kbd>F5</kbd> para dinheiro exato.</li>
+            <li>Clique em <b>Finalizar Venda</b> (<kbd>F10</kbd>). O comprovante e o QR Code da NFC-e aparecem ao final.</li>
+          </ol>
+          <div class="text-subtitle-2 font-weight-bold mb-2">Atalhos de teclado</div>
           <div class="atalhos-grid">
             <div v-for="a in atalhos" :key="a.key" class="atalho-linha">
               <kbd class="atalho-key">{{ a.key }}</kbd>
@@ -484,7 +497,7 @@
               <template #subtitle>
                 <span>{{ p.codigo }}</span>
                 <span class="mx-1 opacity-40">·</span>
-                <span>{{ p.unidade }}</span>
+                <span>{{ p.unidadeSigla }}</span>
               </template>
               <template #append>
                 <span class="text-body-2 font-weight-bold text-success">
@@ -645,7 +658,7 @@ interface ItemVenda {
   unidade: string; desconto: number
 }
 interface Pagamento { tipo: string; valor: number }
-interface Produto { id: string; descricao: string; codigo: string; precoVenda: number; unidade: string }
+interface Produto { id: string; descricao: string; codigo: string; precoVenda: number; unidadeSigla: string }
 interface Cliente { id: string; nome: string }
 interface Colaborador { id: string; nome: string; perfil: string }
 
@@ -688,7 +701,7 @@ const ultimaVendaQrCode = ref<string | null>(null)
 const ultimaVendaChave = ref<string | null>(null)
 
 // ── Sessão de caixa ──────────────────────────────────────────────
-const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string } | null>(null)
+const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string; localEstoqueId?: string | null } | null>(null)
 const dialogAbrirCaixa = ref(false)
 const abrindoCaixa = ref(false)
 const saldoInicial = ref<number>(0)
@@ -729,9 +742,15 @@ async function abrirCaixa() {
       localEstoqueId: localEstoqueIdCaixa.value,
       saldoAbertura: saldoInicial.value,
     })
-    sessaoAtual.value = r.data
+    // O endpoint 'abrir' retorna apenas { id }; completa os dados da sessão localmente.
+    sessaoAtual.value = {
+      id: r.data.id,
+      numero: r.data.numero ?? 1,
+      abertoEm: new Date().toISOString(),
+      localEstoqueId: localEstoqueIdCaixa.value,
+    }
     dialogAbrirCaixa.value = false
-    notif.ok(`Caixa #${r.data.numero} aberto!`)
+    notif.ok('Caixa aberto!')
   } catch {
     sessaoAtual.value = { id: 'dev', numero: 1, abertoEm: new Date().toISOString() }
     dialogAbrirCaixa.value = false
@@ -774,6 +793,15 @@ const formasPagamento = [
   { tipo: 'Débito',    label: 'Débito',     icon: 'mdi-credit-card-chip-outline', key: 'F8' },
   { tipo: 'Crediário', label: 'Crediário',  icon: 'mdi-account-credit-card-outline', key: '' },
 ]
+
+// De-para: rótulo exibido no PDV → valor do enum FormaPagamento no backend
+const mapaFormaPagamento: Record<string, string> = {
+  'Dinheiro': 'Dinheiro',
+  'Pix': 'Pix',
+  'Crédito': 'CartaoCredito',
+  'Débito': 'CartaoDebito',
+  'Crediário': 'Crediario',
+}
 
 // ── Atalhos ───────────────────────────────────────────────────────
 const atalhos = [
@@ -888,7 +916,7 @@ function adicionarProduto(p: Produto) {
     itens.value.push({
       produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
       precoUnitario: p.precoVenda, quantidade: 1,
-      total: p.precoVenda, unidade: p.unidade, desconto: 0
+      total: p.precoVenda, unidade: p.unidadeSigla, desconto: 0
     })
     itemSelecionado.value = itens.value.length - 1
   }
@@ -912,10 +940,16 @@ async function finalizar() {
   if (finalizando.value || !podeFinalizarVenda.value) return
   finalizando.value = true
   try {
+    const localEstoqueId = sessaoAtual.value?.localEstoqueId || localEstoqueIdCaixa.value
+    if (!localEstoqueId) {
+      notif.erro('Nenhum local de estoque vinculado ao caixa. Reabra o caixa selecionando o local.')
+      finalizando.value = false
+      return
+    }
     const inicioRes = await api.post<{ id: string }>('/vendas/iniciar', {
       empresaId: auth.empresaId,
       usuarioId: colaboradorId.value || auth.usuario?.id,
-      localEstoqueId: auth.localEstoqueId,
+      localEstoqueId,
       clienteId: clienteId.value ?? null,
     })
     const vendaId = inicioRes.data.id
@@ -938,7 +972,7 @@ async function finalizar() {
       numero: string; total: number; troco: number
       notaFiscalId?: string; qrCode?: string; chaveAcesso?: string
     }>(`/vendas/${vendaId}/finalizar`, {
-      pagamentos: pagamentos.value.map(p => ({ forma: p.tipo, valor: p.valor })),
+      pagamentos: pagamentos.value.map(p => ({ forma: mapaFormaPagamento[p.tipo] ?? p.tipo, valor: p.valor })),
       cpfCnpjConsumidor: docValido ? docRaw : null,
     })
 
@@ -1733,6 +1767,13 @@ onUnmounted(() => {
 /* Atalhos modal */
 .atalhos-grid { display: flex; flex-direction: column; gap: 6px; }
 .atalho-linha { display: flex; align-items: center; gap: 12px; }
+.pdv-passos { padding-left: 1.3rem; margin: 0; font-size: 13px; line-height: 1.5; color: #334155; }
+.pdv-passos li { margin-bottom: 4px; }
+.pdv-passos li::marker { font-weight: 700; color: rgb(var(--v-theme-primary)); }
+.pdv-passos kbd {
+  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px;
+  padding: 0 5px; font-family: monospace; font-size: 11px; font-weight: 700;
+}
 .atalho-key {
   min-width: 60px; text-align: center;
   background: #f8fafc; border: 1px solid #e2e8f0;

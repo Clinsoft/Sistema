@@ -245,6 +245,10 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("nvarchar(60)");
 
+                    b.Property<string>("Celular")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Cep")
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
@@ -254,7 +258,6 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(60)");
 
                     b.Property<string>("Cnpj")
-                        .IsRequired()
                         .HasMaxLength(14)
                         .HasColumnType("nvarchar(14)");
 
@@ -308,6 +311,10 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("Tipos")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Uf")
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
@@ -315,7 +322,8 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EmpresaId", "Cnpj")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[Cnpj] IS NOT NULL");
 
                     b.ToTable("Fornecedores", (string)null);
                 });
@@ -674,6 +682,9 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<int>("NumeroParcelas")
                         .HasColumnType("int");
+
+                    b.Property<string>("Observacao")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1264,6 +1275,10 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<string>("CodigoFci")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("CodigoFornecedorPrincipal")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
                     b.Property<int?>("CodigoPlu")
                         .HasColumnType("int");
 
@@ -1398,6 +1413,9 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.HasIndex("EmpresaId", "CodigoBarras")
                         .HasFilter("[CodigoBarras] IS NOT NULL");
+
+                    b.HasIndex("EmpresaId", "FornecedorPrincipalId", "CodigoFornecedorPrincipal")
+                        .HasFilter("[CodigoFornecedorPrincipal] IS NOT NULL");
 
                     b.ToTable("Produtos", (string)null);
                 });
@@ -1895,11 +1913,17 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("AtualizadoEm")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Categoria")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid?>("CategoriaId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("ClienteId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClienteNome")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("ContaBancariaId")
                         .HasColumnType("uniqueidentifier");
@@ -2054,6 +2078,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("Observacao")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("PrazoDiasCreditoParcelado")
                         .HasColumnType("int");
 
@@ -2165,6 +2192,21 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("AliquotaCofinsPadrao")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AliquotaIcmsInterestadual")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AliquotaIcmsPadrao")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AliquotaIssPadrao")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AliquotaPisPadrao")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int>("Ambiente")
                         .HasColumnType("int");
 
@@ -2181,6 +2223,24 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<string>("CertificadoSenha")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("CfopVendaConsumidor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CfopVendaEstadual")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CfopVendaInterestadual")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CodigoMunicipioIbge")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CodigoServicoMunicipalPadrao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContingenciaPadrao")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CriadoEm")
                         .HasColumnType("datetime2");
 
@@ -2192,6 +2252,18 @@ namespace Sistema.Infrastructure.Data.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("nvarchar(36)");
 
+                    b.Property<string>("CsosnPadrao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CstCofinsPadrao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CstIcmsPadrao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CstPisPadrao")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("EmailContador")
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
@@ -2202,20 +2274,75 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<bool>("EnviarEmailAposEmissao")
                         .HasColumnType("bit");
 
+                    b.Property<string>("FormatoDanfe")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("HabilitarMDFe")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("HabilitarNFSe")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ImprimirAutomaticamenteNFCe")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncentivadorCultural")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("InscricaoMunicipal")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IssRetidoFonte")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModalTransporteMDFe")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NaturezaOperacaoPadrao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OrigemPadrao")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<long>("ProximoNumerNFCe")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProximoNumerNFe")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("ProximoNumeroMDFe")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("Regime")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RegimeEspecialTributacao")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Rntrc")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SerieMDFe")
                         .HasColumnType("int");
 
                     b.Property<int>("SerieNFCe")
                         .HasColumnType("int");
 
+                    b.Property<int>("SerieNFSe")
+                        .HasColumnType("int");
+
                     b.Property<int>("SerieNFe")
                         .HasColumnType("int");
+
+                    b.Property<string>("TipoEmitenteMDFe")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TipoImpressaoNFCe")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UltimoNsuDFe")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -2252,6 +2379,9 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<DateTime?>("DataProcessamento")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("DuplicatasJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("EmitenteCnpj")
                         .IsRequired()
@@ -2856,6 +2986,240 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.ToTable("ArtesMarketing", (string)null);
                 });
 
+            modelBuilder.Entity("Sistema.Domain.Marketing.Entities.ConfiguracaoClube", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AniversarianteDuplo")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("DescontoMembro")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("LimiteUsoPercent")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<decimal>("MinimoResgate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("NomeClubeExibicao")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<decimal>("PercentualCashback")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<int>("Validade")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId")
+                        .IsUnique();
+
+                    b.ToTable("ConfiguracoesClube", (string)null);
+                });
+
+            modelBuilder.Entity("Sistema.Domain.Marketing.Entities.MembroClube", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DataAdesao")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("SaldoCashback")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.Property<decimal>("TotalCashback")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalCompras")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "ClienteId");
+
+                    b.ToTable("MembrosClube", (string)null);
+                });
+
+            modelBuilder.Entity("Sistema.Domain.Marketing.Entities.MovimentoCashback", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("Data")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("DescontoUsado")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MembroClubeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Motivo")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<decimal>("Valor")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("VendaNumero")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Data");
+
+                    b.ToTable("MovimentosCashback", (string)null);
+                });
+
+            modelBuilder.Entity("Sistema.Domain.Marketing.Entities.Promocao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("ApenasClube")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("AplicaEm")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("Ativa")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("Cumulativo")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("DataFim")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DataInicio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Desconto")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LimiteUso")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("QtdeLeve")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QtdePague")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QtdeUsada")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ReferenciaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TipoDesconto")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("ValorMinimoPedido")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Ativa");
+
+                    b.ToTable("Promocoes", (string)null);
+                });
+
             modelBuilder.Entity("Sistema.Domain.Marketing.Entities.TemplateMarketing", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2932,6 +3296,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<string>("NumeroVenda")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("ReporEstoque")
+                        .HasColumnType("bit");
 
                     b.Property<decimal>("TotalDevolvido")
                         .HasColumnType("decimal(18,2)");
@@ -3025,6 +3392,78 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.HasIndex("VendaId");
 
                     b.ToTable("ItensVenda", (string)null);
+                });
+
+            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.MetaVendaMensal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Ano")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Mes")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "Ano", "Mes")
+                        .IsUnique();
+
+                    b.ToTable("MetasVendaMensal", (string)null);
+                });
+
+            modelBuilder.Entity("Sistema.Domain.Vendas.Entities.OperacaoCaixa", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Descricao")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SessaoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
+                    b.Property<Guid?>("UsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmpresaId", "SessaoId");
+
+                    b.ToTable("OperacoesCaixa", (string)null);
                 });
 
             modelBuilder.Entity("Sistema.Domain.Vendas.Entities.PDVSessao", b =>

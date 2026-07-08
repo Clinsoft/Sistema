@@ -1,16 +1,19 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Compras.Commands;
+using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Compras.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
+using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers.Compras;
 
 [ApiController]
 [Route("api/pedidos-compra")]
 [Authorize]
-public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository repo, IUnitOfWork uow) : ControllerBase
+public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository repo, SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] CriarPedidoCompraCommand cmd, CancellationToken ct)
@@ -53,14 +56,29 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         [FromQuery] Guid empresaId,
         [FromQuery] DateTime inicio,
         [FromQuery] DateTime fim,
+        [FromQuery] string? status,
         CancellationToken ct)
     {
-        var pedidos = await repo.ListarPorPeriodoAsync(empresaId, inicio, fim, ct);
+        var pedidos = (await repo.ListarPorPeriodoAsync(empresaId, inicio, fim, ct)).ToList();
+
+        if (!string.IsNullOrEmpty(status) && status != "Todos"
+            && Enum.TryParse<StatusPedidoCompra>(status, out var st))
+            pedidos = pedidos.Where(p => p.Status == st).ToList();
+
+        var fornecedorIds = pedidos.Select(p => p.FornecedorId).Distinct().ToList();
+        var nomes = fornecedorIds.Count > 0
+            ? await db.Fornecedores.AsNoTracking()
+                .Where(f => fornecedorIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct)
+            : new Dictionary<Guid, string>();
+
         return Ok(pedidos.Select(p => new
         {
-            p.Id, p.Numero, p.FornecedorId, p.Status,
-            p.DataPedido, p.DataPrevisaoEntrega, p.DataRecebimento,
-            p.Total, QtdItens = p.Itens.Count
+            p.Id, p.Numero, p.FornecedorId,
+            fornecedorNome = nomes.GetValueOrDefault(p.FornecedorId, "—"),
+            status = p.Status.ToString(),
+            criadoEm = p.DataPedido, p.DataPedido, p.DataPrevisaoEntrega, p.DataRecebimento,
+            totalPedido = p.Total, QtdItens = p.Itens.Count
         }));
     }
 

@@ -12,6 +12,17 @@
         to="/estoque/validade/config">Configurações</v-btn>
     </div>
 
+    <GuiaPassos
+      id="controle-validade"
+      titulo="Como usar o Controle de Validade"
+      :passos="[
+        '<b>Monitoramento</b>: veja os lotes que estão vencidos ou próximos do vencimento, agrupados por status (Vencido, Urgente, Vermelho, Amarelo). Clique nos cards/chips para filtrar e acompanhe o <b>valor em risco</b>.',
+        '<b>Registrar Validade</b>: escaneie (ou digite) o <b>código de barras</b> do produto, informe a <b>data de validade</b>, o número do lote e a quantidade, e clique em <b>Registrar</b>. O sistema calcula os dias restantes e o desconto automático.',
+        '<b>Lotes</b>: cadastre um <b>Novo Lote</b> (produto, local, número, quantidade, custo, validade e fabricação). Na tabela você pode <b>editar</b> (✏️), <b>excluir</b> (🗑️) ou <b>transferir</b> (⇄) o lote para outra filial.',
+        'Em <b>Configurações</b> defina os prazos de alerta (amarelo/vermelho/urgente) e o desconto automático. Os prazos alimentam os status do painel de monitoramento.',
+      ]"
+    />
+
     <v-tabs v-model="aba" class="mb-4" bg-color="transparent">
       <v-tab value="painel">
         <v-icon start>mdi-view-dashboard-outline</v-icon>Monitoramento
@@ -315,8 +326,16 @@
           <template #item.custoUnitario="{ item }">R$ {{ fmt(item.custoUnitario) }}</template>
           <template #item.acoes="{ item }">
             <v-btn icon size="small" variant="text" color="primary"
+              title="Editar lote" @click="editarLote(item)">
+              <v-icon>mdi-pencil</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" color="primary"
               title="Transferir para filial" @click="abrirTransferencia(item)">
               <v-icon>mdi-transfer</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" color="error"
+              title="Excluir lote" @click="excluirLote(item)">
+              <v-icon>mdi-delete-outline</v-icon>
             </v-btn>
           </template>
         </v-data-table>
@@ -348,7 +367,7 @@
     <!-- Dialog novo lote -->
     <v-dialog v-model="dialogLote" max-width="600" persistent>
       <v-card rounded="xl">
-        <v-card-title class="pa-4 pb-2">Novo Lote</v-card-title>
+        <v-card-title class="pa-4 pb-2">{{ formLote.id ? 'Editar Lote' : 'Novo Lote' }}</v-card-title>
         <v-card-text>
           <v-form ref="formularioLote">
             <v-row dense>
@@ -471,6 +490,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -519,9 +539,7 @@ async function carregarPainel() {
     painel.value = r.data.itens
     resumo.value = r.data.resumo
     if (r.data.resumo.configuracao) Object.assign(cfg.value, r.data.resumo.configuracao)
-  } catch {
-    notif.erro('Erro ao carregar painel de validade.')
-  } finally { carregando.value = false }
+  } catch { /* silencioso */ } finally { carregando.value = false }
 }
 
 // ─── Scanner / registrar ─────────────────────────────────────────────────────
@@ -660,6 +678,7 @@ const produtosSugeridos = ref<any[]>([])
 const formularioLote = ref<any>(null)
 
 const formLotePadrao = () => ({
+  id: null as string | null,
   produtoId: null as string | null, produtoNome: '', buscaProduto: '',
   localEstoqueId: null as string | null,
   numeroLote: '', quantidade: 1, custoUnitario: 0,
@@ -697,6 +716,34 @@ function abrirNovoLote() {
   dialogLote.value = true
 }
 
+function editarLote(lote: any) {
+  formLote.value = {
+    id: lote.id,
+    produtoId: lote.produtoId,
+    produtoNome: lote.descricao,
+    buscaProduto: lote.descricao,
+    localEstoqueId: lote.localEstoqueId ?? null,
+    numeroLote: lote.numeroLote ?? '',
+    quantidade: lote.quantidade ?? 1,
+    custoUnitario: lote.custoUnitario ?? 0,
+    dataValidade: lote.dataValidade?.slice(0, 10) ?? '',
+    dataFabricacao: lote.dataFabricacao?.slice(0, 10) ?? '',
+  }
+  produtosSugeridos.value = []
+  dialogLote.value = true
+}
+
+async function excluirLote(lote: any) {
+  if (!confirm(`Excluir o lote "${lote.numeroLote}" de ${lote.descricao}?`)) return
+  try {
+    await api.delete(`/lotes/${lote.id}`)
+    notif.ok('Lote excluído!')
+    await Promise.all([listarLotes(), listarVencimentos()])
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? 'Erro ao excluir lote.')
+  }
+}
+
 async function salvarLote() {
   const ok = await formularioLote.value?.validate()
   if (!ok?.valid || !formLote.value.produtoId) {
@@ -705,21 +752,33 @@ async function salvarLote() {
   }
   salvandoLote.value = true
   try {
-    await api.post('/lotes', {
-      empresaId: auth.empresaId,
-      produtoId: formLote.value.produtoId,
-      localEstoqueId: formLote.value.localEstoqueId,
-      numeroLote: formLote.value.numeroLote,
-      quantidade: formLote.value.quantidade,
-      custoUnitario: formLote.value.custoUnitario,
-      dataValidade: formLote.value.dataValidade || null,
-      dataFabricacao: formLote.value.dataFabricacao || null,
-    })
-    notif.ok('Lote registrado!')
+    if (formLote.value.id) {
+      // Edição — PUT /lotes/{id}
+      await api.put(`/lotes/${formLote.value.id}`, {
+        numeroLote: formLote.value.numeroLote,
+        quantidade: formLote.value.quantidade,
+        custoUnitario: formLote.value.custoUnitario,
+        dataValidade: formLote.value.dataValidade || null,
+        dataFabricacao: formLote.value.dataFabricacao || null,
+      })
+      notif.ok('Lote atualizado!')
+    } else {
+      await api.post('/lotes', {
+        empresaId: auth.empresaId,
+        produtoId: formLote.value.produtoId,
+        localEstoqueId: formLote.value.localEstoqueId,
+        numeroLote: formLote.value.numeroLote,
+        quantidade: formLote.value.quantidade,
+        custoUnitario: formLote.value.custoUnitario,
+        dataValidade: formLote.value.dataValidade || null,
+        dataFabricacao: formLote.value.dataFabricacao || null,
+      })
+      notif.ok('Lote registrado!')
+    }
     dialogLote.value = false
     await Promise.all([listarLotes(), listarVencimentos()])
   } catch (e: any) {
-    notif.erro(e?.response?.data?.title ?? 'Erro ao salvar.')
+    notif.erro(e?.response?.data?.title ?? e?.response?.data?.mensagem ?? 'Erro ao salvar.')
   } finally { salvandoLote.value = false }
 }
 
@@ -750,8 +809,7 @@ async function abrirTransferencia(lote: any) {
       params: { empresaOrigemId: auth.empresaId }
     })
     filiaisDestino.value = r.data
-  } catch { notif.erro('Erro ao carregar filiais.') }
-  finally { carregandoFiliais.value = false }
+  } catch { /* silencioso */ } finally { carregandoFiliais.value = false }
 }
 
 async function carregarLocaisDestino(empresaId: string) {

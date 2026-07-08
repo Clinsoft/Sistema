@@ -54,17 +54,79 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
         return Ok(resultado with { QrCode = qrCode, ChaveAcesso = chaveAcesso });
     }
 
-    /// <summary>Lista vendas por período.</summary>
+    /// <summary>Lista vendas por período, com nome do cliente e filtro opcional por status.</summary>
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId,
         [FromQuery] DateTime inicio,
         [FromQuery] DateTime fim,
+        [FromQuery] string? status,
         CancellationToken ct = default)
     {
-        var resultado = await mediator.Send(new ListarVendasQuery(empresaId, inicio, fim), ct);
-        return Ok(resultado);
+        IEnumerable<VendaResumoDto> resultado =
+            await mediator.Send(new ListarVendasQuery(empresaId, inicio, fim), ct);
+
+        if (!string.IsNullOrEmpty(status))
+            resultado = resultado.Where(v => v.Status == status);
+
+        var lista = resultado.ToList();
+        var clienteIds = lista.Where(v => v.ClienteId.HasValue)
+            .Select(v => v.ClienteId!.Value).Distinct().ToList();
+        var nomes = clienteIds.Count > 0
+            ? await db.Clientes.AsNoTracking()
+                .Where(c => clienteIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Nome, ct)
+            : new Dictionary<Guid, string>();
+
+        return Ok(lista.Select(v => new
+        {
+            v.Id, v.Numero, v.DataHora, v.Status, v.ClienteId,
+            clienteNome = v.ClienteId.HasValue && nomes.TryGetValue(v.ClienteId.Value, out var n) ? n : null,
+            v.Total, v.TotalPago, v.Troco, v.QtdItens
+        }));
     }
+
+    /// <summary>Detalhe completo de uma venda: itens, pagamentos e totais.</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> Detalhe(Guid id, CancellationToken ct)
+    {
+        var venda = await db.Vendas.AsNoTracking()
+            .Include(v => v.Itens)
+            .Include(v => v.Pagamentos)
+            .FirstOrDefaultAsync(v => v.Id == id, ct);
+        if (venda is null) return NotFound(new { mensagem = "Venda não encontrada." });
+
+        string? clienteNome = null;
+        if (venda.ClienteId.HasValue)
+            clienteNome = await db.Clientes.AsNoTracking()
+                .Where(c => c.Id == venda.ClienteId.Value)
+                .Select(c => c.Nome).FirstOrDefaultAsync(ct);
+
+        return Ok(new
+        {
+            venda.Id, venda.Numero, status = venda.Status.ToString(),
+            venda.DataHora, venda.SubTotal, venda.TotalDesconto, venda.TotalAcrescimo,
+            venda.Total, venda.TotalPago, venda.Troco, venda.Observacao,
+            venda.CpfCnpjConsumidor, venda.ClienteId, clienteNome,
+            itens = venda.Itens.Select(i => new
+            {
+                i.Id, i.ProdutoId, i.Descricao, i.Quantidade,
+                i.PrecoUnitario, i.PercentualDesconto, i.TotalDesconto, i.Total
+            }),
+            pagamentos = venda.Pagamentos.Select(p => new
+            {
+                p.Id, forma = FormaLabel(p.Forma), p.Valor, p.Parcelas
+            })
+        });
+    }
+
+    private static string FormaLabel(Domain.Vendas.Entities.FormaPagamento f) => f switch
+    {
+        Domain.Vendas.Entities.FormaPagamento.CartaoCredito => "Crédito",
+        Domain.Vendas.Entities.FormaPagamento.CartaoDebito => "Débito",
+        Domain.Vendas.Entities.FormaPagamento.Crediario => "Crediário",
+        _ => f.ToString()
+    };
 }
 
 public record AdicionarItemRequest(Guid ProdutoId, decimal Quantidade, decimal? PrecoUnitario = null, decimal PercentualDesconto = 0);

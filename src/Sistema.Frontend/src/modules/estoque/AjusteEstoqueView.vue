@@ -4,6 +4,17 @@
       <v-col><h2 class="text-h5 font-weight-bold">Ajuste de Estoque</h2></v-col>
     </v-row>
 
+    <GuiaPassos
+      id="ajuste-estoque"
+      titulo="Como usar o Ajuste de Estoque"
+      :passos="[
+        '<b>Ajuste Unitário</b>: use para corrigir <b>um</b> produto. Busque o produto, selecione o <b>local de estoque</b> e informe a <b>quantidade física real</b> contada.',
+        'O sistema calcula a <b>diferença</b> sozinho e mostra se é ENTRADA (+) ou SAÍDA (−). Clique em <b>Aplicar Ajuste</b> para gravar — o estoque é atualizado na hora.',
+        '<b>Inventário (Lote)</b>: escolha o <b>local</b>, clique em <b>Carregar Produtos</b>, digite as quantidades contadas de cada item e clique em <b>Aplicar Inventário</b>. Só os itens com diferença são ajustados.',
+        'Cada ajuste gera uma <b>movimentação</b> registrada (com seu usuário) que aparece em <b>Estoque → Movimentações</b>. Ajustes não podem ser editados nem excluídos — para corrigir, faça um novo ajuste.',
+      ]"
+    />
+
     <v-tabs v-model="aba" class="mb-4" bg-color="transparent">
       <v-tab value="unitario">Ajuste Unitário</v-tab>
       <v-tab value="lote">Inventário (Lote)</v-tab>
@@ -129,6 +140,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -202,9 +214,12 @@ async function ajustarUnitario() {
       produtoId: unit.value.produtoId,
       localEstoqueId: unit.value.localEstoqueId,
       quantidadeContada: unit.value.quantidadeContada,
+      usuarioId: auth.usuario?.id,
       observacao: unit.value.observacao || null,
     })
     const d = r.data
+    // 204 NoContent quando não há diferença
+    if (!d) { notif.aviso('Sem diferença — nada a ajustar.'); return }
     notif.ok(`Ajuste aplicado! Diferença: ${d.diferenca > 0 ? '+' : ''}${d.diferenca}`)
     unit.value = {
       produtoId: null, produtoNome: '', buscaProduto: '',
@@ -212,7 +227,7 @@ async function ajustarUnitario() {
       quantidadeContada: 0, observacao: '',
     }
   } catch (e: any) {
-    notif.erro(e?.response?.data?.title ?? 'Erro ao ajustar.')
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? e?.response?.data?.title ?? 'Erro ao ajustar.')
   } finally { salvandoUnit.value = false }
 }
 
@@ -241,12 +256,13 @@ async function aplicarInventario() {
     const r = await api.post('/ajuste-estoque/lote', {
       empresaId: auth.empresaId,
       localEstoqueId: lote.value.localEstoqueId,
+      usuarioId: auth.usuario?.id,
       itens: alterados.map(i => ({ produtoId: i.id, quantidadeContada: i.quantidadeContada })),
     })
     notif.ok(`Inventário aplicado! ${r.data.processados} produto(s) ajustados.`)
     await carregarProdutos()
   } catch (e: any) {
-    notif.erro(e?.response?.data?.title ?? 'Erro ao aplicar inventário.')
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? e?.response?.data?.title ?? 'Erro ao aplicar inventário.')
   } finally { salvandoLote.value = false }
 }
 

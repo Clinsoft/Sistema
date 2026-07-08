@@ -415,12 +415,48 @@ const iniciais = (nome: string) => nome.split(' ').slice(0, 2).map(p => p[0]).jo
 
 const coresColab = ['teal', 'indigo', 'deep-purple', 'blue', 'cyan', 'green', 'orange']
 
-const cards = ref([
-  { titulo: 'Vendas hoje', valor: 'R$ --', icon: 'mdi-cash-multiple', cor: 'success', to: '/pdv/vendas' },
-  { titulo: 'Pedidos abertos', valor: '--', icon: 'mdi-truck-delivery-outline', cor: 'info', to: '/compras' },
-  { titulo: 'A receber (venc.)', valor: 'R$ --', icon: 'mdi-calendar-clock', cor: 'warning', to: '/financeiro/contas-receber' },
-  { titulo: 'Produtos s/ estoque', valor: '--', icon: 'mdi-package-variant-remove', cor: 'error', to: '/estoque' },
+interface ResumoData {
+  vendasHoje: number
+  pedidosAbertos: number
+  aReceberVencido: number
+  produtosSemEstoque: number
+}
+const resumo = ref<ResumoData | null>(null)
+
+const cards = computed(() => [
+  { titulo: 'Vendas hoje', valor: resumo.value ? fmt(resumo.value.vendasHoje) : 'R$ --', icon: 'mdi-cash-multiple', cor: 'success', to: '/pdv/vendas' },
+  { titulo: 'Pedidos abertos', valor: resumo.value ? String(resumo.value.pedidosAbertos) : '--', icon: 'mdi-truck-delivery-outline', cor: 'info', to: '/compras' },
+  { titulo: 'A receber (venc.)', valor: resumo.value ? fmt(resumo.value.aReceberVencido) : 'R$ --', icon: 'mdi-calendar-clock', cor: 'warning', to: '/financeiro/contas-receber' },
+  { titulo: 'Produtos s/ estoque', valor: resumo.value ? String(resumo.value.produtosSemEstoque) : '--', icon: 'mdi-package-variant-remove', cor: 'error', to: '/estoque' },
 ])
+
+async function carregarResumo() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId } })
+    resumo.value = res.data
+    montarAlertas()
+  } catch { resumo.value = null }
+}
+
+function montarAlertas() {
+  const r = resumo.value
+  if (!r) { alertas.value = []; return }
+  const lista: { icon: string; texto: string; detalhe: string; cor: string }[] = []
+  if (r.produtosSemEstoque > 0)
+    lista.push({ icon: 'mdi-package-variant-remove', cor: 'error',
+      texto: `${r.produtosSemEstoque} produto(s) sem estoque`,
+      detalhe: 'Verifique reposição em Estoque → Produtos.' })
+  if (r.aReceberVencido > 0)
+    lista.push({ icon: 'mdi-calendar-alert', cor: 'warning',
+      texto: `${fmt(r.aReceberVencido)} a receber vencido`,
+      detalhe: 'Cobre os títulos em atraso em Financeiro → Contas a Receber.' })
+  if (r.pedidosAbertos > 0)
+    lista.push({ icon: 'mdi-truck-delivery-outline', cor: 'info',
+      texto: `${r.pedidosAbertos} pedido(s) de compra em aberto`,
+      detalhe: 'Aguardando recebimento em Compras.' })
+  alertas.value = lista
+}
 
 
 const alertas = ref<{ icon: string; texto: string; detalhe: string; cor: string }[]>([])
@@ -639,8 +675,83 @@ function renderizarGraficoDre() {
   })
 }
 
+// ── Vendas últimos 7 dias ────────────────────────────────────────────────────
+interface VendaDia { data: string; qtdVendas: number; totalVendido: number; ticketMedio: number }
+const vendas7dias = ref<VendaDia[]>([])
+
+async function carregarVendas7dias() {
+  carregando.value = true
+  if (!auth.empresaId) { carregando.value = false; return }
+  try {
+    const hoje = new Date()
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 6).toISOString().slice(0, 10)
+    const fim = hoje.toISOString().slice(0, 10)
+    const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
+      params: { empresaId: auth.empresaId, inicio, fim }
+    })
+    vendas7dias.value = res.data
+  } catch { vendas7dias.value = [] } finally {
+    carregando.value = false
+    await nextTick()
+    renderizarGraficoVendas()
+  }
+}
+
+function renderizarGraficoVendas() {
+  const canvas = graficoCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // Monta série contínua dos últimos 7 dias (preenche dias sem venda com 0)
+  const hoje = new Date()
+  const dias: { label: string; valor: number }[] = []
+  const mapa = Object.fromEntries(
+    vendas7dias.value.map(d => [d.data.slice(0, 10), d.totalVendido])
+  )
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - i)
+    const iso = d.toISOString().slice(0, 10)
+    dias.push({ label: MESES_PT[d.getMonth()] + ' ' + d.getDate(), valor: mapa[iso] ?? 0 })
+  }
+
+  const W = canvas.offsetWidth || 600, H = 200
+  canvas.width = W; canvas.height = H
+  ctx.clearRect(0, 0, W, H)
+
+  const padL = 8, padR = 8, padTop = 16, padBottom = 24
+  const chartW = W - padL - padR, chartH = H - padTop - padBottom
+  const maxV = Math.max(...dias.map(d => d.valor), 1)
+  const barGap = 12
+  const barW = Math.floor(chartW / dias.length) - barGap
+
+  dias.forEach((d, i) => {
+    const x = padL + i * (barW + barGap) + barGap / 2
+    const barH = Math.round((d.valor / maxV) * chartH)
+    const y = padTop + chartH - barH
+    ctx.fillStyle = d.valor > 0 ? '#66bb6a' : '#e0e0e0'
+    ctx.beginPath(); ctx.roundRect(x, y, barW, Math.max(barH, 2), [4, 4, 0, 0]); ctx.fill()
+    // valor
+    if (d.valor > 0) {
+      ctx.fillStyle = '#43a047'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
+      const rotulo = d.valor >= 1000 ? (d.valor / 1000).toFixed(1) + 'k' : Math.round(d.valor).toString()
+      ctx.fillText(rotulo, x + barW / 2, y - 4)
+    }
+    // dia
+    ctx.fillStyle = '#9e9e9e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(d.label, x + barW / 2, H - 8)
+  })
+}
+
 onMounted(async () => {
-  carregando.value = false
-  await Promise.all([carregarPe(), carregarContasPagarHoje(), carregarVendasColaborador(), carregarDre(), carregarPlanejamento()])
+  await Promise.all([
+    carregarResumo(),
+    carregarVendas7dias(),
+    carregarPe(),
+    carregarContasPagarHoje(),
+    carregarVendasColaborador(),
+    carregarDre(),
+    carregarPlanejamento(),
+  ])
 })
 </script>

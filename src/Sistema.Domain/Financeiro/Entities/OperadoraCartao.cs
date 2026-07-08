@@ -19,6 +19,7 @@ public class OperadoraCartao : Entity
     public int PrazoDiasCreditoVista { get; private set; }
     public int PrazoDiasCreditoParcelado { get; private set; }
     public int PrazoDiasPix { get; private set; }
+    public string? Observacao { get; private set; }
     public bool Ativo { get; private set; } = true;
 
     private OperadoraCartao() { }
@@ -28,7 +29,8 @@ public class OperadoraCartao : Entity
         decimal taxaDebito, decimal taxaCreditoVista, decimal taxaCreditoParcelado,
         int prazoDiasDebito, int prazoDiasCreditoVista, int prazoDiasCreditoParcelado,
         List<string>? bandeiras = null,
-        decimal taxaPix = 0, int prazoDiasPix = 0, decimal taxaAntecipacao = 0)
+        decimal taxaPix = 0, int prazoDiasPix = 0, decimal taxaAntecipacao = 0,
+        string? observacao = null)
         => new()
         {
             EmpresaId = empresaId,
@@ -46,13 +48,15 @@ public class OperadoraCartao : Entity
             PrazoDiasCreditoVista = prazoDiasCreditoVista,
             PrazoDiasCreditoParcelado = prazoDiasCreditoParcelado,
             PrazoDiasPix = prazoDiasPix,
+            Observacao = observacao,
         };
 
     public void Atualizar(string nome, string? cor, string? icone,
         decimal taxaDebito, decimal taxaCreditoVista, decimal taxaCreditoParcelado,
         int prazoDiasDebito, int prazoDiasCreditoVista, int prazoDiasCreditoParcelado,
         List<string>? bandeiras = null,
-        decimal taxaPix = 0, int prazoDiasPix = 0, decimal taxaAntecipacao = 0)
+        decimal taxaPix = 0, int prazoDiasPix = 0, decimal taxaAntecipacao = 0,
+        string? observacao = null)
     {
         Nome = nome; Cor = cor; Icone = icone;
         BandeirasJson = bandeiras is { Count: > 0 } ? JsonSerializer.Serialize(bandeiras) : null;
@@ -61,6 +65,7 @@ public class OperadoraCartao : Entity
         TaxaAntecipacao = taxaAntecipacao; PrazoDiasDebito = prazoDiasDebito;
         PrazoDiasCreditoVista = prazoDiasCreditoVista;
         PrazoDiasCreditoParcelado = prazoDiasCreditoParcelado; PrazoDiasPix = prazoDiasPix;
+        Observacao = observacao;
     }
 
     public void Desativar() => Ativo = false;

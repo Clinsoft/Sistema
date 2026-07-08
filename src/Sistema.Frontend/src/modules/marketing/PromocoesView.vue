@@ -9,6 +9,17 @@
       <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNova">Nova Promoção</v-btn>
     </div>
 
+    <GuiaPassos
+      id="promocoes"
+      titulo="Como usar as Promoções"
+      :passos="[
+        'Clique em <b>Nova Promoção</b> e escolha o <b>tipo</b> (Desconto, Leve X Pague Y, Progressivo, Combo, Pix, Aniversariante). Preencha nome, tipo de desconto (%/R$), valor, período e limite de usos.',
+        'Em <b>Aplicação</b>, defina se vale para <b>todos os produtos</b> ou para uma categoria/marca/produto específico. Marque <b>Exclusivo do Clube</b> ou <b>Acumulável</b> conforme a regra.',
+        'Na tabela, cada promoção mostra desconto, período, usos e <b>status</b> (Agendada antes do início, Ativa no período, Encerrada após o fim). Use ✏️ para <b>editar</b>, ⏸/▶ para <b>ativar/encerrar</b> e 🗑️ para <b>excluir</b>.',
+        'Clique no ícone 🎨 para <b>gerar as artes</b> (Feed, Story e Banner) da promoção e baixá-las em PNG para publicar nas redes.',
+      ]"
+    />
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -282,6 +293,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -366,7 +378,13 @@ function abrirNova() {
 
 function editar(item: any) {
   editando.value = item.id
-  form.value = { ...formPadrao(), ...item }
+  form.value = {
+    ...formPadrao(),
+    ...item,
+    // As datas vêm como ISO do backend; o input type=date espera yyyy-MM-dd
+    dataInicio: item.dataInicio ? String(item.dataInicio).slice(0, 10) : '',
+    dataFim: item.dataFim ? String(item.dataFim).slice(0, 10) : '',
+  }
   dialog.value = true
 }
 

@@ -20,6 +20,17 @@
       </v-col>
     </v-row>
 
+    <GuiaPassos
+      id="etiquetas"
+      titulo="Como usar o Editor de Etiquetas"
+      :passos="[
+        '<b>1. Escolha o Template</b> (à esquerda): <b>EcoGranel</b> (etiqueta de preço 10×10cm com QR Code), <b>Gôndola Zebra</b> (impressora térmica ZPL), <b>Pote 9×9cm</b> ou os tamanhos padrão (40×25, 50×30, 100×50mm).',
+        '<b>2. Ajuste os campos visíveis</b> (marque/desmarque nome, preço, código de barras, validade, PLU, etc.) e as opções do template — cor da borda, marca d\'água, URL do QR Code, texto descritivo.',
+        '<b>3. Busque e adicione os produtos</b> no campo <b>Buscar produto</b>. Eles viram chips — clique no <b>×</b> do chip para remover. Defina a <b>Qtd por produto</b> e a <b>Validade</b>.',
+        '<b>4. Confira a pré-visualização</b> à direita e <b>imprima</b> (templates comuns/EcoGranel/Pote) ou <b>Gere o ZPL</b> / envie para a <b>Zebra</b> (template Gôndola). Nada é salvo no banco — a etiqueta é gerada na hora a partir dos dados do produto.',
+      ]"
+    />
+
     <v-row>
       <!-- Painel esquerdo: configuração -->
       <v-col cols="12" md="4">
@@ -340,6 +351,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import QRCode from 'qrcode'
+import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 

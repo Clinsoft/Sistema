@@ -56,15 +56,15 @@ jobs:
         run: dotnet build Sistema.sln --no-restore -c Release
 
       - name: Testes unitários
-        run: dotnet test tests/Sistema.UnitTests --no-build -c Release --logger "trx;LogFileName=unit-results.xml" -v minimal
+        run: dotnet test tests/Sistema.UnitTests --no-build -c Release --logger "trx;LogFileName=unit-results.trx" -v minimal
 
       - name: Testes de integração
         env:
           ConnectionStrings__DefaultConnection: "Server=localhost,1433;Database=ClinSoftTest;User Id=SA;Password=ClinSoft@CI2024;TrustServerCertificate=True;"
-        run: dotnet test tests/Sistema.IntegrationTests --no-build -c Release --logger "trx;LogFileName=integration-results.xml" -v minimal
+        run: dotnet test tests/Sistema.IntegrationTests --no-build -c Release --logger "trx;LogFileName=integration-results.trx" -v minimal
 
       - name: Testes fiscais
-        run: dotnet test tests/Sistema.FiscalTests --no-build -c Release -v minimal
+        run: dotnet test tests/Sistema.FiscalTests --no-build -c Release --logger "trx;LogFileName=fiscal-results.trx" -v minimal
 
       - name: Publicar resultados
         uses: dorny/test-reporter@v1

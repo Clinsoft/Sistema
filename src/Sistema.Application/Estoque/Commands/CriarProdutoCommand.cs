@@ -7,7 +7,7 @@ using Sistema.Domain.Shared.Interfaces;
 namespace Sistema.Application.Estoque.Commands;
 
 public record CriarProdutoCommand(
-    Guid EmpresaId, string Codigo, string Descricao,
+    Guid EmpresaId, string? Codigo, string Descricao,
     Guid CategoriaId, Guid MarcaId, Guid UnidadeMedidaId,
     decimal CustoUnitario, decimal PrecoVenda,
     string? CodigoBarras = null, string? Ncm = null,
@@ -18,7 +18,8 @@ public class CriarProdutoValidator : AbstractValidator<CriarProdutoCommand>
 {
     public CriarProdutoValidator()
     {
-        RuleFor(x => x.Codigo).NotEmpty().MaximumLength(30);
+        // Código é opcional: quando vazio, o backend gera automaticamente.
+        RuleFor(x => x.Codigo).MaximumLength(30).When(x => !string.IsNullOrWhiteSpace(x.Codigo));
         RuleFor(x => x.Descricao).NotEmpty().MaximumLength(200);
         RuleFor(x => x.CustoUnitario).GreaterThanOrEqualTo(0);
         RuleFor(x => x.PrecoVenda).GreaterThan(0);
@@ -35,14 +36,24 @@ public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
 {
     public async Task<Guid> Handle(CriarProdutoCommand cmd, CancellationToken ct)
     {
-        if (await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId && p.Codigo == cmd.Codigo, ct))
-            throw new InvalidOperationException($"Já existe produto com o código '{cmd.Codigo}'.");
+        // Código vazio → gera automaticamente um livre. Código informado → valida colisão.
+        string codigo;
+        if (string.IsNullOrWhiteSpace(cmd.Codigo))
+        {
+            codigo = await repo.ProximoCodigoAsync(cmd.EmpresaId, ct);
+        }
+        else
+        {
+            codigo = cmd.Codigo.Trim();
+            if (await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId && p.Codigo == codigo, ct))
+                throw new InvalidOperationException($"Já existe produto com o código '{codigo}'.");
+        }
 
         if (cmd.CodigoBarras is not null &&
             await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId && p.CodigoBarras == cmd.CodigoBarras, ct))
             throw new InvalidOperationException($"Já existe produto com o código de barras '{cmd.CodigoBarras}'.");
 
-        var produto = Produto.Criar(cmd.EmpresaId, cmd.Codigo, cmd.Descricao,
+        var produto = Produto.Criar(cmd.EmpresaId, codigo, cmd.Descricao,
             cmd.CategoriaId, cmd.MarcaId, cmd.UnidadeMedidaId,
             cmd.CustoUnitario, cmd.PrecoVenda, cmd.CodigoBarras);
 

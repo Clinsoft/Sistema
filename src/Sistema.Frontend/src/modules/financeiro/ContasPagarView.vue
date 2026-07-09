@@ -37,11 +37,13 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.status" label="Status"
-            :items="['Todos', 'EmAberto', 'Pago', 'Vencido']"
+            :items="['Todos', 'EmAberto', 'Pago', 'Vencido', 'Cancelado']"
             variant="outlined" density="compact" hide-details />
         </v-col>
       </v-row>
-      <div class="d-flex justify-end mt-2">
+      <div class="d-flex align-center justify-end mt-2 gap-3">
+        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
+          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
         <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
           :loading="carregando" @click="carregar">Buscar</v-btn>
       </div>
@@ -448,6 +450,7 @@ const filtros = ref({
   fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: 'Todas',
   status: 'Todos',
+  tudo: false,
 })
 
 const hoje = () => new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00')
@@ -456,8 +459,14 @@ const lancamentosFiltrados = computed(() => {
   let lista = lancamentos.value
   if (filtros.value.categoria !== 'Todas')
     lista = lista.filter(l => l.categoria === filtros.value.categoria)
-  if (filtros.value.status !== 'Todos')
+  if (filtros.value.status === 'Todos') {
+    // "Todos" não inclui cancelados/estornados (evita parecer duplicado)
+    lista = lista.filter(l => l.status !== 'Cancelado' && l.status !== 'Estornado' && l.status !== 'Renegociado')
+  } else if (filtros.value.status === 'Vencido') {
+    lista = lista.filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje())
+  } else {
     lista = lista.filter(l => l.status === filtros.value.status)
+  }
   return lista
 })
 
@@ -472,7 +481,7 @@ const totalAberto = computed(() =>
 )
 const totalVencidos = computed(() =>
   lancamentos.value
-    .filter(l => l.status === 'EmAberto' && new Date(l.dataVencimento + 'T12:00:00') < hoje())
+    .filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje())
     .reduce((s: number, l: any) => s + l.saldo, 0)
 )
 
@@ -511,14 +520,19 @@ function iconCategoria(cat?: string) {
 const corStatus = (s: string) =>
   ({ EmAberto: 'info', Pago: 'success', Cancelado: 'error', Renegociado: 'warning' } as any)[s] ?? 'default'
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-const fmtData = (d?: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+// A data pode vir como "2026-07-22" ou ISO completo "2026-07-22T00:00:00" — normaliza para os 10 primeiros.
+const fmtData = (d?: string) => d ? new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
 
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/contas-pagar', {
-      params: { empresaId: auth.empresaId, inicio: filtros.value.inicio, fim: filtros.value.fim },
-    })
+    // "Ver todas" → não envia datas (backend retorna tudo)
+    const params: any = { empresaId: auth.empresaId }
+    if (!filtros.value.tudo) {
+      params.inicio = filtros.value.inicio
+      params.fim = filtros.value.fim
+    }
+    const r = await api.get('/contas-pagar', { params })
     lancamentos.value = r.data
   } finally { carregando.value = false }
 }

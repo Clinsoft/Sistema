@@ -377,6 +377,129 @@
       </v-btn>
     </div>
 
+    <!-- Dialog: Conferência antes de processar — 2 etapas (Itens → Contas a Pagar) -->
+    <v-dialog v-model="dlgConfirmarProcessar" max-width="820" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="success">mdi-check-all</v-icon>
+          Conferir antes de processar
+          <v-spacer />
+          <v-chip size="small" :color="passoConfirmar === 1 ? 'primary' : 'default'" variant="tonal">1. Itens</v-chip>
+          <v-icon size="16">mdi-chevron-right</v-icon>
+          <v-chip size="small" :color="passoConfirmar === 2 ? 'primary' : 'default'" variant="tonal">2. Contas a pagar</v-chip>
+        </v-card-title>
+        <v-divider />
+
+        <!-- ETAPA 1: revisar itens -->
+        <v-card-text v-if="passoConfirmar === 1" style="max-height:60vh">
+          <div class="text-body-2 mb-2">
+            Confira os itens que darão <b>entrada no estoque</b>. Se algo estiver errado
+            (unidade, fator de conversão, quantidade, markup/preço), clique em
+            <b>Voltar e ajustar itens</b>.
+          </div>
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th class="text-right">Qtd. estoque</th>
+                <th class="text-right">Custo unit.</th>
+                <th class="text-right">Markup</th>
+                <th class="text-right">Preço sug.</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in itensEditaveis" :key="item.id">
+                <td>
+                  <div class="text-body-2">{{ item._produtoDescricao || item.descricaoXml }}</div>
+                  <div class="text-caption text-medium-emphasis">
+                    XML: {{ fmtQtd(item.quantidadeXml) }} {{ item.unidadeXml }}
+                    <span v-if="!item._produtoId" class="text-error">· sem produto!</span>
+                  </div>
+                </td>
+                <td class="text-right">{{ fmtQtd(item.quantidadeXml * (item._fator || 1)) }} {{ item._unidade }}</td>
+                <td class="text-right">R$ {{ fmt(custoDisplay(item)) }}</td>
+                <td class="text-right">{{ item._markup ?? 0 }}%</td>
+                <td class="text-right">R$ {{ fmt(custoDisplay(item) * (1 + (item._markup || 0) / 100)) }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+
+        <!-- ETAPA 2: revisar contas a pagar -->
+        <v-card-text v-else>
+          <v-switch v-model="lancarFinanceiro" color="primary" density="compact" hide-details
+            :label="lancarFinanceiro ? 'Lançar contas a pagar no financeiro' : 'NÃO lançar financeiro agora (lanço depois)'"
+            class="mb-2" />
+
+          <template v-if="lancarFinanceiro">
+            <v-table density="compact" class="mb-2">
+              <thead>
+                <tr><th>Parcela</th><th>Vencimento</th><th class="text-right">Valor</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(f, i) in faturas" :key="i">
+                  <td>{{ f.label || (i + 1) }}</td>
+                  <td>{{ fmtData(f.vencimento) }}</td>
+                  <td class="text-right">R$ {{ fmt(f.valor) }}</td>
+                </tr>
+                <tr v-if="faturas.length === 0">
+                  <td colspan="3" class="text-center text-medium-emphasis">Nenhuma fatura — nada será lançado.</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <div class="d-flex justify-space-between text-body-2">
+              <span>Total das faturas:</span>
+              <strong :class="Math.abs(totalFaturas - (entrada?.valorTotal ?? 0)) > 0.01 ? 'text-error' : 'text-success'">
+                R$ {{ fmt(totalFaturas) }}
+              </strong>
+            </div>
+            <div class="d-flex justify-space-between text-body-2">
+              <span>Valor da nota:</span>
+              <strong>R$ {{ fmt(entrada?.valorTotal ?? 0) }}</strong>
+            </div>
+            <v-alert v-if="Math.abs(totalFaturas - (entrada?.valorTotal ?? 0)) > 0.01"
+              type="warning" variant="tonal" density="compact" class="mt-2">
+              O total das faturas <b>não bate</b> com o valor da nota. Ajuste as parcelas na aba
+              <b>Financeiro / Faturas</b> antes de confirmar.
+            </v-alert>
+          </template>
+          <v-alert v-else type="info" variant="tonal" density="compact">
+            Só o estoque será atualizado. Você poderá lançar as contas a pagar manualmente depois,
+            em <b>Financeiro → Contas a Pagar</b>.
+          </v-alert>
+        </v-card-text>
+
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-btn variant="text" @click="dlgConfirmarProcessar = false">Cancelar</v-btn>
+          <v-spacer />
+          <!-- Etapa 1 -->
+          <template v-if="passoConfirmar === 1">
+            <v-btn variant="text" color="primary"
+              @click="dlgConfirmarProcessar = false; aba = 'itens'">
+              <v-icon start>mdi-pencil</v-icon>Voltar e ajustar itens
+            </v-btn>
+            <v-btn color="primary" rounded="lg" @click="passoConfirmar = 2">
+              Próximo: Contas a pagar <v-icon end>mdi-chevron-right</v-icon>
+            </v-btn>
+          </template>
+          <!-- Etapa 2 -->
+          <template v-else>
+            <v-btn variant="text" @click="passoConfirmar = 1">
+              <v-icon start>mdi-chevron-left</v-icon>Voltar aos itens
+            </v-btn>
+            <v-btn variant="text" color="primary"
+              @click="dlgConfirmarProcessar = false; aba = 'financeiro'">
+              Ajustar faturas
+            </v-btn>
+            <v-btn color="success" rounded="lg" :loading="processando" @click="confirmarProcessamento">
+              <v-icon start>mdi-check-all</v-icon>Confirmar e Processar
+            </v-btn>
+          </template>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
 
     <!-- Dialog: Frete Manual -->
     <v-dialog v-model="dlgFrete" max-width="360" persistent>
@@ -667,6 +790,9 @@ const pedidoCompraId = ref<string | null>(null)
 // Financeiro
 const faturas = ref<{ label: string; valor: number; vencimento: string }[]>([])
 const totalFaturas = computed(() => faturas.value.reduce((s, f) => s + (f.valor || 0), 0))
+const dlgConfirmarProcessar = ref(false)
+const lancarFinanceiro = ref(true)
+const passoConfirmar = ref(1)
 
 // Dialogs
 const dlgFrete = ref(false)
@@ -745,7 +871,7 @@ async function carregarAuxiliares() {
   const [locais, pedidos, prods, unds, cats, mrcs] = await Promise.all([
     api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/compras/pedidos', { params: { empresaId: auth.empresaId, status: 'Enviado' } }).catch(() => ({ data: [] })),
-    api.get('/estoque/produtos', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    api.get('/produtos', { params: { empresaId: auth.empresaId, tamanhoPagina: 2000 } }).catch(() => ({ data: [] })),
     api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/categorias', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/marcas', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
@@ -755,7 +881,7 @@ async function carregarAuxiliares() {
     ...p,
     label: `OC #${p.numero} – ${fmtData(p.dataPedido)}`,
   }))
-  produtos.value = prods.data?.items ?? prods.data ?? []
+  produtos.value = prods.data?.itens ?? prods.data ?? []
   unidadesMedida.value = unds.data.items ?? unds.data
   unidades.value = unidadesMedida.value.map((u: any) => u.sigla ?? u.nome ?? u)
   categorias.value = cats.data.items ?? cats.data
@@ -795,13 +921,37 @@ async function salvarPedidoCompra(id: string | null) {
     .then(() => notif.ok('Ordem de compra vinculada.'))
 }
 
+// Aplica os padrões do produto cadastrado ao item: unidade de estoque e markup.
+function aplicarPadraoProduto(item: any, prod: any) {
+  if (!prod) return
+  item._produtoDescricao = prod.descricao
+  // Unidade de estoque = a do produto cadastrado (não a unidade comercial do XML)
+  const sigla = prod.unidadeSigla ?? prod.unidadeMedida
+  if (sigla) item._unidade = sigla
+  // Markup = o do produto (multiplicador → %); mantém o atual se o produto não tiver
+  if (prod.markup && prod.markup > 1) item._markup = Math.round((prod.markup - 1) * 100)
+}
+
 function onProdutoInline(item: any, id: string | null) {
   const prod = produtos.value.find((p: any) => p.id === id)
-  if (prod) {
-    item._produtoDescricao = prod.descricao
-    if (!item._unidade) item._unidade = prod.unidadeMedida ?? item.unidadeXml
-  }
+  if (prod) aplicarPadraoProduto(item, prod)
   item._alterado = true
+}
+
+// Para itens já vinculados a um produto, puxa unidade/markup do produto quando o
+// item ainda não tem valores próprios salvos (evita cair na unidade do XML / markup fixo).
+function enriquecerItensComProduto() {
+  for (const item of itensEditaveis.value) {
+    if (!item._produtoId) continue
+    const prod = produtos.value.find((p: any) => p.id === item._produtoId)
+    if (!prod) continue
+    if (!item.unidadeEstoque) {
+      const sigla = prod.unidadeSigla ?? prod.unidadeMedida
+      if (sigla) item._unidade = sigla
+    }
+    if (!item.markupSugerido && prod.markup && prod.markup > 1)
+      item._markup = Math.round((prod.markup - 1) * 100)
+  }
 }
 
 const CATEGORIA_KEYWORDS: Record<string, string[]> = {
@@ -925,10 +1075,33 @@ async function salvarNovoProduto() {
     const eanLimpo = /^\d{8,14}$/.test(np.codigoBarras ?? '') ? np.codigoBarras : null
     const precoFinal = (np.precoVenda ?? 0) > 0 ? np.precoVenda : Math.round((np.custoUnitario ?? 0) * 1.5 * 100) / 100 || 0.01
 
+    // 1b. Se já existe produto com este código de barras, vincula ao existente
+    //     (o código de barras identifica o produto) em vez de tentar criar de novo.
+    if (eanLimpo) {
+      const rb = await api.get('/produtos/buscar', {
+        params: { empresaId: auth.empresaId, q: eanLimpo },
+      }).catch(() => null)
+      const existente = (rb?.data ?? []).find((p: any) => p.codigoBarras === eanLimpo)
+      if (existente) {
+        if (!produtos.value.find((p: any) => p.id === existente.id))
+          produtos.value = [...produtos.value, existente]
+        if (itemCriando.value) {
+          itemCriando.value._produtoId = existente.id
+          itemCriando.value._produtoDescricao = existente.descricao
+          itemCriando.value._alterado = true
+        }
+        dlgCriarProduto.value = false
+        notif.ok(`Produto "${existente.descricao}" já cadastrado (cód. ${existente.codigo}) — vinculado ao item.`)
+        salvandoProduto.value = false
+        return
+      }
+    }
+
     // 2. Criar produto
     const r = await api.post('/produtos', {
       empresaId: auth.empresaId,
-      codigo: np.codigo || (np._codigoGerado = proximoCodigo()),
+      // Vazio → o backend gera um código único (evita colisão com produtos não carregados)
+      codigo: (np.codigo ?? '').trim() || null,
       descricao: np.descricao,
       codigoBarras: eanLimpo,
       ncm: ncmLimpo,
@@ -942,7 +1115,7 @@ async function salvarNovoProduto() {
 
     // 3. Inserir na lista local para o autocomplete exibir o nome imediatamente
     if (!produtos.value.find((p: any) => p.id === novoProdId)) {
-      produtos.value = [...produtos.value, { id: novoProdId, descricao: np.descricao, codigo: np.codigo || np._codigoGerado }]
+      produtos.value = [...produtos.value, { id: novoProdId, descricao: np.descricao, codigo: (np.codigo ?? '').trim() || (r.data.codigo ?? '') }]
     }
     // Vincular ao item e fechar dialog imediatamente
     if (itemCriando.value) {
@@ -974,8 +1147,8 @@ async function salvarNovoProduto() {
         aliquotaCofins: np.aliquotaCofins ?? 0,
         fornecedorPrincipalId: fornecedorId,
       }, { _quiet: true } as any).catch(() => null).then(() => {
-        api.get('/estoque/produtos', { params: { empresaId: auth.empresaId } })
-          .then(rp => { produtos.value = rp.data?.items ?? rp.data ?? [] })
+        api.get('/produtos', { params: { empresaId: auth.empresaId, tamanhoPagina: 2000 } })
+          .then(rp => { produtos.value = rp.data?.itens ?? rp.data ?? [] })
           .catch(() => null)
       })
     }
@@ -1076,23 +1249,30 @@ function adicionarFatura() {
   })
 }
 
-async function processar() {
+// Abre a confirmação — NÃO lança nada ainda. O financeiro só é lançado após conferência.
+function processar() {
   if (itensSemProduto.value > 0) {
     notif.erro(`${itensSemProduto.value} item(ns) sem produto vinculado. Acesse a aba Itens.`)
     aba.value = 'itens'
     return
   }
-  if (faturas.value.length === 0) {
-    notif.erro('Adicione ao menos uma fatura na aba Financeiro.')
-    aba.value = 'financeiro'
-    return
-  }
+  lancarFinanceiro.value = faturas.value.length > 0
+  passoConfirmar.value = 1   // sempre começa revisando os itens
+  dlgConfirmarProcessar.value = true
+}
+
+async function confirmarProcessamento() {
   processando.value = true
   try {
-    await api.post(`/fiscal/entradas/${entradaId}/processar`, {
-      faturas: faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento })),
-    })
-    notif.ok('Entrada processada! Estoque e financeiro atualizados.')
+    // Só envia faturas se o usuário confirmou o lançamento no financeiro.
+    const faturasEnviar = lancarFinanceiro.value
+      ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
+      : []
+    await api.post(`/fiscal/entradas/${entradaId}/processar`, { faturas: faturasEnviar })
+    notif.ok(lancarFinanceiro.value
+      ? 'Entrada processada! Estoque atualizado e contas a pagar lançadas.'
+      : 'Entrada processada! Estoque atualizado (sem lançamento financeiro).')
+    dlgConfirmarProcessar.value = false
     await carregar()
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao processar entrada.')
@@ -1167,5 +1347,7 @@ async function imprimirEtiquetas() {
 
 onMounted(async () => {
   await Promise.all([carregar(), carregarAuxiliares()])
+  // Depois que produtos e itens estão carregados, aplica unidade/markup do produto
+  enriquecerItensComProduto()
 })
 </script>

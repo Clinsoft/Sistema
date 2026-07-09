@@ -347,15 +347,24 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             valProdutos: nota.ValorTotal, valFrete: 0, valSeguro: 0,
             valDesconto: 0, valIpi: 0, valIcmsSt: 0, valTotal: nota.ValorTotal);
 
-        // Se XML disponível, parsear itens
+        // Se XML disponível, parsear itens E duplicatas (parcelamento da NF-e)
         if (nota.XmlNota is not null)
         {
-            var itens = ParsearItensXml(entrada.Id, nota.XmlNota);
-            foreach (var item in itens)
-                entrada.AdicionarItem(item);
+            try
+            {
+                var parsed = ParsearNFeXml(nota.XmlNota);
+                foreach (var item in parsed.Itens)
+                    entrada.AdicionarItem(item);
 
-            // Atualizar totais do XML
-            AtualizarTotaisDoXml(entrada, nota.XmlNota);
+                // Duplicatas/parcelas do XML → alimentam as contas a pagar na escrituração
+                if (parsed.Duplicatas.Count > 0)
+                {
+                    var jsonOpts = new System.Text.Json.JsonSerializerOptions
+                    { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+                    entrada.DefinirDuplicatas(System.Text.Json.JsonSerializer.Serialize(parsed.Duplicatas, jsonOpts));
+                }
+            }
+            catch { /* XML inválido → segue sem itens/duplicatas */ }
         }
 
         // Tentar vincular fornecedor por CNPJ

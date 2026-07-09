@@ -16,6 +16,25 @@ public class ProdutoRepository(SistemaDbContext db) : BaseRepository<Produto>(db
         => await _set.AsNoTracking()
             .FirstOrDefaultAsync(p => p.EmpresaId == empresaId && p.CodigoBarras == codigoBarras, ct);
 
+    public async Task<string> ProximoCodigoAsync(Guid empresaId, CancellationToken ct = default)
+    {
+        var codigos = await _set.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId)
+            .Select(p => p.Codigo)
+            .ToListAsync(ct);
+
+        // Sequência automática considera apenas códigos puramente numéricos (base 3000).
+        var maior = codigos
+            .Select(c => int.TryParse(c, out var n) ? n : 0)
+            .DefaultIfEmpty(3000)
+            .Max();
+
+        var existentes = codigos.ToHashSet();
+        var proximo = Math.Max(maior, 3000) + 1;
+        while (existentes.Contains(proximo.ToString())) proximo++;
+        return proximo.ToString();
+    }
+
     public async Task<IReadOnlyList<Produto>> PesquisarAsync(Guid empresaId, string? termo,
         Guid? categoriaId, Guid? marcaId, bool? ativo, int pagina, int tamanhoPagina, CancellationToken ct = default)
     {

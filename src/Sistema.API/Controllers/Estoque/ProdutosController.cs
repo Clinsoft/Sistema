@@ -67,7 +67,9 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     public async Task<IActionResult> Criar([FromBody] CriarProdutoCommand cmd, CancellationToken ct)
     {
         var id = await mediator.Send(cmd, ct);
-        return CreatedAtAction(nameof(ObterPorId), new { id }, new { id });
+        var codigo = await db.Produtos.AsNoTracking()
+            .Where(p => p.Id == id).Select(p => p.Codigo).FirstOrDefaultAsync(ct);
+        return CreatedAtAction(nameof(ObterPorId), new { id }, new { id, codigo });
     }
 
     [HttpPut("{id:guid}")]

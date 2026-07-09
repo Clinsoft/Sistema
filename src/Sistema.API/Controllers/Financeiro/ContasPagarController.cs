@@ -22,10 +22,11 @@ public class ContasPagarController(
         [FromQuery] DateTime? inicio, [FromQuery] DateTime? fim,
         [FromQuery] string? status, CancellationToken ct)
     {
+        // Sem datas → retorna TODAS (intervalo bem amplo). Com datas → filtra pelo período.
         var lancamentos = await repo.ListarPorPeriodoAsync(
             empresaId, TipoLancamento.ContaPagar,
-            inicio ?? DateTime.Today.AddMonths(-1),
-            fim ?? DateTime.Today.AddMonths(1), ct);
+            inicio ?? new DateTime(2000, 1, 1),
+            fim ?? new DateTime(2100, 12, 31), ct);
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             lancamentos = lancamentos.Where(l => l.Status == st);

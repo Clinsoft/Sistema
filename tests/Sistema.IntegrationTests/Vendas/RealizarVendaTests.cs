@@ -255,16 +255,19 @@ public class RealizarVendaTests
     }
 
     [Fact]
-    public async Task CriarProduto_Command_DeveValidarCodigoObrigatorio()
+    public async Task CriarProduto_Command_SemCodigo_GeraCodigoAutomatico()
     {
-        var (_, scope, mediator, _) = CriarContexto();
+        var (_, scope, mediator, db) = CriarContexto();
         using var _ = scope;
 
-        var act = async () => await mediator.Send(new CriarProdutoCommand(
-            Guid.NewGuid(), "", "Produto", // Codigo vazio
+        // Código vazio → o backend gera automaticamente um código livre.
+        var id = await mediator.Send(new CriarProdutoCommand(
+            Guid.NewGuid(), "", "Produto",
             CategoriaId, MarcaId, UnidadeId, 10m, 25m));
 
-        await act.Should().ThrowAsync<ValidationException>();
+        id.Should().NotBeEmpty();
+        var produto = await db.Produtos.FindAsync(id);
+        produto!.Codigo.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]

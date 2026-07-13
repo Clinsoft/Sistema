@@ -208,18 +208,68 @@
         </table>
       </div>
     </v-card>
+
+    <!-- Aviso: etiqueta desatualizada após alteração de preço (produtos por peso) -->
+    <v-dialog v-model="dlgReimprimirEtiqueta" max-width="520">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="warning">mdi-tag-off-outline</v-icon>
+          Etiqueta desatualizada
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
+            O preço {{ etiquetasReimprimir.length > 1 ? 'destes produtos foi alterado' : 'deste produto foi alterado' }}.
+            É necessário imprimir uma nova etiqueta para atualizar as informações.
+          </v-alert>
+          <v-list density="compact">
+            <v-list-item v-for="p in etiquetasReimprimir" :key="p.id"
+              :title="p.descricao" :subtitle="`Novo preço: R$ ${fmt(p.precoVenda)}`" />
+          </v-list>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgReimprimirEtiqueta = false">Depois</v-btn>
+          <v-btn color="primary" rounded="lg" prepend-icon="mdi-printer"
+            :loading="imprimindoEtiqueta" @click="reimprimirEtiquetas">
+            Imprimir nova etiqueta
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
+import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+// Reimpressão de etiquetas de produtos por peso após alteração de preço
+const dlgReimprimirEtiqueta = ref(false)
+const etiquetasReimprimir = ref<any[]>([])
+const imprimindoEtiqueta = ref(false)
+
+async function reimprimirEtiquetas() {
+  imprimindoEtiqueta.value = true
+  try {
+    await imprimirEtiquetasKg(etiquetasReimprimir.value.map((p: any) => ({
+      nome: p.descricao,
+      codigoPlu: p.codigoPlu,
+      precoVenda: p.precoVenda,
+      descricao: p.descricaoComplementar,
+    })))
+    const ids = etiquetasReimprimir.value.map((p: any) => p.id)
+    await api.post('/produtos/etiquetas-impressas', { ids }).catch(() => null)
+    notif.ok('Etiquetas enviadas para impressão.')
+    dlgReimprimirEtiqueta.value = false
+  } finally { imprimindoEtiqueta.value = false }
+}
 
 const carregando = ref(false)
 const salvando = ref(false)
@@ -394,6 +444,10 @@ async function salvar() {
       novoPrecoMinimo:    p._precoMin,
       novoMarkupAtacado:  p._mkpAt || null,
     }))
+    // Produtos por peso cujo preço de venda mudou → etiqueta desatualizada
+    const pesoAlterados = lista.filter(p =>
+      (p.produtoBalanca || p.vendidoFracionado) && p._preco !== p.precoVenda)
+
     await api.patch('/produtos/alterar-precos', { itens }, { params: { empresaId: auth.empresaId } })
     notif.ok(`${lista.length} produto(s) salvos.`)
     lista.forEach(p => {
@@ -403,6 +457,11 @@ async function salvar() {
       p.precoAtacado   = p._atacado; p.markupAtacado  = p._mkpAt
       p._alt = false
     })
+
+    if (pesoAlterados.length) {
+      etiquetasReimprimir.value = pesoAlterados
+      dlgReimprimirEtiqueta.value = true
+    }
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao salvar.')
   } finally { salvando.value = false }

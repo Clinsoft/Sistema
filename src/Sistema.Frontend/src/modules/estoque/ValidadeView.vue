@@ -69,12 +69,30 @@
         </v-col>
       </v-row>
 
+      <!-- Barra de impressão de etiquetas -->
+      <div class="d-flex align-center justify-space-between mb-2 flex-wrap gap-2">
+        <div class="text-caption text-medium-emphasis">
+          Selecione produtos para reimprimir etiquetas (você pode ajustar a validade antes de imprimir).
+        </div>
+        <div class="d-flex gap-2">
+          <v-btn size="small" variant="text" @click="toggleSelecionarTodos">
+            {{ selecionadosEtiqueta.length === itensFiltrados.length ? 'Limpar seleção' : 'Selecionar todos' }}
+          </v-btn>
+          <v-btn size="small" color="primary" prepend-icon="mdi-printer"
+            :disabled="selecionadosEtiqueta.length === 0" @click="abrirImpressaoEtiquetas">
+            Imprimir etiquetas ({{ selecionadosEtiqueta.length }})
+          </v-btn>
+        </div>
+      </div>
+
       <v-card rounded="xl" elevation="1">
         <v-list v-if="itensFiltrados.length" lines="two">
           <template v-for="(item, idx) in itensFiltrados" :key="item.loteId">
             <v-divider v-if="idx > 0" />
             <v-list-item :class="`validade-item validade-item--${item.status.toLowerCase()}`">
               <template #prepend>
+                <v-checkbox-btn :model-value="selecionadosEtiqueta.includes(item.loteId)"
+                  @update:model-value="toggleSelEtiqueta(item.loteId)" class="mr-1" />
                 <div class="validade-status-bar" :class="`bg-${corStatus(item.status)}`" />
                 <v-icon :icon="iconeStatus(item.status)" :color="corStatus(item.status)" class="mr-2" />
               </template>
@@ -86,6 +104,10 @@
                   {{ item.quantidade }} un.
                   <v-chip v-if="item.promoGerada" size="x-small" color="success" class="ml-1">
                     Promo enviada
+                  </v-chip>
+                  <v-chip v-if="item.etiquetaDesatualizada" size="x-small" color="warning" class="ml-1"
+                    prepend-icon="mdi-tag-off-outline">
+                    Etiqueta desatualizada
                   </v-chip>
                 </div>
               </template>
@@ -421,6 +443,52 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Imprimir etiquetas (validade editável antes de imprimir) -->
+    <v-dialog v-model="dlgImprimirEtiqueta" max-width="620" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="primary">mdi-printer</v-icon>
+          Imprimir etiquetas ({{ itensImprimir.length }})
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            Template padrão por peso · <b>6 etiquetas por folha A4</b>. Ajuste a <b>validade</b>
+            de cada produto se necessário — a nova etiqueta substitui a anterior.
+          </v-alert>
+          <v-text-field v-model.number="copiasEtiqueta" label="Cópias por produto" type="number"
+            min="1" max="50" variant="outlined" density="compact" style="max-width:200px" class="mb-2" />
+          <v-table density="compact">
+            <thead>
+              <tr><th>Produto</th><th style="width:110px">Preço/100g</th><th style="width:180px">Validade</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="it in itensImprimir" :key="it.loteId">
+                <td>
+                  <div class="text-body-2">{{ it.descricao }}</div>
+                  <div v-if="!it.vendidoPorPeso" class="text-caption text-warning">
+                    não é produto por peso
+                  </div>
+                </td>
+                <td>R$ {{ fmt((it.precoVenda ?? 0) / 10) }}</td>
+                <td>
+                  <v-text-field v-model="it._validade" type="date" variant="outlined"
+                    density="compact" hide-details />
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgImprimirEtiqueta = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" prepend-icon="mdi-printer"
+            :loading="imprimindoEtiqueta" @click="confirmarImpressaoEtiquetas">
+            Imprimir
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog transferência entre filiais -->
     <v-dialog v-model="dialogTransferencia" max-width="500" persistent>
       <v-card rounded="xl">
@@ -491,6 +559,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
+import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -524,6 +593,55 @@ const itensFiltrados = computed(() => {
   }
   return r
 })
+
+// ─── Impressão de etiquetas ──────────────────────────────────────────────────
+const selecionadosEtiqueta = ref<string[]>([])
+const dlgImprimirEtiqueta = ref(false)
+const imprimindoEtiqueta = ref(false)
+const itensImprimir = ref<any[]>([])
+const copiasEtiqueta = ref(1)
+
+function toggleSelEtiqueta(loteId: string) {
+  const i = selecionadosEtiqueta.value.indexOf(loteId)
+  if (i >= 0) selecionadosEtiqueta.value.splice(i, 1)
+  else selecionadosEtiqueta.value.push(loteId)
+}
+function toggleSelecionarTodos() {
+  selecionadosEtiqueta.value = selecionadosEtiqueta.value.length === itensFiltrados.value.length
+    ? [] : itensFiltrados.value.map((i: any) => i.loteId)
+}
+
+function abrirImpressaoEtiquetas() {
+  itensImprimir.value = itensFiltrados.value
+    .filter((i: any) => selecionadosEtiqueta.value.includes(i.loteId))
+    .map((i: any) => ({ ...i, _validade: i.dataValidadeIso ?? '' }))
+  copiasEtiqueta.value = 1
+  dlgImprimirEtiqueta.value = true
+}
+
+async function confirmarImpressaoEtiquetas() {
+  imprimindoEtiqueta.value = true
+  try {
+    await imprimirEtiquetasKg(
+      itensImprimir.value.map((i: any) => ({
+        nome: i.descricao,
+        codigoPlu: i.codigoPlu,
+        precoVenda: i.precoVenda,
+        validade: i._validade,
+        descricao: i.descricaoComplementar,
+      })),
+      Math.max(1, copiasEtiqueta.value || 1)
+    )
+    // Marca etiquetas como impressas (limpa o alerta de "desatualizada")
+    const produtoIds = [...new Set(itensImprimir.value.map((i: any) => i.produtoId).filter(Boolean))]
+    if (produtoIds.length)
+      await api.post('/produtos/etiquetas-impressas', { ids: produtoIds }).catch(() => null)
+    notif.ok('Etiquetas enviadas para impressão.')
+    dlgImprimirEtiqueta.value = false
+    selecionadosEtiqueta.value = []
+    await carregarPainel()
+  } finally { imprimindoEtiqueta.value = false }
+}
 
 const resumoCards = computed(() => [
   { label: 'Vencidos',  valor: resumo.value?.vencidos  ?? 0, cor: 'error',   icon: 'mdi-close-circle-outline' },

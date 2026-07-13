@@ -247,6 +247,17 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return NoContent();
     }
 
+    /// <summary>Marca as etiquetas dos produtos informados como impressas/atualizadas (limpa o alerta de reimpressão).</summary>
+    [HttpPost("etiquetas-impressas")]
+    public async Task<IActionResult> MarcarEtiquetasImpressas([FromBody] EtiquetasImpressasRequest req, CancellationToken ct)
+    {
+        if (req.Ids is null || req.Ids.Count == 0) return Ok(new { atualizados = 0 });
+        var produtos = await db.Produtos.Where(p => req.Ids.Contains(p.Id)).ToListAsync(ct);
+        foreach (var p in produtos) p.MarcarEtiquetaImpressa();
+        await uow.SalvarAsync(ct);
+        return Ok(new { atualizados = produtos.Count });
+    }
+
     [HttpPatch("{id:guid}/inativar")]
     public async Task<IActionResult> Inativar(Guid id, CancellationToken ct)
         => await DefinirAtivo(id, false, ct);
@@ -356,6 +367,8 @@ public record AlterarPrecoItemRequest(
 public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
+
+public record EtiquetasImpressasRequest(List<Guid> Ids);
 
 public record EditarProdutoCompletoRequest(
     // Geral

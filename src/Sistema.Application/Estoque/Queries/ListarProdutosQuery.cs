@@ -28,7 +28,8 @@ public class ListarProdutosHandler(IProdutoRepository repo)
             p.EstoqueAtual, p.EstoqueMinimo,
             p.Ncm, p.Cest, p.ControlarLote, p.ControlarValidade,
             p.ProdutoBalanca, p.CodigoPlu, p.Ativo, p.CriadoEm,
-            p.Referencia, p.PrecoFornecedor, p.MarkupMinimo, p.PrecoMinimo, p.MarkupAtacado
+            p.Referencia, p.PrecoFornecedor, p.MarkupMinimo, p.PrecoMinimo, p.MarkupAtacado,
+            p.VendidoFracionado, p.EtiquetaDesatualizada
         )).ToList();
 
         return new ListaPaginadaDto<ProdutoDto>(dtos, total, q.Pagina, q.TamanhoPagina);

@@ -37,7 +37,9 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 LoteId       = l.Id,
                 ProdutoId    = p.Id,
                 p.Descricao,
+                p.DescricaoComplementar,
                 p.CodigoBarras,
+                p.CodigoPlu,
                 p.ImagemUrl,
                 Marca        = m != null ? m.Nome : "",
                 Categoria    = c != null ? c.Nome : "",
@@ -46,6 +48,8 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 l.Quantidade,
                 ValorEstoque = l.Quantidade * p.PrecoVenda,
                 p.PrecoVenda,
+                VendidoPorPeso = p.ProdutoBalanca || p.VendidoFracionado,
+                p.EtiquetaDesatualizada,
             }
         ).AsNoTracking().ToListAsync(ct);
 
@@ -61,13 +65,17 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             var status = ClassificarStatus(dias, cfg);
             return new
             {
-                i.LoteId, i.ProdutoId, i.Descricao, i.CodigoBarras, i.ImagemUrl,
+                i.LoteId, i.ProdutoId, i.Descricao, i.DescricaoComplementar,
+                i.CodigoBarras, i.CodigoPlu, i.ImagemUrl,
                 i.Marca, i.Categoria, i.NumeroLote,
                 DataValidade    = i.DataValidade?.ToString("dd/MM/yyyy"),
+                DataValidadeIso = i.DataValidade?.ToString("yyyy-MM-dd"),
                 DiasRestantes   = dias,
                 i.Quantidade,
                 i.ValorEstoque,
                 i.PrecoVenda,
+                i.VendidoPorPeso,
+                i.EtiquetaDesatualizada,
                 Status          = status,   // Vencido | Urgente | Vermelho | Amarelo | Ok
                 PromoGerada     = alertasAtivos.Contains(i.LoteId),
             };

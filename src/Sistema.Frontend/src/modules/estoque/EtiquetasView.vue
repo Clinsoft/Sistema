@@ -351,6 +351,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import QRCode from 'qrcode'
+import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -633,6 +634,21 @@ function removerProduto(id: string) {
 
 // ── Impressão ────────────────────────────────────────────────────────────────
 function imprimir() {
+  // Template EcoGranel (produtos por peso) → usa o template PADRÃO 6/A4 compartilhado.
+  if (template.value === 'ecogranel') {
+    imprimirEtiquetasKg(
+      produtosSel.value.map((p: any) => ({
+        nome: p.descricao,
+        codigoPlu: p.codigoPlu,
+        precoVenda: p.precoVenda,
+        validade: validade.value || null,
+        descricao: p.descricaoComplementar || textoDescritivoEco.value,
+      })),
+      Math.max(1, qtdEtiquetas.value || 1)
+    )
+    return
+  }
+
   const area = document.getElementById('area-impressao')
   if (!area) return
   const bordaCor = borda.value.cor

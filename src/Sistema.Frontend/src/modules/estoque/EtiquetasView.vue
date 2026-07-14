@@ -167,10 +167,18 @@
         <!-- Busca de produtos -->
         <v-card rounded="xl" elevation="1" class="pa-4">
           <div class="text-body-2 font-weight-bold mb-2">Produtos Selecionados</div>
-          <v-autocomplete v-model="buscaTemp" :items="sugestoes" item-title="descricao" item-value="id"
-            label="Buscar produto..." variant="outlined" density="compact"
-            :loading="buscando" clearable no-filter
-            @update:search="buscarProdutos" @update:model-value="adicionarProduto" />
+          <v-text-field v-model="buscaProdutoTexto" label="Buscar produto (nome ou código)…"
+            variant="outlined" density="compact" :loading="buscando" clearable
+            prepend-inner-icon="mdi-magnify" @update:model-value="buscarProdutos" />
+          <v-list v-if="sugestoes.length" elevation="2" rounded="lg" class="mb-2"
+            max-height="240" style="overflow-y:auto">
+            <v-list-item v-for="p in sugestoes" :key="p.id"
+              :title="p.descricao"
+              :subtitle="`PLU: ${p.codigoPlu ?? '—'} · R$ ${fmt(p.precoVenda)}`"
+              @click="adicionarProdutoObj(p)" hover>
+              <template #prepend><v-icon size="18">mdi-plus-circle-outline</v-icon></template>
+            </v-list-item>
+          </v-list>
           <div v-if="!produtosSel.length" class="text-caption text-medium-emphasis mt-2">
             Nenhum produto adicionado.
           </div>
@@ -357,7 +365,7 @@ import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-const buscaTemp = ref<string | null>(null)
+const buscaProdutoTexto = ref('')
 const buscando = ref(false)
 const sugestoes = ref<any[]>([])
 const produtosSel = ref<any[]>([])
@@ -620,12 +628,11 @@ async function buscarProdutos(q: string) {
   }, 300)
 }
 
-function adicionarProduto(id: string | null) {
-  if (!id) return
-  const p = sugestoes.value.find(s => s.id === id)
-  if (p && !produtosSel.value.find(x => x.id === id))
+function adicionarProdutoObj(p: any) {
+  if (!produtosSel.value.find(x => x.id === p.id))
     produtosSel.value.push(p)
-  buscaTemp.value = null
+  sugestoes.value = []
+  buscaProdutoTexto.value = ''
 }
 
 function removerProduto(id: string) {

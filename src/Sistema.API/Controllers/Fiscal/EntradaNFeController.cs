@@ -431,13 +431,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (req.NumeroLote is not null)
             item.DefinirLote(req.NumeroLote, req.Validade);
         if (req.Tags is not null) item.DefinirTags(req.Tags);
+
+        // Recalcula o custo de TODOS os itens com o frete rateado por VALOR proporcional
+        // (a conversão de um item muda o custo unitário; o rateio por valor não muda).
         if (req.FatorConversao.HasValue || req.MarkupSugerido.HasValue)
-        {
-            // Frete total (XML + manual) dividido igualmente por nº de itens
-            var nItens = entrada.Itens.Count;
-            var fretePorItem = nItens > 0 ? entrada.FreteTotal / nItens : 0m;
-            item.CalcularCusto(fretePorItem);
-        }
+            entrada.RatearFrete();
+
         if (req.MarkupSugerido.HasValue)
             item.SugerirPreco(req.MarkupSugerido.Value);
 
@@ -488,7 +487,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             return BadRequest(new { mensagem = "Entrada já processada." });
 
         entrada.DefinirFreteManual(req.Valor);
-        RatearFrete(entrada);
+        entrada.RatearFrete();
         await db.SaveChangesAsync(ct);
         return Ok(new { freteTotal = entrada.FreteTotal });
     }
@@ -527,14 +526,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (itensSemProduto.Count > 0)
             return BadRequest(new { mensagem = $"{itensSemProduto.Count} item(ns) sem produto vinculado. Vincule todos antes de processar." });
 
-        // Ratear frete nos itens
-        RatearFrete(entrada);
+        // Ratear frete nos itens (proporcional ao valor) e calcular o custo final
+        entrada.RatearFrete();
 
         // 1. Movimentar estoque
         foreach (var item in entrada.Itens)
         {
-            item.CalcularCusto(item.ValorFreteProporcional);
-
             // Criar lote se necessário
             Guid? loteId = item.LoteId;
             if (loteId is null && item.NumeroLote is not null)
@@ -951,21 +948,6 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
     private static void AtualizarTotaisDoXml(EntradaNFe entrada, string xml)
     {
         // Totais já são carregados via ParsearNFeXml no novo fluxo ImportarXml.
-    }
-
-    private static void RatearFrete(EntradaNFe entrada)
-    {
-        var frete = entrada.FreteTotal;
-        if (frete <= 0 || !entrada.Itens.Any()) return;
-
-        var totalProdutos = entrada.Itens.Sum(i => i.ValorTotalXml);
-        if (totalProdutos <= 0) return;
-
-        foreach (var item in entrada.Itens)
-        {
-            var proporcao = item.ValorTotalXml / totalProdutos;
-            item.DefinirFreteProporcional(Math.Round(frete * proporcao, 4));
-        }
     }
 
     private static decimal Dec(string? s) =>

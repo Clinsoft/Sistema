@@ -44,10 +44,53 @@ public class EntradaNFe : Entity
     public DateTime? DataEstorno { get; private set; }
     public string? MotivoEstorno { get; private set; }
 
+    // Método de rateio do frete. Hoje sempre ValorProporcional; computado (sem setter)
+    // para o EF não criar coluna. Estruturado para virar campo configurável no futuro
+    // (por peso, quantidade, volume).
+    public MetodoRateioFrete MetodoRateioFrete => MetodoRateioFrete.ValorProporcional;
+
     private readonly List<ItemEntradaNFe> _itens = [];
     public IReadOnlyList<ItemEntradaNFe> Itens => _itens.AsReadOnly();
 
     private EntradaNFe() { }
+
+    /// <summary>
+    /// Rateia o frete total entre os itens pelo método PROPORCIONAL AO VALOR dos
+    /// produtos e recalcula o custo de cada item.
+    /// FatorRateio = FreteTotal / ValorTotalProdutos; FreteItem = ValorTotalItem × FatorRateio.
+    /// O somatório do frete rateado é exatamente igual ao frete total — o ajuste de
+    /// arredondamento é aplicado no último item.
+    /// </summary>
+    public void RatearFrete()
+    {
+        var frete = FreteTotal;
+        var totalProdutos = _itens.Sum(i => i.ValorTotalXml);
+
+        // Sem frete ou sem base de rateio → custo sem componente de frete.
+        if (frete <= 0 || totalProdutos <= 0 || _itens.Count == 0)
+        {
+            foreach (var item in _itens) item.CalcularCusto(0m);
+            return;
+        }
+
+        decimal acumulado = 0m;
+        for (int idx = 0; idx < _itens.Count; idx++)
+        {
+            var item = _itens[idx];
+            decimal freteItem;
+            if (idx == _itens.Count - 1)
+            {
+                // Último item recebe o resto, garantindo Σ frete = FreteTotal.
+                freteItem = Math.Round(frete - acumulado, 2);
+            }
+            else
+            {
+                freteItem = Math.Round(frete * (item.ValorTotalXml / totalProdutos), 2);
+                acumulado += freteItem;
+            }
+            item.CalcularCusto(freteItem);
+        }
+    }
 
     public static EntradaNFe Criar(
         Guid empresaId, Guid notaId, string chave, string emitenteNome, string emitenteCnpj,
@@ -225,4 +268,11 @@ public enum StatusEntradaNFe
     EmEdicao,
     Processada,
     Estornada,
+}
+
+/// <summary>Método de rateio do frete entre os itens da entrada.</summary>
+public enum MetodoRateioFrete
+{
+    ValorProporcional = 0,   // padrão: proporcional ao valor dos produtos
+    // Futuro: Peso, Quantidade, Volume
 }

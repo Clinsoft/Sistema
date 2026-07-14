@@ -1174,12 +1174,13 @@ function proximoCodigo(): string {
 }
 
 function custoDisplay(item: any) {
-  // Frete rateado igualmente por item, depois dividido pelo fator de conversão
-  // Ex: R$180 frete ÷ 13 itens = R$13,84/item ÷ 5 kg = R$2,77/kg
+  // Frete rateado PROPORCIONAL AO VALOR: FreteItem = FreteTotal × (ValorItem / ValorProdutos)
+  // depois somado ao valor do item e dividido pela quantidade de estoque (com conversão).
   const freteTotal = entrada.value?.freteTotal ?? 0
-  const nItens = itensEditaveis.value.length || 1
-  const freteItem = freteTotal / nItens
-  const total = item.valorTotalXml + (item.valorIpi || 0) + (item.valorIcmsSt || 0) + freteItem
+  const valorProdutos = (entrada.value?.valorProdutos
+    || itensEditaveis.value.reduce((s: number, i: any) => s + (i.valorTotalXml || 0), 0)) || 1
+  const freteItem = freteTotal * ((item.valorTotalXml || 0) / valorProdutos)
+  const total = (item.valorTotalXml || 0) + (item.valorIpi || 0) + (item.valorIcmsSt || 0) + freteItem
   const qtd = item.quantidadeXml * (item._fator || 1)
   return qtd > 0 ? total / qtd : (item.custoUnitarioFinal || item.valorUnitarioXml)
 }

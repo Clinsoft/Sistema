@@ -9,6 +9,45 @@
       </v-col>
     </v-row>
 
+    <!-- Dialog: Ajuste de estoque rápido -->
+    <v-dialog v-model="dlgAjuste" max-width="480">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="teal">mdi-tune-variant</v-icon>
+          Ajustar estoque
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 font-weight-medium mb-1">{{ ajuste.produtoNome }}</div>
+          <div class="text-caption text-medium-emphasis mb-3">
+            Estoque atual no sistema: <b>{{ ajuste.estoqueAtual }}</b>
+          </div>
+          <v-select v-model="ajuste.localEstoqueId" :items="locaisEstoque" item-title="nome" item-value="id"
+            label="Local de estoque *" variant="outlined" density="compact" class="mb-2" hide-details />
+          <v-row dense class="mt-1">
+            <v-col cols="6">
+              <v-text-field v-model.number="ajuste.quantidadeContada" label="Qtd. física contada *"
+                type="number" variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field :model-value="ajusteDiferenca" label="Diferença" readonly
+                variant="outlined" density="compact" hide-details
+                :prefix="ajusteDiferenca > 0 ? '+' : ''"
+                :color="ajusteDiferenca > 0 ? 'success' : ajusteDiferenca < 0 ? 'error' : undefined" />
+            </v-col>
+          </v-row>
+          <v-text-field v-model="ajuste.observacao" label="Observação" variant="outlined"
+            density="compact" hide-details class="mt-2" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgAjuste = false">Cancelar</v-btn>
+          <v-btn color="teal" rounded="lg" :loading="ajustando"
+            :disabled="!ajuste.localEstoqueId || ajusteDiferenca === 0"
+            @click="confirmarAjuste">Aplicar ajuste</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: Unificar produtos duplicados -->
     <v-dialog v-model="dlgUnificar" max-width="700" scrollable>
       <v-card rounded="xl">
@@ -92,6 +131,11 @@
             label="Categoria" variant="outlined" density="compact" hide-details clearable
             @update:model-value="listar" />
         </v-col>
+        <v-col cols="12" md="3">
+          <v-autocomplete v-model="filtroFornecedor" :items="fornecedores"
+            item-title="razaoSocial" item-value="id"
+            label="Fornecedor" variant="outlined" density="compact" hide-details clearable />
+        </v-col>
         <v-col cols="12" md="2">
           <v-select v-model="filtroAtivo"
             :items="[{title:'Ativos',value:true},{title:'Inativos',value:false},{title:'Todos',value:null}]"
@@ -106,16 +150,22 @@
 
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
-      <v-data-table :headers="headers" :items="produtos" :loading="carregando" density="compact"
-        hover :items-per-page="25"
+      <v-data-table :headers="headers" :items="produtosFiltrados" :loading="carregando" density="compact"
+        hover :items-per-page="50" items-per-page-text="Itens por página"
         :items-per-page-options="[
           { title: '25', value: 25 },
           { title: '50', value: 50 },
           { title: '100', value: 100 },
           { title: 'Todos', value: -1 },
         ]">
+        <template #item.unidadeSigla="{ item }">{{ item.unidadeSigla || '—' }}</template>
         <template #item.precoVenda="{ item }">R$ {{ fmtN(item.precoVenda) }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmtN(item.custoUnitario) }}</template>
+        <template #item.preco100g="{ item }">
+          <span v-if="ehPorPeso(item)">R$ {{ fmtN(item.precoVenda / 10) }}</span>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
+        <template #item.markup="{ item }">{{ item.markup ? fmtN(item.markup) : '—' }}</template>
         <template #item.estoqueAtual="{ item }">
           <v-chip :color="item.estoqueAtual <= item.estoqueMinimo ? 'error' : 'success'"
             size="small" variant="tonal">{{ item.estoqueAtual }}</v-chip>
@@ -126,8 +176,12 @@
           </v-chip>
         </template>
         <template #item.actions="{ item }">
+          <v-btn icon="mdi-tune-variant" size="x-small" variant="text" color="teal"
+            title="Ajustar estoque" @click="abrirAjuste(item)" />
+          <v-btn icon="mdi-content-copy" size="x-small" variant="text" color="indigo"
+            title="Duplicar produto" @click="duplicarProduto(item)" />
           <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary"
-            @click="abrirEdicao(item)" />
+            title="Editar" @click="abrirEdicao(item)" />
         </template>
       </v-data-table>
     </v-card>
@@ -196,9 +250,10 @@
                         :rules="[r => !!r || 'Obrigatório']" />
                       <v-row dense>
                         <v-col cols="5">
-                          <v-text-field v-model="form.codigo" label="Código *"
+                          <v-text-field v-model="form.codigo" label="Código"
                             variant="outlined" density="compact"
-                            :rules="[r => !!r || 'Obrigatório']" />
+                            placeholder="auto" persistent-placeholder
+                            hint="Deixe em branco para gerar automático" />
                         </v-col>
                         <v-col cols="7">
                           <v-text-field v-model="form.codigoBarras" label="Código de barras (EAN)"
@@ -799,9 +854,17 @@ const loteForm = ref<any>({})
 
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
+const filtroFornecedor = ref<string | null>(null)
 const filtroAtivo = ref<boolean | null>(true)
 const formulario = ref<any>(null)
 const produtoEditandoId = ref<string | null>(null)
+
+// Filtro por fornecedor aplicado no cliente (a lista já traz todos os produtos)
+const produtosFiltrados = computed(() =>
+  filtroFornecedor.value
+    ? produtos.value.filter((p: any) => p.fornecedorPrincipalId === filtroFornecedor.value)
+    : produtos.value
+)
 
 // ─── formulário produto ──────────────────────────────────────────
 const formPadrao = () => ({
@@ -1114,14 +1177,22 @@ const marcadores = [
 ]
 
 const headers = [
-  { title: 'Código', key: 'codigo', width: 100 },
+  { title: 'Código', key: 'codigo', width: 90 },
   { title: 'Descrição', key: 'descricao', sortable: true },
+  { title: 'Un.', key: 'unidadeSigla', width: 70 },
   { title: 'Estoque', key: 'estoqueAtual', width: 100 },
-  { title: 'Custo', key: 'custoUnitario', width: 110 },
-  { title: 'Preço', key: 'precoVenda', width: 110 },
+  { title: 'Custo', key: 'custoUnitario', width: 100 },
+  { title: 'Markup', key: 'markup', width: 90 },
+  { title: 'Preço', key: 'precoVenda', width: 100 },
+  { title: 'Preço/100g', key: 'preco100g', width: 110, sortable: false },
   { title: 'Status', key: 'ativo', width: 90 },
-  { title: '', key: 'actions', sortable: false, width: 60 },
+  { title: '', key: 'actions', sortable: false, width: 110 },
 ]
+
+// Produto vendido por peso (KG) → mostra preço por 100g (= preço/kg ÷ 10)
+function ehPorPeso(p: any) {
+  return p.vendidoFracionado === true || (p.unidadeSigla || '').toUpperCase() === 'KG'
+}
 function fmtN(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
 function fmtData(d?: string) { return d ? new Date(d).toLocaleDateString('pt-BR') : '—' }
 
@@ -1206,6 +1277,91 @@ function abrirNovo() {
   arquivoImagem.value = null
   previewImagem.value = null
   dialog.value = true
+}
+
+// ─── Ajuste de estoque rápido (inline) ───────────────────────────────
+const dlgAjuste = ref(false)
+const ajustando = ref(false)
+const ajuste = ref({
+  produtoId: null as string | null, produtoNome: '', estoqueAtual: 0,
+  localEstoqueId: null as string | null, quantidadeContada: 0, observacao: '',
+})
+const ajusteDiferenca = computed(() =>
+  Number(ajuste.value.quantidadeContada || 0) - Number(ajuste.value.estoqueAtual || 0))
+
+function abrirAjuste(p: any) {
+  ajuste.value = {
+    produtoId: p.id, produtoNome: p.descricao, estoqueAtual: p.estoqueAtual ?? 0,
+    localEstoqueId: locaisEstoque.value[0]?.id ?? null,
+    quantidadeContada: p.estoqueAtual ?? 0, observacao: '',
+  }
+  dlgAjuste.value = true
+}
+
+async function confirmarAjuste() {
+  if (!ajuste.value.produtoId || !ajuste.value.localEstoqueId || ajusteDiferenca.value === 0) return
+  ajustando.value = true
+  try {
+    await api.post('/ajuste-estoque/unitario', {
+      empresaId: auth.empresaId,
+      produtoId: ajuste.value.produtoId,
+      localEstoqueId: ajuste.value.localEstoqueId,
+      quantidadeContada: Number(ajuste.value.quantidadeContada),
+      usuarioId: auth.usuario?.id ?? null,
+      observacao: ajuste.value.observacao || null,
+    })
+    notif.ok(`Estoque ajustado (${ajusteDiferenca.value > 0 ? '+' : ''}${ajusteDiferenca.value}).`)
+    dlgAjuste.value = false
+    await listar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? e?.response?.data?.title ?? 'Erro ao ajustar estoque.')
+  } finally { ajustando.value = false }
+}
+
+// ─── Duplicar produto (cria novo a partir de um existente) ───────────
+async function duplicarProduto(item: any) {
+  try {
+    const r = await api.get(`/produtos/${item.id}`)
+    const p = r.data
+    editando.value = false
+    produtoEditandoId.value = null
+    form.value = {
+      ...formPadrao(),
+      codigo: '', codigoBarras: '',            // novos: código gerado, EAN em branco
+      referencia: p.referencia ?? '',
+      descricao: (p.descricao ?? '') + ' (cópia)',
+      descricaoComplementar: p.descricaoComplementar ?? '',
+      tipoVariacao: p.tipoVariacao ?? 'Simples',
+      categoriaId: p.categoriaId, marcaId: p.marcaId,
+      fornecedorPrincipalId: p.fornecedorPrincipalId ?? null,
+      unidadeMedidaId: p.unidadeMedidaId,
+      ativo: true, produtoBalanca: p.produtoBalanca,
+      ocultarNasVendas: p.ocultarNasVendas, requisitarVendedor: p.requisitarVendedor,
+      vendidoFracionado: p.vendidoFracionado,
+      controlarLote: p.controlarLote, controlarValidade: p.controlarValidade,
+      validadeEmDias: p.validadeEmDias, codigoPlu: null,
+      precoFornecedor: p.precoFornecedor ?? 0, custoUnitario: p.custoUnitario,
+      markupMinimo: p.markupMinimo ?? 0, precoMinimo: p.precoMinimo ?? 0,
+      precoVenda: p.precoVenda, precoAtacado: p.precoAtacado ?? null,
+      markupAtacado: p.markupAtacado ?? null,
+      ncm: p.ncm ?? '', cest: p.cest ?? '', cfop: p.cfop ?? '',
+      origem: p.origem ?? '0', cstIcms: p.cstIcms ?? '',
+      csosnIcms: p.csosnIcms ?? '', cstPisCofins: p.cstPisCofins ?? '',
+      aliquotaIcms: p.aliquotaIcms, aliquotaPis: p.aliquotaPis,
+      aliquotaCofins: p.aliquotaCofins, codigoFci: p.codigoFci ?? '',
+      imagemUrl: null, fichaTecnicaUrl: null,
+      tags: p.tags ?? '', marcador: p.marcador ?? null,
+      informacaoAdicional: p.informacaoAdicional ?? '',
+    }
+    nutri.value = nutriPadrao()
+    embalagens.value = []
+    arquivoImagem.value = null
+    previewImagem.value = null
+    dialog.value = true
+    notif.aviso('Cópia carregada. Confira os dados e salve para criar o novo produto.')
+  } catch {
+    notif.erro('Não foi possível carregar o produto para duplicar.')
+  }
 }
 
 async function abrirEdicao(item: any) {

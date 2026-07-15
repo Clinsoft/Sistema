@@ -14,7 +14,9 @@ public record ProdutoDto(
     string? Referencia = null, decimal PrecoFornecedor = 0,
     decimal MarkupMinimo = 0, decimal PrecoMinimo = 0, decimal? MarkupAtacado = null,
     // Etiquetas de produtos por peso
-    bool VendidoFracionado = false, bool EtiquetaDesatualizada = false);
+    bool VendidoFracionado = false, bool EtiquetaDesatualizada = false,
+    // Fornecedor principal (para filtro por fornecedor na listagem)
+    Guid? FornecedorPrincipalId = null);
 
 public record ListaPaginadaDto<T>(IReadOnlyList<T> Itens, int Total, int Pagina, int TamanhoPagina)
 {

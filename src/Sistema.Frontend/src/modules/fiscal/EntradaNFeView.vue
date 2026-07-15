@@ -38,29 +38,42 @@
       </v-menu>
     </div>
 
-    <v-tabs v-model="aba" class="mb-4" bg-color="transparent">
-      <v-tab value="dados">Dados da Nota</v-tab>
-      <v-tab value="itens">
-        Itens
-        <v-badge v-if="itensSemProduto > 0" :content="itensSemProduto" color="warning" inline />
-      </v-tab>
-      <v-tab value="financeiro">Financeiro / Faturas</v-tab>
-    </v-tabs>
+    <!-- Cabeçalho do assistente (wizard) -->
+    <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
+      <div class="d-flex align-center flex-wrap" style="gap:4px">
+        <template v-for="(s, i) in passosWizard" :key="i">
+          <v-chip
+            :color="passo === i + 1 ? 'primary' : passo > i + 1 ? 'success' : 'default'"
+            :variant="passo >= i + 1 ? 'flat' : 'tonal'" size="small"
+            :disabled="entrada?.status === 'EmEdicao' && i + 1 > passoMaximo"
+            @click="irParaPasso(i + 1)">
+            <v-icon v-if="passo > i + 1" start size="14">mdi-check</v-icon>
+            <span v-else class="font-weight-bold mr-1">{{ i + 1 }}.</span>{{ s }}
+          </v-chip>
+          <v-icon v-if="i < passosWizard.length - 1" size="14" color="grey">mdi-chevron-right</v-icon>
+        </template>
+      </div>
+    </v-card>
 
     <GuiaPassos
-      id="entrada-nfe"
-      titulo="Como escriturar esta entrada"
+      id="entrada-nfe-wizard"
+      titulo="Como escriturar esta entrada (assistente)"
       :passos="[
-        '<b>Dados da Nota</b>: confira o emitente e selecione o <b>Local de Estoque</b> (obrigatório). Ajuste o <b>Frete Manual</b> se houver.',
-        '<b>Itens</b>: para cada item sem vínculo, selecione o produto no campo <b>Produto cadastrado</b> ou clique em <b>+</b> para criar a partir do XML.',
-        'Ajuste <b>Markup</b>, <b>Fator de conversão</b>, <b>Unid. estoque</b> e <b>Validade</b> de cada item, depois clique em <b>Salvar todos</b>.',
-        '<b>Financeiro / Faturas</b>: confira as parcelas (vêm das duplicatas do XML) e o fornecedor.',
-        'Clique em <b>Processar</b> para dar entrada no estoque e gerar as contas a pagar. Depois disso a nota fica travada — use <b>Estornar</b> para reverter.',
+        '<b>1. Dados da Nota</b>: confira emitente, datas e valores. Selecione o <b>Local de Estoque</b> e informe o <b>Frete</b>. Clique em <b>Processar Nota Fiscal</b>.',
+        '<b>2. Produtos</b>: o sistema já busca os produtos <b>já cadastrados</b> (código de barras, de-para do fornecedor, código). Vincule os que faltam ou use <b>Cadastrar os que faltam</b>.',
+        '<b>3. Fator de Conversão</b>: informe a <b>unidade de estoque</b> e o <b>fator</b> (ex.: caixa com 12 → 12). A unidade já vem do cadastro do produto.',
+        '<b>4. Custos e Preços</b>: confira o frete rateado e os impostos (editáveis), e defina o <b>markup</b> (vem do cadastro) — o preço sugerido é calculado aqui.',
+        '<b>5. Financeiro</b>: revise as parcelas do XML e escolha a <b>categoria</b> do contas a pagar. <b>6. Finalização</b>: confirme para atualizar estoque, custos e lançar o financeiro.',
       ]"
     />
 
-    <!-- ─── ABA: DADOS DA NOTA ─── -->
-    <div v-if="aba === 'dados'">
+    <v-alert v-if="entrada?.status === 'Processada'" type="success" variant="tonal"
+      density="compact" class="mb-4" icon="mdi-check-decagram">
+      Entrada <b>processada</b> — estoque, custos e financeiro atualizados. Use o menu ⋮ para estornar.
+    </v-alert>
+
+    <!-- ─── ETAPA 1: DADOS DA NOTA ─── -->
+    <div v-show="passo === 1">
       <v-row>
         <v-col cols="12" md="6">
           <v-card rounded="xl" elevation="1" class="pa-4">
@@ -141,12 +154,33 @@
       </v-row>
     </div>
 
-    <!-- ─── ABA: ITENS ─── -->
-    <div v-if="aba === 'itens'">
+    <!-- ─── ETAPAS 2-4: ITENS (colunas variam por etapa) ─── -->
+    <div v-show="passo >= 2 && passo <= 4">
+
+      <v-alert :type="passo === 2 ? 'info' : passo === 3 ? 'warning' : 'success'"
+        variant="tonal" density="compact" class="mb-3">
+        <template v-if="passo === 2">
+          <b>Etapa 2 — Produtos.</b> O sistema já procurou os produtos <b>já cadastrados</b>
+          (por código de barras, de-para do fornecedor e código). Vincule os que faltam,
+          crie novos (+) ou use <b>Cadastrar todos automaticamente</b>.
+          <b>{{ itensSemProduto }}</b> sem vínculo.
+        </template>
+        <template v-else-if="passo === 3">
+          <b>Etapa 3 — Fator de Conversão.</b> Informe a <b>unidade de estoque</b> e o
+          <b>fator de conversão</b> (ex.: caixa com 12 → 12; pacote de 5 kg → 5).
+          A unidade já vem do cadastro do produto quando existe.
+        </template>
+        <template v-else>
+          <b>Etapa 4 — Custos e Preços.</b> Confira o rateio do frete (proporcional ao valor),
+          o custo final e defina o <b>markup</b> (vem do cadastro do produto) e o preço.
+          <b>IPI</b> e <b>ICMS-ST</b> vêm da nota e são <b>editáveis</b>.
+        </template>
+      </v-alert>
 
       <!-- Barra de ações -->
-      <div class="d-flex align-center gap-3 pa-3 mb-3 rounded-lg"
-           style="background:#1e1e2e; border:1px solid rgba(255,255,255,0.08)">
+      <div v-if="entrada?.status === 'EmEdicao' && passo !== 4"
+        class="d-flex align-center gap-3 pa-3 mb-3 rounded-lg"
+        style="background:#1e1e2e; border:1px solid rgba(255,255,255,0.08)">
 
         <span class="text-body-2" style="color:rgba(255,255,255,0.7); white-space:nowrap">
           <v-icon size="14" class="mr-1" color="white">mdi-alert-circle-outline</v-icon>
@@ -158,14 +192,28 @@
 
         <v-spacer />
 
+        <template v-if="passo === 2 && itensSemProduto > 0">
+          <v-btn size="small" variant="outlined" :loading="vinculandoAuto"
+            prepend-icon="mdi-link-variant"
+            style="color:white; border-color:rgba(255,255,255,0.3)"
+            @click="vincularAutomatico">
+            Buscar produtos já cadastrados
+          </v-btn>
+          <v-btn size="small" color="success" variant="flat"
+            :loading="cadastrandoTodos" prepend-icon="mdi-database-plus-outline"
+            @click="cadastrarTodosAutomaticamente">
+            Cadastrar os que faltam ({{ itensSemProduto }})
+          </v-btn>
+        </template>
+
         <template v-if="entrada?.status === 'EmEdicao'">
-          <!-- Menu ações em lote -->
-          <v-menu :close-on-content-click="false">
+          <!-- Menu ações em lote (markup) — etapa 4, junto dos preços -->
+          <v-menu v-if="passo === 4" :close-on-content-click="false">
             <template #activator="{ props }">
               <v-btn v-bind="props" size="small" variant="outlined"
                 append-icon="mdi-chevron-down"
                 style="color:white; border-color:rgba(255,255,255,0.3)">
-                Ações em lote
+                Markup em lote
               </v-btn>
             </template>
             <v-list density="compact" min-width="320">
@@ -215,10 +263,12 @@
           :class="{ 'border-warning': !item._produtoId, 'border-success': item._alterado }">
           <v-row dense align="center">
 
-            <!-- # e descrição -->
+            <!-- # e descrição (sempre) -->
             <v-col cols="12" sm="4">
-              <div class="text-caption text-medium-emphasis">#{{ item.numeroItem }}</div>
-              <div class="text-body-2 font-weight-medium">{{ item.descricaoXml }}</div>
+              <div class="text-caption text-medium-emphasis">#{{ item.numeroItem }}
+                <span v-if="item._produtoId" class="text-success">· vinculado</span>
+              </div>
+              <div class="text-body-2 font-weight-medium">{{ item._produtoDescricao || item.descricaoXml }}</div>
               <div class="text-caption text-medium-emphasis">
                 NCM: {{ item.ncmXml }} · Cód: {{ item.codigoFornecedor ?? '—' }}
               </div>
@@ -228,8 +278,14 @@
               </div>
             </v-col>
 
-            <!-- Produto -->
-            <v-col cols="12" sm="4">
+            <!-- Unid. de compra (etapa 3, somente leitura) -->
+            <v-col v-if="passo === 3" cols="4" sm="1">
+              <v-text-field :model-value="item.unidadeXml" label="Unid. compra"
+                variant="outlined" density="compact" hide-details readonly />
+            </v-col>
+
+            <!-- Produto (etapa 2) -->
+            <v-col v-if="passo === 2" cols="12" sm="4">
               <div class="d-flex gap-2 align-center">
                 <v-autocomplete
                   v-model="item._produtoId"
@@ -247,69 +303,111 @@
               </div>
             </v-col>
 
-            <!-- CFOP -->
-            <v-col cols="6" sm="1">
+            <!-- CFOP (etapa 2) -->
+            <v-col v-if="passo === 2" cols="6" sm="1">
               <v-text-field v-model="item._cfop" label="CFOP"
                 variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
                 @update:model-value="item._alterado = true" />
             </v-col>
 
-            <!-- Custo unitário calculado -->
-            <v-col cols="6" sm="2">
-              <v-text-field
-                :model-value="fmt(custoDisplay(item))"
-                label="Custo unit." prefix="R$"
-                variant="outlined" density="compact" hide-details readonly
-                :hint="`Frete rateado: R$ ${fmt(((entrada?.freteTotal ?? entrada?.valorFreteManual ?? 0) * (item.valorTotalXml / (entrada?.valorProdutos || 1)))  / (item.quantidadeXml * (item._fator || 1)))}`"
-              />
-            </v-col>
-
-            <!-- Markup -->
-            <v-col cols="6" sm="1">
-              <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
-                type="number" min="0" step="1" variant="outlined" density="compact" hide-details
-                :disabled="entrada?.status === 'Processada'"
-                @update:model-value="item._alterado = true" />
-            </v-col>
-
-            <!-- Preço sugerido -->
-            <v-col cols="6" sm="2">
-              <v-text-field
-                :model-value="fmt(custoDisplay(item) * (1 + (item._markup || 0) / 100))"
-                label="Preço Sugerido" prefix="R$"
-                variant="outlined" density="compact" hide-details readonly />
-            </v-col>
-
-            <!-- Conversão -->
-            <v-col cols="4" sm="1">
-              <v-text-field v-model.number="item._fator" label="Fator conv."
+            <!-- Conversão (etapa 3) -->
+            <v-col v-if="passo === 3" cols="4" sm="1">
+              <v-text-field v-model.number="item._fator" label="Fator conv. *"
                 type="number" min="0.001" step="0.001"
                 variant="outlined" density="compact" hide-details
+                :error="!(item._fator > 0)"
                 :disabled="entrada?.status === 'Processada'"
                 @update:model-value="item._alterado = true" />
             </v-col>
-            <v-col cols="4" sm="1">
-              <v-autocomplete v-model="item._unidade" label="Unid. estoque"
+            <v-col v-if="passo === 3" cols="4" sm="2">
+              <v-autocomplete v-model="item._unidade" label="Unid. estoque *"
                 :items="unidades" variant="outlined" density="compact" hide-details
+                :error="!item._unidade"
                 :disabled="entrada?.status === 'Processada'"
                 auto-select-first
                 @update:model-value="item._alterado = true" />
             </v-col>
-            <v-col cols="4" sm="2">
+
+            <!-- Qtd. estoque (etapas 3 e 4) -->
+            <v-col v-if="passo === 3 || passo === 4" cols="4" sm="2">
               <v-text-field
                 :model-value="`${fmtQtd(item.quantidadeXml * (item._fator || 1))} ${item._unidade}`"
                 label="Qtd. estoque" variant="outlined" density="compact" hide-details readonly />
             </v-col>
 
-            <!-- Lote e Validade -->
-            <v-col cols="6" sm="2">
+            <!-- Markup (etapa 4 — junto dos custos/preços) -->
+            <v-col v-if="passo === 4" cols="6" sm="1">
+              <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
+                type="number" min="0" step="1" variant="outlined" density="compact" hide-details
+                :disabled="entrada?.status === 'Processada'"
+                hint="Do cadastro do produto"
+                @update:model-value="item._alterado = true" />
+            </v-col>
+
+            <!-- Conferência de custos (etapa 4, somente leitura) -->
+            <template v-if="passo === 4">
+              <v-col cols="6" sm="1">
+                <v-text-field :model-value="fmt(item.valorTotalXml)" label="Vl. compra"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly />
+              </v-col>
+              <v-col cols="6" sm="1">
+                <v-text-field :model-value="fmt(freteRateado(item))" label="Frete rateado"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly />
+              </v-col>
+              <v-col cols="6" sm="1">
+                <v-text-field v-model.number="item._ipi" label="IPI" prefix="R$"
+                  type="number" min="0" step="0.01"
+                  variant="outlined" density="compact" hide-details
+                  :disabled="entrada?.status === 'Processada'"
+                  hint="Do XML — ajuste se necessário"
+                  @update:model-value="item._alterado = true" />
+              </v-col>
+              <v-col cols="6" sm="1">
+                <v-text-field v-model.number="item._icmsSt" label="ICMS-ST" prefix="R$"
+                  type="number" min="0" step="0.01"
+                  variant="outlined" density="compact" hide-details
+                  :disabled="entrada?.status === 'Processada'"
+                  hint="Do XML — ajuste se necessário"
+                  @update:model-value="item._alterado = true" />
+              </v-col>
+              <v-col cols="6" sm="2">
+                <v-text-field :model-value="fmt(custoTotalItem(item))" label="Custo final"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly
+                  class="font-weight-bold" />
+              </v-col>
+              <v-col cols="6" sm="2">
+                <v-text-field :model-value="fmt(custoUnitario(item))"
+                  :label="`Custo unit. (${item._unidade || 'un'})`"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly
+                  class="font-weight-bold" />
+              </v-col>
+              <v-col cols="6" sm="2">
+                <v-text-field :model-value="fmt(precoSugerido(item))"
+                  :label="`Preço venda (${item._unidade || 'un'})`" prefix="R$"
+                  variant="outlined" density="compact" hide-details readonly
+                  class="font-weight-bold" />
+              </v-col>
+              <!-- Valores por 100g (produtos por peso) -->
+              <v-col cols="6" sm="1">
+                <v-text-field :model-value="fmt(custoUnitario(item) / 10)" label="Custo 100g"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly />
+              </v-col>
+              <v-col cols="6" sm="1">
+                <v-text-field :model-value="fmt(precoSugerido(item) / 10)" label="Preço 100g"
+                  prefix="R$" variant="outlined" density="compact" hide-details readonly
+                  class="font-weight-bold text-success" />
+              </v-col>
+            </template>
+
+            <!-- Lote e Validade (etapa 3, junto da configuração de estoque) -->
+            <v-col v-if="passo === 3" cols="6" sm="2">
               <v-text-field v-model="item._lote" label="Lote"
                 variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
                 @update:model-value="item._alterado = true" />
             </v-col>
-            <v-col cols="6" sm="2">
+            <v-col v-if="passo === 3" cols="6" sm="2">
               <v-text-field v-model="item._validade" label="Validade" type="date"
                 variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
@@ -321,8 +419,8 @@
       </div>
     </div>
 
-    <!-- ─── ABA: FINANCEIRO ─── -->
-    <div v-if="aba === 'financeiro'">
+    <!-- ─── ETAPA 5: FINANCEIRO ─── -->
+    <div v-show="passo === 5">
       <v-card rounded="xl" elevation="1" class="pa-4 mb-4">
         <div class="d-flex justify-space-between align-center mb-3">
           <div class="text-subtitle-2 font-weight-bold">Faturas / Contas a Pagar</div>
@@ -337,6 +435,21 @@
           density="compact" class="mb-3">
           Lançamentos registrados em Contas a Pagar.
         </v-alert>
+
+        <!-- Classificação dos lançamentos gerados -->
+        <v-row dense class="mb-2">
+          <v-col cols="12" sm="4">
+            <v-select v-model="categoriaFinanceira" label="Categoria (Contas a Pagar) *"
+              :items="categoriasFinanceiras" variant="outlined" density="compact" hide-details
+              :disabled="entrada?.status === 'Processada'" />
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-select v-model="formaPagamento" label="Forma de pagamento"
+              :items="formasPagamento" variant="outlined" density="compact" hide-details clearable
+              :disabled="entrada?.status === 'Processada'" />
+          </v-col>
+        </v-row>
+        <v-divider class="mb-3" />
 
         <div v-for="(f, i) in faturas" :key="i" class="d-flex align-center gap-2 mb-2">
           <v-text-field v-model="f.label" :label="`Fatura ${i + 1}`"
@@ -369,136 +482,83 @@
       </v-card>
     </div>
 
-    <!-- Botão Processar -->
-    <div v-if="entrada?.status === 'EmEdicao'" class="d-flex justify-end mt-4">
-      <v-btn color="success" size="large" rounded="lg" :loading="processando"
-        prepend-icon="mdi-check-all" @click="processar">
-        Processar Entrada
-      </v-btn>
+    <!-- ─── ETAPA 6: FINALIZAÇÃO ─── -->
+    <div v-show="passo === 6">
+      <v-card rounded="xl" elevation="1" class="pa-4">
+        <template v-if="entrada?.status === 'Processada'">
+          <div class="text-center py-6">
+            <v-icon icon="mdi-check-decagram" color="success" size="64" class="mb-3" />
+            <div class="text-h6 font-weight-bold mb-1">Entrada escriturada com sucesso!</div>
+            <div class="text-body-2 text-medium-emphasis">
+              Estoque atualizado, custos dos produtos atualizados, movimentação registrada
+              e contas a pagar geradas.
+            </div>
+            <v-btn class="mt-4" color="primary" variant="tonal" prepend-icon="mdi-arrow-left"
+              @click="$router.push('/fiscal')">Voltar aos Documentos Fiscais</v-btn>
+          </div>
+        </template>
+        <template v-else>
+          <div class="text-subtitle-2 font-weight-bold mb-3">Resumo da entrada</div>
+          <v-row dense>
+            <v-col cols="6" sm="3">
+              <v-text-field :model-value="itensEditaveis.length" label="Itens"
+                variant="outlined" density="compact" readonly hide-details />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field :model-value="'R$ ' + fmt(entrada?.valorTotal)" label="Total da nota"
+                variant="outlined" density="compact" readonly hide-details />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field :model-value="'R$ ' + fmt(entrada?.freteTotal)" label="Frete (rateado)"
+                variant="outlined" density="compact" readonly hide-details />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-text-field :model-value="faturas.length + 'x — R$ ' + fmt(totalFaturas)"
+                label="Contas a pagar" variant="outlined" density="compact" readonly hide-details />
+            </v-col>
+          </v-row>
+
+          <v-alert type="warning" variant="tonal" density="compact" class="mt-4">
+            Ao <b>Finalizar</b>: o estoque será atualizado, os custos dos produtos serão gravados,
+            a movimentação será registrada e as <b>contas a pagar</b> serão lançadas.
+            Depois disso a nota fica travada (use <b>Estornar</b> para reverter).
+          </v-alert>
+
+          <v-switch v-model="lancarFinanceiro" color="primary" density="compact" hide-details
+            class="mt-2"
+            :label="lancarFinanceiro ? 'Lançar contas a pagar no financeiro' : 'NÃO lançar financeiro agora'" />
+        </template>
+      </v-card>
     </div>
 
-    <!-- Dialog: Conferência antes de processar — 2 etapas (Itens → Contas a Pagar) -->
-    <v-dialog v-model="dlgConfirmarProcessar" max-width="820" persistent scrollable>
-      <v-card rounded="xl">
-        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
-          <v-icon color="success">mdi-check-all</v-icon>
-          Conferir antes de processar
-          <v-spacer />
-          <v-chip size="small" :color="passoConfirmar === 1 ? 'primary' : 'default'" variant="tonal">1. Itens</v-chip>
-          <v-icon size="16">mdi-chevron-right</v-icon>
-          <v-chip size="small" :color="passoConfirmar === 2 ? 'primary' : 'default'" variant="tonal">2. Contas a pagar</v-chip>
-        </v-card-title>
-        <v-divider />
+    <!-- ─── NAVEGAÇÃO DO WIZARD ─── -->
+    <div v-if="entrada?.status === 'EmEdicao'" class="d-flex align-center justify-space-between mt-4">
+      <v-btn variant="text" :disabled="passo === 1" prepend-icon="mdi-chevron-left"
+        @click="passoAnterior">Voltar</v-btn>
 
-        <!-- ETAPA 1: revisar itens -->
-        <v-card-text v-if="passoConfirmar === 1" style="max-height:60vh">
-          <div class="text-body-2 mb-2">
-            Confira os itens que darão <b>entrada no estoque</b>. Se algo estiver errado
-            (unidade, fator de conversão, quantidade, markup/preço), clique em
-            <b>Voltar e ajustar itens</b>.
-          </div>
-          <v-table density="compact">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th class="text-right">Qtd. estoque</th>
-                <th class="text-right">Custo unit.</th>
-                <th class="text-right">Markup</th>
-                <th class="text-right">Preço sug.</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in itensEditaveis" :key="item.id">
-                <td>
-                  <div class="text-body-2">{{ item._produtoDescricao || item.descricaoXml }}</div>
-                  <div class="text-caption text-medium-emphasis">
-                    XML: {{ fmtQtd(item.quantidadeXml) }} {{ item.unidadeXml }}
-                    <span v-if="!item._produtoId" class="text-error">· sem produto!</span>
-                  </div>
-                </td>
-                <td class="text-right">{{ fmtQtd(item.quantidadeXml * (item._fator || 1)) }} {{ item._unidade }}</td>
-                <td class="text-right">R$ {{ fmt(custoDisplay(item)) }}</td>
-                <td class="text-right">{{ item._markup ?? 0 }}%</td>
-                <td class="text-right">R$ {{ fmt(custoDisplay(item) * (1 + (item._markup || 0) / 100)) }}</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card-text>
+      <div class="d-flex align-center gap-2">
+        <span v-if="!podeAvancar && passo === 2" class="text-caption text-error">
+          Vincule ou cadastre todos os produtos ({{ itensSemProduto }} pendente(s)).
+        </span>
+        <span v-if="!podeAvancar && passo === 3" class="text-caption text-error">
+          Defina unidade de estoque e fator de conversão em todos os itens.
+        </span>
 
-        <!-- ETAPA 2: revisar contas a pagar -->
-        <v-card-text v-else>
-          <v-switch v-model="lancarFinanceiro" color="primary" density="compact" hide-details
-            :label="lancarFinanceiro ? 'Lançar contas a pagar no financeiro' : 'NÃO lançar financeiro agora (lanço depois)'"
-            class="mb-2" />
+        <v-btn v-if="itensAlterados > 0 && passo >= 2 && passo <= 4"
+          variant="tonal" :loading="salvandoTodos" prepend-icon="mdi-content-save"
+          @click="salvarTodos">Salvar itens ({{ itensAlterados }})</v-btn>
 
-          <template v-if="lancarFinanceiro">
-            <v-table density="compact" class="mb-2">
-              <thead>
-                <tr><th>Parcela</th><th>Vencimento</th><th class="text-right">Valor</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="(f, i) in faturas" :key="i">
-                  <td>{{ f.label || (i + 1) }}</td>
-                  <td>{{ fmtData(f.vencimento) }}</td>
-                  <td class="text-right">R$ {{ fmt(f.valor) }}</td>
-                </tr>
-                <tr v-if="faturas.length === 0">
-                  <td colspan="3" class="text-center text-medium-emphasis">Nenhuma fatura — nada será lançado.</td>
-                </tr>
-              </tbody>
-            </v-table>
-            <div class="d-flex justify-space-between text-body-2">
-              <span>Total das faturas:</span>
-              <strong :class="Math.abs(totalFaturas - (entrada?.valorTotal ?? 0)) > 0.01 ? 'text-error' : 'text-success'">
-                R$ {{ fmt(totalFaturas) }}
-              </strong>
-            </div>
-            <div class="d-flex justify-space-between text-body-2">
-              <span>Valor da nota:</span>
-              <strong>R$ {{ fmt(entrada?.valorTotal ?? 0) }}</strong>
-            </div>
-            <v-alert v-if="Math.abs(totalFaturas - (entrada?.valorTotal ?? 0)) > 0.01"
-              type="warning" variant="tonal" density="compact" class="mt-2">
-              O total das faturas <b>não bate</b> com o valor da nota. Ajuste as parcelas na aba
-              <b>Financeiro / Faturas</b> antes de confirmar.
-            </v-alert>
-          </template>
-          <v-alert v-else type="info" variant="tonal" density="compact">
-            Só o estoque será atualizado. Você poderá lançar as contas a pagar manualmente depois,
-            em <b>Financeiro → Contas a Pagar</b>.
-          </v-alert>
-        </v-card-text>
-
-        <v-divider />
-        <v-card-actions class="pa-4">
-          <v-btn variant="text" @click="dlgConfirmarProcessar = false">Cancelar</v-btn>
-          <v-spacer />
-          <!-- Etapa 1 -->
-          <template v-if="passoConfirmar === 1">
-            <v-btn variant="text" color="primary"
-              @click="dlgConfirmarProcessar = false; aba = 'itens'">
-              <v-icon start>mdi-pencil</v-icon>Voltar e ajustar itens
-            </v-btn>
-            <v-btn color="primary" rounded="lg" @click="passoConfirmar = 2">
-              Próximo: Contas a pagar <v-icon end>mdi-chevron-right</v-icon>
-            </v-btn>
-          </template>
-          <!-- Etapa 2 -->
-          <template v-else>
-            <v-btn variant="text" @click="passoConfirmar = 1">
-              <v-icon start>mdi-chevron-left</v-icon>Voltar aos itens
-            </v-btn>
-            <v-btn variant="text" color="primary"
-              @click="dlgConfirmarProcessar = false; aba = 'financeiro'">
-              Ajustar faturas
-            </v-btn>
-            <v-btn color="success" rounded="lg" :loading="processando" @click="confirmarProcessamento">
-              <v-icon start>mdi-check-all</v-icon>Confirmar e Processar
-            </v-btn>
-          </template>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+        <v-btn v-if="passo < 6" color="primary" size="large" rounded="lg"
+          append-icon="mdi-chevron-right" :disabled="!podeAvancar" :loading="avancando"
+          @click="proximoPasso">
+          {{ passo === 1 ? 'Processar Nota Fiscal' : 'Avançar' }}
+        </v-btn>
+        <v-btn v-else color="success" size="large" rounded="lg" :loading="processando"
+          prepend-icon="mdi-check-all" @click="finalizarEntrada">
+          Finalizar Entrada
+        </v-btn>
+      </div>
+    </div>
 
 
     <!-- Dialog: Frete Manual -->
@@ -755,14 +815,179 @@ const notif = useNotifStore()
 
 const entradaId = route.params.id as string
 const entrada = ref<any>(null)
-const aba = ref('dados')
 const processando = ref(false)
+
+// ─── Wizard (assistente de escrituração) ────────────────────────────────────
+// Ordem: os produtos são vinculados PRIMEIRO (para herdar unidade e markup do
+// cadastro), depois a conversão de estoque e só então custos/markup/preços.
+const passosWizard = [
+  'Dados da Nota', 'Produtos', 'Fator de Conversão',
+  'Custos e Preços', 'Financeiro', 'Finalização',
+]
+const passo = ref(1)
+const avancando = ref(false)
+const cadastrandoTodos = ref(false)
+const vinculandoAuto = ref(false)
+
+/** Re-executa a busca automática por produtos já cadastrados (EAN → de-para → código). */
+async function vincularAutomatico() {
+  vinculandoAuto.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/vincular-automatico`)
+    const { vinculados, pendentes } = r.data
+    if (vinculados > 0) {
+      notif.ok(`${vinculados} item(ns) vinculado(s) a produtos já cadastrados.`
+        + (pendentes ? ` ${pendentes} ainda sem vínculo.` : ''))
+      await carregar()
+      enriquecerItensComProduto()
+    } else {
+      notif.aviso('Nenhum produto correspondente encontrado no cadastro.')
+    }
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao vincular automaticamente.')
+  } finally { vinculandoAuto.value = false }
+}
+
+// Até onde o usuário pode navegar (não pode pular etapas obrigatórias)
+const passoMaximo = computed(() => {
+  if (!localEstoqueId.value) return 1
+  if (itensSemProduto.value > 0) return 2       // etapa 2: todos vinculados
+  if (!todosFatoresOk.value) return 3           // etapa 3: conversão definida
+  return 6
+})
+
+const todosFatoresOk = computed(() =>
+  itensEditaveis.value.length > 0 &&
+  itensEditaveis.value.every((i: any) => !!i._unidade && (i._fator > 0)))
+
+const podeAvancar = computed(() => {
+  if (entrada.value?.status !== 'EmEdicao') return false
+  switch (passo.value) {
+    case 1: return !!localEstoqueId.value
+    case 2: return itensSemProduto.value === 0   // produtos vinculados
+    case 3: return todosFatoresOk.value          // fator de conversão
+    default: return true
+  }
+})
+
+function irParaPasso(n: number) {
+  if (entrada.value?.status === 'Processada') { passo.value = n; return }
+  if (n <= passoMaximo.value) passo.value = n
+}
+function passoAnterior() { if (passo.value > 1) passo.value-- }
+
+async function proximoPasso() {
+  if (!podeAvancar.value) return
+  avancando.value = true
+  try {
+    // Salva as alterações dos itens antes de avançar (etapas 2 a 4)
+    if (itensAlterados.value > 0 && passo.value >= 2 && passo.value <= 4)
+      await salvarTodos()
+    if (passo.value < 6) passo.value++
+  } finally { avancando.value = false }
+}
+
+// Base do rateio = soma do valor dos itens (MESMA base do backend RatearFrete).
+const baseRateioProdutos = computed(() =>
+  itensEditaveis.value.reduce((s: number, i: any) => s + (i.valorTotalXml || 0), 0) || 1)
+
+/** Rateio de frete PROPORCIONAL AO VALOR aplicado ao item (para conferência). */
+function freteRateado(item: any) {
+  const freteTotal = entrada.value?.freteTotal ?? 0
+  return freteTotal * ((item.valorTotalXml || 0) / baseRateioProdutos.value)
+}
+/** Impostos que compõem o custo (editáveis; iniciam com os valores do XML). */
+function impostosItem(item: any) {
+  return (item._ipi ?? item.valorIpi ?? 0) + (item._icmsSt ?? item.valorIcmsSt ?? 0)
+}
+/** Custo final do item = valor de compra + frete rateado + impostos. */
+function custoTotalItem(item: any) {
+  return (item.valorTotalXml || 0) + freteRateado(item) + impostosItem(item)
+}
+/** Quantidade convertida para estoque. */
+function qtdEstoque(item: any) {
+  return (item.quantidadeXml || 0) * (item._fator || 1)
+}
+/** Custo unitário = custo final ÷ quantidade de estoque. */
+function custoUnitario(item: any) {
+  const q = qtdEstoque(item)
+  return q > 0 ? custoTotalItem(item) / q : (item.custoUnitarioFinal || item.valorUnitarioXml || 0)
+}
+/** Preço de venda sugerido = custo unitário × (1 + markup%). */
+function precoSugerido(item: any) {
+  return custoUnitario(item) * (1 + (item._markup || 0) / 100)
+}
+
+/** Cadastra automaticamente todos os itens sem produto, usando os dados da NF-e. */
+async function cadastrarTodosAutomaticamente() {
+  const pendentes = itensEditaveis.value.filter((i: any) => !i._produtoId)
+  if (!pendentes.length) return
+  if (!confirm(`Cadastrar automaticamente ${pendentes.length} produto(s) com os dados da NF-e?`)) return
+
+  cadastrandoTodos.value = true
+  let criados = 0, falhas = 0
+  try {
+    for (const item of pendentes) {
+      try {
+        await criarProdutoDoItem(item)
+        criados++
+      } catch { falhas++ }
+    }
+    if (criados) await salvarTodos()
+    notif.ok(`${criados} produto(s) cadastrado(s) e vinculado(s).`
+      + (falhas ? ` ${falhas} falharam — cadastre manualmente.` : ''))
+    await carregarAuxiliares()
+  } finally { cadastrandoTodos.value = false }
+}
+
+async function finalizarEntrada() {
+  processando.value = true
+  try {
+    if (itensAlterados.value > 0) await salvarTodos()
+    const faturasEnviar = lancarFinanceiro.value
+      ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
+      : []
+    await api.post(`/fiscal/entradas/${entradaId}/processar`, {
+      faturas: faturasEnviar,
+      categoria: lancarFinanceiro.value ? categoriaFinanceira.value : null,
+      formaPagamento: lancarFinanceiro.value ? formaPagamento.value : null,
+    })
+    notif.ok('Entrada escriturada com sucesso!')
+    await carregar()
+    passo.value = 6
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao finalizar a entrada.')
+  } finally { processando.value = false }
+}
 const estornando = ref(false)
 const devolvendo = ref(false)
 const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
 const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
+
+// Configuração Fiscal da empresa (tributação padrão para novos produtos)
+const configFiscal = ref<any>(null)
+
+/**
+ * Tributação padrão vinda do cadastro base (Configurações → Fiscal).
+ * Simples Nacional usa CSOSN; Lucro Presumido/Real usa CST ICMS.
+ * Se não houver config, cai nos padrões conservadores.
+ */
+function tributacaoPadrao(cfopItem?: string) {
+  const c = configFiscal.value
+  const simples = (c?.regime ?? 'SimplesNacional') === 'SimplesNacional'
+  return {
+    origem:        c?.origemPadrao ?? '0',
+    csosnIcms:     simples ? (c?.csosnPadrao ?? '400') : '',
+    cstIcms:       simples ? '' : (c?.cstIcmsPadrao ?? '00'),
+    aliquotaIcms:  c?.aliquotaIcmsPadrao ?? 0,
+    cstPisCofins:  c?.cstPisPadrao ?? '07',
+    aliquotaPis:   c?.aliquotaPisPadrao ?? 0,
+    aliquotaCofins: c?.aliquotaCofinsPadrao ?? 0,
+    cfop:          c?.cfopVendaEstadual || cfopItem || '',
+  }
+}
 
 // Listas auxiliares
 const locaisEstoque = ref<any[]>([])
@@ -790,9 +1015,13 @@ const pedidoCompraId = ref<string | null>(null)
 // Financeiro
 const faturas = ref<{ label: string; valor: number; vencimento: string }[]>([])
 const totalFaturas = computed(() => faturas.value.reduce((s, f) => s + (f.valor || 0), 0))
-const dlgConfirmarProcessar = ref(false)
 const lancarFinanceiro = ref(true)
-const passoConfirmar = ref(1)
+
+// Classificação dos lançamentos de contas a pagar gerados pela entrada
+const categoriasFinanceiras = ['Despesas Fixas', 'Despesas Variáveis', 'Pessoas', 'Impostos']
+const formasPagamento = ['Boleto', 'PIX', 'Transferência', 'Dinheiro', 'Cartão', 'Cheque']
+const categoriaFinanceira = ref('Despesas Variáveis')  // compra de mercadoria
+const formaPagamento = ref<string | null>('Boleto')
 
 // Dialogs
 const dlgFrete = ref(false)
@@ -833,6 +1062,9 @@ function popularItensEditaveis(itens: any[]) {
     _lote: i.numeroLote ?? '',
     _validade: i.validade ? i.validade.slice(0, 10) : '',
     _markup: i.markupSugerido ? Math.round((i.markupSugerido - 1) * 10000) / 100 : 150,
+    // Impostos que compõem o custo — começam com os valores do XML e são editáveis
+    _ipi: i.valorIpi ?? 0,
+    _icmsSt: i.valorIcmsSt ?? 0,
     _alterado: false,
   }))
 }
@@ -845,6 +1077,9 @@ async function carregar() {
   localEstoqueId.value = r.data.localEstoqueId ?? null
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
   popularItensEditaveis(r.data.itens ?? [])
+
+  // Nota já processada → abre direto na etapa de finalização (somente leitura)
+  if (r.data.status === 'Processada') passo.value = 6
 
   // Pré-popular faturas a partir das duplicatas do XML (salvas no banco)
   if (faturas.value.length === 0 && r.data.status === 'EmEdicao') {
@@ -868,14 +1103,17 @@ async function carregar() {
 }
 
 async function carregarAuxiliares() {
-  const [locais, pedidos, prods, unds, cats, mrcs] = await Promise.all([
+  const [locais, pedidos, prods, unds, cats, mrcs, cfg] = await Promise.all([
     api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/compras/pedidos', { params: { empresaId: auth.empresaId, status: 'Enviado' } }).catch(() => ({ data: [] })),
     api.get('/produtos', { params: { empresaId: auth.empresaId, tamanhoPagina: 2000 } }).catch(() => ({ data: [] })),
     api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/categorias', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/marcas', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    // Tributação padrão da empresa (Configurações → Fiscal)
+    api.get('/fiscal/configuracao', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: null })),
   ])
+  configFiscal.value = cfg.data ?? null
   locaisEstoque.value = locais.data
   pedidosCompra.value = pedidos.data.map((p: any) => ({
     ...p,
@@ -979,6 +1217,89 @@ function sugerirCategoria(descricao: string): string | undefined {
   return undefined
 }
 
+/**
+ * Cria o produto a partir dos dados da NF-e (sem diálogo) e vincula ao item.
+ * Usado no "Cadastrar todos automaticamente" da etapa 3.
+ * Se já existir produto com o mesmo código de barras, apenas vincula.
+ */
+async function criarProdutoDoItem(item: any) {
+  const custo = custoDisplay(item)
+  const ean = /^\d{8,14}$/.test(item.codigoBarras ?? '') ? item.codigoBarras : null
+
+  // Já existe produto com este código de barras? → vincula
+  if (ean) {
+    const rb = await api.get('/produtos/buscar', {
+      params: { empresaId: auth.empresaId, q: ean },
+    }).catch(() => null)
+    const existente = (rb?.data ?? []).find((p: any) => p.codigoBarras === ean)
+    if (existente) {
+      item._produtoId = existente.id
+      item._produtoDescricao = existente.descricao
+      item._alterado = true
+      return
+    }
+  }
+
+  // Garante categoria/marca/unidade
+  let categoriaId = sugerirCategoria(item.descricaoXml ?? '') ?? categorias.value[0]?.id
+  if (!categoriaId) {
+    const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Geral' })
+    categorias.value = [...categorias.value, rc.data]
+    categoriaId = rc.data.id
+  }
+  let marcaId = marcas.value[0]?.id
+  if (!marcaId) {
+    const rm = await api.post('/marcas', { empresaId: auth.empresaId, nome: 'Sem marca' })
+    marcas.value = [...marcas.value, rm.data]
+    marcaId = rm.data.id
+  }
+  const unidadeMedidaId = unidadesMedida.value.find((u: any) =>
+    u.sigla === item._unidade || u.sigla === item.unidadeXml)?.id ?? unidadesMedida.value[0]?.id
+  if (!unidadeMedidaId) throw new Error('Sem unidade de medida cadastrada.')
+
+  const precoVenda = Math.round(custo * (1 + (item._markup || 150) / 100) * 100) / 100 || 0.01
+
+  const ncmLimpo = (item.ncmXml ?? '').replace(/\D/g, '').slice(0, 8) || null
+
+  const r = await api.post('/produtos', {
+    empresaId: auth.empresaId,
+    codigo: null,                     // backend gera código único
+    descricao: item.descricaoXml,
+    codigoBarras: ean,
+    ncm: ncmLimpo,
+    categoriaId, marcaId, unidadeMedidaId,
+    custoUnitario: Math.round(custo * 100) / 100,
+    precoVenda,
+  })
+  const novoId = r.data.id ?? r.data.Id
+
+  // Grava a tributação padrão (Configuração Fiscal) no produto recém-criado
+  const trib = tributacaoPadrao(item._cfop)
+  await api.put(`/produtos/${novoId}`, {
+    empresaId: auth.empresaId,
+    descricao: item.descricaoXml,
+    categoriaId, marcaId, unidadeMedidaId,
+    custoUnitario: Math.round(custo * 100) / 100,
+    precoVenda,
+    ncm: ncmLimpo,
+    cfop: trib.cfop || null,
+    origem: trib.origem,
+    csosnIcms: trib.csosnIcms || null,
+    cstIcms: trib.cstIcms || null,
+    cstPisCofins: trib.cstPisCofins || null,
+    aliquotaIcms: trib.aliquotaIcms,
+    aliquotaPis: trib.aliquotaPis,
+    aliquotaCofins: trib.aliquotaCofins,
+  }, { _quiet: true } as any).catch(() => null)
+
+  // Vincula ao item e adiciona à lista local
+  item._produtoId = novoId
+  item._produtoDescricao = item.descricaoXml
+  item._alterado = true
+  if (!produtos.value.find((p: any) => p.id === novoId))
+    produtos.value = [...produtos.value, { id: novoId, descricao: item.descricaoXml, codigo: r.data.codigo ?? '' }]
+}
+
 async function abrirCriarProduto(item: any) {
   itemCriando.value = item
   abaCriarProduto.value = 'geral'
@@ -1007,16 +1328,9 @@ async function abrirCriarProduto(item: any) {
     marcaId: marcas.value[0]?.id ?? '',
     custoUnitario: Math.round(custo * 100) / 100,
     precoVenda: Math.round(custo * (1 + (item._markup || 150) / 100) * 100) / 100,
-    // Fiscal
+    // Fiscal — herdado da Configuração Fiscal (tributação padrão do cadastro base)
     ncm: item.ncmXml ?? '',
-    cfop: item._cfop ?? '',
-    origem: '0',
-    csosnIcms: '400',
-    cstIcms: '',
-    cstPisCofins: '07',
-    aliquotaIcms: 0,
-    aliquotaPis: 0,
-    aliquotaCofins: 0,
+    ...tributacaoPadrao(item._cfop),
     // Fornecedor
     _fornecedorExistente: fornecedorExistente,
     _vincularFornecedor: !!fornecedorExistente,
@@ -1173,16 +1487,9 @@ function proximoCodigo(): string {
   return String(maior + 1)
 }
 
+// Mantido por compatibilidade; delega para custoUnitario (mesma base do backend).
 function custoDisplay(item: any) {
-  // Frete rateado PROPORCIONAL AO VALOR: FreteItem = FreteTotal × (ValorItem / ValorProdutos)
-  // depois somado ao valor do item e dividido pela quantidade de estoque (com conversão).
-  const freteTotal = entrada.value?.freteTotal ?? 0
-  const valorProdutos = (entrada.value?.valorProdutos
-    || itensEditaveis.value.reduce((s: number, i: any) => s + (i.valorTotalXml || 0), 0)) || 1
-  const freteItem = freteTotal * ((item.valorTotalXml || 0) / valorProdutos)
-  const total = (item.valorTotalXml || 0) + (item.valorIpi || 0) + (item.valorIcmsSt || 0) + freteItem
-  const qtd = item.quantidadeXml * (item._fator || 1)
-  return qtd > 0 ? total / qtd : (item.custoUnitarioFinal || item.valorUnitarioXml)
+  return custoUnitario(item)
 }
 
 function aplicarMarkupGlobal() {
@@ -1229,6 +1536,8 @@ async function salvarTodos() {
         numeroLote: item._lote || null,
         validade: item._validade || null,
         markupSugerido: 1 + item._markup / 100,   // converter % → multiplicador para o backend
+        valorIpi: item._ipi ?? 0,
+        valorIcmsSt: item._icmsSt ?? 0,
         tags: null,
       })
     ))
@@ -1251,35 +1560,6 @@ function adicionarFatura() {
 }
 
 // Abre a confirmação — NÃO lança nada ainda. O financeiro só é lançado após conferência.
-function processar() {
-  if (itensSemProduto.value > 0) {
-    notif.erro(`${itensSemProduto.value} item(ns) sem produto vinculado. Acesse a aba Itens.`)
-    aba.value = 'itens'
-    return
-  }
-  lancarFinanceiro.value = faturas.value.length > 0
-  passoConfirmar.value = 1   // sempre começa revisando os itens
-  dlgConfirmarProcessar.value = true
-}
-
-async function confirmarProcessamento() {
-  processando.value = true
-  try {
-    // Só envia faturas se o usuário confirmou o lançamento no financeiro.
-    const faturasEnviar = lancarFinanceiro.value
-      ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
-      : []
-    await api.post(`/fiscal/entradas/${entradaId}/processar`, { faturas: faturasEnviar })
-    notif.ok(lancarFinanceiro.value
-      ? 'Entrada processada! Estoque atualizado e contas a pagar lançadas.'
-      : 'Entrada processada! Estoque atualizado (sem lançamento financeiro).')
-    dlgConfirmarProcessar.value = false
-    await carregar()
-  } catch (e: any) {
-    notif.erro(e.response?.data?.mensagem ?? 'Erro ao processar entrada.')
-  } finally { processando.value = false }
-}
-
 async function estornar() {
   if (!motivoEstorno.value) { notif.erro('Informe o motivo do estorno.'); return }
   estornando.value = true

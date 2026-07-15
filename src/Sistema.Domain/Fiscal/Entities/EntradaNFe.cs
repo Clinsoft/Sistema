@@ -245,6 +245,17 @@ public class ItemEntradaNFe : Entity
 
     public void DefinirFreteProporcional(decimal valor) => ValorFreteProporcional = valor;
 
+    /// <summary>
+    /// Ajusta os impostos que compõem o custo do item (IPI e ICMS-ST).
+    /// Começam com os valores do XML e podem ser corrigidos na conferência
+    /// (ex.: ST recolhido em guia separada, não destacado na nota).
+    /// </summary>
+    public void DefinirImpostos(decimal valorIpi, decimal valorIcmsSt)
+    {
+        ValorIpi = valorIpi < 0 ? 0 : valorIpi;
+        ValorIcmsSt = valorIcmsSt < 0 ? 0 : valorIcmsSt;
+    }
+
     public void CalcularCusto(decimal freteProporcional)
     {
         ValorFreteProporcional = freteProporcional;

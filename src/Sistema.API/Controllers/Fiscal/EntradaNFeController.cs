@@ -374,15 +374,9 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (fornecedor is not null)
             entrada.VincularFornecedor(fornecedor.Id);
 
-        // Verificar quais produtos já estão cadastrados (por código de barras)
-        foreach (var item in entrada.Itens.Where(i => i.CodigoBarras != null))
-        {
-            var produto = await db.Produtos
-                .FirstOrDefaultAsync(p => p.EmpresaId == req.EmpresaId &&
-                    p.CodigoBarras == item.CodigoBarras, ct);
-            if (produto is not null)
-                item.VincularProduto(produto.Id, produto.Descricao);
-        }
+        // Vincula automaticamente aos produtos já cadastrados
+        // (código de barras → de-para do fornecedor → código interno)
+        await VincularProdutosAutomaticamenteAsync(entrada, ct);
 
         db.EntradasNFe.Add(entrada);
         await db.SaveChangesAsync(ct);
@@ -432,9 +426,14 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             item.DefinirLote(req.NumeroLote, req.Validade);
         if (req.Tags is not null) item.DefinirTags(req.Tags);
 
+        // Impostos que compõem o custo (IPI / ICMS-ST) — corrigíveis na conferência
+        if (req.ValorIpi.HasValue || req.ValorIcmsSt.HasValue)
+            item.DefinirImpostos(req.ValorIpi ?? item.ValorIpi, req.ValorIcmsSt ?? item.ValorIcmsSt);
+
         // Recalcula o custo de TODOS os itens com o frete rateado por VALOR proporcional
-        // (a conversão de um item muda o custo unitário; o rateio por valor não muda).
-        if (req.FatorConversao.HasValue || req.MarkupSugerido.HasValue)
+        // (a conversão/impostos de um item mudam o custo unitário; o rateio por valor não muda).
+        if (req.FatorConversao.HasValue || req.MarkupSugerido.HasValue
+            || req.ValorIpi.HasValue || req.ValorIcmsSt.HasValue)
             entrada.RatearFrete();
 
         if (req.MarkupSugerido.HasValue)
@@ -581,6 +580,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                 documentoOrigem: entrada.ChaveAcesso,
                 parcela: parcela, totalParcelas: req.Faturas.Count,
                 grupoParcelamento: grupo);
+
+            // Categoria do contas a pagar + forma de pagamento (observação)
+            var obs = string.IsNullOrWhiteSpace(req.FormaPagamento)
+                ? null : $"Forma de pagamento: {req.FormaPagamento}";
+            lanc.DefinirClassificacao(req.Categoria, null, obs);
+
             db.LancamentosFinanceiros.Add(lanc);
         }
 
@@ -950,6 +955,82 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         // Totais já são carregados via ParsearNFeXml no novo fluxo ImportarXml.
     }
 
+    /// <summary>
+    /// Vincula automaticamente os itens da entrada a produtos já cadastrados.
+    /// Prioridade: 1) código de barras (EAN); 2) de-para do fornecedor
+    /// (CodigoFornecedorPrincipal memorizado em entradas anteriores); 3) código interno.
+    /// Retorna quantos itens foram vinculados nesta execução.
+    /// </summary>
+    private async Task<int> VincularProdutosAutomaticamenteAsync(EntradaNFe entrada, CancellationToken ct)
+    {
+        var pendentes = entrada.Itens.Where(i => i.ProdutoId is null).ToList();
+        if (pendentes.Count == 0) return 0;
+
+        var empresaId = entrada.EmpresaId;
+        var codsBarras = pendentes.Where(i => i.CodigoBarras != null).Select(i => i.CodigoBarras!).Distinct().ToList();
+        var codsForn = pendentes.Where(i => i.CodigoFornecedor != null).Select(i => i.CodigoFornecedor!).Distinct().ToList();
+
+        var porBarras = codsBarras.Count > 0
+            ? await db.Produtos.AsNoTracking()
+                .Where(p => p.EmpresaId == empresaId && p.CodigoBarras != null && codsBarras.Contains(p.CodigoBarras))
+                .ToDictionaryAsync(p => p.CodigoBarras!, ct)
+            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+
+        // De-para: produtos que já memorizaram o código deste emitente
+        var cnpjEmitente = CnpjRaw(entrada.EmitenteCnpj);
+        var fornecedor = await db.Fornecedores.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.EmpresaId == empresaId && f.Cnpj == cnpjEmitente, ct);
+
+        var porDePara = fornecedor is not null && codsForn.Count > 0
+            ? await db.Produtos.AsNoTracking()
+                .Where(p => p.EmpresaId == empresaId
+                         && p.FornecedorPrincipalId == fornecedor.Id
+                         && p.CodigoFornecedorPrincipal != null
+                         && codsForn.Contains(p.CodigoFornecedorPrincipal))
+                .ToDictionaryAsync(p => p.CodigoFornecedorPrincipal!, ct)
+            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+
+        var porCodigo = codsForn.Count > 0
+            ? await db.Produtos.AsNoTracking()
+                .Where(p => p.EmpresaId == empresaId && codsForn.Contains(p.Codigo))
+                .ToDictionaryAsync(p => p.Codigo, ct)
+            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+
+        int vinculados = 0;
+        foreach (var item in pendentes)
+        {
+            Domain.Estoque.Entities.Produto? prod = null;
+            if (item.CodigoBarras != null && porBarras.TryGetValue(item.CodigoBarras, out var pB)) prod = pB;
+            else if (item.CodigoFornecedor != null && porDePara.TryGetValue(item.CodigoFornecedor, out var pD)) prod = pD;
+            else if (item.CodigoFornecedor != null && porCodigo.TryGetValue(item.CodigoFornecedor, out var pC)) prod = pC;
+
+            if (prod is not null)
+            {
+                item.VincularProduto(prod.Id, prod.Descricao);
+                vinculados++;
+            }
+        }
+        return vinculados;
+    }
+
+    /// <summary>Re-executa a vinculação automática dos itens ainda sem produto.</summary>
+    [HttpPost("{id:guid}/vincular-automatico")]
+    public async Task<IActionResult> VincularAutomatico(Guid id, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (entrada.Status == StatusEntradaNFe.Processada)
+            return BadRequest(new { mensagem = "Entrada já processada." });
+
+        var vinculados = await VincularProdutosAutomaticamenteAsync(entrada, ct);
+        if (vinculados > 0) await db.SaveChangesAsync(ct);
+
+        var pendentes = entrada.Itens.Count(i => i.ProdutoId is null);
+        return Ok(new { vinculados, pendentes });
+    }
+
     private static decimal Dec(string? s) =>
         decimal.TryParse(s, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
@@ -1006,13 +1087,18 @@ public record EditarItemRequest(
     string? NumeroLote,
     DateTime? Validade,
     string? Tags,
-    decimal? MarkupSugerido);
+    decimal? MarkupSugerido,
+    decimal? ValorIpi = null,
+    decimal? ValorIcmsSt = null);
 
 public record LocalEstoqueRequest(Guid LocalEstoqueId);
 public record FreteManualRequest(decimal Valor);
 public record VincularFornecedorRequest(Guid FornecedorId);
 public record VincularPedidoRequest(Guid PedidoCompraId);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);
-public record ProcessarEntradaRequest(List<FaturaRequest> Faturas);
+public record ProcessarEntradaRequest(
+    List<FaturaRequest> Faturas,
+    string? Categoria = null,        // categoria do contas a pagar
+    string? FormaPagamento = null);  // forma de pagamento (informativo)
 public record EstornarRequest(string Motivo);
 public record DevolucaoEntradaRequest(List<Guid>? Itens);

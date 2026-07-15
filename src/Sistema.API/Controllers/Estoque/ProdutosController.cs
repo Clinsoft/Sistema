@@ -262,7 +262,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         var grupos = new List<object>();
         var jaAgrupados = new HashSet<Guid>();
 
-        // Por descrição (normalizada)
+        // Por descrição idêntica (normalizada)
         foreach (var g in produtos.GroupBy(p => p.Descricao.Trim().ToUpperInvariant()).Where(g => g.Count() > 1))
         {
             var itens = g.OrderBy(p => p.CriadoEm).ToList();
@@ -276,10 +276,45 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             .GroupBy(p => p.CodigoBarras).Where(g => g.Count() > 1))
         {
             var itens = g.OrderBy(p => p.CriadoEm).ToList();
+            foreach (var p in itens) jaAgrupados.Add(p.Id);
             grupos.Add(new { chave = "Cód. barras: " + g.Key, produtos = itens });
         }
 
+        // Por descrição-base similar: remove sufixos de embalagem/peso e conteúdo entre
+        // parênteses. Ex.: "COLORAU FORTE" ≈ "COLORAU FORTE (NACIONAL)-5KG". Como a
+        // unificação é sempre confirmada manualmente, são sugestões (candidatos).
+        foreach (var g in produtos
+            .Where(p => !jaAgrupados.Contains(p.Id))
+            .GroupBy(p => NormalizarBase(p.Descricao))
+            .Where(g => g.Key.Length >= 3 && g.Count() > 1))
+        {
+            var itens = g.OrderBy(p => p.CriadoEm).ToList();
+            foreach (var p in itens) jaAgrupados.Add(p.Id);
+            grupos.Add(new { chave = "Similar: " + itens[0].Descricao, similar = true, produtos = itens });
+        }
+
         return Ok(grupos);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _reParenteses =
+        new(@"\(.*?\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reEmbalagem =
+        new(@"[-–]?\s*\d+[.,]?\d*\s*(KG|KGS|G|GR|GRS|MG|ML|L|LT|LTS|UN|UND|CX|PCT|PC|PACOTE|FARDO|SACO)\b",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex _reNaoAlfa =
+        new(@"[^A-Z0-9 ]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Descrição-base para detecção de similares: remove parênteses, sufixos de
+    /// peso/embalagem e pontuação, para colapsar variações do mesmo produto.
+    /// </summary>
+    private static string NormalizarBase(string descricao)
+    {
+        var s = (descricao ?? string.Empty).ToUpperInvariant();
+        s = _reParenteses.Replace(s, " ");
+        s = _reEmbalagem.Replace(s, " ");
+        s = _reNaoAlfa.Replace(s, " ");
+        return string.Join(' ', s.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private record ProdutoDupDto(Guid Id, string Codigo, string Descricao, string? CodigoBarras,

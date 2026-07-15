@@ -31,8 +31,14 @@
             <div class="mt-2">Nenhum produto duplicado encontrado.</div>
           </div>
 
-          <v-card v-for="(g, gi) in gruposDup" :key="gi" variant="outlined" rounded="lg" class="mb-3 pa-3">
-            <div class="text-caption text-medium-emphasis mb-2">{{ g.chave }}</div>
+          <v-card v-for="(g, gi) in gruposDup" :key="gi" variant="outlined" rounded="lg" class="mb-3 pa-3"
+            :color="g.similar ? 'warning' : undefined">
+            <div class="d-flex align-center gap-2 mb-2">
+              <span class="text-caption text-medium-emphasis">{{ g.chave }}</span>
+              <v-chip v-if="g.similar" size="x-small" color="warning" variant="flat">
+                <v-icon start size="x-small">mdi-alert</v-icon>similar — confira
+              </v-chip>
+            </div>
             <v-radio-group v-model="g._manter" density="compact" hide-details>
               <v-radio v-for="p in g.produtos" :key="p.id" :value="p.id">
                 <template #label>

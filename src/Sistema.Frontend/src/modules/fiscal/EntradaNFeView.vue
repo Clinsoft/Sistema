@@ -157,6 +157,23 @@
     <!-- ─── ETAPAS 2-4: ITENS (colunas variam por etapa) ─── -->
     <div v-show="passo >= 2 && passo <= 4">
 
+      <!-- Entrada sem itens (escriturada antes do XML completo) -->
+      <v-alert v-if="itensEditaveis.length === 0" type="warning" variant="tonal"
+        class="mb-3" icon="mdi-file-alert-outline">
+        <div class="d-flex align-center flex-wrap gap-3">
+          <div>
+            Esta entrada está <b>sem itens</b> — provavelmente foi escriturada antes do
+            XML completo ser baixado. Se a nota já foi manifestada, reimporte os itens do XML.
+          </div>
+          <v-spacer />
+          <v-btn v-if="entrada?.status === 'EmEdicao'" color="warning" variant="flat"
+            :loading="reimportando" prepend-icon="mdi-download" @click="reimportarItens">
+            Reimportar itens do XML
+          </v-btn>
+        </div>
+      </v-alert>
+
+
       <v-alert :type="passo === 2 ? 'info' : passo === 3 ? 'warning' : 'success'"
         variant="tonal" density="compact" class="mb-3">
         <template v-if="passo === 2">
@@ -828,6 +845,21 @@ const passo = ref(1)
 const avancando = ref(false)
 const cadastrandoTodos = ref(false)
 const vinculandoAuto = ref(false)
+const reimportando = ref(false)
+
+/** Reimporta os itens do XML quando a entrada ficou vazia (escriturada antes do XML). */
+async function reimportarItens() {
+  reimportando.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/reimportar-itens`)
+    notif.ok(`${r.data.itens} item(ns) importado(s) do XML`
+      + (r.data.vinculados ? `, ${r.data.vinculados} vinculado(s) a produtos.` : '.'))
+    await carregar()
+    enriquecerItensComProduto()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao reimportar itens.')
+  } finally { reimportando.value = false }
+}
 
 /** Re-executa a busca automática por produtos já cadastrados (EAN → de-para → código). */
 async function vincularAutomatico() {

@@ -1013,6 +1013,52 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         return vinculados;
     }
 
+    /// <summary>
+    /// Reimporta os itens (e duplicatas) do XML da NF-e para uma entrada que ficou
+    /// sem itens — normalmente porque foi escriturada antes do XML completo ser baixado
+    /// (antes de manifestar). Só age quando a entrada está vazia e Em Edição.
+    /// </summary>
+    [HttpPost("{id:guid}/reimportar-itens")]
+    public async Task<IActionResult> ReimportarItens(Guid id, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (entrada.Status != StatusEntradaNFe.EmEdicao)
+            return BadRequest(new { mensagem = "Entrada já processada." });
+        if (entrada.Itens.Count > 0)
+            return BadRequest(new { mensagem = "A entrada já possui itens." });
+
+        var nota = await db.NotasFiscaisRecebidas
+            .FirstOrDefaultAsync(n => n.Id == entrada.NotaFiscalRecebidaId, ct);
+        if (nota?.XmlNota is null)
+            return BadRequest(new { mensagem = "XML completo indisponível. Manifeste a nota (Ciência ou Confirmação) para liberar o XML e tente novamente." });
+
+        NFeParseResult parsed;
+        try { parsed = ParsearNFeXml(nota.XmlNota); }
+        catch (Exception ex) { return BadRequest(new { mensagem = $"Erro ao ler o XML: {ex.Message}" }); }
+
+        if (parsed.Itens.Count == 0)
+            return BadRequest(new { mensagem = "O XML não contém itens (pode ser apenas o resumo). Manifeste a nota para baixar o XML completo." });
+
+        foreach (var item in parsed.Itens)
+            entrada.AdicionarItem(item);
+
+        if (parsed.Duplicatas.Count > 0 && string.IsNullOrEmpty(entrada.DuplicatasJson))
+        {
+            var opts = new System.Text.Json.JsonSerializerOptions
+            { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+            entrada.DefinirDuplicatas(System.Text.Json.JsonSerializer.Serialize(parsed.Duplicatas, opts));
+        }
+        await db.SaveChangesAsync(ct);
+
+        var vinculados = await VincularProdutosAutomaticamenteAsync(entrada, ct);
+        if (vinculados > 0) await db.SaveChangesAsync(ct);
+
+        return Ok(new { itens = parsed.Itens.Count, vinculados });
+    }
+
     /// <summary>Re-executa a vinculação automática dos itens ainda sem produto.</summary>
     [HttpPost("{id:guid}/vincular-automatico")]
     public async Task<IActionResult> VincularAutomatico(Guid id, CancellationToken ct)

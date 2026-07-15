@@ -247,6 +247,111 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return NoContent();
     }
 
+    // ── Produtos duplicados: detectar e unificar ──────────────────────────
+
+    /// <summary>Lista grupos de produtos duplicados (mesma descrição ou mesmo código de barras).</summary>
+    [HttpGet("duplicados")]
+    public async Task<IActionResult> Duplicados([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId)
+            .Select(p => new ProdutoDupDto(p.Id, p.Codigo, p.Descricao, p.CodigoBarras,
+                p.EstoqueAtual, p.PrecoVenda, p.Ativo, p.CriadoEm))
+            .ToListAsync(ct);
+
+        var grupos = new List<object>();
+        var jaAgrupados = new HashSet<Guid>();
+
+        // Por descrição (normalizada)
+        foreach (var g in produtos.GroupBy(p => p.Descricao.Trim().ToUpperInvariant()).Where(g => g.Count() > 1))
+        {
+            var itens = g.OrderBy(p => p.CriadoEm).ToList();
+            foreach (var p in itens) jaAgrupados.Add(p.Id);
+            grupos.Add(new { chave = "Descrição: " + itens[0].Descricao, produtos = itens });
+        }
+
+        // Por código de barras (que não caíram no grupo de descrição)
+        foreach (var g in produtos
+            .Where(p => !string.IsNullOrWhiteSpace(p.CodigoBarras) && !jaAgrupados.Contains(p.Id))
+            .GroupBy(p => p.CodigoBarras).Where(g => g.Count() > 1))
+        {
+            var itens = g.OrderBy(p => p.CriadoEm).ToList();
+            grupos.Add(new { chave = "Cód. barras: " + g.Key, produtos = itens });
+        }
+
+        return Ok(grupos);
+    }
+
+    private record ProdutoDupDto(Guid Id, string Codigo, string Descricao, string? CodigoBarras,
+        decimal EstoqueAtual, decimal PrecoVenda, bool Ativo, DateTime CriadoEm);
+
+    /// <summary>
+    /// Unifica produtos duplicados: reaponta todas as referências (movimentações, vendas,
+    /// entradas, lotes, etc.) das origens para o destino, soma o estoque e remove as origens.
+    /// </summary>
+    [HttpPost("unificar")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> Unificar([FromBody] UnificarProdutosRequest req, CancellationToken ct)
+    {
+        if (req.OrigemIds is null || req.OrigemIds.Count == 0)
+            return BadRequest(new { mensagem = "Informe os produtos a unificar." });
+        if (req.OrigemIds.Contains(req.DestinoId))
+            return BadRequest(new { mensagem = "O produto mantido não pode estar na lista de duplicados." });
+
+        var destino = await db.Produtos.FirstOrDefaultAsync(p => p.Id == req.DestinoId, ct)
+            ?? throw new KeyNotFoundException("Produto de destino não encontrado.");
+        var origens = await db.Produtos.Where(p => req.OrigemIds.Contains(p.Id)).ToListAsync(ct);
+        if (origens.Count == 0) return BadRequest(new { mensagem = "Nenhum produto de origem encontrado." });
+
+        // Tabelas transacionais (muitas por produto) → só reaponta o ProdutoId
+        var tabelas = new[]
+        {
+            "AlertasValidade", "ItensCatalogo", "ItensDevolucoesVenda", "ItensEntradaNFe",
+            "ItensNotaFiscal", "ItensPedidoCompra", "ItensPedidoWhatsApp", "ItensVenda",
+            "Lotes", "MovimentacoesEstoque", "ProdutosEmbalagem", "ReceitasProduto", "SugestoesProduto",
+        };
+
+        using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        var idsOrigem = origens.Select(o => o.Id).ToArray();
+        var idsCsv = string.Join(",", idsOrigem.Select(i => $"'{i}'"));
+
+        foreach (var t in tabelas)
+            await db.Database.ExecuteSqlRawAsync(
+                $"UPDATE [{t}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
+
+        // Nutricional e QR Code: 1 por produto → mantém o do destino; move do origem só se destino não tiver
+        foreach (var (tabela, temNoDestino) in new[]
+        {
+            ("TabelasNutricionais", await db.TabelasNutricionais.AnyAsync(n => n.ProdutoId == req.DestinoId, ct)),
+            ("QrCodesProduto",      await db.QrCodesProduto.AnyAsync(q => q.ProdutoId == req.DestinoId, ct)),
+        })
+        {
+            if (temNoDestino)
+                await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
+            else
+            {
+                // Move só o primeiro; remove os demais para não violar unicidade
+                await db.Database.ExecuteSqlRawAsync(
+                    $"UPDATE TOP (1) [{tabela}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
+                await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
+            }
+        }
+
+        // Soma o estoque das origens no destino
+        var somaEstoque = origens.Sum(o => o.EstoqueAtual);
+        if (somaEstoque != 0)
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE Produtos SET EstoqueAtual = EstoqueAtual + {0} WHERE Id = {1}",
+                new object[] { somaEstoque, req.DestinoId }, ct);
+
+        // Remove os produtos de origem
+        await db.Database.ExecuteSqlRawAsync($"DELETE FROM Produtos WHERE Id IN ({idsCsv})", ct);
+
+        await tx.CommitAsync(ct);
+        return Ok(new { unificados = origens.Count, destino = req.DestinoId, estoqueSomado = somaEstoque });
+    }
+
     /// <summary>Marca as etiquetas dos produtos informados como impressas/atualizadas (limpa o alerta de reimpressão).</summary>
     [HttpPost("etiquetas-impressas")]
     public async Task<IActionResult> MarcarEtiquetasImpressas([FromBody] EtiquetasImpressasRequest req, CancellationToken ct)
@@ -369,6 +474,8 @@ public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);
+
+public record UnificarProdutosRequest(Guid DestinoId, List<Guid> OrigemIds);
 
 public record EditarProdutoCompletoRequest(
     // Geral

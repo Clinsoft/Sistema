@@ -2,10 +2,64 @@
   <div>
     <v-row align="center" class="mb-4">
       <v-col><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
-      <v-col cols="auto">
+      <v-col cols="auto" class="d-flex gap-2">
+        <v-btn color="warning" variant="tonal" prepend-icon="mdi-merge"
+          @click="abrirUnificar">Unificar duplicados</v-btn>
         <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
+
+    <!-- Dialog: Unificar produtos duplicados -->
+    <v-dialog v-model="dlgUnificar" max-width="700" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="warning">mdi-merge</v-icon>
+          Unificar produtos duplicados
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            Escolha em cada grupo qual produto <b>manter</b>. Os demais serão fundidos nele:
+            estoque somado e todo o histórico (vendas, entradas, movimentações) repontado.
+            <b>Ação irreversível.</b>
+          </v-alert>
+
+          <div v-if="carregandoDup" class="text-center py-6">
+            <v-progress-circular indeterminate color="warning" />
+          </div>
+          <div v-else-if="!gruposDup.length" class="text-center text-medium-emphasis py-6">
+            <v-icon icon="mdi-check-circle-outline" color="success" size="40" />
+            <div class="mt-2">Nenhum produto duplicado encontrado.</div>
+          </div>
+
+          <v-card v-for="(g, gi) in gruposDup" :key="gi" variant="outlined" rounded="lg" class="mb-3 pa-3">
+            <div class="text-caption text-medium-emphasis mb-2">{{ g.chave }}</div>
+            <v-radio-group v-model="g._manter" density="compact" hide-details>
+              <v-radio v-for="p in g.produtos" :key="p.id" :value="p.id">
+                <template #label>
+                  <div class="d-flex align-center gap-2 flex-wrap">
+                    <span class="font-weight-medium">{{ p.descricao }}</span>
+                    <v-chip size="x-small" variant="tonal">cód. {{ p.codigo }}</v-chip>
+                    <span class="text-caption text-medium-emphasis">
+                      estoque {{ p.estoqueAtual }} · R$ {{ fmtN(p.precoVenda) }}
+                      · criado {{ fmtData(p.criadoEm) }}
+                    </span>
+                  </div>
+                </template>
+              </v-radio>
+            </v-radio-group>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Os outros {{ g.produtos.length - 1 }} serão fundidos no selecionado.
+            </div>
+          </v-card>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgUnificar = false">Fechar</v-btn>
+          <v-btn v-if="gruposDup.length" color="warning" rounded="lg" :loading="unificando"
+            @click="confirmarUnificar">Unificar ({{ gruposDup.length }})</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <GuiaPassos
       id="produtos"
@@ -47,7 +101,13 @@
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="produtos" :loading="carregando" density="compact"
-        hover items-per-page="20">
+        hover :items-per-page="25"
+        :items-per-page-options="[
+          { title: '25', value: 25 },
+          { title: '50', value: 50 },
+          { title: '100', value: 100 },
+          { title: 'Todos', value: -1 },
+        ]">
         <template #item.precoVenda="{ item }">R$ {{ fmtN(item.precoVenda) }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmtN(item.custoUnitario) }}</template>
         <template #item.estoqueAtual="{ item }">
@@ -1057,6 +1117,7 @@ const headers = [
   { title: '', key: 'actions', sortable: false, width: 60 },
 ]
 function fmtN(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+function fmtData(d?: string) { return d ? new Date(d).toLocaleDateString('pt-BR') : '—' }
 
 // ─── listar / carregar ───────────────────────────────────────────
 async function listar() {
@@ -1064,7 +1125,8 @@ async function listar() {
   try {
     const r = await api.get('/produtos', {
       params: { empresaId: auth.empresaId, termo: busca.value || undefined,
-        categoriaId: filtroCategoria.value || undefined, ativo: filtroAtivo.value }
+        categoriaId: filtroCategoria.value || undefined, ativo: filtroAtivo.value,
+        pagina: 1, tamanhoPagina: 5000 }   // carrega todos (paginação é feita na tabela)
     })
     produtos.value = r.data.itens ?? r.data
   } finally { carregando.value = false }
@@ -1090,6 +1152,45 @@ async function carregarCatalogo() {
 }
 
 // ─── abrir / fechar dialog ───────────────────────────────────────
+// ─── Unificar duplicados ─────────────────────────────────────────────
+const dlgUnificar = ref(false)
+const carregandoDup = ref(false)
+const unificando = ref(false)
+const gruposDup = ref<any[]>([])
+
+async function abrirUnificar() {
+  dlgUnificar.value = true
+  carregandoDup.value = true
+  gruposDup.value = []
+  try {
+    const r = await api.get('/produtos/duplicados', { params: { empresaId: auth.empresaId } })
+    // pré-seleciona manter o mais antigo (primeiro da lista) de cada grupo
+    gruposDup.value = (r.data ?? []).map((g: any) => ({ ...g, _manter: g.produtos[0]?.id }))
+  } catch { gruposDup.value = [] }
+  finally { carregandoDup.value = false }
+}
+
+async function confirmarUnificar() {
+  const grupos = gruposDup.value.filter(g => g._manter && g.produtos.length > 1)
+  if (!grupos.length) { notif.aviso('Nada a unificar.'); return }
+  if (!confirm(`Unificar ${grupos.length} grupo(s) de duplicados? Ação irreversível.`)) return
+  unificando.value = true
+  try {
+    let total = 0
+    for (const g of grupos) {
+      const origemIds = g.produtos.filter((p: any) => p.id !== g._manter).map((p: any) => p.id)
+      if (!origemIds.length) continue
+      await api.post('/produtos/unificar', { destinoId: g._manter, origemIds })
+      total += origemIds.length
+    }
+    notif.ok(`${total} produto(s) duplicado(s) unificado(s).`)
+    dlgUnificar.value = false
+    await listar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao unificar produtos.')
+  } finally { unificando.value = false }
+}
+
 function abrirNovo() {
   editando.value = false
   produtoEditandoId.value = null

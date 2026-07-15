@@ -311,44 +311,55 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             "Lotes", "MovimentacoesEstoque", "ProdutosEmbalagem", "ReceitasProduto", "SugestoesProduto",
         };
 
-        using var tx = await db.Database.BeginTransactionAsync(ct);
-
         var idsOrigem = origens.Select(o => o.Id).ToArray();
         var idsCsv = string.Join(",", idsOrigem.Select(i => $"'{i}'"));
-
-        foreach (var t in tabelas)
-            await db.Database.ExecuteSqlRawAsync(
-                $"UPDATE [{t}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
-
-        // Nutricional e QR Code: 1 por produto → mantém o do destino; move do origem só se destino não tiver
-        foreach (var (tabela, temNoDestino) in new[]
-        {
-            ("TabelasNutricionais", await db.TabelasNutricionais.AnyAsync(n => n.ProdutoId == req.DestinoId, ct)),
-            ("QrCodesProduto",      await db.QrCodesProduto.AnyAsync(q => q.ProdutoId == req.DestinoId, ct)),
-        })
-        {
-            if (temNoDestino)
-                await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
-            else
-            {
-                // Move só o primeiro; remove os demais para não violar unicidade
-                await db.Database.ExecuteSqlRawAsync(
-                    $"UPDATE TOP (1) [{tabela}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
-                await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
-            }
-        }
-
-        // Soma o estoque das origens no destino
         var somaEstoque = origens.Sum(o => o.EstoqueAtual);
-        if (somaEstoque != 0)
-            await db.Database.ExecuteSqlRawAsync(
-                "UPDATE Produtos SET EstoqueAtual = EstoqueAtual + {0} WHERE Id = {1}",
-                new object[] { somaEstoque, req.DestinoId }, ct);
 
-        // Remove os produtos de origem
-        await db.Database.ExecuteSqlRawAsync($"DELETE FROM Produtos WHERE Id IN ({idsCsv})", ct);
+        // Pré-checa 1-por-produto (nutricional/QR) fora da transação
+        var temNutriDestino = await db.TabelasNutricionais.AnyAsync(n => n.ProdutoId == req.DestinoId, ct);
+        var temQrDestino = await db.QrCodesProduto.AnyAsync(q => q.ProdutoId == req.DestinoId, ct);
 
-        await tx.CommitAsync(ct);
+        // O DbContext usa retry (EnableRetryOnFailure), que exige que a transação
+        // seja executada como unidade retriável via execution strategy.
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            foreach (var t in tabelas)
+                await db.Database.ExecuteSqlRawAsync(
+                    $"UPDATE [{t}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
+
+            // Nutricional e QR Code: 1 por produto → mantém o do destino; move do origem só se destino não tiver
+            foreach (var (tabela, temNoDestino) in new[]
+            {
+                ("TabelasNutricionais", temNutriDestino),
+                ("QrCodesProduto",      temQrDestino),
+            })
+            {
+                if (temNoDestino)
+                    await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
+                else
+                {
+                    // Move só o primeiro; remove os demais para não violar unicidade
+                    await db.Database.ExecuteSqlRawAsync(
+                        $"UPDATE TOP (1) [{tabela}] SET ProdutoId = {{0}} WHERE ProdutoId IN ({idsCsv})", new object[] { req.DestinoId }, ct);
+                    await db.Database.ExecuteSqlRawAsync($"DELETE FROM [{tabela}] WHERE ProdutoId IN ({idsCsv})", ct);
+                }
+            }
+
+            // Soma o estoque das origens no destino
+            if (somaEstoque != 0)
+                await db.Database.ExecuteSqlRawAsync(
+                    "UPDATE Produtos SET EstoqueAtual = EstoqueAtual + {0} WHERE Id = {1}",
+                    new object[] { somaEstoque, req.DestinoId }, ct);
+
+            // Remove os produtos de origem
+            await db.Database.ExecuteSqlRawAsync($"DELETE FROM Produtos WHERE Id IN ({idsCsv})", ct);
+
+            await tx.CommitAsync(ct);
+        });
+
         return Ok(new { unificados = origens.Count, destino = req.DestinoId, estoqueSomado = somaEstoque });
     }
 

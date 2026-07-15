@@ -162,7 +162,7 @@
         <template #item.precoVenda="{ item }">R$ {{ fmtN(item.precoVenda) }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmtN(item.custoUnitario) }}</template>
         <template #item.preco100g="{ item }">
-          <span v-if="ehPorPeso(item)">R$ {{ fmtN(item.precoVenda / 10) }}</span>
+          <span v-if="ehPorPeso(item)">R$ {{ fmtN(Math.round((item.precoVenda / 10) * 100) / 100) }}</span>
           <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.markup="{ item }">{{ item.markup ? fmtN(item.markup) : '—' }}</template>

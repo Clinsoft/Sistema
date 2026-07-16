@@ -11,8 +11,9 @@
       :passos="[
         'Use o filtro de <b>Mês</b> ou as datas para listar os títulos do período e clique em <b>Buscar</b>.',
         'Clique em <b>Nova</b> para lançar uma conta. Escolha <b>Único</b>, <b>Parcelar</b> (divide o total) ou <b>Repetir</b> (mesmo valor por período).',
-        'No campo <b>Fornecedor</b>, digite o nome — se não existir, aparece a opção <b>Cadastrar</b> para criar na hora.',
-        'Na tabela: <b>💲 Pagar</b> baixa o título, <b>✎ Editar</b> altera dados, <b>↻ Renegociar</b> reprograma valor e vencimento.',
+        'No campo <b>Fornecedor / Beneficiário</b>, clique no <b>+</b> ao lado para cadastrar na hora (nome, CPF/CNPJ e telefone) — ou digite o nome e use a opção <b>Cadastrar</b> que aparece quando não existir. O novo já fica selecionado na conta.',
+        'Para lançar <b>várias contas iguais com beneficiários diferentes</b>: preencha uma e clique em <b>Salvar e nova</b> — os dados ficam, só o fornecedor é limpo. Na tabela, <b>⧉ Duplicar</b> faz o mesmo a partir de um título já lançado.',
+        'Na tabela: <b>💲 Pagar</b> baixa o título, <b>✎ Editar</b> altera dados, <b>⧉ Duplicar</b> copia, <b>↻ Renegociar</b> reprograma valor e vencimento.',
         'Títulos vindos de NF-e já aparecem aqui automaticamente após processar a entrada.',
       ]"
     />
@@ -104,6 +105,8 @@
             title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
           <v-btn icon="mdi-pencil-outline" size="x-small" color="primary" variant="text"
             title="Editar" @click="abrirEditar(item)" :disabled="item.status === 'Pago'" />
+          <v-btn icon="mdi-content-copy" size="x-small" color="indigo" variant="text"
+            title="Duplicar (mesmo valor, outro fornecedor)" @click="duplicarConta(item)" />
           <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
             title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
           <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
@@ -147,12 +150,17 @@
                 :items="fornecedores" item-title="razaoSocial" item-value="id"
                 variant="outlined" density="compact" hide-details clearable auto-select-first
                 :search="form._buscaForneced" @update:search="v => form._buscaForneced = v">
+                <template #append-inner>
+                  <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact"
+                    tabindex="-1" title="Cadastrar fornecedor/beneficiário"
+                    @click.stop="abrirNovoFornecedor('nova')" />
+                </template>
                 <template #no-data>
                   <v-list-item
                     v-if="form._buscaForneced && form._buscaForneced.trim().length >= 2"
                     :title="'Cadastrar ' + form._buscaForneced.trim()"
                     prepend-icon="mdi-plus-circle-outline"
-                    @click="criarFornecedorRapido(form._buscaForneced.trim(), 'nova')" />
+                    @click="abrirNovoFornecedor('nova', form._buscaForneced.trim())" />
                   <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
                 </template>
               </v-autocomplete>
@@ -220,7 +228,11 @@
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dialogNovo = false" :disabled="salvando">Cancelar</v-btn>
-          <v-btn color="primary" rounded="lg" :loading="salvando" @click="salvarNova">Salvar</v-btn>
+          <!-- Lançar várias contas iguais para beneficiários diferentes -->
+          <v-btn variant="tonal" color="indigo" rounded="lg" :loading="salvando"
+            title="Salva e mantém os dados para lançar outra, trocando só o beneficiário"
+            @click="salvarNova(true)">Salvar e nova</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvando" @click="salvarNova()">Salvar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -246,12 +258,17 @@
                 :items="fornecedores" item-title="razaoSocial" item-value="id"
                 variant="outlined" density="compact" hide-details clearable auto-select-first
                 :search="edicao._buscaForneced" @update:search="v => edicao._buscaForneced = v">
+                <template #append-inner>
+                  <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact"
+                    tabindex="-1" title="Cadastrar fornecedor/beneficiário"
+                    @click.stop="abrirNovoFornecedor('editar')" />
+                </template>
                 <template #no-data>
                   <v-list-item
                     v-if="edicao._buscaForneced && edicao._buscaForneced.trim().length >= 2"
                     :title="'Cadastrar ' + edicao._buscaForneced.trim()"
                     prepend-icon="mdi-plus-circle-outline"
-                    @click="criarFornecedorRapido(edicao._buscaForneced.trim(), 'editar')" />
+                    @click="abrirNovoFornecedor('editar', edicao._buscaForneced.trim())" />
                   <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
                 </template>
               </v-autocomplete>
@@ -368,6 +385,33 @@
         <v-card-actions class="justify-end">
           <v-btn variant="text" @click="dialogPagamento = false">Cancelar</v-btn>
           <v-btn color="success" :loading="salvando" @click="confirmarPagamento">Confirmar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: cadastrar fornecedor/beneficiário sem sair da conta a pagar -->
+    <v-dialog v-model="dlgFornecedor" max-width="460" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="primary">mdi-account-plus-outline</v-icon>
+          Novo fornecedor / beneficiário
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-text-field v-model="formForneced.razaoSocial" label="Nome / Razão Social *"
+            variant="outlined" density="compact" autofocus class="mb-2"
+            @keyup.enter="salvarFornecedorRapido" />
+          <v-text-field v-model="formForneced.cnpj" label="CPF / CNPJ"
+            variant="outlined" density="compact" class="mb-2"
+            hint="Opcional — 11 dígitos (CPF) ou 14 (CNPJ)" persistent-hint />
+          <v-text-field v-model="formForneced.telefone" label="Telefone"
+            variant="outlined" density="compact" hide-details />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgFornecedor = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoForneced"
+            :disabled="!formForneced.razaoSocial.trim()"
+            @click="salvarFornecedorRapido">Cadastrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -542,7 +586,31 @@ function abrirNovo() {
   dialogNovo.value = true
 }
 
-async function salvarNova() {
+/**
+ * Duplica uma conta: reabre "Nova Conta" com descrição, categoria, valor e
+ * vencimento preenchidos e o fornecedor EM BRANCO — o caso comum é lançar o
+ * mesmo valor para vários beneficiários diferentes.
+ */
+function duplicarConta(item: any) {
+  form.value = {
+    ...formPadrao(),
+    descricao: item.descricao ?? '',
+    categoria: item.categoria ?? '',
+    valorOriginal: item.valorOriginal ?? 0,
+    dataVencimento: (item.dataVencimento ?? '').slice(0, 10),
+    observacao: item.observacao ?? '',
+    fornecedorId: null,      // escolher o novo beneficiário
+    _buscaForneced: '',
+  }
+  dialogNovo.value = true
+  notif.aviso('Cópia carregada. Escolha o fornecedor/beneficiário e salve.')
+}
+
+/**
+ * @param continuar mantém o diálogo aberto com os mesmos dados e o
+ *   fornecedor em branco, para lançar a próxima conta trocando só o beneficiário.
+ */
+async function salvarNova(continuar = false) {
   const f = form.value
   if (!f.descricao || !f.categoria || f.valorOriginal <= 0 || !f.dataVencimento) {
     notif.erro('Preencha todos os campos obrigatórios.')
@@ -590,8 +658,15 @@ async function salvarNova() {
       }
     }
 
-    notif.ok('Conta(s) a pagar cadastrada(s)!')
-    dialogNovo.value = false
+    if (continuar) {
+      // Mantém valor/descrição/categoria/vencimento e limpa só o beneficiário
+      f.fornecedorId = null
+      f._buscaForneced = ''
+      notif.ok('Conta cadastrada! Escolha o próximo fornecedor/beneficiário.')
+    } else {
+      notif.ok('Conta(s) a pagar cadastrada(s)!')
+      dialogNovo.value = false
+    }
     await carregar()
   } catch { notif.erro('Erro ao salvar.') }
   finally { salvando.value = false }
@@ -696,22 +771,53 @@ async function cancelarTitulo(item: any) {
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar título.') }
 }
 
-async function criarFornecedorRapido(nome: string, contexto: 'nova' | 'editar') {
+// ── Cadastro rápido de fornecedor/beneficiário (sem sair da conta a pagar) ──
+const dlgFornecedor = ref(false)
+const salvandoForneced = ref(false)
+const contextoForneced = ref<'nova' | 'editar'>('nova')
+const formForneced = ref({ razaoSocial: '', cnpj: '', telefone: '' })
+
+function abrirNovoFornecedor(contexto: 'nova' | 'editar', nome = '') {
+  contextoForneced.value = contexto
+  formForneced.value = { razaoSocial: nome, cnpj: '', telefone: '' }
+  dlgFornecedor.value = true
+}
+
+async function salvarFornecedorRapido() {
+  const nome = formForneced.value.razaoSocial.trim()
+  if (!nome) return
+  // O backend aceita CPF (11 dígitos) ou CNPJ (14); em branco fica sem documento.
+  const doc = formForneced.value.cnpj.replace(/[^\dA-Za-z]/g, '')
+  if (doc && doc.length !== 11 && doc.length !== 14) {
+    notif.aviso('CPF deve ter 11 dígitos ou CNPJ 14 caracteres.')
+    return
+  }
+
+  salvandoForneced.value = true
   try {
-    const r = await api.post('/fornecedores', { empresaId: auth.empresaId, razaoSocial: nome }, { _quiet: true } as any)
+    const r = await api.post('/fornecedores', {
+      empresaId: auth.empresaId,
+      razaoSocial: nome,
+      cnpj: doc || null,
+      telefone: formForneced.value.telefone.trim() || null,
+    }, { _quiet: true } as any)
+
     const novo = { id: r.data.id ?? r.data, razaoSocial: nome }
-    fornecedores.value = [...fornecedores.value, novo].sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial))
-    if (contexto === 'nova') {
+    fornecedores.value = [...fornecedores.value, novo]
+      .sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial))
+
+    if (contextoForneced.value === 'nova') {
       form.value.fornecedorId = novo.id
       form.value._buscaForneced = ''
     } else {
       edicao.value.fornecedorId = novo.id
       edicao.value._buscaForneced = ''
     }
-    notif.ok(`Fornecedor "${nome}" cadastrado!`)
-  } catch {
-    notif.erro('Erro ao cadastrar fornecedor.')
-  }
+    dlgFornecedor.value = false
+    notif.ok(`Fornecedor "${nome}" cadastrado e selecionado.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao cadastrar fornecedor.')
+  } finally { salvandoForneced.value = false }
 }
 
 onMounted(async () => {

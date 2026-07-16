@@ -20,7 +20,7 @@ public class LancamentoFinanceiro : Entity
     public StatusLancamento Status { get; private set; }
     public string? DocumentoOrigem { get; private set; }   // Nº NF, Venda, etc.
     public string? Observacao { get; private set; }
-    public string? Categoria { get; private set; }         // subcategoria (texto): Vendas, Serviços, Despesas Fixas…
+    public string? Categoria { get; private set; }         // subcategoria (texto): Vendas, Serviços, Despesas Administrativas…
     public string? ClienteNome { get; private set; }       // nome do pagador/cliente informado manualmente
     public int Parcela { get; private set; } = 1;
     public int TotalParcelas { get; private set; } = 1;

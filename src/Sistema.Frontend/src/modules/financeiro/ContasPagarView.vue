@@ -444,7 +444,7 @@ const edicao = ref({
 })
 const reneg = ref({ id: '', saldo: 0, novoValor: 0, novoVencimento: '', motivo: '' })
 
-const categorias = ['Despesas Fixas', 'Despesas Variáveis', 'Pessoas', 'Impostos']
+const categorias = ['Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
 
 const periodos = [
   { label: 'Diário',      value: 'diario' },
@@ -530,7 +530,9 @@ const totalVencidos = computed(() =>
 )
 
 const totaisCategorias = computed(() => [
-  { label: 'Despesas Fixas',     valor: somarAberto('Despesas Fixas'),     cor: 'deep-purple', icon: 'mdi-home-city-outline' },
+  { label: 'Despesas Administrativas', valor: somarAberto('Despesas Administrativas'),
+    cor: 'deep-purple', icon: 'mdi-home-city-outline' },
+  { label: 'Despesas Operacionais', valor: somarAberto('Despesas Operacionais'), cor: 'teal',   icon: 'mdi-cog-outline' },
   { label: 'Despesas Variáveis', valor: somarAberto('Despesas Variáveis'), cor: 'orange',      icon: 'mdi-chart-bell-curve-cumulative' },
   { label: 'Pessoas',            valor: somarAberto('Pessoas'),            cor: 'blue',        icon: 'mdi-account-group-outline' },
   { label: 'Impostos',           valor: somarAberto('Impostos'),           cor: 'error',       icon: 'mdi-gavel' },
@@ -549,14 +551,16 @@ const headers = [
 
 function corCategoria(cat?: string) {
   const mapa: Record<string, string> = {
-    'Despesas Fixas': 'deep-purple', 'Despesas Variáveis': 'orange',
-    'Pessoas': 'blue', 'Impostos': 'error',
+    'Despesas Administrativas': 'deep-purple', 'Despesas Operacionais': 'teal',
+    'Despesas Variáveis': 'orange', 'Pessoas': 'blue', 'Impostos': 'error',
   }
   return mapa[cat ?? ''] ?? 'grey'
 }
 function iconCategoria(cat?: string) {
   const mapa: Record<string, string> = {
-    'Despesas Fixas': 'mdi-home-city-outline', 'Despesas Variáveis': 'mdi-chart-bell-curve-cumulative',
+    'Despesas Administrativas': 'mdi-home-city-outline',
+    'Despesas Operacionais': 'mdi-cog-outline',
+    'Despesas Variáveis': 'mdi-chart-bell-curve-cumulative',
     'Pessoas': 'mdi-account-group-outline', 'Impostos': 'mdi-gavel',
   }
   return mapa[cat ?? ''] ?? 'mdi-tag-outline'

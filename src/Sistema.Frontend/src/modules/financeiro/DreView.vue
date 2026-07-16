@@ -16,7 +16,7 @@
       :passos="[
         'Escolha <b>Mensal</b> ou <b>Anual</b>, selecione o período e clique em <b>Gerar</b>.',
         'O DRE é um <b>relatório</b>: os valores vêm dos lançamentos de <b>Contas a Receber</b> (recebimentos) e <b>Contas a Pagar</b> (despesas), agrupados por categoria.',
-        'Para <b>alterar</b> um valor, edite o lançamento correspondente em Contas a Pagar/Receber e defina a <b>categoria</b> certa (Despesas Fixas, Variáveis, Pessoas, Impostos).',
+        'Para <b>alterar</b> um valor, edite o lançamento correspondente em Contas a Pagar/Receber e defina a <b>categoria</b> certa (Despesas Administrativas, Operacionais, Variáveis, Pessoas, Impostos).',
         'O <b>Resultado Líquido</b> = Recebimentos − (Fixas + Variáveis + Pessoas + Impostos), com a margem em %.',
       ]"
     />
@@ -65,21 +65,41 @@
 
         <v-divider class="my-2" />
 
-        <!-- DESPESAS FIXAS -->
+        <!-- DESPESAS ADMINISTRATIVAS -->
         <v-list-subheader class="dre-grupo-header text-deep-purple">
           <v-icon size="14" class="mr-1">mdi-home-city-outline</v-icon>
-          DESPESAS FIXAS
+          DESPESAS ADMINISTRATIVAS
         </v-list-subheader>
-        <v-list-item v-for="sub in dre.subcategorias?.despesasFixas ?? []" :key="sub.nome"
+        <v-list-item v-for="sub in dre.subcategorias?.despesasAdministrativas ?? []" :key="sub.nome"
           :title="sub.nome" class="dre-sublinha">
           <template #append>
             <span class="text-deep-purple text-body-2">- R$ {{ fmt(sub.total) }}</span>
           </template>
         </v-list-item>
         <v-list-item class="dre-total-linha">
-          <template #title><span class="font-weight-bold">(-) Despesas Fixas</span></template>
+          <template #title><span class="font-weight-bold">(-) Despesas Administrativas</span></template>
           <template #append>
-            <span class="font-weight-bold text-deep-purple text-body-1">- R$ {{ fmt(dre.despesasFixas) }}</span>
+            <span class="font-weight-bold text-deep-purple text-body-1">- R$ {{ fmt(dre.despesasAdministrativas) }}</span>
+          </template>
+        </v-list-item>
+
+        <v-divider class="my-1" />
+
+        <!-- DESPESAS OPERACIONAIS -->
+        <v-list-subheader class="dre-grupo-header text-teal">
+          <v-icon size="14" class="mr-1">mdi-cog-outline</v-icon>
+          DESPESAS OPERACIONAIS
+        </v-list-subheader>
+        <v-list-item v-for="sub in dre.subcategorias?.despesasOperacionais ?? []" :key="sub.nome"
+          :title="sub.nome" class="dre-sublinha">
+          <template #append>
+            <span class="text-teal text-body-2">- R$ {{ fmt(sub.total) }}</span>
+          </template>
+        </v-list-item>
+        <v-list-item class="dre-total-linha">
+          <template #title><span class="font-weight-bold">(-) Despesas Operacionais</span></template>
+          <template #append>
+            <span class="font-weight-bold text-teal text-body-1">- R$ {{ fmt(dre.despesasOperacionais) }}</span>
           </template>
         </v-list-item>
 
@@ -219,10 +239,11 @@ const meses = [
 const cardsResumo = computed(() => {
   if (!dre.value) return []
   return [
-    { label: 'Recebimentos',      valor: dre.value.recebimentos,      cor: 'success',     icon: 'mdi-arrow-down-circle-outline' },
-    { label: 'Despesas Fixas',    valor: dre.value.despesasFixas,     cor: 'deep-purple', icon: 'mdi-home-city-outline' },
-    { label: 'Pessoas',           valor: dre.value.pessoas,           cor: 'blue',        icon: 'mdi-account-group-outline' },
-    { label: 'Impostos',          valor: dre.value.impostos,          cor: 'error',       icon: 'mdi-gavel' },
+    { label: 'Recebimentos',   valor: dre.value.recebimentos,            cor: 'success',     icon: 'mdi-arrow-down-circle-outline' },
+    { label: 'Desp. Administrativas', valor: dre.value.despesasAdministrativas, cor: 'deep-purple', icon: 'mdi-home-city-outline' },
+    { label: 'Desp. Operacionais',    valor: dre.value.despesasOperacionais,    cor: 'teal',        icon: 'mdi-cog-outline' },
+    { label: 'Pessoas',        valor: dre.value.pessoas,                 cor: 'blue',        icon: 'mdi-account-group-outline' },
+    { label: 'Impostos',       valor: dre.value.impostos,                cor: 'error',       icon: 'mdi-gavel' },
   ]
 })
 

@@ -85,7 +85,8 @@ public class DREController(SistemaDbContext db) : ControllerBase
         });
     }
 
-    /// <summary>DRE gerencial mensal por categoria (Recebimentos, Despesas Fixas/Variáveis, Pessoas, Impostos).</summary>
+    /// <summary>DRE gerencial mensal por categoria (Recebimentos, Despesas Administrativas/
+    /// Operacionais/Variáveis, Pessoas, Impostos).</summary>
     [HttpGet("mensal")]
     public async Task<IActionResult> Mensal([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
@@ -131,7 +132,8 @@ public class DREController(SistemaDbContext db) : ControllerBase
         // Despesas por macro-categoria; desconhecidas caem em "Despesas Variáveis"
         static string Grupo(string? cat) => cat switch
         {
-            "Despesas Fixas" => "Despesas Fixas",
+            "Despesas Administrativas" => "Despesas Administrativas",
+            "Despesas Operacionais" => "Despesas Operacionais",
             "Pessoas" => "Pessoas",
             "Impostos" => "Impostos",
             _ => "Despesas Variáveis"
@@ -146,21 +148,25 @@ public class DREController(SistemaDbContext db) : ControllerBase
         decimal TotalGrupo(string grupo) => pagar.Where(l => Grupo(l.Categoria) == grupo).Sum(l => l.ValorOriginal);
 
         var recebimentos = receber.Sum(l => l.ValorOriginal);
-        var despesasFixas = TotalGrupo("Despesas Fixas");
+        var despesasAdministrativas = TotalGrupo("Despesas Administrativas");
+        var despesasOperacionais = TotalGrupo("Despesas Operacionais");
         var despesasVariaveis = TotalGrupo("Despesas Variáveis");
         var pessoas = TotalGrupo("Pessoas");
         var impostos = TotalGrupo("Impostos");
-        var resultado = recebimentos - despesasFixas - despesasVariaveis - pessoas - impostos;
+        var resultado = recebimentos - despesasAdministrativas - despesasOperacionais
+                      - despesasVariaveis - pessoas - impostos;
         var margemLiquida = recebimentos > 0 ? Math.Round(resultado / recebimentos * 100, 1) : 0m;
 
         return new
         {
-            recebimentos, despesasFixas, despesasVariaveis, pessoas, impostos,
+            recebimentos, despesasAdministrativas, despesasOperacionais,
+            despesasVariaveis, pessoas, impostos,
             resultado, margemLiquida,
             subcategorias = new
             {
                 recebimentos = subRecebimentos,
-                despesasFixas = SubPorDescricao("Despesas Fixas"),
+                despesasAdministrativas = SubPorDescricao("Despesas Administrativas"),
+                despesasOperacionais = SubPorDescricao("Despesas Operacionais"),
                 despesasVariaveis = SubPorDescricao("Despesas Variáveis"),
                 pessoas = SubPorDescricao("Pessoas"),
                 impostos = SubPorDescricao("Impostos")

@@ -35,7 +35,7 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.categoria" label="Categoria"
-            :items="['Todas', 'Recebimentos', 'Despesas Fixas', 'Despesas Variáveis', 'Pessoas', 'Impostos']"
+            :items="['Todas', 'Recebimentos', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="auto">
@@ -195,7 +195,8 @@ const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDig
 
 function corCategoria(cat: string) {
   const mapa: Record<string, string> = {
-    'Recebimentos': 'success', 'Despesas Fixas': 'deep-purple',
+    'Recebimentos': 'success',
+    'Despesas Administrativas': 'deep-purple', 'Despesas Operacionais': 'teal',
     'Despesas Variáveis': 'orange', 'Pessoas': 'blue', 'Impostos': 'error',
   }
   return mapa[cat] ?? 'grey'
@@ -203,7 +204,8 @@ function corCategoria(cat: string) {
 function iconCategoria(cat: string) {
   const mapa: Record<string, string> = {
     'Recebimentos': 'mdi-arrow-down-circle-outline',
-    'Despesas Fixas': 'mdi-home-city-outline',
+    'Despesas Administrativas': 'mdi-home-city-outline',
+    'Despesas Operacionais': 'mdi-cog-outline',
     'Despesas Variáveis': 'mdi-chart-bell-curve-cumulative',
     'Pessoas': 'mdi-account-group-outline',
     'Impostos': 'mdi-gavel',

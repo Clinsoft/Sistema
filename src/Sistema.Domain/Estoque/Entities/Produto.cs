@@ -269,6 +269,18 @@ public class Produto : Entity
         CodigoPlu ??= pluSugerido ?? (int.TryParse(Codigo, out var c) ? c : null);
     }
 
+    /// <summary>
+    /// Liga o controle de validade com um prazo padrão, sem sobrescrever um prazo
+    /// já informado. Usado ao cadastrar produto de balança — a validade é o que a
+    /// balança soma à data de embalagem ao imprimir a etiqueta. O usuário pode
+    /// depois alterar o prazo ou desligar o controle.
+    /// </summary>
+    public void AplicarValidadePadrao(int dias)
+    {
+        ControlarValidade = true;
+        ValidadeEmDias ??= dias;
+    }
+
     public void AjustarEstoque(decimal quantidade) => EstoqueAtual += quantidade;
     public void DefinirEstoqueMinimo(decimal minimo) => EstoqueMinimo = minimo;
     public bool EstoqueAbaixoDoMinimo() => EstoqueAtual <= EstoqueMinimo;

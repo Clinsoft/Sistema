@@ -338,40 +338,38 @@
                     </v-col>
                   </v-row>
 
-                  <!-- Opções booleanas em chips visuais -->
+                  <!-- Opções booleanas em chips visuais.
+                       Atenção: NÃO usar v-model no v-chip — no Vuetify o modelValue
+                       controla a existência do chip (false = não renderiza), então a
+                       opção desligada sumia da tela. Alternamos no @click. -->
                   <div class="prod-opcoes mt-2">
-                    <v-chip v-model="form.ativo" filter color="success" variant="tonal" size="small">
-                      <v-icon start icon="mdi-check-circle-outline" />Ativo
-                    </v-chip>
-                    <v-chip v-model="form.produtoBalanca" filter color="primary" variant="tonal" size="small">
-                      <v-icon start icon="mdi-scale-balance" />Balança
-                    </v-chip>
-                    <v-chip v-model="form.vendidoFracionado" filter color="secondary" variant="tonal" size="small">
-                      <v-icon start icon="mdi-scissors-cutting" />Fracionado
-                    </v-chip>
-                    <v-chip v-model="form.ocultarNasVendas" filter color="warning" variant="tonal" size="small">
-                      <v-icon start icon="mdi-eye-off-outline" />Ocultar no PDV
-                    </v-chip>
-                    <v-chip v-model="form.requisitarVendedor" filter color="info" variant="tonal" size="small">
-                      <v-icon start icon="mdi-account-tie-outline" />Req. vendedor
-                    </v-chip>
-                    <v-chip v-model="form.controlarLote" filter color="teal" variant="tonal" size="small">
-                      <v-icon start icon="mdi-barcode-scan" />Controlar lote
-                    </v-chip>
-                    <v-chip v-model="form.controlarValidade" filter color="orange" variant="tonal" size="small">
-                      <v-icon start icon="mdi-calendar-clock" />Controlar validade
+                    <v-chip v-for="o in opcoesProduto" :key="o.campo" size="small"
+                      :color="(form as any)[o.campo] ? o.cor : undefined"
+                      :variant="(form as any)[o.campo] ? 'flat' : 'outlined'"
+                      @click="(form as any)[o.campo] = !(form as any)[o.campo]">
+                      <v-icon start :icon="(form as any)[o.campo] ? 'mdi-check' : o.icone" />{{ o.rotulo }}
                     </v-chip>
                   </div>
+
                   <v-row dense class="mt-2" v-if="form.produtoBalanca || form.controlarValidade">
                     <v-col cols="6" md="3" v-if="form.produtoBalanca">
                       <v-text-field v-model.number="form.codigoPlu" label="Código PLU"
-                        type="number" variant="outlined" density="compact" hide-details />
+                        type="number" variant="outlined" density="compact"
+                        hint="Número do produto na balança" persistent-hint />
                     </v-col>
-                    <v-col cols="6" md="3" v-if="form.controlarValidade">
+                    <v-col cols="6" md="4" v-if="form.produtoBalanca || form.controlarValidade">
                       <v-text-field v-model.number="form.validadeEmDias" label="Validade (dias)"
-                        type="number" variant="outlined" density="compact" hide-details />
+                        type="number" variant="outlined" density="compact"
+                        :hint="form.produtoBalanca
+                          ? 'Dias que a balança soma à data de embalagem ao imprimir a etiqueta'
+                          : 'Dias de validade após a fabricação'"
+                        persistent-hint />
                     </v-col>
                   </v-row>
+                  <v-alert v-if="form.produtoBalanca && !form.validadeEmDias" type="warning"
+                    variant="tonal" density="compact" class="mt-2">
+                    Produto de balança sem <b>validade (dias)</b>: a etiqueta da balança sai com validade zerada.
+                  </v-alert>
                 </div>
               </div>
 
@@ -876,8 +874,10 @@ const formPadrao = () => ({
   codigoBarras: '',
   ativo: true, produtoBalanca: false, ocultarNasVendas: false,
   requisitarVendedor: false, vendidoFracionado: false,
-  controlarLote: false, controlarValidade: false,
-  validadeEmDias: null as number | null, codigoPlu: null as number | null,
+  // Novos produtos já nascem com controle de validade ligado e prazo padrão —
+  // o usuário altera o prazo ou desliga o controle se quiser.
+  controlarLote: false, controlarValidade: true,
+  validadeEmDias: 60 as number | null, codigoPlu: null as number | null,
   precoFornecedor: 0, custoUnitario: 0,
   markupMinimo: 0, precoMinimo: 0,
   precoVenda: 0, precoAtacado: null as number | null, markupAtacado: null as number | null,
@@ -889,6 +889,17 @@ const formPadrao = () => ({
   tags: '', marcador: null as string | null, informacaoAdicional: '',
 })
 const form = ref(formPadrao())
+
+// Opções booleanas do produto (chips na seção Identificação)
+const opcoesProduto = [
+  { campo: 'ativo',              rotulo: 'Ativo',             cor: 'success',   icone: 'mdi-check-circle-outline' },
+  { campo: 'produtoBalanca',     rotulo: 'Balança',           cor: 'primary',   icone: 'mdi-scale-balance' },
+  { campo: 'vendidoFracionado',  rotulo: 'Fracionado',        cor: 'secondary', icone: 'mdi-scissors-cutting' },
+  { campo: 'ocultarNasVendas',   rotulo: 'Ocultar no PDV',    cor: 'warning',   icone: 'mdi-eye-off-outline' },
+  { campo: 'requisitarVendedor', rotulo: 'Req. vendedor',     cor: 'info',      icone: 'mdi-account-tie-outline' },
+  { campo: 'controlarLote',      rotulo: 'Controlar lote',    cor: 'teal',      icone: 'mdi-barcode-scan' },
+  { campo: 'controlarValidade',  rotulo: 'Controlar validade',cor: 'orange',    icone: 'mdi-calendar-clock' },
+]
 
 // ─── markup calculado ────────────────────────────────────────────
 const markupExibir = computed(() => {

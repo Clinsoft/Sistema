@@ -34,6 +34,9 @@ public class CriarProdutoValidator : AbstractValidator<CriarProdutoCommand>
 public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
     : IRequestHandler<CriarProdutoCommand, Guid>
 {
+    /// <summary>Prazo de validade padrão (dias) para produto de balança.</summary>
+    private const int ValidadePadraoDias = 60;
+
     public async Task<Guid> Handle(CriarProdutoCommand cmd, CancellationToken ct)
     {
         // Código vazio → gera automaticamente um livre. Código informado → valida colisão.
@@ -59,9 +62,14 @@ public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
 
         produto.DefinirEstoqueMinimo(cmd.EstoqueMinimo);
 
-        // Produto vendido por peso (KG) já nasce preparado para a balança.
+        // Produto vendido por peso (KG) já nasce preparado para a balança, com
+        // controle de validade ligado e prazo padrão — a balança precisa desse
+        // prazo para imprimir a etiqueta. O usuário pode alterar ou desligar depois.
         if (await repo.UnidadeEhPesavelAsync(cmd.UnidadeMedidaId, ct))
+        {
             produto.MarcarComoBalanca();
+            produto.AplicarValidadePadrao(ValidadePadraoDias);
+        }
 
         await repo.AdicionarAsync(produto, ct);
         await uow.SalvarAsync(ct);

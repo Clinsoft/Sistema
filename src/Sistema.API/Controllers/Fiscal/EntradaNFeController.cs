@@ -65,6 +65,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             entrada.PedidoCompraId,
             entrada.NaturezaOperacao,
             Status = entrada.Status.ToString(),
+            TipoEntrada = entrada.TipoEntrada.ToString(),
             entrada.ValorProdutos,
             entrada.ValorFrete,
             entrada.ValorFreteManual,
@@ -96,6 +97,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                 i.ValorIcmsSt,
                 i.ProdutoId,
                 i.ProdutoDescricao,
+                i.MaterialConsumoId,
                 i.FatorConversao,
                 i.UnidadeEstoque,
                 i.QuantidadeEstoque,
@@ -520,6 +522,111 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Define se a nota é de mercadoria para venda ou de material de consumo.
+    /// Trocar o tipo limpa os vínculos dos itens, que apontam para cadastros diferentes.
+    /// </summary>
+    [HttpPatch("{id:guid}/tipo-entrada")]
+    public async Task<IActionResult> DefinirTipoEntrada(
+        Guid id, [FromBody] TipoEntradaRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (!Enum.TryParse<TipoEntradaNFe>(req.Tipo, true, out var tipo))
+            return BadRequest(new { mensagem = "Tipo inválido (Mercadoria ou MaterialConsumo)." });
+
+        if (entrada.TipoEntrada == tipo) return Ok(new { tipo = tipo.ToString() });
+
+        entrada.DefinirTipoEntrada(tipo);
+        foreach (var item in entrada.Itens) item.DesvincularCadastro();
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { tipo = tipo.ToString(), itensDesvinculados = entrada.Itens.Count });
+    }
+
+    /// <summary>Vincula um item a um material de consumo já cadastrado.</summary>
+    [HttpPatch("{id:guid}/itens/{itemId:guid}/material")]
+    public async Task<IActionResult> VincularMaterial(
+        Guid id, Guid itemId, [FromBody] VincularMaterialRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+        var item = entrada.Itens.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new KeyNotFoundException("Item não encontrado.");
+
+        var material = await db.MateriaisConsumo.FindAsync([req.MaterialConsumoId], ct)
+            ?? throw new KeyNotFoundException("Material não encontrado.");
+
+        item.VincularMaterial(material.Id, material.Descricao);
+        if (req.FatorConversao is > 0)
+            item.DefinirConversao(req.FatorConversao.Value, item.UnidadeEstoque ?? item.UnidadeXml);
+        entrada.RatearFrete();
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { item.Id, materialConsumoId = material.Id, material.Descricao });
+    }
+
+    /// <summary>
+    /// Cadastra os materiais que faltam a partir dos itens da nota e já vincula.
+    /// Reaproveita o de-para (código do material na nota do fornecedor) e o EAN.
+    /// </summary>
+    [HttpPost("{id:guid}/materiais/cadastrar-faltantes")]
+    public async Task<IActionResult> CadastrarMateriaisFaltantes(
+        Guid id, [FromBody] CadastrarMateriaisRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (entrada.TipoEntrada != TipoEntradaNFe.MaterialConsumo)
+            return BadRequest(new { mensagem = "A entrada não está marcada como Material de Consumo." });
+
+        var criados = 0; var vinculados = 0;
+        foreach (var item in entrada.Itens.Where(i => i.MaterialConsumoId is null))
+        {
+            // Já existe? procura por de-para do fornecedor, EAN ou descrição
+            var material = await db.MateriaisConsumo.FirstOrDefaultAsync(m =>
+                m.EmpresaId == entrada.EmpresaId &&
+                ((entrada.FornecedorId != null && m.FornecedorPrincipalId == entrada.FornecedorId
+                    && m.CodigoFornecedor != null && m.CodigoFornecedor == item.CodigoFornecedor)
+                 || (item.CodigoBarras != null && m.CodigoBarras == item.CodigoBarras)
+                 || m.Descricao == item.DescricaoXml), ct);
+
+            if (material is null)
+            {
+                var codigo = await ProximoCodigoMaterialAsync(entrada.EmpresaId, ct);
+                material = MaterialConsumo.Criar(entrada.EmpresaId, codigo,
+                    item.DescricaoXml, req.UnidadeMedidaId, entrada.FornecedorId);
+                material.Editar(item.DescricaoXml, req.UnidadeMedidaId, entrada.FornecedorId,
+                    0, null, null, item.CodigoBarras, true);
+                if (entrada.FornecedorId is { } fid)
+                    material.VincularReferenciaFornecedor(fid, item.CodigoFornecedor);
+                db.MateriaisConsumo.Add(material);
+                await db.SaveChangesAsync(ct);
+                criados++;
+            }
+
+            item.VincularMaterial(material.Id, material.Descricao);
+            vinculados++;
+        }
+
+        entrada.RatearFrete();
+        await db.SaveChangesAsync(ct);
+        return Ok(new { criados, vinculados });
+    }
+
+    /// <summary>Códigos de materiais são sequenciais a partir de 9001.</summary>
+    private async Task<string> ProximoCodigoMaterialAsync(Guid empresaId, CancellationToken ct)
+    {
+        var codigos = await db.MateriaisConsumo.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId).Select(m => m.Codigo).ToListAsync(ct);
+        var maior = codigos.Select(c => int.TryParse(c, out var n) ? n : 0).DefaultIfEmpty(9000).Max();
+        return Math.Max(maior + 1, 9001).ToString();
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // PROCESSAR (confirmar entrada: movimenta estoque + lança financeiro)
     // ──────────────────────────────────────────────────────────────────
@@ -537,12 +644,43 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (entrada.Status != StatusEntradaNFe.EmEdicao)
             return BadRequest(new { mensagem = $"Entrada está com status '{entrada.Status}'. Apenas entradas Em Edição podem ser processadas." });
 
-        var itensSemProduto = entrada.Itens.Where(i => i.ProdutoId is null).ToList();
-        if (itensSemProduto.Count > 0)
-            return BadRequest(new { mensagem = $"{itensSemProduto.Count} item(ns) sem produto vinculado. Vincule todos antes de processar." });
+        var ehMaterial = entrada.TipoEntrada == TipoEntradaNFe.MaterialConsumo;
+
+        var semVinculo = ehMaterial
+            ? entrada.Itens.Count(i => i.MaterialConsumoId is null)
+            : entrada.Itens.Count(i => i.ProdutoId is null);
+        if (semVinculo > 0)
+            return BadRequest(new { mensagem = ehMaterial
+                ? $"{semVinculo} item(ns) sem material vinculado. Vincule todos antes de processar."
+                : $"{semVinculo} item(ns) sem produto vinculado. Vincule todos antes de processar." });
 
         // Ratear frete nos itens (proporcional ao valor) e calcular o custo final
         entrada.RatearFrete();
+
+        // Entrada de material de consumo: alimenta o estoque de materiais (não o de
+        // mercadorias) — sem lote, sem preço de venda e sem formação de preço.
+        if (ehMaterial)
+        {
+            foreach (var item in entrada.Itens)
+            {
+                var material = await db.MateriaisConsumo.FindAsync([item.MaterialConsumoId], ct);
+                if (material is null) continue;
+
+                material.EntradaEstoque(item.QuantidadeEstoque, item.CustoUnitarioFinal, entrada.DataEntrada);
+                db.MovimentacoesMaterial.Add(MovimentacaoMaterial.Criar(
+                    entrada.EmpresaId, material.Id, TipoMovimentacaoMaterial.Entrada,
+                    item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                    documentoOrigem: entrada.ChaveAcesso,
+                    observacao: $"NF-e {entrada.EmitenteNome}"));
+
+                if (entrada.FornecedorId is { } fid)
+                    material.VincularReferenciaFornecedor(fid, item.CodigoFornecedor);
+
+                item.MarcarEstoqueMovimentado();
+            }
+            await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            return Ok(new { mensagem = "Entrada de materiais processada.", itens = entrada.Itens.Count });
+        }
 
         // 1. Movimentar estoque
         foreach (var item in entrada.Itens)
@@ -579,7 +717,20 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             item.MarcarEstoqueMovimentado();
         }
 
-        // 2. Lançar faturas em contas a pagar
+        // 2. Lançar faturas em contas a pagar e concluir
+        await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+
+        return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id });
+    }
+
+    /// <summary>
+    /// Lança as faturas da nota em contas a pagar e marca a entrada como processada.
+    /// Compartilhado pelas entradas de mercadoria e de material de consumo — o
+    /// financeiro é igual nos dois casos; só o destino do estoque muda.
+    /// </summary>
+    private async Task LancarFinanceiroEProcessarAsync(
+        EntradaNFe entrada, ProcessarEntradaRequest req, CancellationToken ct)
+    {
         var nNF = entrada.ChaveAcesso.Length >= 34
             ? int.Parse(entrada.ChaveAcesso.Substring(25, 9)).ToString()
             : entrada.ChaveAcesso;
@@ -607,8 +758,6 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 
         entrada.Processar();
         await db.SaveChangesAsync(ct);
-
-        return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id });
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1249,6 +1398,14 @@ public record EditarItemRequest(
 public record LocalEstoqueRequest(Guid LocalEstoqueId);
 public record FreteManualRequest(decimal Valor);
 public record VincularFornecedorRequest(Guid FornecedorId);
+
+/// <summary>Tipo da entrada: "Mercadoria" ou "MaterialConsumo".</summary>
+public record TipoEntradaRequest(string Tipo);
+
+public record VincularMaterialRequest(Guid MaterialConsumoId, decimal? FatorConversao = null);
+
+/// <summary>Unidade padrão para os materiais criados a partir da nota.</summary>
+public record CadastrarMateriaisRequest(Guid UnidadeMedidaId);
 public record VincularPedidoRequest(Guid PedidoCompraId);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);
 public record ProcessarEntradaRequest(

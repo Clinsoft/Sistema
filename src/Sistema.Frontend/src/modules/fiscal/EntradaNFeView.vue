@@ -106,6 +106,29 @@
                 </v-btn>
               </div>
             </v-alert>
+
+            <!-- Destino dos itens: venda ou uso interno -->
+            <v-divider class="my-3" />
+            <div class="text-subtitle-2 font-weight-bold mb-2">O que está entrando?</div>
+            <v-btn-toggle :model-value="entrada?.tipoEntrada ?? 'Mercadoria'" mandatory divided
+              density="compact" class="mb-2" :disabled="entrada?.status !== 'EmEdicao'"
+              @update:model-value="definirTipoEntrada">
+              <v-btn value="Mercadoria" size="small" prepend-icon="mdi-cart-outline">
+                Mercadoria para venda
+              </v-btn>
+              <v-btn value="MaterialConsumo" size="small" prepend-icon="mdi-package-variant-closed">
+                Material de consumo
+              </v-btn>
+            </v-btn-toggle>
+            <div class="text-caption text-medium-emphasis">
+              <template v-if="ehMaterialConsumo">
+                Os itens vão para <b>Materiais de Consumo</b> (uso interno): não entram no
+                PDV, no catálogo nem na formação de preço.
+              </template>
+              <template v-else>
+                Os itens vão para o cadastro de <b>Produtos</b> e ficam disponíveis para venda.
+              </template>
+            </div>
           </v-card>
         </v-col>
         <v-col cols="12" md="6">
@@ -233,7 +256,16 @@
 
         <v-spacer />
 
-        <template v-if="passo === 2 && itensSemProduto > 0">
+        <!-- Nota de material de consumo: cadastra/vincula no estoque de uso interno -->
+        <template v-if="passo === 2 && ehMaterialConsumo && itensSemProduto > 0">
+          <v-btn size="small" color="teal" variant="flat"
+            :loading="cadastrandoMateriais" prepend-icon="mdi-package-variant-closed"
+            @click="cadastrarMateriaisFaltantes">
+            Cadastrar materiais que faltam ({{ itensSemProduto }})
+          </v-btn>
+        </template>
+
+        <template v-else-if="passo === 2 && itensSemProduto > 0">
           <v-btn size="small" variant="outlined" :loading="vinculandoAuto"
             prepend-icon="mdi-link-variant"
             style="color:white; border-color:rgba(255,255,255,0.3)"
@@ -885,6 +917,46 @@ async function reimportarItens() {
   } finally { reimportando.value = false }
 }
 
+// ── Tipo da entrada: mercadoria (Produtos) ou material de consumo ──────────
+const ehMaterialConsumo = computed(() => entrada.value?.tipoEntrada === 'MaterialConsumo')
+
+async function definirTipoEntrada(tipo: string) {
+  if (!tipo || tipo === entrada.value?.tipoEntrada) return
+  const paraMaterial = tipo === 'MaterialConsumo'
+  const temVinculo = (itensEditaveis.value ?? []).some((i: any) => i._produtoId || i.materialConsumoId)
+  if (temVinculo && !confirm(
+    `Trocar para "${paraMaterial ? 'Material de consumo' : 'Mercadoria para venda'}" desfaz os vínculos dos itens, `
+    + 'porque os cadastros são diferentes. Continuar?')) return
+
+  try {
+    await api.patch(`/fiscal/entradas/${entradaId}/tipo-entrada`, { tipo })
+    notif.ok(paraMaterial
+      ? 'Nota marcada como Material de Consumo — os itens irão para o estoque de uso interno.'
+      : 'Nota marcada como Mercadoria para venda.')
+    await carregar()
+    enriquecerItensComProduto()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao definir o tipo da entrada.')
+  }
+}
+
+/** Cadastra os materiais que faltam a partir dos itens da nota e vincula. */
+const cadastrandoMateriais = ref(false)
+async function cadastrarMateriaisFaltantes() {
+  const unidadeMedidaId = unidadesMedida.value?.find((u: any) => u.sigla === 'UN')?.id
+    ?? unidadesMedida.value?.[0]?.id
+  if (!unidadeMedidaId) { notif.erro('Nenhuma unidade de medida cadastrada.'); return }
+
+  cadastrandoMateriais.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/materiais/cadastrar-faltantes`, { unidadeMedidaId })
+    notif.ok(`${r.data.criados} material(is) cadastrado(s), ${r.data.vinculados} vinculado(s).`)
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao cadastrar materiais.')
+  } finally { cadastrandoMateriais.value = false }
+}
+
 /** Re-executa a busca automática por produtos já cadastrados (EAN → de-para → código). */
 async function vincularAutomatico() {
   vinculandoAuto.value = true
@@ -1102,8 +1174,11 @@ const salvandoTodos = ref(false)
 const salvandoFrete = ref(false)
 const markupGlobal = ref(150)
 
-const itensSemProduto = computed(
-  () => itensEditaveis.value.filter((i: any) => !i._produtoId).length)
+// Em nota de material de consumo o vínculo é com o material, não com o produto
+const itensSemProduto = computed(() =>
+  entrada.value?.tipoEntrada === 'MaterialConsumo'
+    ? itensEditaveis.value.filter((i: any) => !i.materialConsumoId).length
+    : itensEditaveis.value.filter((i: any) => !i._produtoId).length)
 
 const itensAlterados = computed(
   () => itensEditaveis.value.filter((i: any) => i._alterado).length)

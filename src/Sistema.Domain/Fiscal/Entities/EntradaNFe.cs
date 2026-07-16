@@ -37,6 +37,13 @@ public class EntradaNFe : Entity
     // Duplicatas do XML (JSON) — mantido para recarregar faturas antes de processar
     public string? DuplicatasJson { get; private set; }
 
+    /// <summary>
+    /// O que está entrando: mercadoria para venda (vai para Produtos) ou material
+    /// de consumo/uso interno (vai para Materiais de Consumo). Definido na
+    /// escrituração e determina para onde os itens são cadastrados e movimentados.
+    /// </summary>
+    public TipoEntradaNFe TipoEntrada { get; private set; } = TipoEntradaNFe.Mercadoria;
+
     // Estado
     public StatusEntradaNFe Status { get; private set; }
     public string? Observacao { get; private set; }
@@ -125,6 +132,14 @@ public class EntradaNFe : Entity
 
     public void DefinirFreteManual(decimal valor) => ValorFreteManual = valor;
 
+    /// <summary>Define se a nota é de mercadoria para venda ou de material de consumo.</summary>
+    public void DefinirTipoEntrada(TipoEntradaNFe tipo)
+    {
+        if (Status != StatusEntradaNFe.EmEdicao)
+            throw new InvalidOperationException("O tipo da entrada só pode mudar antes de processar.");
+        TipoEntrada = tipo;
+    }
+
     public void DefinirLocalEstoque(Guid localId) => LocalEstoqueId = localId;
 
     public void DefinirDuplicatas(string json) => DuplicatasJson = json;
@@ -171,9 +186,12 @@ public class ItemEntradaNFe : Entity
     public decimal ValorIcmsSt { get; private set; }
     public decimal ValorFreteProporcional { get; private set; }
 
-    // Vínculo com produto cadastrado
+    // Vínculo com produto cadastrado (entrada de mercadoria)
     public Guid? ProdutoId { get; private set; }
     public string? ProdutoDescricao { get; private set; }
+
+    /// <summary>Vínculo com material de consumo (quando a entrada é de uso interno).</summary>
+    public Guid? MaterialConsumoId { get; private set; }
 
     // Conversão de unidade (ex: caixa → kg)
     public decimal FatorConversao { get; private set; } = 1m;      // qtd xml × fator = qtd estoque
@@ -226,6 +244,23 @@ public class ItemEntradaNFe : Entity
     {
         ProdutoId = produtoId;
         ProdutoDescricao = descricao;
+        MaterialConsumoId = null;      // um item é produto OU material, nunca os dois
+    }
+
+    /// <summary>Vincula o item a um material de consumo (entrada de uso interno).</summary>
+    public void VincularMaterial(Guid materialId, string descricao)
+    {
+        MaterialConsumoId = materialId;
+        ProdutoDescricao = descricao;
+        ProdutoId = null;
+    }
+
+    /// <summary>Solta o vínculo com produto/material (usado ao trocar o tipo da entrada).</summary>
+    public void DesvincularCadastro()
+    {
+        ProdutoId = null;
+        MaterialConsumoId = null;
+        ProdutoDescricao = null;
     }
 
     public void DefinirConversao(decimal fator, string unidadeEstoque)
@@ -279,6 +314,15 @@ public enum StatusEntradaNFe
     EmEdicao,
     Processada,
     Estornada,
+}
+
+/// <summary>Destino dos itens da entrada.</summary>
+public enum TipoEntradaNFe
+{
+    /// <summary>Mercadoria para venda → cadastro de Produtos.</summary>
+    Mercadoria = 0,
+    /// <summary>Material de consumo / uso interno → cadastro de Materiais de Consumo.</summary>
+    MaterialConsumo = 1,
 }
 
 /// <summary>Método de rateio do frete entre os itens da entrada.</summary>

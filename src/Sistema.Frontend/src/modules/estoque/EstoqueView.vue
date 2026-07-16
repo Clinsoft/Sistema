@@ -104,6 +104,7 @@ const atalhos = [
   { icon: 'mdi-transfer',              label: 'Transferências',        to: '/estoque/transferencias', cor: 'success' },
   { icon: 'mdi-tune-vertical',         label: 'Ajuste em Lote',       to: '/estoque/ajuste',         cor: 'error' },
   { icon: 'mdi-calendar-alert',         label: 'Controle de Validade',  to: '/estoque/validade',       cor: 'warning' },
+  { icon: 'mdi-package-variant-closed', label: 'Materiais de Consumo',  to: '/estoque/materiais',      cor: 'teal' },
   { icon: 'mdi-scale',                 label: 'Exportar para Balança', to: '/estoque/balanca',        cor: 'teal' },
   { icon: 'mdi-label-outline',         label: 'Editor de Etiquetas',   to: '/estoque/etiquetas',      cor: 'deep-purple' },
 ]

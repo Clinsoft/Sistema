@@ -128,6 +128,8 @@
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"
+              to="/estoque/materiais" value="/estoque/materiais" color="teal" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-currency-usd" title="Alterar Preços"
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>

@@ -11,7 +11,8 @@
         '<b>NF-e Recebidas</b>: clique em <b>Consultar SEFAZ</b> (☁) para buscar as notas emitidas pelos seus fornecedores contra o seu CNPJ (exige certificado A1 configurado).',
         'No menu ⋮ de cada nota, <b>manifeste</b>: Ciência, Confirmação, Desconhecimento ou Operação Não Realizada. Só após Confirmar/dar Ciência o <b>XML completo</b> fica disponível para baixar.',
         'Use <b>Escriturar Entrada</b> para lançar a nota no <b>estoque e financeiro</b> (escolhe o local e abre a tela de conferência).',
-        '<b>NF-e Emitidas</b>: acompanhe suas notas de saída. <b>Importar XML</b>: escriture uma entrada a partir do arquivo XML do fornecedor.',
+        '<b>NF-e Emitidas</b>: acompanhe suas notas de saída.',
+        '<b>Entradas / Escrituração</b>: lista as entradas já escrituradas — clique numa linha para abrir e continuar a conferência. Use o botão <b>Importar XML</b> para escriturar a partir do arquivo XML do fornecedor.',
       ]"
     />
 
@@ -23,7 +24,7 @@
           {{ resumoRecebidas.semManifestacao }} pendente(s)
         </v-chip>
       </v-tab>
-      <v-tab value="entradas" prepend-icon="mdi-file-import-outline">Importar XML</v-tab>
+      <v-tab value="entradas" prepend-icon="mdi-file-import-outline">Entradas / Escrituração</v-tab>
     </v-tabs>
 
     <!-- ─────────────── ABA: EMITIDAS ─────────────── -->

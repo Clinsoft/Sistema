@@ -12,7 +12,11 @@ public record CriarProdutoCommand(
     decimal CustoUnitario, decimal PrecoVenda,
     string? CodigoBarras = null, string? Ncm = null,
     decimal EstoqueMinimo = 0, bool ControlarLote = false,
-    bool ControlarValidade = false) : IRequest<Guid>;
+    bool ControlarValidade = false,
+    // Fornecedor principal e de-para (código do produto na nota do fornecedor),
+    // preenchidos quando o produto é criado a partir de uma NF-e de entrada.
+    Guid? FornecedorPrincipalId = null,
+    string? CodigoFornecedorPrincipal = null) : IRequest<Guid>;
 
 public class CriarProdutoValidator : AbstractValidator<CriarProdutoCommand>
 {
@@ -61,6 +65,12 @@ public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
             cmd.CustoUnitario, cmd.PrecoVenda, cmd.CodigoBarras);
 
         produto.DefinirEstoqueMinimo(cmd.EstoqueMinimo);
+
+        // Fornecedor + de-para: permite que as próximas entradas deste fornecedor
+        // vinculem o produto automaticamente pelo código da nota dele.
+        if (cmd.FornecedorPrincipalId.HasValue)
+            produto.VincularReferenciaFornecedor(
+                cmd.FornecedorPrincipalId.Value, cmd.CodigoFornecedorPrincipal);
 
         // Produto vendido por peso (KG) já nasce preparado para a balança, com
         // controle de validade ligado e prazo padrão — a balança precisa desse

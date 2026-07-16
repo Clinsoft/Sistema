@@ -70,6 +70,12 @@ public class LancamentoFinanceiro : Entity
         Status = StatusLancamento.Cancelado;
     }
 
+    /// <summary>
+    /// Define o fornecedor do lançamento. Usado para corrigir contas a pagar
+    /// geradas por escriturações que ficaram sem fornecedor vinculado.
+    /// </summary>
+    public void DefinirFornecedor(Guid fornecedorId) => FornecedorId = fornecedorId;
+
     public void Editar(string descricao, decimal valorOriginal, DateTime dataVencimento, string? observacao, Guid? fornecedorId = null)
     {
         Descricao = descricao;

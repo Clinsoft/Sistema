@@ -82,6 +82,30 @@
               variant="outlined" density="compact" readonly />
             <v-text-field :model-value="fmtCnpj(entrada?.emitenteCnpj)" label="CNPJ"
               variant="outlined" density="compact" readonly />
+
+            <!-- Entrada sem fornecedor: cadastra/vincula pelo CNPJ do emitente -->
+            <v-alert v-if="entrada && !entrada.fornecedorId"
+              type="warning" variant="tonal" density="compact" class="mt-1">
+              <div class="text-body-2 mb-2">
+                Esta nota <b>não tem fornecedor vinculado</b>. Cadastre o emitente para
+                alimentar o contas a pagar e o de-para de produtos.
+              </div>
+              <v-btn size="small" color="warning" variant="flat" :loading="vinculandoAuto"
+                prepend-icon="mdi-account-plus-outline" @click="vincularAutomatico">
+                Cadastrar e vincular fornecedor
+              </v-btn>
+            </v-alert>
+            <v-alert v-else-if="entrada?.fornecedorId" type="success" variant="tonal"
+              density="compact" class="mt-1">
+              <div class="d-flex align-center flex-wrap gap-2">
+                <span>Fornecedor vinculado.</span>
+                <v-spacer />
+                <v-btn size="x-small" variant="text" :loading="vinculandoAuto"
+                  prepend-icon="mdi-autorenew" @click="vincularAutomatico">
+                  Aplicar aos produtos e contas
+                </v-btn>
+              </div>
+            </v-alert>
           </v-card>
         </v-col>
         <v-col cols="12" md="6">
@@ -866,14 +890,24 @@ async function vincularAutomatico() {
   vinculandoAuto.value = true
   try {
     const r = await api.post(`/fiscal/entradas/${entradaId}/vincular-automatico`)
-    const { vinculados, pendentes } = r.data
-    if (vinculados > 0) {
-      notif.ok(`${vinculados} item(ns) vinculado(s) a produtos já cadastrados.`
-        + (pendentes ? ` ${pendentes} ainda sem vínculo.` : ''))
+    const { vinculados, pendentes, fornecedorNome, fornecedorNovo,
+            contasCorrigidas, produtosVinculados } = r.data
+
+    // Relata só o que realmente mudou
+    const feito: string[] = []
+    if (fornecedorNovo) feito.push(`fornecedor ${fornecedorNome} cadastrado e vinculado`)
+    if (contasCorrigidas) feito.push(`${contasCorrigidas} conta(s) a pagar atualizada(s)`)
+    if (produtosVinculados) feito.push(`${produtosVinculados} produto(s) vinculado(s) ao fornecedor`)
+    if (vinculados) feito.push(`${vinculados} item(ns) vinculado(s) a produtos cadastrados`)
+
+    if (feito.length) {
+      notif.ok(feito.join(' · ') + '.' + (pendentes ? ` ${pendentes} item(ns) ainda sem vínculo.` : ''))
       await carregar()
       enriquecerItensComProduto()
     } else {
-      notif.aviso('Nenhum produto correspondente encontrado no cadastro.')
+      notif.aviso(fornecedorNome
+        ? `Nada a corrigir: fornecedor ${fornecedorNome}, contas e produtos já estão vinculados.`
+        : 'Nenhum produto correspondente encontrado no cadastro.')
     }
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao vincular automaticamente.')
@@ -1302,6 +1336,10 @@ async function criarProdutoDoItem(item: any) {
     categoriaId, marcaId, unidadeMedidaId,
     custoUnitario: Math.round(custo * 100) / 100,
     precoVenda,
+    // Fornecedor da nota + código do produto nela (de-para), para as próximas
+    // entradas deste fornecedor vincularem sozinhas.
+    fornecedorPrincipalId: entrada.value?.fornecedorId ?? null,
+    codigoFornecedorPrincipal: item.codigoFornecedor ?? null,
   })
   const novoId = r.data.id ?? r.data.Id
 
@@ -1314,6 +1352,9 @@ async function criarProdutoDoItem(item: any) {
     custoUnitario: Math.round(custo * 100) / 100,
     precoVenda,
     ncm: ncmLimpo,
+    // Fornecedor da nota + de-para (código do produto no fornecedor), para as
+    // próximas entradas deste fornecedor vincularem sozinhas.
+    fornecedorPrincipalId: entrada.value?.fornecedorId ?? null,
     cfop: trib.cfop || null,
     origem: trib.origem,
     csosnIcms: trib.csosnIcms || null,

@@ -202,30 +202,9 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             natureza: parsed.NaturezaOperacao);
 
         // Vincular ou criar fornecedor automaticamente pelo CNPJ do emitente
-        var cnpjForn = CnpjRaw(parsed.EmitenteCnpj);
-        var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(
-            f => f.EmpresaId == empresaId && f.Cnpj == cnpjForn, ct);
-
-        if (fornecedor is null && !string.IsNullOrWhiteSpace(cnpjForn))
-        {
-            fornecedor = Fornecedor.Criar(
-                empresaId,
-                razaoSocial: parsed.EmitenteNome,
-                cnpj: cnpjForn,
-                nomeFantasia: parsed.EmitenteNomeFantasia);
-
-            // Endereço completo do XML
-            if (parsed.EmitenteEndereco is { } end)
-                fornecedor.Editar(
-                    razaoSocial: parsed.EmitenteNome,
-                    nomeFantasia: parsed.EmitenteNomeFantasia,
-                    email: null, telefone: null, contato: null, prazoPagamentoDias: 0,
-                    logradouro: end.Logradouro, numero: end.Numero, complemento: end.Complemento,
-                    bairro: end.Bairro, cidade: end.Municipio, uf: end.UF, cep: end.Cep,
-                    inscricaoEstadual: parsed.EmitenteIE);
-
-            db.Fornecedores.Add(fornecedor);
-        }
+        var fornecedor = await VincularOuCriarFornecedorAsync(
+            empresaId, parsed.EmitenteCnpj, parsed.EmitenteNome,
+            parsed.EmitenteNomeFantasia, parsed.EmitenteEndereco, parsed.EmitenteIE, ct);
 
         if (fornecedor is not null)
             entrada.VincularFornecedor(fornecedor.Id);
@@ -348,11 +327,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             valDesconto: 0, valIpi: 0, valIcmsSt: 0, valTotal: nota.ValorTotal);
 
         // Se XML disponível, parsear itens E duplicatas (parcelamento da NF-e)
+        NFeParseResult? parsed = null;
         if (nota.XmlNota is not null)
         {
             try
             {
-                var parsed = ParsearNFeXml(nota.XmlNota);
+                parsed = ParsearNFeXml(nota.XmlNota);
                 foreach (var item in parsed.Itens)
                     entrada.AdicionarItem(item);
 
@@ -364,13 +344,16 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                     entrada.DefinirDuplicatas(System.Text.Json.JsonSerializer.Serialize(parsed.Duplicatas, jsonOpts));
                 }
             }
-            catch { /* XML inválido → segue sem itens/duplicatas */ }
+            catch { parsed = null; /* XML inválido → segue sem itens/duplicatas */ }
         }
 
-        // Tentar vincular fornecedor por CNPJ
-        var fornecedor = await db.Fornecedores
-            .FirstOrDefaultAsync(f => f.EmpresaId == req.EmpresaId &&
-                f.Cnpj == CnpjRaw(nota.EmitenteCnpj), ct);
+        // Vincular ou criar o fornecedor pelo CNPJ do emitente. Com XML, usa os
+        // dados completos (fantasia/endereço/IE); sem XML, os da nota recebida.
+        var fornecedor = await VincularOuCriarFornecedorAsync(
+            req.EmpresaId,
+            parsed?.EmitenteCnpj ?? nota.EmitenteCnpj,
+            parsed?.EmitenteNome ?? nota.EmitenteNome,
+            parsed?.EmitenteNomeFantasia, parsed?.EmitenteEndereco, parsed?.EmitenteIE, ct);
         if (fornecedor is not null)
             entrada.VincularFornecedor(fornecedor.Id);
 
@@ -382,6 +365,39 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
 
         return CreatedAtAction(nameof(Obter), new { id = entrada.Id }, new { id = entrada.Id });
+    }
+
+    /// <summary>
+    /// Localiza o fornecedor pelo CNPJ do emitente e, se ainda não existir,
+    /// cadastra a partir dos dados do XML. Usado por todos os caminhos de
+    /// escrituração (XML avulso e NF-e recebida da SEFAZ), para que a entrada
+    /// nunca fique sem fornecedor vinculado.
+    /// </summary>
+    private async Task<Fornecedor?> VincularOuCriarFornecedorAsync(
+        Guid empresaId, string? emitenteCnpj, string emitenteNome,
+        string? nomeFantasia, EnderecoXml? endereco, string? inscricaoEstadual,
+        CancellationToken ct)
+    {
+        var cnpj = CnpjRaw(emitenteCnpj ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(cnpj)) return null;
+
+        var fornecedor = await db.Fornecedores
+            .FirstOrDefaultAsync(f => f.EmpresaId == empresaId && f.Cnpj == cnpj, ct);
+        if (fornecedor is not null) return fornecedor;
+
+        fornecedor = Fornecedor.Criar(empresaId, emitenteNome, cnpj, nomeFantasia);
+
+        // Endereço completo do XML (quando disponível)
+        if (endereco is { } end)
+            fornecedor.Editar(
+                razaoSocial: emitenteNome, nomeFantasia: nomeFantasia,
+                email: null, telefone: null, contato: null, prazoPagamentoDias: 0,
+                logradouro: end.Logradouro, numero: end.Numero, complemento: end.Complemento,
+                bairro: end.Bairro, cidade: end.Municipio, uf: end.UF, cep: end.Cep,
+                inscricaoEstadual: inscricaoEstadual);
+
+        db.Fornecedores.Add(fornecedor);
+        return fornecedor;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1051,15 +1067,34 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
             entrada.DefinirDuplicatas(System.Text.Json.JsonSerializer.Serialize(parsed.Duplicatas, opts));
         }
+
+        // Entradas antigas podem ter ficado sem fornecedor (criadas antes do XML
+        // chegar, ou quando o emitente ainda não era cadastrado): resolve agora.
+        var fornecedorNovo = false;
+        if (entrada.FornecedorId is null)
+        {
+            var forn = await VincularOuCriarFornecedorAsync(
+                entrada.EmpresaId, parsed.EmitenteCnpj, parsed.EmitenteNome,
+                parsed.EmitenteNomeFantasia, parsed.EmitenteEndereco, parsed.EmitenteIE, ct);
+            if (forn is not null)
+            {
+                fornecedorNovo = db.Entry(forn).State == EntityState.Added;
+                entrada.VincularFornecedor(forn.Id);
+            }
+        }
+
         await db.SaveChangesAsync(ct);
 
         var vinculados = await VincularProdutosAutomaticamenteAsync(entrada, ct);
         if (vinculados > 0) await db.SaveChangesAsync(ct);
 
-        return Ok(new { itens = parsed.Itens.Count, vinculados });
+        return Ok(new { itens = parsed.Itens.Count, vinculados, fornecedorNovo });
     }
 
-    /// <summary>Re-executa a vinculação automática dos itens ainda sem produto.</summary>
+    /// <summary>
+    /// Re-executa a vinculação automática: fornecedor (pelo CNPJ do emitente,
+    /// cadastrando se necessário) e itens ainda sem produto.
+    /// </summary>
     [HttpPost("{id:guid}/vincular-automatico")]
     public async Task<IActionResult> VincularAutomatico(Guid id, CancellationToken ct)
     {
@@ -1067,14 +1102,88 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(e => e.Id == id, ct)
             ?? throw new KeyNotFoundException("Entrada não encontrada.");
 
-        if (entrada.Status == StatusEntradaNFe.Processada)
-            return BadRequest(new { mensagem = "Entrada já processada." });
+        var processada = entrada.Status == StatusEntradaNFe.Processada;
+
+        // Entrada sem fornecedor (criada antes do emitente existir no cadastro):
+        // resolve pelo CNPJ, usando o XML quando disponível para trazer os dados
+        // completos. É correção cadastral — vale também para entradas processadas,
+        // pois não altera estoque nem os valores do financeiro.
+        string? fornecedorNome = null;
+        var fornecedorNovo = false;
+        var contasCorrigidas = 0;
+        var produtosVinculados = 0;
+        // 1) Fornecedor da entrada: cadastra/vincula pelo CNPJ se ainda não houver.
+        if (entrada.FornecedorId is null)
+        {
+            NFeParseResult? parsed = null;
+            var nota = await db.NotasFiscaisRecebidas
+                .FirstOrDefaultAsync(n => n.Id == entrada.NotaFiscalRecebidaId, ct);
+            if (nota?.XmlNota is not null)
+                try { parsed = ParsearNFeXml(nota.XmlNota); } catch { parsed = null; }
+
+            var forn = await VincularOuCriarFornecedorAsync(
+                entrada.EmpresaId,
+                parsed?.EmitenteCnpj ?? entrada.EmitenteCnpj,
+                parsed?.EmitenteNome ?? entrada.EmitenteNome,
+                parsed?.EmitenteNomeFantasia, parsed?.EmitenteEndereco, parsed?.EmitenteIE, ct);
+
+            if (forn is not null)
+            {
+                fornecedorNovo = db.Entry(forn).State == EntityState.Added;
+                entrada.VincularFornecedor(forn.Id);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        // 2) Com o fornecedor definido, corrige o que ficou órfão. Roda mesmo quando
+        //    a entrada já estava vinculada — o contas a pagar e o de-para dos produtos
+        //    podem ter sido gerados antes de o fornecedor existir.
+        if (entrada.FornecedorId is { } fornecedorId)
+        {
+            var fornecedor = await db.Fornecedores.FirstAsync(f => f.Id == fornecedorId, ct);
+            fornecedorNome = fornecedor.RazaoSocial;
+
+            // Contas a pagar da nota sem fornecedor
+            var contas = await db.LancamentosFinanceiros
+                .Where(l => l.EmpresaId == entrada.EmpresaId
+                         && l.DocumentoOrigem == entrada.ChaveAcesso
+                         && l.FornecedorId == null)
+                .ToListAsync(ct);
+            foreach (var c in contas) c.DefinirFornecedor(fornecedorId);
+            contasCorrigidas = contas.Count;
+
+            // Produtos da nota sem fornecedor principal → grava fornecedor + de-para
+            var idsProdutos = entrada.Itens.Where(i => i.ProdutoId.HasValue)
+                .Select(i => i.ProdutoId!.Value).Distinct().ToList();
+            if (idsProdutos.Count > 0)
+            {
+                var produtos = await db.Produtos
+                    .Where(p => idsProdutos.Contains(p.Id) && p.FornecedorPrincipalId == null)
+                    .ToListAsync(ct);
+                foreach (var p in produtos)
+                {
+                    var it = entrada.Itens.First(i => i.ProdutoId == p.Id);
+                    p.VincularReferenciaFornecedor(fornecedorId, it.CodigoFornecedor);
+                }
+                produtosVinculados = produtos.Count;
+            }
+
+            if (contasCorrigidas > 0 || produtosVinculados > 0)
+                await db.SaveChangesAsync(ct);
+        }
+
+        // Entrada processada: só a correção cadastral acima — os itens já foram
+        // movimentados e não devem ser revinculados.
+        if (processada)
+            return Ok(new { vinculados = 0, pendentes = 0, fornecedorNome, fornecedorNovo,
+                            contasCorrigidas, produtosVinculados });
 
         var vinculados = await VincularProdutosAutomaticamenteAsync(entrada, ct);
         if (vinculados > 0) await db.SaveChangesAsync(ct);
 
         var pendentes = entrada.Itens.Count(i => i.ProdutoId is null);
-        return Ok(new { vinculados, pendentes });
+        return Ok(new { vinculados, pendentes, fornecedorNome, fornecedorNovo,
+                        contasCorrigidas, produtosVinculados });
     }
 
     private static decimal Dec(string? s) =>

@@ -225,6 +225,23 @@
         </v-alert>
       </v-card>
 
+      <!-- Escriturações iniciadas e não finalizadas -->
+      <v-alert v-if="qtdNaoFinalizadas > 0" type="warning" variant="tonal"
+        density="compact" class="mb-3">
+        <div class="d-flex align-center flex-wrap gap-2">
+          <span>
+            <b>{{ qtdNaoFinalizadas }}</b> escrituração(ões) iniciada(s) e
+            <b>não finalizada(s)</b> — o estoque e o financeiro ainda não foram lançados.
+          </span>
+          <v-spacer />
+          <v-btn size="small" color="warning" variant="flat"
+            :prepend-icon="filtrosRec.soNaoFinalizadas ? 'mdi-filter-off' : 'mdi-filter'"
+            @click="filtrosRec.soNaoFinalizadas = !filtrosRec.soNaoFinalizadas">
+            {{ filtrosRec.soNaoFinalizadas ? 'Mostrar todas' : 'Ver só as não finalizadas' }}
+          </v-btn>
+        </div>
+      </v-alert>
+
       <!-- Tabela NF-e recebidas -->
       <v-card rounded="xl" elevation="1">
         <v-data-table :headers="headersRecebidas" :items="notasRecebidasExibidas"
@@ -262,6 +279,27 @@
               Pendente
             </v-chip>
           </template>
+
+          <!-- Escrituração: destaca a que foi iniciada e não finalizada -->
+          <template #item.entradaStatus="{ item }">
+            <v-chip v-if="item.entradaStatus === 'EmEdicao'" size="small" color="warning"
+              variant="flat" style="cursor:pointer" @click="abrirEscrituracaoDaNota(item)">
+              <v-icon start size="12">mdi-progress-pencil</v-icon>
+              Não finalizada
+            </v-chip>
+            <v-chip v-else-if="item.entradaStatus === 'Processada'" size="small" color="success"
+              variant="tonal" style="cursor:pointer" @click="abrirEscrituracaoDaNota(item)">
+              <v-icon start size="12">mdi-check-circle-outline</v-icon>
+              Escriturada
+            </v-chip>
+            <v-chip v-else-if="item.entradaStatus === 'Estornada'" size="small" color="error"
+              variant="tonal" style="cursor:pointer" @click="abrirEscrituracaoDaNota(item)">
+              <v-icon start size="12">mdi-undo-variant</v-icon>
+              Estornada
+            </v-chip>
+            <span v-else class="text-caption text-medium-emphasis">—</span>
+          </template>
+
           <template #item.acoes="{ item }">
             <v-menu>
               <template #activator="{ props }">
@@ -289,7 +327,15 @@
                   prepend-icon="mdi-download-outline" title="Baixar XML"
                   @click="baixarXmlRecebida(item)" />
                 <v-divider />
-                <v-list-item
+                <v-list-item v-if="item.entradaStatus === 'EmEdicao'"
+                  prepend-icon="mdi-progress-pencil" title="Continuar escrituração"
+                  subtitle="Escrituração iniciada e não finalizada"
+                  class="text-warning font-weight-medium"
+                  @click="abrirEscrituracaoDaNota(item)" />
+                <v-list-item v-else-if="item.entradaStatus"
+                  prepend-icon="mdi-file-eye-outline" title="Ver escrituração"
+                  @click="abrirEscrituracaoDaNota(item)" />
+                <v-list-item v-else
                   prepend-icon="mdi-file-import-outline" title="Escriturar Entrada"
                   subtitle="Lançar no estoque e financeiro"
                   class="text-primary font-weight-medium"
@@ -1062,6 +1108,7 @@ const filtrosRec = ref({
   dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   dataFim: new Date().toISOString().slice(0, 10),
   manifestacao: null as string | null,
+  soNaoFinalizadas: false,
 })
 
 const opcoesManifestacaoFiltro = [
@@ -1074,11 +1121,18 @@ const opcoesManifestacaoFiltro = [
 ]
 
 // "PENDENTE" é filtrado no cliente (o backend só filtra por tipo de manifestação real)
-const notasRecebidasExibidas = computed(() =>
-  filtrosRec.value.manifestacao === 'PENDENTE'
-    ? notasRecebidas.value.filter((n: any) => !n.manifestacao)
-    : notasRecebidas.value
-)
+const notasRecebidasExibidas = computed(() => {
+  let r = notasRecebidas.value
+  if (filtrosRec.value.manifestacao === 'PENDENTE')
+    r = r.filter((n: any) => !n.manifestacao)
+  // Só as escriturações iniciadas e não finalizadas
+  if (filtrosRec.value.soNaoFinalizadas)
+    r = r.filter((n: any) => n.entradaStatus === 'EmEdicao')
+  return r
+})
+
+const qtdNaoFinalizadas = computed(() =>
+  notasRecebidas.value.filter((n: any) => n.entradaStatus === 'EmEdicao').length)
 
 const headersRecebidas = [
   { title: 'Emitente', key: 'emitente', sortable: false },
@@ -1087,6 +1141,7 @@ const headersRecebidas = [
   { title: 'Valor Total', key: 'valorTotal' },
   { title: 'Situação', key: 'situacao' },
   { title: 'Manifestação', key: 'manifestacao' },
+  { title: 'Escrituração', key: 'entradaStatus', sortable: false },
   { title: '', key: 'acoes', sortable: false, align: 'end' as const },
 ]
 
@@ -1198,6 +1253,11 @@ async function baixarXmlRecebida(item: any) {
 }
 
 // ── Escrituração ──
+/** Abre a escrituração já existente desta NF-e recebida (em edição, processada ou estornada). */
+function abrirEscrituracaoDaNota(nota: any) {
+  if (nota?.entradaId) router.push(`/fiscal/entradas/${nota.entradaId}`)
+}
+
 const dlgEscriturar = ref(false)
 const notaParaEscriturar = ref<any>(null)
 const localEscrituracaoId = ref<string | null>(null)

@@ -59,6 +59,13 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
                 n.JustificativaManifestacao,
                 TemXml = n.XmlNota != null,
                 n.DataConsulta,
+                // Escrituração desta nota: permite ver na lista o que ficou pela metade
+                EntradaId = db.EntradasNFe
+                    .Where(e => e.NotaFiscalRecebidaId == n.Id)
+                    .Select(e => (Guid?)e.Id).FirstOrDefault(),
+                EntradaStatus = db.EntradasNFe
+                    .Where(e => e.NotaFiscalRecebidaId == n.Id)
+                    .Select(e => e.Status.ToString()).FirstOrDefault(),
             })
             .ToListAsync(ct);
 
@@ -147,6 +154,10 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
             .Where(n => n.EmpresaId == empresaId)
             .ToListAsync(ct);
 
+        // Escriturações iniciadas e não finalizadas (ficam pela metade)
+        var escrituracaoEmAberto = await db.EntradasNFe.AsNoTracking()
+            .CountAsync(e => e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.EmEdicao, ct);
+
         return Ok(new
         {
             Total = notas.Count,
@@ -156,6 +167,7 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
             Desconhecidas = notas.Count(n => n.Manifestacao == ManifestacaoTipo.DesconhecimentoOperacao),
             NaoRealizadas = notas.Count(n => n.Manifestacao == ManifestacaoTipo.OperacaoNaoRealizada),
             ValorTotal = notas.Sum(n => n.ValorTotal),
+            EscrituracaoEmAberto = escrituracaoEmAberto,
         });
     }
 }

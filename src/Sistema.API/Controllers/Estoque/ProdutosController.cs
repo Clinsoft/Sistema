@@ -96,6 +96,11 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
 
         produto.EditarInfoAdicional(req.ImagemUrl, req.Marcador, req.Tags, req.InformacaoAdicional);
 
+        // Unidade pesável (KG) → sempre marcado para a balança.
+        var pesavel = await db.UnidadesMedida.AsNoTracking()
+            .AnyAsync(u => u.Id == req.UnidadeMedidaId && (u.Pesavel || u.Sigla == "KG"), ct);
+        if (pesavel) produto.MarcarComoBalanca(req.CodigoPlu);
+
         db.Produtos.Update(produto);
         await uow.SalvarAsync(ct);
         return NoContent();

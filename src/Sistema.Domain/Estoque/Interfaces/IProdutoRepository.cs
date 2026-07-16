@@ -19,4 +19,7 @@ public interface IProdutoRepository : IRepository<Produto>
     Task<(IReadOnlyDictionary<Guid, string> Unidades,
           IReadOnlyDictionary<Guid, string> Categorias,
           IReadOnlyDictionary<Guid, string> Marcas)> ObterLookupsAsync(Guid empresaId, CancellationToken ct = default);
+
+    /// <summary>Indica se a unidade de medida é vendida por peso (ex.: KG).</summary>
+    Task<bool> UnidadeEhPesavelAsync(Guid unidadeMedidaId, CancellationToken ct = default);
 }

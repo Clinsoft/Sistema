@@ -26,10 +26,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
             Math.Clamp(tamanhoCodigoProduto, 4, 6),
             tipoInformacao);
 
-        var produtos = await db.Produtos.AsNoTracking()
-            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.ProdutoBalanca && p.CodigoPlu != null)
-            .OrderBy(p => p.CodigoPlu)
-            .ToListAsync(ct);
+        var produtos = await ObterProdutosBalancaAsync(empresaId, ct);
 
         var conteudo = modelo.ToUpper() switch
         {
@@ -46,16 +43,48 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
         return File(Encoding.Latin1.GetBytes(conteudo), "text/plain", nomeArquivo);
     }
 
+    /// <summary>
+    /// Produtos que vão para a balança: os marcados como Balança/Fracionado ou
+    /// que usam unidade pesável (KG). O PLU é o CodigoPlu e, quando não houver,
+    /// o código interno do produto — que é o número usado na balança.
+    /// </summary>
+    private async Task<List<ProdutoBalancaDto>> ObterProdutosBalancaAsync(Guid empresaId, CancellationToken ct)
+    {
+        var itens = await (
+            from p in db.Produtos.AsNoTracking()
+            join u in db.UnidadesMedida on p.UnidadeMedidaId equals u.Id into unids
+            from u in unids.DefaultIfEmpty()
+            where p.EmpresaId == empresaId && p.Ativo
+               && (p.ProdutoBalanca || p.VendidoFracionado || (u != null && u.Pesavel))
+            select new { p.Codigo, p.CodigoPlu, p.Descricao, p.PrecoVenda, p.ValidadeEmDias }
+        ).ToListAsync(ct);
+
+        return itens
+            .Select(i => new ProdutoBalancaDto(
+                Plu: i.CodigoPlu ?? (int.TryParse(i.Codigo, out var c) ? c : 0),
+                Descricao: i.Descricao,
+                PrecoVenda: i.PrecoVenda,
+                ValidadeEmDias: i.ValidadeEmDias))
+            .Where(i => i.Plu > 0)      // sem PLU válido a balança não identifica o produto
+            .OrderBy(i => i.Plu)
+            .ToList();
+    }
+
+    /// <summary>Prévia dos produtos que serão exportados (usada pela tela).</summary>
+    [HttpGet("produtos")]
+    public async Task<IActionResult> ProdutosParaExportar([FromQuery] Guid empresaId, CancellationToken ct)
+        => Ok(await ObterProdutosBalancaAsync(empresaId, ct));
+
     // ─── Filizola SMART ──────────────────────────────────────────────────────
     // Formato: PLU|DESCRICAO|PRECO|VALIDADE_DIAS
     private static string GerarFilizolaSmart(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"#CONFIG IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
-            var plu = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var plu = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
             var desc = p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao.PadRight(22);
             sb.AppendLine($"{plu}|{desc}|{p.PrecoVenda:F2}|{p.ValidadeEmDias ?? 0}");
         }
@@ -65,12 +94,12 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     // ─── Toledo MGV5 ─────────────────────────────────────────────────────────
     // Formato fixo: PLU (N dígitos), descrição (22 chars), preço (7 dígitos sem separador), validade (3 dígitos)
     private static string GerarToledoMgv5(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         foreach (var p in produtos)
         {
-            var plu  = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var plu  = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
             var desc = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
             var preco    = ((long)(p.PrecoVenda * 100)).ToString("D7");
             var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
@@ -81,13 +110,13 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     // ─── Toledo MGV6 ─────────────────────────────────────────────────────────
     private static string GerarToledoMgv6(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"01CABECALHO IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
-            var plu      = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var plu      = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
             var desc     = (p.Descricao.Length > 30 ? p.Descricao[..30] : p.Descricao).PadRight(30);
             var preco    = $"{p.PrecoVenda:F2}".Replace(",", "").PadLeft(8, '0');
             var validade = (p.ValidadeEmDias ?? 0).ToString("D4");
@@ -99,7 +128,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     // ─── Toledo MGV7 ─────────────────────────────────────────────────────────
     private static string GerarToledoMgv7(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         sb.AppendLine("[Configuracao]");
@@ -111,7 +140,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
         {
             var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
             sb.AppendLine("[Produto]");
-            sb.AppendLine($"PLU={p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}")}");
+            sb.AppendLine($"PLU={p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}")}");
             sb.AppendLine($"Nome={p.Descricao[..Math.Min(p.Descricao.Length, 30)]}");
             sb.AppendLine($"Preco={preco}");
             sb.AppendLine($"Validade={p.ValidadeEmDias ?? 0}");
@@ -122,12 +151,12 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     // ─── Ramuza Atena ────────────────────────────────────────────────────────
     private static string GerarRamuzaAtena(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         foreach (var p in produtos)
         {
-            var plu      = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var plu      = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
             var desc     = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
             var preco    = ((long)(p.PrecoVenda * 100)).ToString("D6");
             var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
@@ -138,13 +167,13 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     // ─── Urano Integra ───────────────────────────────────────────────────────
     private static string GerarUranoIntegra(
-        IEnumerable<Domain.Estoque.Entities.Produto> produtos, BalancaConfig cfg)
+        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"PRODUTOS IP={cfg.IdentificadorPesavel};TC={cfg.TamanhoCodigoProduto};TI={cfg.TipoInformacao}");
         foreach (var p in produtos)
         {
-            var plu   = p.CodigoPlu?.ToString($"D{cfg.TamanhoCodigoProduto}") ?? new string('0', cfg.TamanhoCodigoProduto);
+            var plu   = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
             var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
             sb.AppendLine($"{plu};{p.Descricao[..Math.Min(p.Descricao.Length, 25)]};{preco};{p.ValidadeEmDias ?? 0}");
         }
@@ -153,3 +182,6 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 }
 
 public record BalancaConfig(int IdentificadorPesavel, int TamanhoCodigoProduto, string TipoInformacao);
+
+/// <summary>Produto já preparado para a balança (PLU resolvido).</summary>
+public record ProdutoBalancaDto(int Plu, string Descricao, decimal PrecoVenda, int? ValidadeEmDias);

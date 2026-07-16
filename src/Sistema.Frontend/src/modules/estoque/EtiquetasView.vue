@@ -217,9 +217,13 @@
         <!-- Busca de produtos -->
         <v-card rounded="xl" elevation="1" class="pa-4">
           <div class="text-body-2 font-weight-bold mb-2">Produtos Selecionados</div>
-          <v-text-field v-model="buscaProdutoTexto" label="Buscar produto (nome ou código)…"
-            variant="outlined" density="compact" :loading="buscando" clearable
-            prepend-inner-icon="mdi-magnify" @update:model-value="buscarProdutos" />
+          <v-text-field v-model="buscaProdutoTexto" ref="campoBusca"
+            label="Buscar produto (nome, código ou leitor de código de barras)…"
+            variant="outlined" density="compact" :loading="buscando" clearable autofocus
+            prepend-inner-icon="mdi-barcode-scan" @update:model-value="buscarProdutos"
+            @keyup.enter="buscarPorCodigoBarras"
+            hint="Pode bipar o código de barras: o produto entra na lista sozinho"
+            persistent-hint class="mb-2" />
           <v-list v-if="sugestoes.length" elevation="2" rounded="lg" class="mb-2"
             max-height="240" style="overflow-y:auto">
             <v-list-item v-for="p in sugestoes" :key="p.id"
@@ -561,7 +565,7 @@ const camposPote = ref({
 
 const camposGondola = ref({
   nome: true, preco: true, precoKg: true,
-  codBarras: true, codigoPlu: false, validade: false, unidade: true,
+  codBarras: false, codigoPlu: false, validade: false, unidade: true,
 })
 
 const campos = ref({
@@ -726,7 +730,9 @@ function gerarZpl(): string {
 
   const zplBlocks: string[] = []
 
-  for (const p of etiquetasExpandidas.value) {
+  // Um bloco por produto selecionado; a quantidade é feita pela própria Zebra
+  // via ^PQ (não duplicar aqui, senão a tiragem sai multiplicada).
+  for (const p of produtosSel.value) {
     const nome    = zplSanitize(p.descricao ?? '')
     const precoStr = 'R$ ' + fmt(p.precoVenda)
     const porKg   = fmtPrecoKg(p)
@@ -800,6 +806,37 @@ async function buscarProdutos(q: string) {
       sugestoes.value = r.data ?? []
     } finally { buscando.value = false }
   }, 300)
+}
+
+/**
+ * Enter no campo de busca = "bipe" do leitor de código de barras.
+ * Procura o EAN exato e adiciona o produto direto; se não achar pelo EAN,
+ * cai para o único resultado da busca por texto. O campo é limpo e mantém o
+ * foco, permitindo bipar vários produtos em sequência.
+ */
+async function buscarPorCodigoBarras() {
+  const q = (buscaProdutoTexto.value ?? '').trim()
+  if (!q) return
+  buscando.value = true
+  try {
+    const r = await api.get('/produtos/buscar', { params: { empresaId: auth.empresaId, q } })
+    const achados: any[] = r.data ?? []
+    const exato = achados.find(p => (p.codigoBarras ?? '') === q)
+                ?? (achados.length === 1 ? achados[0] : null)
+    if (exato) {
+      const jaTinha = produtosSel.value.some(p => p.id === exato.id)
+      adicionarProdutoObj(exato)
+      notif.ok(jaTinha ? `${exato.descricao} já estava na lista.` : `${exato.descricao} adicionado.`)
+      buscaProdutoTexto.value = ''
+      sugestoes.value = []
+    } else if (achados.length) {
+      sugestoes.value = achados            // vários: usuário escolhe na lista
+    } else {
+      notif.aviso(`Nenhum produto encontrado para "${q}".`)
+    }
+  } catch {
+    notif.erro('Erro ao buscar produto.')
+  } finally { buscando.value = false }
 }
 
 // Validade da etiqueta para um produto: usa a validade do próprio produto

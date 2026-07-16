@@ -258,6 +258,17 @@ public class Produto : Entity
         }
     }
 
+    /// <summary>
+    /// Prepara o produto para a balança. Aplicado automaticamente a todo produto
+    /// com unidade pesável (KG). O PLU é o número que identifica o produto na
+    /// balança: usa o código interno quando ainda não houver um definido.
+    /// </summary>
+    public void MarcarComoBalanca(int? pluSugerido = null)
+    {
+        ProdutoBalanca = true;
+        CodigoPlu ??= pluSugerido ?? (int.TryParse(Codigo, out var c) ? c : null);
+    }
+
     public void AjustarEstoque(decimal quantidade) => EstoqueAtual += quantidade;
     public void DefinirEstoqueMinimo(decimal minimo) => EstoqueMinimo = minimo;
     public bool EstoqueAbaixoDoMinimo() => EstoqueAtual <= EstoqueMinimo;

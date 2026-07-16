@@ -95,7 +95,7 @@
               <span class="text-error">■ check</span>
             </div>
             <div v-else class="text-caption text-medium-emphasis">
-              Nenhum produto pesável cadastrado com PLU.
+              Nenhum produto pesável encontrado.
             </div>
           </v-card-text>
         </v-card>
@@ -114,8 +114,11 @@
           </div>
           <div v-else-if="!produtos.length" class="pa-6 text-center text-medium-emphasis">
             <v-icon icon="mdi-scale-off" size="48" class="mb-2" />
-            <div>Nenhum produto marcado como "Produto Balança" com PLU cadastrado.</div>
-            <div class="text-caption mt-1">Acesse Produtos → Informações Adicionais para configurar.</div>
+            <div>Nenhum produto pesável encontrado.</div>
+            <div class="text-caption mt-1">
+              Entram aqui os produtos ativos com unidade pesável (KG) ou marcados como
+              Balança/Fracionado. O PLU usa o código da balança e, na falta dele, o código do produto.
+            </div>
           </div>
           <v-data-table v-else :headers="headers" :items="produtos" density="compact" hover
             :items-per-page="20">
@@ -171,7 +174,7 @@ const cfg = reactive({
 })
 
 const headers = [
-  { title: 'PLU', key: 'codigoPlu', width: 90 },
+  { title: 'PLU', key: 'plu', width: 90 },
   { title: 'Produto', key: 'descricao' },
   { title: 'Preço', key: 'precoVenda', width: 110 },
   { title: 'Validade cadastrada', key: 'validadeEmDias', width: 200 },
@@ -180,7 +183,7 @@ const headers = [
 const exemploEan = computed(() => {
   const p = produtos.value[0]
   if (!p) return { plu: '', valor: '', check: '', pluNum: '' }
-  const pluNum = p.codigoPlu ?? 1
+  const pluNum = p.plu ?? 1
   const plu = pluNum.toString().padStart(cfg.tamanhoCodigoProduto, '0')
   const valorDigits = 11 - cfg.tamanhoCodigoProduto
   // Encode preço (sem separadores) nos dígitos de valor
@@ -201,14 +204,14 @@ function dataValidade(dias: number) {
   return d.toLocaleDateString('pt-BR')
 }
 
+// Usa o mesmo critério da exportação (produtos pesáveis, com PLU resolvido a
+// partir do CodigoPlu ou do código interno), evitando divergência tela × arquivo.
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/estoque/produtos', {
-      params: { empresaId: auth.empresaId, produtoBalanca: true }
-    })
-    produtos.value = (r.data.items ?? r.data).filter((p: any) => p.produtoBalanca && p.codigoPlu != null)
-  } catch { /* silencioso */ } finally {
+    const r = await api.get('/balanca/produtos', { params: { empresaId: auth.empresaId } })
+    produtos.value = r.data ?? []
+  } catch { produtos.value = [] } finally {
     carregando.value = false
   }
 }

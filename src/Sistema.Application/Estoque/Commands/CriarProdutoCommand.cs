@@ -59,6 +59,10 @@ public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
 
         produto.DefinirEstoqueMinimo(cmd.EstoqueMinimo);
 
+        // Produto vendido por peso (KG) já nasce preparado para a balança.
+        if (await repo.UnidadeEhPesavelAsync(cmd.UnidadeMedidaId, ct))
+            produto.MarcarComoBalanca();
+
         await repo.AdicionarAsync(produto, ct);
         await uow.SalvarAsync(ct);
         return produto.Id;

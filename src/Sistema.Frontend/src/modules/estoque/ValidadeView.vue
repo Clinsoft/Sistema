@@ -73,6 +73,7 @@
       <div class="d-flex align-center justify-space-between mb-2 flex-wrap gap-2">
         <div class="text-caption text-medium-emphasis">
           Selecione produtos para reimprimir etiquetas (você pode ajustar a validade antes de imprimir).
+          Para os recém-registrados, use o filtro <b>🟢 No prazo</b> ou <b>📋 Todos</b>.
         </div>
         <div class="d-flex gap-2">
           <v-btn size="small" variant="text" @click="toggleSelecionarTodos">
@@ -126,7 +127,13 @@
         </v-list>
         <v-card-text v-else class="text-center text-medium-emphasis py-8">
           <v-icon icon="mdi-check-circle-outline" size="48" color="success" />
-          <div class="mt-2">Nenhum produto com alerta de validade.</div>
+          <div class="mt-2">
+            {{ filtro ? 'Nenhum produto neste filtro.' : 'Nenhum produto com alerta de validade.' }}
+          </div>
+          <v-btn v-if="filtro !== 'Todos'" class="mt-3" size="small" color="primary" variant="tonal"
+            prepend-icon="mdi-format-list-bulleted" @click="filtro = 'Todos'">
+            Ver todos os produtos com validade
+          </v-btn>
         </v-card-text>
       </v-card>
 
@@ -582,11 +589,15 @@ const filtros = [
   { status: 'Urgente',  label: '⚠ Urgente',  cor: 'error'   },
   { status: 'Vermelho', label: '🔴 Vermelho', cor: 'warning' },
   { status: 'Amarelo',  label: '🟡 Amarelo',  cor: 'amber'   },
+  { status: 'Ok',       label: '🟢 No prazo', cor: 'success' },
+  { status: 'Todos',    label: '📋 Todos',    cor: 'primary' },
 ]
 
 const itensFiltrados = computed(() => {
-  let r = painel.value.filter(i => i.status !== 'Ok')
-  if (filtro.value) r = r.filter(i => i.status === filtro.value)
+  let r: any[]
+  if (filtro.value === 'Todos') r = painel.value.slice()
+  else if (filtro.value) r = painel.value.filter(i => i.status === filtro.value)
+  else r = painel.value.filter(i => i.status !== 'Ok')   // padrão: só os com alerta
   if (busca.value) {
     const q = busca.value.toLowerCase()
     r = r.filter(i => i.descricao.toLowerCase().includes(q) || i.marca?.toLowerCase().includes(q))
@@ -619,18 +630,45 @@ function abrirImpressaoEtiquetas() {
   dlgImprimirEtiqueta.value = true
 }
 
+// Reaproveita o template EcoGranel salvo no editor: busca o padrão da loja no
+// servidor e, se não houver/falhar, usa o cache local do navegador.
+async function lerConfigEtiquetaEco(copiasPorItem: number) {
+  const base: any = { copiasPorItem, bordaCor: '#2e7d32', bordaEspessura: 5 }
+  let s: any = null
+  try {
+    const r = await api.get('/etiquetas/config', {
+      params: { empresaId: auth.empresaId, template: 'ecogranel' },
+    })
+    if (r.data?.config) s = JSON.parse(r.data.config)
+  } catch { /* cai no cache local */ }
+  try {
+    if (!s) s = JSON.parse(localStorage.getItem('ecogranel-template') || 'null')
+    if (s) {
+      if (s.borda) { base.bordaCor = s.borda.cor; base.bordaEspessura = s.borda.espessura }
+      if (s.marcaDaguaUrl) base.marcaDaguaUrl = s.marcaDaguaUrl
+      if (s.ecoCfg) Object.assign(base, {
+        rotuloPreco: s.ecoCfg.rotuloPreco, fraseRodape: s.ecoCfg.fraseRodape,
+        corTexto: s.ecoCfg.corTexto, corPreco: s.ecoCfg.corPreco, corRotulo: s.ecoCfg.corRotulo,
+        fundoCor: s.ecoCfg.fundoCor, marcaOpacidade: s.ecoCfg.marcaOpacidade,
+        escalaNome: s.ecoCfg.escalaNome, escalaPreco: s.ecoCfg.escalaPreco,
+      })
+    }
+  } catch { /* usa defaults */ }
+  return base
+}
+
 async function confirmarImpressaoEtiquetas() {
   imprimindoEtiqueta.value = true
   try {
     await imprimirEtiquetasKg(
       itensImprimir.value.map((i: any) => ({
         nome: i.descricao,
-        codigoPlu: i.codigoPlu,
+        codigoPlu: i.codigoPlu ?? i.codigo,
         precoVenda: i.precoVenda,
         validade: i._validade,
         descricao: i.descricaoComplementar,
       })),
-      Math.max(1, copiasEtiqueta.value || 1)
+      await lerConfigEtiquetaEco(Math.max(1, copiasEtiqueta.value || 1))
     )
     // Marca etiquetas como impressas (limpa o alerta de "desatualizada")
     const produtoIds = [...new Set(itensImprimir.value.map((i: any) => i.produtoId).filter(Boolean))]
@@ -977,7 +1015,14 @@ function statusLote(data: string | null) {
   return d < 0 ? 'error' : d <= 15 ? 'error' : d <= 30 ? 'warning' : d <= 60 ? 'amber' : 'success'
 }
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-const fmtData = (d: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+// Aceita "yyyy-MM-dd" ou ISO completo ("yyyy-MM-ddTHH:mm:ss"); e também "dd/MM/yyyy".
+const fmtData = (d: string) => {
+  if (!d) return '—'
+  const s = String(d)
+  if (s.includes('/')) return s.slice(0, 10)           // já formatado dd/MM/yyyy
+  const dt = new Date(s.slice(0, 10) + 'T12:00:00')
+  return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-BR')
+}
 
 onMounted(async () => {
   const [, loc] = await Promise.all([

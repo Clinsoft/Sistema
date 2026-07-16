@@ -27,6 +27,8 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             from c in cats.DefaultIfEmpty()
             join m in db.Marcas on p.MarcaId equals m.Id into marcas
             from m in marcas.DefaultIfEmpty()
+            join u in db.UnidadesMedida on p.UnidadeMedidaId equals u.Id into unids
+            from u in unids.DefaultIfEmpty()
             where l.EmpresaId == empresaId
                && l.DataValidade.HasValue
                && l.Quantidade > 0
@@ -38,6 +40,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 ProdutoId    = p.Id,
                 p.Descricao,
                 p.DescricaoComplementar,
+                p.Codigo,
                 p.CodigoBarras,
                 p.CodigoPlu,
                 p.ImagemUrl,
@@ -48,7 +51,8 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 l.Quantidade,
                 ValorEstoque = l.Quantidade * p.PrecoVenda,
                 p.PrecoVenda,
-                VendidoPorPeso = p.ProdutoBalanca || p.VendidoFracionado,
+                VendidoPorPeso = p.ProdutoBalanca || p.VendidoFracionado
+                                 || (u != null && (u.Pesavel || u.Sigla == "KG")),
                 p.EtiquetaDesatualizada,
             }
         ).AsNoTracking().ToListAsync(ct);
@@ -66,7 +70,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             return new
             {
                 i.LoteId, i.ProdutoId, i.Descricao, i.DescricaoComplementar,
-                i.CodigoBarras, i.CodigoPlu, i.ImagemUrl,
+                i.Codigo, i.CodigoBarras, i.CodigoPlu, i.ImagemUrl,
                 i.Marca, i.Categoria, i.NumeroLote,
                 DataValidade    = i.DataValidade?.ToString("dd/MM/yyyy"),
                 DataValidadeIso = i.DataValidade?.ToString("yyyy-MM-dd"),

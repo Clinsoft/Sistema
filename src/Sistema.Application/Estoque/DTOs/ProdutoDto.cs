@@ -16,7 +16,9 @@ public record ProdutoDto(
     // Etiquetas de produtos por peso
     bool VendidoFracionado = false, bool EtiquetaDesatualizada = false,
     // Fornecedor principal (para filtro por fornecedor na listagem)
-    Guid? FornecedorPrincipalId = null);
+    Guid? FornecedorPrincipalId = null,
+    // Validade em dias (etiquetas: valida = hoje + dias quando o produto controla validade)
+    int? ValidadeEmDias = null);
 
 public record ListaPaginadaDto<T>(IReadOnlyList<T> Itens, int Total, int Pagina, int TamanhoPagina)
 {

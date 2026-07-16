@@ -114,6 +114,56 @@
             <v-text-field v-model="qrBaseUrl" variant="outlined" density="compact"
               placeholder="https://ecogranel.com.br/produtos/produto.php?p="
               hint="O slug do produto será adicionado automaticamente" persistent-hint />
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Textos</div>
+            <v-text-field v-model="ecoCfg.rotuloPreco" label="Rótulo do preço"
+              variant="outlined" density="compact" hide-details class="mb-2" />
+            <v-text-field v-model="ecoCfg.fraseRodape" label="Frase do rodapé"
+              variant="outlined" density="compact" hide-details />
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Cores</div>
+            <v-row dense>
+              <v-col cols="4">
+                <v-text-field v-model="ecoCfg.corTexto" label="Nome" type="color"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="4">
+                <v-text-field v-model="ecoCfg.corPreco" label="Preço" type="color"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="4">
+                <v-text-field v-model="ecoCfg.fundoCor" label="Fundo" type="color"
+                  variant="outlined" density="compact" hide-details />
+              </v-col>
+            </v-row>
+
+            <v-divider class="my-3" />
+            <div class="text-body-2 font-weight-bold mb-2">Tamanhos e semente</div>
+            <div class="text-caption">Tamanho do nome: {{ ecoCfg.escalaNome }}%</div>
+            <v-slider v-model="ecoCfg.escalaNome" :min="60" :max="200" :step="5"
+              density="compact" hide-details class="mb-1" />
+            <div class="text-caption">Tamanho do preço: {{ ecoCfg.escalaPreco }}%</div>
+            <v-slider v-model="ecoCfg.escalaPreco" :min="60" :max="160" :step="5"
+              density="compact" hide-details class="mb-1" />
+            <div class="text-caption">Opacidade da semente: {{ ecoCfg.marcaOpacidade }}%</div>
+            <v-slider v-model="ecoCfg.marcaOpacidade" :min="0" :max="60" :step="1"
+              density="compact" hide-details />
+
+            <v-divider class="my-3" />
+            <v-btn color="primary" variant="flat" block rounded="lg" :loading="salvandoEco"
+              prepend-icon="mdi-content-save" @click="salvarTemplateEco">
+              Salvar template
+            </v-btn>
+            <div class="d-flex align-center mt-2">
+              <span class="text-caption text-medium-emphasis">
+                Salvo no servidor: vira o padrão da loja em todos os computadores.
+              </span>
+              <v-spacer />
+              <v-btn size="x-small" variant="text" color="error"
+                @click="restaurarPadraoEco">Restaurar padrão</v-btn>
+            </div>
           </template>
 
           <!-- ── Pote 9×9cm ── -->
@@ -234,28 +284,30 @@
           <div v-else-if="template === 'ecogranel'" id="area-impressao" class="etiquetas-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
               class="etiqueta-eco"
-              :style="{ border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px` }">
+              :style="{ border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
+                background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
 
               <!-- Marca d'água -->
-              <img v-if="marcaDaguaUrl" :src="marcaDaguaUrl" class="eco-marca-dagua" />
+              <img v-if="marcaDaguaUrl" :src="marcaDaguaUrl" class="eco-marca-dagua"
+                :style="{ opacity: ecoCfg.marcaOpacidade / 100 }" />
 
               <!-- Cabeçalho: nome do produto -->
-              <div v-if="camposEco.nome" class="eco-nome" :style="{ color: '#111' }">
+              <div v-if="camposEco.nome" class="eco-nome" :style="stNome">
                 {{ p.descricao?.toUpperCase() }}
-                <span v-if="camposEco.codigoPlu && p.codigoPlu" class="eco-nome-plu">
-                  -{{ String(p.codigoPlu).padStart(4, '0') }}
+                <span v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="eco-nome-plu">
+                  -{{ codigoEtiqueta(p) }}
                 </span>
               </div>
 
               <!-- Preço grande -->
               <div v-if="camposEco.preco100g" class="eco-preco-bloco">
-                <span class="eco-preco-valor">{{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</span>
-                <div class="eco-preco-label">cada 100g</div>
+                <span class="eco-preco-valor" :style="stPreco">{{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</span>
+                <div class="eco-preco-label" :style="stRotulo">{{ ecoCfg.rotuloPreco }}</div>
               </div>
 
               <!-- Validade -->
-              <div v-if="camposEco.validade && validade" class="eco-validade">
-                <strong>Validade: {{ fmtData(validade) }}</strong>
+              <div v-if="camposEco.validade && validadeProduto(p)" class="eco-validade">
+                <strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong>
               </div>
 
               <!-- Texto descritivo -->
@@ -268,8 +320,8 @@
                 <div v-if="camposEco.qrcode" class="eco-qr-wrap">
                   <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
                 </div>
-                <div v-if="camposEco.frase" class="eco-frase">
-                  <strong>Natural como deve ser!</strong>
+                <div v-if="camposEco.frase" class="eco-frase" :style="stFrase">
+                  <strong>{{ ecoCfg.fraseRodape }}</strong>
                 </div>
               </div>
             </div>
@@ -363,15 +415,23 @@ import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 const buscaProdutoTexto = ref('')
 const buscando = ref(false)
 const sugestoes = ref<any[]>([])
 const produtosSel = ref<any[]>([])
 const template = ref('ecogranel')
 const qtdEtiquetas = ref(1)
-const validade = ref('')
+// Validade padrão: hoje + 60 dias (produtos por peso). Pré-preenchida para o
+// template EcoGranel sempre imprimir com validade; o usuário pode ajustar.
+function validadePadrao(): string {
+  const d = new Date(); d.setDate(d.getDate() + 60)
+  return d.toISOString().slice(0, 10)
+}
+const validade = ref(validadePadrao())
 const lote = ref('')
 const precoPromo = ref<number | null>(null)
 const enviarZebraDialog = ref(false)
@@ -379,7 +439,7 @@ const zebraIp = ref('192.168.1.100')
 const zebraPorta = ref(9100)
 const zebraDpi = ref(203)
 const gondolaTamanho = ref('70x40')
-const marcaDaguaUrl = ref('')
+const marcaDaguaUrl = ref('/logo-ecogranel.png')  // semente EcoGranel de fundo (padrão)
 const inputMarcaDagua = ref<HTMLInputElement | null>(null)
 const qrBaseUrl = ref('https://ecogranel.com.br/produtos/produto.php?p=')
 const textoDescritivoEco = ref('')
@@ -390,6 +450,109 @@ const camposEco = ref({
   nome: true, codigoPlu: true, preco100g: true, validade: true,
   descricao: true, qrcode: true, frase: true,
 })
+
+// ── Configuração editável do template EcoGranel (preview + impressão) ──────────
+const ecoCfg = ref({
+  rotuloPreco: 'cada 100g',
+  fraseRodape: 'Natural como deve ser!',
+  corTexto: '#111111',
+  corPreco: '#111111',
+  corRotulo: '#555555',
+  fundoCor: '#e8f5e9',          // cor de destaque do fundo
+  marcaOpacidade: 10,           // % da semente de fundo
+  escalaNome: 100,              // % do tamanho do nome
+  escalaPreco: 100,             // % do tamanho do preço
+})
+
+// Estilos calculados para o preview
+const stNome = computed(() => ({ color: ecoCfg.value.corTexto, fontSize: (16 * ecoCfg.value.escalaNome / 100) + 'px' }))
+const stPreco = computed(() => ({ color: ecoCfg.value.corPreco, fontSize: (86 * ecoCfg.value.escalaPreco / 100) + 'px' }))
+const stRotulo = computed(() => ({ color: ecoCfg.value.corRotulo }))
+const stFrase = computed(() => ({ color: borda.value.cor }))
+
+// ── Persistência das preferências do template EcoGranel ────────────────────────
+const ECO_KEY = 'ecogranel-template'
+
+/** Monta o objeto de configuração atual do template. */
+function snapshotEco() {
+  return {
+    borda: borda.value, camposEco: camposEco.value, ecoCfg: ecoCfg.value,
+    textoDescritivoEco: textoDescritivoEco.value, qrBaseUrl: qrBaseUrl.value,
+    marcaDaguaUrl: marcaDaguaUrl.value,
+  }
+}
+
+/** Aplica uma configuração vinda do servidor ou do cache local. */
+function aplicarEco(s: any) {
+  if (!s) return
+  if (s.borda) borda.value = { ...borda.value, ...s.borda }
+  if (s.camposEco) camposEco.value = { ...camposEco.value, ...s.camposEco }
+  if (s.ecoCfg) ecoCfg.value = { ...ecoCfg.value, ...s.ecoCfg }
+  if (typeof s.textoDescritivoEco === 'string') textoDescritivoEco.value = s.textoDescritivoEco
+  if (s.qrBaseUrl) qrBaseUrl.value = s.qrBaseUrl
+  if (s.marcaDaguaUrl) marcaDaguaUrl.value = s.marcaDaguaUrl
+}
+
+// Cache local (usado como fallback e para impressão offline)
+function salvarEco() {
+  try { localStorage.setItem(ECO_KEY, JSON.stringify(snapshotEco())) } catch { /* ignora */ }
+}
+
+/** Carrega do servidor (padrão da empresa); cai no cache local se falhar. */
+async function carregarEco() {
+  try {
+    const r = await api.get('/etiquetas/config', {
+      params: { empresaId: auth.empresaId, template: 'ecogranel' },
+    })
+    if (r.data?.config) {
+      aplicarEco(JSON.parse(r.data.config))
+      salvarEco()
+      return
+    }
+  } catch { /* sem conexão/config → usa cache */ }
+  try {
+    const raw = localStorage.getItem(ECO_KEY)
+    if (raw) aplicarEco(JSON.parse(raw))
+  } catch { /* ignora */ }
+}
+const salvandoEco = ref(false)
+
+/** Salva o template no servidor (padrão da empresa) + cache local. */
+async function salvarTemplateEco() {
+  salvandoEco.value = true
+  salvarEco()
+  try {
+    await api.put('/etiquetas/config', {
+      empresaId: auth.empresaId,
+      template: 'ecogranel',
+      config: JSON.stringify(snapshotEco()),
+    })
+    notif.ok('Template salvo! Vale para todos os computadores e usuários da loja.')
+  } catch {
+    notif.aviso('Salvo apenas neste navegador — não foi possível salvar no servidor.')
+  } finally { salvandoEco.value = false }
+}
+
+async function restaurarPadraoEco() {
+  if (!confirm('Restaurar o template EcoGranel para o padrão original? Suas alterações serão perdidas.')) return
+  localStorage.removeItem(ECO_KEY)
+  try {
+    await api.delete('/etiquetas/config', {
+      params: { empresaId: auth.empresaId, template: 'ecogranel' },
+    })
+  } catch { /* segue restaurando localmente */ }
+  borda.value = { cor: '#2e7d32', espessura: 5 }
+  camposEco.value = { nome: true, codigoPlu: true, preco100g: true, validade: true, descricao: true, qrcode: true, frase: true }
+  ecoCfg.value = {
+    rotuloPreco: 'cada 100g', fraseRodape: 'Natural como deve ser!',
+    corTexto: '#111111', corPreco: '#111111', corRotulo: '#555555', fundoCor: '#e8f5e9',
+    marcaOpacidade: 10, escalaNome: 100, escalaPreco: 100,
+  }
+  textoDescritivoEco.value = ''
+  qrBaseUrl.value = 'https://ecogranel.com.br/produtos/produto.php?p='
+  marcaDaguaUrl.value = '/logo-ecogranel.png'
+  notif.aviso('Template restaurado para o padrão original.')
+}
 
 const camposPote = ref({
   nome: true, descricao: true, codigoPlu: true,
@@ -463,16 +626,23 @@ const etiquetasExpandidas = computed(() => {
 })
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+const OPTS_2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const
+function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
 function fmtData(d: string) { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
-function preco100g(precoKg: number) { return precoKg / 10 }
+function preco100g(precoKg: number) { return Math.round(((precoKg ?? 0) / 10) * 100) / 100 }
 
 // Formato especial: "7,69" (sem R$ e com vírgula)
 function fmtPrecoDisplay(v: number) {
-  return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  return (v ?? 0).toLocaleString('pt-BR', OPTS_2)
 }
 
-function fmtPreco(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+function fmtPreco(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
+
+// Código exibido na etiqueta: PLU da balança ou, na falta, o código interno
+function codigoEtiqueta(p: any): string {
+  const c = p.codigoPlu != null && p.codigoPlu !== '' ? String(p.codigoPlu) : (p.codigo ?? '')
+  return /^\d+$/.test(c) ? c.padStart(4, '0') : c
+}
 
 function fmtPrecoKg(p: any) {
   const unidade = p.unidadeSigla || 'KG'
@@ -530,6 +700,10 @@ watch(etiquetasExpandidas, async () => {
     if (p) renderizarQr(canvas, p)
   }
 }, { deep: true })
+
+// Carrega preferências salvas do template EcoGranel e salva a cada alteração
+carregarEco()
+watch([borda, camposEco, ecoCfg, textoDescritivoEco, qrBaseUrl, marcaDaguaUrl], salvarEco, { deep: true })
 
 // ── Marca d'água ─────────────────────────────────────────────────────────────
 function carregarMarcaDagua(e: Event) {
@@ -628,6 +802,16 @@ async function buscarProdutos(q: string) {
   }, 300)
 }
 
+// Validade da etiqueta para um produto: usa a validade do próprio produto
+// (hoje + validadeEmDias) quando configurada; senão, a data global do formulário.
+function validadeProduto(p: any): string {
+  if (p?.validadeEmDias && Number(p.validadeEmDias) > 0) {
+    const d = new Date(); d.setDate(d.getDate() + Number(p.validadeEmDias))
+    return d.toISOString().slice(0, 10)
+  }
+  return validade.value || ''
+}
+
 function adicionarProdutoObj(p: any) {
   if (!produtosSel.value.find(x => x.id === p.id))
     produtosSel.value.push(p)
@@ -646,12 +830,26 @@ function imprimir() {
     imprimirEtiquetasKg(
       produtosSel.value.map((p: any) => ({
         nome: p.descricao,
-        codigoPlu: p.codigoPlu,
+        codigoPlu: p.codigoPlu ?? p.codigo,
         precoVenda: p.precoVenda,
-        validade: validade.value || null,
+        validade: validadeProduto(p) || validadePadrao(),
         descricao: p.descricaoComplementar || textoDescritivoEco.value,
       })),
-      Math.max(1, qtdEtiquetas.value || 1)
+      {
+        copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
+        bordaCor: borda.value.cor,
+        bordaEspessura: borda.value.espessura,
+        marcaDaguaUrl: marcaDaguaUrl.value || undefined,
+        rotuloPreco: ecoCfg.value.rotuloPreco,
+        fraseRodape: ecoCfg.value.fraseRodape,
+        corTexto: ecoCfg.value.corTexto,
+        corPreco: ecoCfg.value.corPreco,
+        corRotulo: ecoCfg.value.corRotulo,
+        fundoCor: ecoCfg.value.fundoCor,
+        marcaOpacidade: ecoCfg.value.marcaOpacidade,
+        escalaNome: ecoCfg.value.escalaNome,
+        escalaPreco: ecoCfg.value.escalaPreco,
+      }
     )
     return
   }
@@ -788,7 +986,8 @@ function imprimir() {
 }
 
 .eco-preco-bloco {
-  text-align: center;
+  display: table;              /* encolhe à largura do valor e centraliza */
+  margin: 0 auto;
   padding: 4px 12px 2px;
   z-index: 1;
 }
@@ -804,6 +1003,7 @@ function imprimir() {
   font-size: 13px;
   color: #555;
   margin-top: 2px;
+  text-align: right;          /* alinhado à borda direita do valor */
 }
 
 .eco-validade {
@@ -815,6 +1015,10 @@ function imprimir() {
 }
 
 .eco-descricao {
+  flex: 1;                      /* ocupa o espaço entre validade e QR */
+  display: flex;
+  align-items: center;         /* centraliza o texto verticalmente */
+  justify-content: center;
   font-size: 12px;
   color: #333;
   text-align: center;
@@ -825,7 +1029,6 @@ function imprimir() {
 }
 
 .eco-rodape {
-  flex: 1;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;

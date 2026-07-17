@@ -537,13 +537,33 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (!Enum.TryParse<TipoEntradaNFe>(req.Tipo, true, out var tipo))
             return BadRequest(new { mensagem = "Tipo inválido (Mercadoria ou MaterialConsumo)." });
 
-        if (entrada.TipoEntrada == tipo) return Ok(new { tipo = tipo.ToString() });
+        var jaEraDoTipo = entrada.TipoEntrada == tipo;
+        if (!jaEraDoTipo)
+        {
+            entrada.DefinirTipoEntrada(tipo);
+            foreach (var item in entrada.Itens) item.DesvincularCadastro();
+        }
 
-        entrada.DefinirTipoEntrada(tipo);
-        foreach (var item in entrada.Itens) item.DesvincularCadastro();
+        // O CFOP do XML é o do emitente (venda, ex.: 5102) e não serve para a nossa
+        // escrituração de uso e consumo. Corrige aqui — inclusive em notas já
+        // marcadas — para não depender da tela.
+        var cfopsCorrigidos = 0;
+        if (tipo == TipoEntradaNFe.MaterialConsumo)
+        {
+            foreach (var item in entrada.Itens.Where(i => EhCfopDeSaida(i.CfopUtilizado)))
+            {
+                item.DefinirCfop(CfopMaterialConsumo(item.CfopUtilizado));
+                cfopsCorrigidos++;
+            }
+        }
 
         await db.SaveChangesAsync(ct);
-        return Ok(new { tipo = tipo.ToString(), itensDesvinculados = entrada.Itens.Count });
+        return Ok(new
+        {
+            tipo = tipo.ToString(),
+            itensDesvinculados = jaEraDoTipo ? 0 : entrada.Itens.Count,
+            cfopsCorrigidos,
+        });
     }
 
     /// <summary>Vincula um item a um material de consumo já cadastrado.</summary>
@@ -617,6 +637,17 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         return Ok(new { criados, vinculados });
     }
+
+    /// <summary>CFOP de saída (do emitente): 5xxx dentro do estado, 6xxx interestadual.</summary>
+    private static bool EhCfopDeSaida(string? cfop) =>
+        !string.IsNullOrWhiteSpace(cfop) && (cfop[0] == '5' || cfop[0] == '6');
+
+    /// <summary>
+    /// CFOP de entrada para material de uso e consumo, derivado do CFOP do emitente:
+    /// 5xxx (venda dentro do estado) → 1556; 6xxx (interestadual) → 2556.
+    /// </summary>
+    private static string CfopMaterialConsumo(string? cfopEmitente) =>
+        !string.IsNullOrWhiteSpace(cfopEmitente) && cfopEmitente[0] == '6' ? "2556" : "1556";
 
     /// <summary>Códigos de materiais são sequenciais a partir de 9001.</summary>
     private async Task<string> ProximoCodigoMaterialAsync(Guid empresaId, CancellationToken ct)

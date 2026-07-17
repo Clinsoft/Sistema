@@ -41,14 +41,14 @@
     <!-- Cabeçalho do assistente (wizard) -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <div class="d-flex align-center flex-wrap" style="gap:4px">
-        <template v-for="(s, i) in passosWizard" :key="i">
+        <template v-for="(s, i) in passosWizard" :key="s.n">
           <v-chip
-            :color="passo === i + 1 ? 'primary' : passo > i + 1 ? 'success' : 'default'"
-            :variant="passo >= i + 1 ? 'flat' : 'tonal'" size="small"
-            :disabled="entrada?.status === 'EmEdicao' && i + 1 > passoMaximo"
-            @click="irParaPasso(i + 1)">
-            <v-icon v-if="passo > i + 1" start size="14">mdi-check</v-icon>
-            <span v-else class="font-weight-bold mr-1">{{ i + 1 }}.</span>{{ s }}
+            :color="passo === s.n ? 'primary' : passo > s.n ? 'success' : 'default'"
+            :variant="passo >= s.n ? 'flat' : 'tonal'" size="small"
+            :disabled="entrada?.status === 'EmEdicao' && s.n > passoMaximo"
+            @click="irParaPasso(s.n)">
+            <v-icon v-if="passo > s.n" start size="14">mdi-check</v-icon>
+            <span v-else class="font-weight-bold mr-1">{{ i + 1 }}.</span>{{ s.label }}
           </v-chip>
           <v-icon v-if="i < passosWizard.length - 1" size="14" color="grey">mdi-chevron-right</v-icon>
         </template>
@@ -223,7 +223,13 @@
 
       <v-alert :type="passo === 2 ? 'info' : passo === 3 ? 'warning' : 'success'"
         variant="tonal" density="compact" class="mb-3">
-        <template v-if="passo === 2">
+        <template v-if="passo === 2 && ehMaterialConsumo">
+          <b>Materiais de consumo.</b> Vincule cada item da nota a um <b>material de
+          uso interno</b> — ou use <b>Cadastrar materiais que faltam</b>. Eles não vão
+          para o cadastro de produtos nem para a venda.
+          <b>{{ itensSemProduto }}</b> sem vínculo.
+        </template>
+        <template v-else-if="passo === 2">
           <b>Etapa 2 — Produtos.</b> O sistema já procurou os produtos <b>já cadastrados</b>
           (por código de barras, de-para do fornecedor e código). Vincule os que faltam,
           crie novos (+) ou use <b>Cadastrar todos automaticamente</b>.
@@ -234,11 +240,33 @@
           <b>fator de conversão</b> (ex.: caixa com 12 → 12; pacote de 5 kg → 5).
           A unidade já vem do cadastro do produto quando existe.
         </template>
+        <template v-else-if="ehMaterialConsumo">
+          <b>Custos.</b> Confira o rateio do frete (proporcional ao valor) e o custo final
+          de cada material — ele alimenta o <b>custo médio</b> no estoque de consumo.
+          <b>IPI</b> e <b>ICMS-ST</b> vêm da nota e são <b>editáveis</b>.
+          Material de uso interno não tem markup nem preço de venda.
+        </template>
         <template v-else>
           <b>Etapa 4 — Custos e Preços.</b> Confira o rateio do frete (proporcional ao valor),
           o custo final e defina o <b>markup</b> (vem do cadastro do produto) e o preço.
           <b>IPI</b> e <b>ICMS-ST</b> vêm da nota e são <b>editáveis</b>.
         </template>
+      </v-alert>
+
+      <!-- CFOP do emitente (venda) numa nota de uso e consumo -->
+      <v-alert v-if="passo === 2 && itensCfopVenda > 0 && entrada?.status === 'EmEdicao'"
+        type="warning" variant="tonal" density="compact" class="mb-3">
+        <div class="d-flex align-center flex-wrap gap-2">
+          <span>
+            <b>{{ itensCfopVenda }}</b> item(ns) com <b>CFOP de venda</b> (veio do emitente no XML).
+            Em compra de uso e consumo o correto é <b>1556</b> (mesmo estado) ou <b>2556</b> (outro estado).
+          </span>
+          <v-spacer />
+          <v-btn size="small" color="warning" variant="flat" :loading="corrigindoCfop"
+            prepend-icon="mdi-auto-fix" @click="corrigirCfopMaterial">
+            Corrigir CFOP
+          </v-btn>
+        </div>
       </v-alert>
 
       <!-- Barra de ações -->
@@ -280,8 +308,9 @@
         </template>
 
         <template v-if="entrada?.status === 'EmEdicao'">
-          <!-- Menu ações em lote (markup) — etapa 4, junto dos preços -->
-          <v-menu v-if="passo === 4" :close-on-content-click="false">
+          <!-- Menu ações em lote (markup) — etapa 4, junto dos preços.
+               Material de consumo não tem markup. -->
+          <v-menu v-if="passo === 4 && !ehMaterialConsumo" :close-on-content-click="false">
             <template #activator="{ props }">
               <v-btn v-bind="props" size="small" variant="outlined"
                 append-icon="mdi-chevron-down"
@@ -357,8 +386,21 @@
                 variant="outlined" density="compact" hide-details readonly />
             </v-col>
 
+            <!-- Material de consumo (etapa 2, nota de uso interno) -->
+            <v-col v-if="passo === 2 && ehMaterialConsumo" cols="12" sm="4">
+              <v-autocomplete
+                v-model="item.materialConsumoId"
+                label="Material de consumo *"
+                :items="materiais" item-title="descricao" item-value="id"
+                variant="outlined" density="compact" clearable hide-details
+                :disabled="entrada?.status === 'Processada'"
+                :color="item.materialConsumoId ? 'success' : 'warning'"
+                @update:model-value="onMaterialInline(item, $event)"
+              />
+            </v-col>
+
             <!-- Produto (etapa 2) -->
-            <v-col v-if="passo === 2" cols="12" sm="4">
+            <v-col v-else-if="passo === 2" cols="12" sm="4">
               <div class="d-flex gap-2 align-center">
                 <v-autocomplete
                   v-model="item._produtoId"
@@ -409,8 +451,9 @@
                 label="Qtd. estoque" variant="outlined" density="compact" hide-details readonly />
             </v-col>
 
-            <!-- Markup (etapa 4 — junto dos custos/preços) -->
-            <v-col v-if="passo === 4" cols="6" sm="1">
+            <!-- Markup (etapa 4 — junto dos custos/preços). Material de consumo
+                 não é vendido: não tem markup nem preço. -->
+            <v-col v-if="passo === 4 && !ehMaterialConsumo" cols="6" sm="1">
               <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
                 type="number" min="0" step="1" variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
@@ -455,22 +498,25 @@
                   prefix="R$" variant="outlined" density="compact" hide-details readonly
                   class="font-weight-bold" />
               </v-col>
-              <v-col cols="6" sm="2">
-                <v-text-field :model-value="fmt(precoSugerido(item))"
-                  :label="`Preço venda (${item._unidade || 'un'})`" prefix="R$"
-                  variant="outlined" density="compact" hide-details readonly
-                  class="font-weight-bold" />
-              </v-col>
-              <!-- Valores por 100g (produtos por peso) -->
-              <v-col cols="6" sm="1">
-                <v-text-field :model-value="fmt(custoUnitario(item) / 10)" label="Custo 100g"
-                  prefix="R$" variant="outlined" density="compact" hide-details readonly />
-              </v-col>
-              <v-col cols="6" sm="1">
-                <v-text-field :model-value="fmt(precoSugerido(item) / 10)" label="Preço 100g"
-                  prefix="R$" variant="outlined" density="compact" hide-details readonly
-                  class="font-weight-bold text-success" />
-              </v-col>
+              <!-- Preço de venda: só para mercadoria. Material de consumo não é vendido. -->
+              <template v-if="!ehMaterialConsumo">
+                <v-col cols="6" sm="2">
+                  <v-text-field :model-value="fmt(precoSugerido(item))"
+                    :label="`Preço venda (${item._unidade || 'un'})`" prefix="R$"
+                    variant="outlined" density="compact" hide-details readonly
+                    class="font-weight-bold" />
+                </v-col>
+                <!-- Valores por 100g (produtos por peso) -->
+                <v-col cols="6" sm="1">
+                  <v-text-field :model-value="fmt(custoUnitario(item) / 10)" label="Custo 100g"
+                    prefix="R$" variant="outlined" density="compact" hide-details readonly />
+                </v-col>
+                <v-col cols="6" sm="1">
+                  <v-text-field :model-value="fmt(precoSugerido(item) / 10)" label="Preço 100g"
+                    prefix="R$" variant="outlined" density="compact" hide-details readonly
+                    class="font-weight-bold text-success" />
+                </v-col>
+              </template>
             </template>
 
             <!-- Lote e Validade (etapa 3, junto da configuração de estoque) -->
@@ -893,10 +939,20 @@ const processando = ref(false)
 // ─── Wizard (assistente de escrituração) ────────────────────────────────────
 // Ordem: os produtos são vinculados PRIMEIRO (para herdar unidade e markup do
 // cadastro), depois a conversão de estoque e só então custos/markup/preços.
-const passosWizard = [
-  'Dados da Nota', 'Produtos', 'Fator de Conversão',
-  'Custos e Preços', 'Financeiro', 'Finalização',
-]
+// Material de consumo não é vendido: não tem conversão de unidade de venda,
+// markup nem preço. O passo 3 é pulado e o 4 mostra só custo — os números dos
+// passos seguem os mesmos, só a exibição muda.
+const passosWizard = computed(() => {
+  const todos = [
+    { n: 1, label: 'Dados da Nota' },
+    { n: 2, label: ehMaterialConsumo.value ? 'Materiais' : 'Produtos' },
+    { n: 3, label: 'Fator de Conversão' },
+    { n: 4, label: ehMaterialConsumo.value ? 'Custos' : 'Custos e Preços' },
+    { n: 5, label: 'Financeiro' },
+    { n: 6, label: 'Finalização' },
+  ]
+  return ehMaterialConsumo.value ? todos.filter(p => p.n !== 3) : todos
+})
 const passo = ref(1)
 const avancando = ref(false)
 const cadastrandoTodos = ref(false)
@@ -920,6 +976,32 @@ async function reimportarItens() {
 // ── Tipo da entrada: mercadoria (Produtos) ou material de consumo ──────────
 const ehMaterialConsumo = computed(() => entrada.value?.tipoEntrada === 'MaterialConsumo')
 
+const materiais = ref<any[]>([])
+async function carregarMateriais() {
+  try {
+    const r = await api.get('/materiais-consumo', {
+      params: { empresaId: auth.empresaId, ativo: true },
+    })
+    materiais.value = r.data ?? []
+  } catch { materiais.value = [] }
+}
+
+
+/** Vincula o item a um material já cadastrado. */
+async function onMaterialInline(item: any, materialId: string | null) {
+  if (!materialId) { item.materialConsumoId = null; return }
+  try {
+    await api.patch(`/fiscal/entradas/${entradaId}/itens/${item.id}/material`,
+      { materialConsumoId: materialId })
+    const m = materiais.value.find((x: any) => x.id === materialId)
+    item.materialConsumoId = materialId
+    item._produtoDescricao = m?.descricao ?? ''
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao vincular material.')
+  }
+}
+
 async function definirTipoEntrada(tipo: string) {
   if (!tipo || tipo === entrada.value?.tipoEntrada) return
   const paraMaterial = tipo === 'MaterialConsumo'
@@ -929,15 +1011,37 @@ async function definirTipoEntrada(tipo: string) {
     + 'porque os cadastros são diferentes. Continuar?')) return
 
   try {
-    await api.patch(`/fiscal/entradas/${entradaId}/tipo-entrada`, { tipo })
-    notif.ok(paraMaterial
-      ? 'Nota marcada como Material de Consumo — os itens irão para o estoque de uso interno.'
-      : 'Nota marcada como Mercadoria para venda.')
+    const r = await api.patch(`/fiscal/entradas/${entradaId}/tipo-entrada`, { tipo })
     await carregar()
     enriquecerItensComProduto()
+
+    if (paraMaterial) {
+      notif.ok('Nota marcada como Material de Consumo — itens vão para o estoque de uso interno.'
+        + (r.data.cfopsCorrigidos ? ` CFOP de ${r.data.cfopsCorrigidos} item(ns) corrigido(s).` : ''))
+    } else {
+      notif.ok('Nota marcada como Mercadoria para venda.')
+    }
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao definir o tipo da entrada.')
   }
+}
+
+/** Itens ainda com CFOP de venda (5xxx/6xxx) numa nota de uso e consumo. */
+const itensCfopVenda = computed(() => ehMaterialConsumo.value
+  ? itensEditaveis.value.filter((i: any) => /^[56]/.test(String(i._cfop ?? ''))).length
+  : 0)
+
+/** Corrige o CFOP dos itens (o backend deriva 1556/2556 do CFOP do emitente). */
+const corrigindoCfop = ref(false)
+async function corrigirCfopMaterial() {
+  corrigindoCfop.value = true
+  try {
+    const r = await api.patch(`/fiscal/entradas/${entradaId}/tipo-entrada`, { tipo: 'MaterialConsumo' })
+    await carregar()
+    notif.ok(`CFOP de ${r.data.cfopsCorrigidos} item(ns) corrigido(s) para compra de uso/consumo.`)
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao corrigir o CFOP.')
+  } finally { corrigindoCfop.value = false }
 }
 
 /** Cadastra os materiais que faltam a partir dos itens da nota e vincula. */
@@ -951,7 +1055,7 @@ async function cadastrarMateriaisFaltantes() {
   try {
     const r = await api.post(`/fiscal/entradas/${entradaId}/materiais/cadastrar-faltantes`, { unidadeMedidaId })
     notif.ok(`${r.data.criados} material(is) cadastrado(s), ${r.data.vinculados} vinculado(s).`)
-    await carregar()
+    await carregar()   // recarrega a nota e a lista de materiais (para o autocomplete resolver os novos)
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao cadastrar materiais.')
   } finally { cadastrandoMateriais.value = false }
@@ -990,7 +1094,8 @@ async function vincularAutomatico() {
 const passoMaximo = computed(() => {
   if (!localEstoqueId.value) return 1
   if (itensSemProduto.value > 0) return 2       // etapa 2: todos vinculados
-  if (!todosFatoresOk.value) return 3           // etapa 3: conversão definida
+  // Material de consumo não tem conversão de unidade de venda
+  if (!ehMaterialConsumo.value && !todosFatoresOk.value) return 3
   return 6
 })
 
@@ -1002,17 +1107,25 @@ const podeAvancar = computed(() => {
   if (entrada.value?.status !== 'EmEdicao') return false
   switch (passo.value) {
     case 1: return !!localEstoqueId.value
-    case 2: return itensSemProduto.value === 0   // produtos vinculados
+    case 2: return itensSemProduto.value === 0   // produtos/materiais vinculados
     case 3: return todosFatoresOk.value          // fator de conversão
     default: return true
   }
 })
 
+/** Passo 3 (conversão) não existe na nota de material — a navegação pula. */
+const passoOculto = (n: number) => ehMaterialConsumo.value && n === 3
+
 function irParaPasso(n: number) {
+  if (passoOculto(n)) n = 4
   if (entrada.value?.status === 'Processada') { passo.value = n; return }
   if (n <= passoMaximo.value) passo.value = n
 }
-function passoAnterior() { if (passo.value > 1) passo.value-- }
+function passoAnterior() {
+  let n = passo.value - 1
+  if (passoOculto(n)) n--
+  if (n >= 1) passo.value = n
+}
 
 async function proximoPasso() {
   if (!podeAvancar.value) return
@@ -1021,7 +1134,9 @@ async function proximoPasso() {
     // Salva as alterações dos itens antes de avançar (etapas 2 a 4)
     if (itensAlterados.value > 0 && passo.value >= 2 && passo.value <= 4)
       await salvarTodos()
-    if (passo.value < 6) passo.value++
+    let n = passo.value + 1
+    if (passoOculto(n)) n++          // pula a conversão na nota de material
+    if (n <= 6) passo.value = n
   } finally { avancando.value = false }
 }
 
@@ -1219,28 +1334,42 @@ async function carregar() {
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
   popularItensEditaveis(r.data.itens ?? [])
 
+  // Nota de uso interno: a etapa 2 vincula materiais, não produtos. Recarrega
+  // sempre — a lista precisa conter os materiais vinculados aos itens, senão o
+  // autocomplete exibe o id em vez da descrição.
+  if (r.data.tipoEntrada === 'MaterialConsumo') await carregarMateriais()
+
   // Nota já processada → abre direto na etapa de finalização (somente leitura)
   if (r.data.status === 'Processada') passo.value = 6
 
-  // Pré-popular faturas a partir das duplicatas do XML (salvas no banco)
-  if (faturas.value.length === 0 && r.data.status === 'EmEdicao') {
-    const dups: any[] = r.data.duplicatas ?? []
-    if (dups.length > 0) {
-      faturas.value = dups.map((d: any, i: number) => ({
-        label: d.numero ?? d.Numero ?? String(i + 1),
-        valor: d.valor ?? d.Valor ?? 0,
-        vencimento: (d.vencimento ?? d.Vencimento ?? '')?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-      }))
-    } else {
-      const venc = new Date()
-      venc.setDate(venc.getDate() + 30)
-      faturas.value = [{
-        label: '1',
-        valor: r.data.valorTotal,
-        vencimento: venc.toISOString().slice(0, 10),
-      }]
-    }
+  // Faturas da etapa Financeiro, a partir das duplicatas do XML (salvas no banco)
+  const dups: any[] = r.data.duplicatas ?? []
+  const daDuplicata = (d: any, i: number) => ({
+    label: d.numero ?? d.Numero ?? String(i + 1),
+    valor: d.valor ?? d.Valor ?? 0,
+    vencimento: (d.vencimento ?? d.Vencimento ?? '')?.slice(0, 10) || '',
+  })
+
+  if (r.data.status !== 'EmEdicao') {
+    // Processada/estornada: a etapa é só leitura e mostra o que a nota trouxe.
+    // Antes ficava vazia e parecia que as parcelas não vieram, embora o contas
+    // a pagar já tivesse sido lançado.
+    faturas.value = dups.map(daDuplicata)
+  } else if (faturas.value.length === 0) {
+    faturas.value = dups.length > 0
+      ? dups.map(daDuplicata).map(f => ({
+          ...f, vencimento: f.vencimento || new Date().toISOString().slice(0, 10),
+        }))
+      // Nota sem duplicata: sugere parcela única em 30 dias
+      : [{ label: '1', valor: r.data.valorTotal, vencimento: emDias(30) }]
   }
+}
+
+/** Data de hoje + N dias no formato yyyy-MM-dd. */
+function emDias(n: number) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
 }
 
 async function carregarAuxiliares() {

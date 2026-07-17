@@ -193,6 +193,9 @@ public class ItemEntradaNFe : Entity
     /// <summary>Vínculo com material de consumo (quando a entrada é de uso interno).</summary>
     public Guid? MaterialConsumoId { get; private set; }
 
+    /// <summary>Vínculo com o bem cadastrado (quando a entrada é de ativo imobilizado).</summary>
+    public Guid? AtivoImobilizadoId { get; private set; }
+
     // Conversão de unidade (ex: caixa → kg)
     public decimal FatorConversao { get; private set; } = 1m;      // qtd xml × fator = qtd estoque
     public string? UnidadeEstoque { get; private set; }
@@ -240,26 +243,36 @@ public class ItemEntradaNFe : Entity
             FatorConversao = 1m,
         };
 
+    // Um item aponta para produto, material OU ativo — nunca para mais de um.
     public void VincularProduto(Guid produtoId, string descricao)
     {
+        DesvincularCadastro();
         ProdutoId = produtoId;
         ProdutoDescricao = descricao;
-        MaterialConsumoId = null;      // um item é produto OU material, nunca os dois
     }
 
     /// <summary>Vincula o item a um material de consumo (entrada de uso interno).</summary>
     public void VincularMaterial(Guid materialId, string descricao)
     {
+        DesvincularCadastro();
         MaterialConsumoId = materialId;
         ProdutoDescricao = descricao;
-        ProdutoId = null;
     }
 
-    /// <summary>Solta o vínculo com produto/material (usado ao trocar o tipo da entrada).</summary>
+    /// <summary>Vincula o item a um bem do ativo imobilizado.</summary>
+    public void VincularAtivo(Guid ativoId, string descricao)
+    {
+        DesvincularCadastro();
+        AtivoImobilizadoId = ativoId;
+        ProdutoDescricao = descricao;
+    }
+
+    /// <summary>Solta o vínculo com produto/material/ativo (ao trocar o tipo da entrada).</summary>
     public void DesvincularCadastro()
     {
         ProdutoId = null;
         MaterialConsumoId = null;
+        AtivoImobilizadoId = null;
         ProdutoDescricao = null;
     }
 
@@ -323,6 +336,8 @@ public enum TipoEntradaNFe
     Mercadoria = 0,
     /// <summary>Material de consumo / uso interno → cadastro de Materiais de Consumo.</summary>
     MaterialConsumo = 1,
+    /// <summary>Bem do ativo imobilizado (equipamento, móvel) → cadastro de Ativos.</summary>
+    AtivoImobilizado = 2,
 }
 
 /// <summary>Método de rateio do frete entre os itens da entrada.</summary>

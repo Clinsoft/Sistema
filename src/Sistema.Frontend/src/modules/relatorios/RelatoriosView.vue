@@ -119,6 +119,11 @@ const grupos = [
     ],
   },
   {
+    titulo: 'Materiais de Consumo', icon: 'mdi-package-variant-closed', relatorios: [
+      { label: 'Estoque, consumo, giro e reposição', rota: '/relatorios/materiais', destaque: true },
+    ],
+  },
+  {
     titulo: 'Financeiro', icon: 'mdi-currency-usd', relatorios: [
       { label: 'Contas a Receber (PDF)', endpoint: '/relatorios/pdf/contas-receber', pdf: true, semPeriodo: true },
       { label: 'Contas a Pagar', rota: '/financeiro/contas-pagar' },

@@ -98,6 +98,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                 i.ProdutoId,
                 i.ProdutoDescricao,
                 i.MaterialConsumoId,
+                i.AtivoImobilizadoId,
                 i.FatorConversao,
                 i.UnidadeEstoque,
                 i.QuantidadeEstoque,
@@ -545,14 +546,14 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         }
 
         // O CFOP do XML é o do emitente (venda, ex.: 5102) e não serve para a nossa
-        // escrituração de uso e consumo. Corrige aqui — inclusive em notas já
-        // marcadas — para não depender da tela.
+        // escrituração. Corrige aqui — inclusive em notas já marcadas — para não
+        // depender da tela.
         var cfopsCorrigidos = 0;
-        if (tipo == TipoEntradaNFe.MaterialConsumo)
+        if (tipo is TipoEntradaNFe.MaterialConsumo or TipoEntradaNFe.AtivoImobilizado)
         {
             foreach (var item in entrada.Itens.Where(i => EhCfopDeSaida(i.CfopUtilizado)))
             {
-                item.DefinirCfop(CfopMaterialConsumo(item.CfopUtilizado));
+                item.DefinirCfop(CfopDeEntrada(item.CfopUtilizado, tipo));
                 cfopsCorrigidos++;
             }
         }
@@ -638,16 +639,93 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         return Ok(new { criados, vinculados });
     }
 
+    /// <summary>Vincula um item a um bem do ativo imobilizado já cadastrado.</summary>
+    [HttpPatch("{id:guid}/itens/{itemId:guid}/ativo")]
+    public async Task<IActionResult> VincularAtivo(
+        Guid id, Guid itemId, [FromBody] VincularAtivoRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+        var item = entrada.Itens.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new KeyNotFoundException("Item não encontrado.");
+
+        var ativo = await db.AtivosImobilizados.FindAsync([req.AtivoImobilizadoId], ct)
+            ?? throw new KeyNotFoundException("Bem não encontrado.");
+
+        item.VincularAtivo(ativo.Id, ativo.Descricao);
+        entrada.RatearFrete();
+        await db.SaveChangesAsync(ct);
+        return Ok(new { item.Id, ativoImobilizadoId = ativo.Id, ativo.Descricao });
+    }
+
+    /// <summary>
+    /// Cadastra os bens que faltam a partir dos itens da nota e vincula. O valor
+    /// de aquisição de cada bem é o custo do item (já com frete e impostos rateados).
+    /// </summary>
+    [HttpPost("{id:guid}/ativos/cadastrar-faltantes")]
+    public async Task<IActionResult> CadastrarAtivosFaltantes(
+        Guid id, [FromBody] CadastrarAtivosRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        if (entrada.TipoEntrada != TipoEntradaNFe.AtivoImobilizado)
+            return BadRequest(new { mensagem = "A entrada não está marcada como Ativo Imobilizado." });
+
+        entrada.RatearFrete();
+        Enum.TryParse<CategoriaAtivo>(req.Categoria ?? "Equipamento", true, out var cat);
+
+        var criados = 0;
+        foreach (var item in entrada.Itens.Where(i => i.AtivoImobilizadoId is null))
+        {
+            var codigo = await ProximoCodigoAtivoAsync(entrada.EmpresaId, ct);
+            var valor = item.CustoUnitarioFinal * item.QuantidadeEstoque;
+            var ativo = AtivoImobilizado.Criar(entrada.EmpresaId, codigo, item.DescricaoXml,
+                Math.Round(valor, 2), entrada.DataEntrada, cat, entrada.FornecedorId,
+                item.QuantidadeEstoque);
+            ativo.Editar(item.DescricaoXml, cat, entrada.FornecedorId, Math.Round(valor, 2),
+                entrada.DataEntrada, item.QuantidadeEstoque, req.VidaUtilMeses, 0,
+                null, null, null, true);
+            ativo.DefinirOrigemNota(entrada.ChaveAcesso);
+
+            db.AtivosImobilizados.Add(ativo);
+            await db.SaveChangesAsync(ct);
+
+            item.VincularAtivo(ativo.Id, ativo.Descricao);
+            criados++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { criados, vinculados = criados });
+    }
+
+    /// <summary>Códigos dos bens são sequenciais a partir de 7001.</summary>
+    private async Task<string> ProximoCodigoAtivoAsync(Guid empresaId, CancellationToken ct)
+    {
+        var codigos = await db.AtivosImobilizados.AsNoTracking()
+            .Where(a => a.EmpresaId == empresaId).Select(a => a.Codigo).ToListAsync(ct);
+        var maior = codigos.Select(c => int.TryParse(c, out var n) ? n : 0).DefaultIfEmpty(7000).Max();
+        return Math.Max(maior + 1, 7001).ToString();
+    }
+
     /// <summary>CFOP de saída (do emitente): 5xxx dentro do estado, 6xxx interestadual.</summary>
     private static bool EhCfopDeSaida(string? cfop) =>
         !string.IsNullOrWhiteSpace(cfop) && (cfop[0] == '5' || cfop[0] == '6');
 
     /// <summary>
-    /// CFOP de entrada para material de uso e consumo, derivado do CFOP do emitente:
-    /// 5xxx (venda dentro do estado) → 1556; 6xxx (interestadual) → 2556.
+    /// CFOP de entrada derivado do CFOP do emitente e do tipo da nota.
+    /// O 1º dígito diz a origem: 5xxx (mesmo estado) → 1xxx; 6xxx (interestadual) → 2xxx.
+    /// Uso e consumo → 556; ativo imobilizado → 551.
     /// </summary>
-    private static string CfopMaterialConsumo(string? cfopEmitente) =>
-        !string.IsNullOrWhiteSpace(cfopEmitente) && cfopEmitente[0] == '6' ? "2556" : "1556";
+    private static string CfopDeEntrada(string? cfopEmitente, TipoEntradaNFe tipo)
+    {
+        var interestadual = !string.IsNullOrWhiteSpace(cfopEmitente) && cfopEmitente[0] == '6';
+        var origem = interestadual ? "2" : "1";
+        var final = tipo == TipoEntradaNFe.AtivoImobilizado ? "551" : "556";
+        return origem + final;
+    }
 
     /// <summary>Códigos de materiais são sequenciais a partir de 9001.</summary>
     private async Task<string> ProximoCodigoMaterialAsync(Guid empresaId, CancellationToken ct)
@@ -676,14 +754,34 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             return BadRequest(new { mensagem = $"Entrada está com status '{entrada.Status}'. Apenas entradas Em Edição podem ser processadas." });
 
         var ehMaterial = entrada.TipoEntrada == TipoEntradaNFe.MaterialConsumo;
+        var ehAtivo = entrada.TipoEntrada == TipoEntradaNFe.AtivoImobilizado;
 
-        var semVinculo = ehMaterial
-            ? entrada.Itens.Count(i => i.MaterialConsumoId is null)
-            : entrada.Itens.Count(i => i.ProdutoId is null);
+        var semVinculo = entrada.TipoEntrada switch
+        {
+            TipoEntradaNFe.MaterialConsumo => entrada.Itens.Count(i => i.MaterialConsumoId is null),
+            TipoEntradaNFe.AtivoImobilizado => entrada.Itens.Count(i => i.AtivoImobilizadoId is null),
+            _ => entrada.Itens.Count(i => i.ProdutoId is null),
+        };
         if (semVinculo > 0)
-            return BadRequest(new { mensagem = ehMaterial
-                ? $"{semVinculo} item(ns) sem material vinculado. Vincule todos antes de processar."
-                : $"{semVinculo} item(ns) sem produto vinculado. Vincule todos antes de processar." });
+        {
+            var oQue = entrada.TipoEntrada switch
+            {
+                TipoEntradaNFe.MaterialConsumo => "material",
+                TipoEntradaNFe.AtivoImobilizado => "bem",
+                _ => "produto",
+            };
+            return BadRequest(new { mensagem =
+                $"{semVinculo} item(ns) sem {oQue} vinculado. Vincule todos antes de processar." });
+        }
+
+        // Ativo imobilizado: o bem já foi cadastrado com o valor de aquisição.
+        // Não há estoque a movimentar — só o financeiro (contas a pagar).
+        if (ehAtivo)
+        {
+            foreach (var item in entrada.Itens) item.MarcarEstoqueMovimentado();
+            await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            return Ok(new { mensagem = "Entrada de ativo imobilizado processada.", itens = entrada.Itens.Count });
+        }
 
         // Ratear frete nos itens (proporcional ao valor) e calcular o custo final
         entrada.RatearFrete();
@@ -1437,6 +1535,11 @@ public record VincularMaterialRequest(Guid MaterialConsumoId, decimal? FatorConv
 
 /// <summary>Unidade padrão para os materiais criados a partir da nota.</summary>
 public record CadastrarMateriaisRequest(Guid UnidadeMedidaId);
+
+public record VincularAtivoRequest(Guid AtivoImobilizadoId);
+
+/// <summary>Categoria e vida útil padrão para os bens criados a partir da nota.</summary>
+public record CadastrarAtivosRequest(string? Categoria = "Equipamento", int VidaUtilMeses = 60);
 public record VincularPedidoRequest(Guid PedidoCompraId);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);
 public record ProcessarEntradaRequest(

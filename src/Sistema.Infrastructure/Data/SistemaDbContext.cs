@@ -98,6 +98,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
     public DbSet<MaterialConsumo> MateriaisConsumo => Set<MaterialConsumo>();
     public DbSet<MovimentacaoMaterial> MovimentacoesMaterial => Set<MovimentacaoMaterial>();
+    public DbSet<AtivoImobilizado> AtivosImobilizados => Set<AtivoImobilizado>();
     public DbSet<AlertaValidade> AlertasValidade => Set<AlertaValidade>();
     public DbSet<ConfiguracaoWhatsAppMensagem> ConfiguracoesWhatsAppMensagem => Set<ConfiguracaoWhatsAppMensagem>();
     public DbSet<TemplateWhatsAppMensagem> TemplatesWhatsAppMensagem => Set<TemplateWhatsAppMensagem>();

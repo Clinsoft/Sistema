@@ -46,6 +46,8 @@ const router = createRouter({
       meta: { titulo: 'Controle de Validade' } },
     { path: '/estoque/materiais', component: () => import('@/modules/estoque/MateriaisConsumoView.vue'),
       meta: { titulo: 'Materiais de Consumo' } },
+    { path: '/estoque/ativos', component: () => import('@/modules/estoque/AtivosImobilizadosView.vue'),
+      meta: { titulo: 'Ativo Imobilizado' } },
     { path: '/estoque/validade/config', component: () => import('@/modules/estoque/ValidadeConfigView.vue'),
       meta: { titulo: 'Configurações de Validade' } },
     { path: '/estoque/alterar-precos', component: () => import('@/modules/estoque/AlteracaoPrecosView.vue'),
@@ -130,6 +132,8 @@ const router = createRouter({
       meta: { titulo: 'Relatórios' } },
     { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
       meta: { titulo: 'Planejamento Anual de Vendas' } },
+    { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),
+      meta: { titulo: 'Relatórios de Materiais de Consumo' } },
 
     // Configurações
     { path: '/configuracoes', component: () => import('@/modules/configuracoes/ConfiguracoesView.vue'),

@@ -119,11 +119,18 @@
               <v-btn value="MaterialConsumo" size="small" prepend-icon="mdi-package-variant-closed">
                 Material de consumo
               </v-btn>
+              <v-btn value="AtivoImobilizado" size="small" prepend-icon="mdi-desktop-classic">
+                Ativo imobilizado
+              </v-btn>
             </v-btn-toggle>
             <div class="text-caption text-medium-emphasis">
               <template v-if="ehMaterialConsumo">
                 Os itens vão para <b>Materiais de Consumo</b> (uso interno): não entram no
                 PDV, no catálogo nem na formação de preço.
+              </template>
+              <template v-else-if="ehAtivoImobilizado">
+                Os itens viram <b>bens da empresa</b> (equipamento, móvel, veículo): sem estoque
+                e sem venda — só valor, localização e depreciação.
               </template>
               <template v-else>
                 Os itens vão para o cadastro de <b>Produtos</b> e ficam disponíveis para venda.
@@ -229,6 +236,12 @@
           para o cadastro de produtos nem para a venda.
           <b>{{ itensSemProduto }}</b> sem vínculo.
         </template>
+        <template v-else-if="passo === 2 && ehAtivoImobilizado">
+          <b>Bens do ativo imobilizado.</b> Vincule cada item a um <b>bem</b> — ou use
+          <b>Cadastrar bens que faltam</b> (entram como Equipamento, 5 anos de vida útil;
+          ajuste depois em Estoque → Ativo Imobilizado).
+          <b>{{ itensSemProduto }}</b> sem vínculo.
+        </template>
         <template v-else-if="passo === 2">
           <b>Etapa 2 — Produtos.</b> O sistema já procurou os produtos <b>já cadastrados</b>
           (por código de barras, de-para do fornecedor e código). Vincule os que faltam,
@@ -240,11 +253,16 @@
           <b>fator de conversão</b> (ex.: caixa com 12 → 12; pacote de 5 kg → 5).
           A unidade já vem do cadastro do produto quando existe.
         </template>
-        <template v-else-if="ehMaterialConsumo">
-          <b>Custos.</b> Confira o rateio do frete (proporcional ao valor) e o custo final
-          de cada material — ele alimenta o <b>custo médio</b> no estoque de consumo.
+        <template v-else-if="ehUsoInterno">
+          <b>Custos.</b> Confira o rateio do frete (proporcional ao valor) e o custo final.
           <b>IPI</b> e <b>ICMS-ST</b> vêm da nota e são <b>editáveis</b>.
-          Material de uso interno não tem markup nem preço de venda.
+          <template v-if="ehMaterialConsumo">
+            O custo alimenta o <b>custo médio</b> no estoque de consumo.
+          </template>
+          <template v-else>
+            O custo vira o <b>valor de aquisição</b> do bem, base da depreciação.
+          </template>
+          Não há markup nem preço de venda.
         </template>
         <template v-else>
           <b>Etapa 4 — Custos e Preços.</b> Confira o rateio do frete (proporcional ao valor),
@@ -293,6 +311,14 @@
           </v-btn>
         </template>
 
+        <template v-else-if="passo === 2 && ehAtivoImobilizado && itensSemProduto > 0">
+          <v-btn size="small" color="indigo" variant="flat"
+            :loading="cadastrandoAtivos" prepend-icon="mdi-desktop-classic"
+            @click="cadastrarAtivosFaltantes">
+            Cadastrar bens que faltam ({{ itensSemProduto }})
+          </v-btn>
+        </template>
+
         <template v-else-if="passo === 2 && itensSemProduto > 0">
           <v-btn size="small" variant="outlined" :loading="vinculandoAuto"
             prepend-icon="mdi-link-variant"
@@ -310,7 +336,7 @@
         <template v-if="entrada?.status === 'EmEdicao'">
           <!-- Menu ações em lote (markup) — etapa 4, junto dos preços.
                Material de consumo não tem markup. -->
-          <v-menu v-if="passo === 4 && !ehMaterialConsumo" :close-on-content-click="false">
+          <v-menu v-if="passo === 4 && !ehUsoInterno" :close-on-content-click="false">
             <template #activator="{ props }">
               <v-btn v-bind="props" size="small" variant="outlined"
                 append-icon="mdi-chevron-down"
@@ -399,6 +425,19 @@
               />
             </v-col>
 
+            <!-- Bem do ativo imobilizado (etapa 2) -->
+            <v-col v-else-if="passo === 2 && ehAtivoImobilizado" cols="12" sm="4">
+              <v-autocomplete
+                v-model="item.ativoImobilizadoId"
+                label="Bem cadastrado *"
+                :items="ativos" item-title="descricao" item-value="id"
+                variant="outlined" density="compact" clearable hide-details
+                :disabled="entrada?.status === 'Processada'"
+                :color="item.ativoImobilizadoId ? 'success' : 'warning'"
+                @update:model-value="onAtivoInline(item, $event)"
+              />
+            </v-col>
+
             <!-- Produto (etapa 2) -->
             <v-col v-else-if="passo === 2" cols="12" sm="4">
               <div class="d-flex gap-2 align-center">
@@ -453,7 +492,7 @@
 
             <!-- Markup (etapa 4 — junto dos custos/preços). Material de consumo
                  não é vendido: não tem markup nem preço. -->
-            <v-col v-if="passo === 4 && !ehMaterialConsumo" cols="6" sm="1">
+            <v-col v-if="passo === 4 && !ehUsoInterno" cols="6" sm="1">
               <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
                 type="number" min="0" step="1" variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
@@ -499,7 +538,7 @@
                   class="font-weight-bold" />
               </v-col>
               <!-- Preço de venda: só para mercadoria. Material de consumo não é vendido. -->
-              <template v-if="!ehMaterialConsumo">
+              <template v-if="!ehUsoInterno">
                 <v-col cols="6" sm="2">
                   <v-text-field :model-value="fmt(precoSugerido(item))"
                     :label="`Preço venda (${item._unidade || 'un'})`" prefix="R$"
@@ -945,13 +984,13 @@ const processando = ref(false)
 const passosWizard = computed(() => {
   const todos = [
     { n: 1, label: 'Dados da Nota' },
-    { n: 2, label: ehMaterialConsumo.value ? 'Materiais' : 'Produtos' },
+    { n: 2, label: ehMaterialConsumo.value ? 'Materiais' : ehAtivoImobilizado.value ? 'Bens' : 'Produtos' },
     { n: 3, label: 'Fator de Conversão' },
-    { n: 4, label: ehMaterialConsumo.value ? 'Custos' : 'Custos e Preços' },
+    { n: 4, label: ehUsoInterno.value ? 'Custos' : 'Custos e Preços' },
     { n: 5, label: 'Financeiro' },
     { n: 6, label: 'Finalização' },
   ]
-  return ehMaterialConsumo.value ? todos.filter(p => p.n !== 3) : todos
+  return ehUsoInterno.value ? todos.filter(p => p.n !== 3) : todos
 })
 const passo = ref(1)
 const avancando = ref(false)
@@ -973,8 +1012,48 @@ async function reimportarItens() {
   } finally { reimportando.value = false }
 }
 
-// ── Tipo da entrada: mercadoria (Produtos) ou material de consumo ──────────
+// ── Tipo da entrada: mercadoria (Produtos), material de consumo ou ativo ────
 const ehMaterialConsumo = computed(() => entrada.value?.tipoEntrada === 'MaterialConsumo')
+const ehAtivoImobilizado = computed(() => entrada.value?.tipoEntrada === 'AtivoImobilizado')
+/** Material e ativo não são vendidos: sem conversão de unidade, markup ou preço. */
+const ehUsoInterno = computed(() => ehMaterialConsumo.value || ehAtivoImobilizado.value)
+
+const ativos = ref<any[]>([])
+async function carregarAtivos() {
+  try {
+    const r = await api.get('/ativos-imobilizados', {
+      params: { empresaId: auth.empresaId, ativo: true },
+    })
+    ativos.value = r.data.itens ?? []
+  } catch { ativos.value = [] }
+}
+
+/** Cadastra os bens que faltam a partir dos itens da nota e vincula. */
+const cadastrandoAtivos = ref(false)
+async function cadastrarAtivosFaltantes() {
+  cadastrandoAtivos.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/ativos/cadastrar-faltantes`,
+      { categoria: 'Equipamento', vidaUtilMeses: 60 })
+    notif.ok(`${r.data.criados} bem(ns) cadastrado(s) e vinculado(s). `
+      + 'Ajuste categoria e vida útil em Estoque → Ativo Imobilizado.')
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao cadastrar bens.')
+  } finally { cadastrandoAtivos.value = false }
+}
+
+/** Vincula o item a um bem já cadastrado. */
+async function onAtivoInline(item: any, ativoId: string | null) {
+  if (!ativoId) { item.ativoImobilizadoId = null; return }
+  try {
+    await api.patch(`/fiscal/entradas/${entradaId}/itens/${item.id}/ativo`,
+      { ativoImobilizadoId: ativoId })
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao vincular bem.')
+  }
+}
 
 const materiais = ref<any[]>([])
 async function carregarMateriais() {
@@ -1004,10 +1083,15 @@ async function onMaterialInline(item: any, materialId: string | null) {
 
 async function definirTipoEntrada(tipo: string) {
   if (!tipo || tipo === entrada.value?.tipoEntrada) return
-  const paraMaterial = tipo === 'MaterialConsumo'
-  const temVinculo = (itensEditaveis.value ?? []).some((i: any) => i._produtoId || i.materialConsumoId)
+  const rotulos: Record<string, string> = {
+    Mercadoria: 'Mercadoria para venda',
+    MaterialConsumo: 'Material de consumo',
+    AtivoImobilizado: 'Ativo imobilizado',
+  }
+  const temVinculo = (itensEditaveis.value ?? []).some(
+    (i: any) => i._produtoId || i.materialConsumoId || i.ativoImobilizadoId)
   if (temVinculo && !confirm(
-    `Trocar para "${paraMaterial ? 'Material de consumo' : 'Mercadoria para venda'}" desfaz os vínculos dos itens, `
+    `Trocar para "${rotulos[tipo]}" desfaz os vínculos dos itens, `
     + 'porque os cadastros são diferentes. Continuar?')) return
 
   try {
@@ -1015,19 +1099,20 @@ async function definirTipoEntrada(tipo: string) {
     await carregar()
     enriquecerItensComProduto()
 
-    if (paraMaterial) {
-      notif.ok('Nota marcada como Material de Consumo — itens vão para o estoque de uso interno.'
-        + (r.data.cfopsCorrigidos ? ` CFOP de ${r.data.cfopsCorrigidos} item(ns) corrigido(s).` : ''))
-    } else {
-      notif.ok('Nota marcada como Mercadoria para venda.')
+    const destino: Record<string, string> = {
+      Mercadoria: 'itens vão para o cadastro de Produtos.',
+      MaterialConsumo: 'itens vão para o estoque de uso interno.',
+      AtivoImobilizado: 'itens viram bens da empresa (sem estoque).',
     }
+    notif.ok(`Nota marcada como ${rotulos[tipo]} — ${destino[tipo]}`
+      + (r.data.cfopsCorrigidos ? ` CFOP de ${r.data.cfopsCorrigidos} item(ns) corrigido(s).` : ''))
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao definir o tipo da entrada.')
   }
 }
 
 /** Itens ainda com CFOP de venda (5xxx/6xxx) numa nota de uso e consumo. */
-const itensCfopVenda = computed(() => ehMaterialConsumo.value
+const itensCfopVenda = computed(() => ehUsoInterno.value
   ? itensEditaveis.value.filter((i: any) => /^[56]/.test(String(i._cfop ?? ''))).length
   : 0)
 
@@ -1095,7 +1180,7 @@ const passoMaximo = computed(() => {
   if (!localEstoqueId.value) return 1
   if (itensSemProduto.value > 0) return 2       // etapa 2: todos vinculados
   // Material de consumo não tem conversão de unidade de venda
-  if (!ehMaterialConsumo.value && !todosFatoresOk.value) return 3
+  if (!ehUsoInterno.value && !todosFatoresOk.value) return 3
   return 6
 })
 
@@ -1114,7 +1199,7 @@ const podeAvancar = computed(() => {
 })
 
 /** Passo 3 (conversão) não existe na nota de material — a navegação pula. */
-const passoOculto = (n: number) => ehMaterialConsumo.value && n === 3
+const passoOculto = (n: number) => ehUsoInterno.value && n === 3
 
 function irParaPasso(n: number) {
   if (passoOculto(n)) n = 4
@@ -1289,11 +1374,13 @@ const salvandoTodos = ref(false)
 const salvandoFrete = ref(false)
 const markupGlobal = ref(150)
 
-// Em nota de material de consumo o vínculo é com o material, não com o produto
-const itensSemProduto = computed(() =>
-  entrada.value?.tipoEntrada === 'MaterialConsumo'
-    ? itensEditaveis.value.filter((i: any) => !i.materialConsumoId).length
-    : itensEditaveis.value.filter((i: any) => !i._produtoId).length)
+// O vínculo do item depende do tipo da nota: produto, material ou bem
+const itensSemProduto = computed(() => {
+  const t = entrada.value?.tipoEntrada
+  if (t === 'MaterialConsumo') return itensEditaveis.value.filter((i: any) => !i.materialConsumoId).length
+  if (t === 'AtivoImobilizado') return itensEditaveis.value.filter((i: any) => !i.ativoImobilizadoId).length
+  return itensEditaveis.value.filter((i: any) => !i._produtoId).length
+})
 
 const itensAlterados = computed(
   () => itensEditaveis.value.filter((i: any) => i._alterado).length)
@@ -1334,10 +1421,11 @@ async function carregar() {
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
   popularItensEditaveis(r.data.itens ?? [])
 
-  // Nota de uso interno: a etapa 2 vincula materiais, não produtos. Recarrega
-  // sempre — a lista precisa conter os materiais vinculados aos itens, senão o
-  // autocomplete exibe o id em vez da descrição.
+  // Nota de uso interno: a etapa 2 vincula materiais/bens, não produtos. Recarrega
+  // sempre — a lista precisa conter os itens vinculados, senão o autocomplete
+  // exibe o id em vez da descrição.
   if (r.data.tipoEntrada === 'MaterialConsumo') await carregarMateriais()
+  else if (r.data.tipoEntrada === 'AtivoImobilizado') await carregarAtivos()
 
   // Nota já processada → abre direto na etapa de finalização (somente leitura)
   if (r.data.status === 'Processada') passo.value = 6

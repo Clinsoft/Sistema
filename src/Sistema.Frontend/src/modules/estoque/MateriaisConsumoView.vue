@@ -2,6 +2,8 @@
   <div>
     <div class="d-flex align-center mb-4 flex-wrap gap-2">
       <div class="text-h6 font-weight-bold flex-grow-1">Materiais de Consumo</div>
+      <v-btn variant="text" rounded="lg" prepend-icon="mdi-chart-bar"
+        to="/relatorios/materiais">Relatórios</v-btn>
       <v-btn color="teal" variant="tonal" rounded="lg" prepend-icon="mdi-tray-arrow-down"
         @click="abrirConsumo">Baixar consumo</v-btn>
       <v-btn color="secondary" variant="tonal" rounded="lg" prepend-icon="mdi-clipboard-list-outline"

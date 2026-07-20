@@ -567,6 +567,48 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Última conversão usada para cada produto (fator e unidade de estoque), tirada
+    /// da entrada mais recente em que ele apareceu. Serve para pré-preencher a etapa
+    /// de conversão: quem já recebeu "caixa com 12" antes não precisa informar de novo.
+    /// </summary>
+    [HttpGet("conversoes-anteriores")]
+    public async Task<IActionResult> ConversoesAnteriores(
+        [FromQuery] Guid empresaId, [FromQuery] string? produtoIds, CancellationToken ct = default)
+    {
+        var ids = (produtoIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Guid.TryParse(s.Trim(), out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty)
+            .Distinct().ToList();
+        if (ids.Count == 0) return Ok(Array.Empty<object>());
+
+        var itens = await (
+            from i in db.Set<ItemEntradaNFe>().AsNoTracking()
+            join e in db.EntradasNFe.AsNoTracking() on i.EntradaNFeId equals e.Id
+            where e.EmpresaId == empresaId
+               && i.ProdutoId != null && ids.Contains(i.ProdutoId.Value)
+               && i.UnidadeEstoque != null
+            select new { i.ProdutoId, i.FatorConversao, i.UnidadeEstoque, e.CriadoEm }
+        ).ToListAsync(ct);
+
+        var ultimas = itens
+            .GroupBy(i => i.ProdutoId!.Value)
+            .Select(g =>
+            {
+                var ultima = g.OrderByDescending(x => x.CriadoEm).First();
+                return new
+                {
+                    produtoId = g.Key,
+                    fatorConversao = ultima.FatorConversao,
+                    unidadeEstoque = ultima.UnidadeEstoque,
+                };
+            })
+            .ToList();
+
+        return Ok(ultimas);
+    }
+
     /// <summary>Vincula um item a um material de consumo já cadastrado.</summary>
     [HttpPatch("{id:guid}/itens/{itemId:guid}/material")]
     public async Task<IActionResult> VincularMaterial(
@@ -903,7 +945,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(e => e.Id == id, ct)
             ?? throw new KeyNotFoundException("Entrada não encontrada.");
 
-        // Estornar movimentações de estoque
+        // Estornar movimentações de estoque de mercadoria
         foreach (var item in entrada.Itens.Where(i => i.EstoqueMovimentado && i.ProdutoId.HasValue))
         {
             var mov = MovimentacaoEstoque.Criar(
@@ -915,6 +957,28 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 
             var produto = await db.Produtos.FindAsync([item.ProdutoId], ct);
             produto?.SaidaEstoque(item.QuantidadeEstoque);
+        }
+
+        // Estornar o estoque de materiais de consumo (senão o saldo fica inflado)
+        foreach (var item in entrada.Itens.Where(i => i.EstoqueMovimentado && i.MaterialConsumoId.HasValue))
+        {
+            var material = await db.MateriaisConsumo.FindAsync([item.MaterialConsumoId], ct);
+            if (material is null) continue;
+
+            material.SaidaEstoque(item.QuantidadeEstoque);
+            db.MovimentacoesMaterial.Add(MovimentacaoMaterial.Criar(
+                entrada.EmpresaId, material.Id, TipoMovimentacaoMaterial.AjusteNegativo,
+                item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                documentoOrigem: entrada.ChaveAcesso,
+                observacao: $"Estorno de entrada: {req.Motivo}"));
+        }
+
+        // Ativo imobilizado: baixa os bens criados por esta nota
+        foreach (var item in entrada.Itens.Where(i => i.AtivoImobilizadoId.HasValue))
+        {
+            var bem = await db.AtivosImobilizados.FindAsync([item.AtivoImobilizadoId], ct);
+            if (bem is null || bem.DataBaixa.HasValue) continue;
+            bem.Baixar(DateTime.Today, $"Estorno da entrada: {req.Motivo}");
         }
 
         // Cancelar lançamentos financeiros não pagos

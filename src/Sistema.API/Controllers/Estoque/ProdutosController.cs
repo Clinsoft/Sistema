@@ -301,6 +301,69 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(grupos);
     }
 
+    /// <summary>
+    /// Produtos parecidos com uma descrição — usado na escrituração de NF-e, onde a
+    /// descrição da nota raramente é igual à do cadastro
+    /// ("Castanha de caju sem sal" × "CASTANHA DE CAJU W1 240 TORRADA SEM SAL ...").
+    /// Compara por palavras, então a ordem e os complementos não atrapalham.
+    /// </summary>
+    [HttpGet("similares")]
+    public async Task<IActionResult> Similares(
+        [FromQuery] Guid empresaId, [FromQuery] string? descricao,
+        [FromQuery] int limite = 5, CancellationToken ct = default)
+    {
+        var alvo = TokensBase(descricao ?? string.Empty);
+        if (alvo.Count == 0) return Ok(Array.Empty<object>());
+
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo)
+            .Select(p => new
+            {
+                p.Id, p.Codigo, p.Descricao, p.CodigoBarras, p.UnidadeMedidaId,
+                p.PrecoVenda, p.CustoUnitario, p.EstoqueAtual, p.Markup,
+            })
+            .ToListAsync(ct);
+
+        var achados = produtos
+            .Select(p => new { p, score = Similaridade(alvo, TokensBase(p.Descricao)) })
+            .Where(x => x.score >= 0.5m)          // abaixo disso vira ruído
+            .OrderByDescending(x => x.score).ThenBy(x => x.p.Descricao.Length)
+            .Take(Math.Clamp(limite, 1, 20))
+            .Select(x => new
+            {
+                x.p.Id, x.p.Codigo, x.p.Descricao, x.p.CodigoBarras, x.p.UnidadeMedidaId,
+                x.p.PrecoVenda, x.p.CustoUnitario, x.p.EstoqueAtual, x.p.Markup,
+                Score = Math.Round(x.score * 100, 0),
+            })
+            .ToList();
+
+        return Ok(achados);
+    }
+
+    /// <summary>Palavras relevantes da descrição (sem conectivos, embalagem ou pontuação).</summary>
+    private static List<string> TokensBase(string descricao) =>
+        NormalizarBase(descricao)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length > 1 && !_conectivos.Contains(t))
+            .Distinct()
+            .ToList();
+
+    // "SEM"/"COM" ficam de fora da lista: distinguem produtos (sem sal × com sal)
+    private static readonly HashSet<string> _conectivos =
+        new(StringComparer.Ordinal) { "DE", "DA", "DO", "DAS", "DOS", "E", "EM", "NO", "NA", "PARA" };
+
+    /// <summary>
+    /// Semelhança entre duas listas de palavras: quanto da menor está contida na
+    /// maior. Assim "castanha caju sem sal" casa 100% com o nome longo do cadastro,
+    /// sem que os complementos (marca, peso) derrubem a nota.
+    /// </summary>
+    private static decimal Similaridade(List<string> a, List<string> b)
+    {
+        if (a.Count == 0 || b.Count == 0) return 0m;
+        var comuns = a.Count(t => b.Contains(t));
+        return (decimal)comuns / Math.Min(a.Count, b.Count);
+    }
+
     private static readonly System.Text.RegularExpressions.Regex _reParenteses =
         new(@"\(.*?\)", System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex _reEmbalagem =

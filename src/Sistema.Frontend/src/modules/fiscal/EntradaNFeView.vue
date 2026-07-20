@@ -445,6 +445,7 @@
                   v-model="item._produtoId"
                   label="Produto cadastrado *"
                   :items="produtos" item-title="descricao" item-value="id"
+                  :custom-filter="filtrarPorPalavras"
                   variant="outlined" density="compact" clearable hide-details
                   :disabled="entrada?.status === 'Processada'"
                   :color="item._produtoId ? 'success' : 'warning'"
@@ -454,6 +455,21 @@
                   icon="mdi-plus" size="small" color="primary" variant="tonal"
                   title="Criar produto a partir dos dados do XML"
                   @click="abrirCriarProduto(item)" />
+              </div>
+
+              <!-- Sugestão: produto parecido já cadastrado (evita duplicar) -->
+              <div v-if="!item._produtoId && sugestoes[item.id]?.length" class="mt-1">
+                <div class="text-caption text-medium-emphasis mb-1">
+                  <v-icon size="12" color="warning">mdi-lightbulb-on-outline</v-icon>
+                  Já cadastrado? Parecido com:
+                </div>
+                <v-chip v-for="s in sugestoes[item.id]" :key="s.id" size="x-small"
+                  color="warning" variant="tonal" class="mr-1 mb-1" style="cursor:pointer"
+                  :title="`${s.descricao} — ${s.score}% parecido`"
+                  @click="onProdutoInline(item, s.id)">
+                  {{ s.descricao.length > 38 ? s.descricao.slice(0, 38) + '…' : s.descricao }}
+                  <span class="ml-1 font-weight-bold">{{ s.score }}%</span>
+                </v-chip>
               </div>
             </v-col>
 
@@ -496,8 +512,8 @@
               <v-text-field v-model.number="item._markup" label="Markup %" suffix="%"
                 type="number" min="0" step="1" variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
-                hint="Do cadastro do produto"
-                @update:model-value="item._alterado = true" />
+                hint="Do último cadastro — editável"
+                @update:model-value="onMarkupChange(item)" />
             </v-col>
 
             <!-- Conferência de custos (etapa 4, somente leitura) -->
@@ -516,7 +532,7 @@
                   variant="outlined" density="compact" hide-details
                   :disabled="entrada?.status === 'Processada'"
                   hint="Do XML — ajuste se necessário"
-                  @update:model-value="item._alterado = true" />
+                  @update:model-value="onMarkupChange(item)" />
               </v-col>
               <v-col cols="6" sm="1">
                 <v-text-field v-model.number="item._icmsSt" label="ICMS-ST" prefix="R$"
@@ -524,7 +540,7 @@
                   variant="outlined" density="compact" hide-details
                   :disabled="entrada?.status === 'Processada'"
                   hint="Do XML — ajuste se necessário"
-                  @update:model-value="item._alterado = true" />
+                  @update:model-value="onMarkupChange(item)" />
               </v-col>
               <v-col cols="6" sm="2">
                 <v-text-field :model-value="fmt(custoTotalItem(item))" label="Custo final"
@@ -539,11 +555,31 @@
               </v-col>
               <!-- Preço de venda: só para mercadoria. Material de consumo não é vendido. -->
               <template v-if="!ehUsoInterno">
+                <!-- Preço atual cadastrado (referência) -->
+                <v-col cols="6" sm="1">
+                  <v-text-field :model-value="item._precoAtual ? fmt(item._precoAtual) : '—'"
+                    label="Preço atual" prefix="R$" variant="outlined" density="compact"
+                    hide-details readonly />
+                </v-col>
+                <!-- Novo preço (editável ⇄ markup) com indicador de variação -->
                 <v-col cols="6" sm="2">
-                  <v-text-field :model-value="fmt(precoSugerido(item))"
-                    :label="`Preço venda (${item._unidade || 'un'})`" prefix="R$"
-                    variant="outlined" density="compact" hide-details readonly
-                    class="font-weight-bold" />
+                  <v-text-field v-model.number="item._precoVenda"
+                    :label="`Novo preço (${item._unidade || 'un'})`" prefix="R$"
+                    type="number" min="0" step="0.01"
+                    variant="outlined" density="compact" hide-details
+                    :disabled="entrada?.status === 'Processada'"
+                    :bg-color="statusPreco(item).bg"
+                    class="font-weight-bold"
+                    @update:model-value="onPrecoVendaChange(item)">
+                    <template #append-inner>
+                      <v-tooltip location="top" :text="statusPreco(item).dica">
+                        <template #activator="{ props }">
+                          <v-icon v-bind="props" :icon="statusPreco(item).icone"
+                            :color="statusPreco(item).cor" size="20" />
+                        </template>
+                      </v-tooltip>
+                    </template>
+                  </v-text-field>
                 </v-col>
                 <!-- Valores por 100g (produtos por peso) -->
                 <v-col cols="6" sm="1">
@@ -551,7 +587,7 @@
                     prefix="R$" variant="outlined" density="compact" hide-details readonly />
                 </v-col>
                 <v-col cols="6" sm="1">
-                  <v-text-field :model-value="fmt(precoSugerido(item) / 10)" label="Preço 100g"
+                  <v-text-field :model-value="fmt((item._precoVenda || 0) / 10)" label="Preço 100g"
                     prefix="R$" variant="outlined" density="compact" hide-details readonly
                     class="font-weight-bold text-success" />
                 </v-col>
@@ -1012,6 +1048,47 @@ async function reimportarItens() {
   } finally { reimportando.value = false }
 }
 
+/**
+ * Filtro do autocomplete por PALAVRAS, não por trecho contínuo. A descrição da
+ * nota quase nunca é igual à do cadastro ("castanha caju sem sal" ×
+ * "CASTANHA DE CAJU W1 240 TORRADA SEM SAL GREENLINE (NACIONAL)-11,34KG"), e o
+ * filtro padrão do Vuetify exige substring — o produto existia e não aparecia.
+ */
+function filtrarPorPalavras(valor: string, consulta: string, item?: any) {
+  const texto = normalizarTexto(`${valor ?? ''} ${item?.raw?.codigo ?? ''} ${item?.raw?.codigoBarras ?? ''}`)
+  const palavras = normalizarTexto(consulta ?? '').split(' ').filter(Boolean)
+  return palavras.every(p => texto.includes(p))
+}
+
+/** Minúsculas, sem acento e sem pontuação — para comparar texto digitado × cadastro. */
+function normalizarTexto(s: string) {
+  return (s ?? '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Sugestões de produto parecido por item (evita cadastrar duplicado)
+const sugestoes = ref<Record<string, any[]>>({})
+
+async function carregarSugestoes() {
+  if (ehUsoInterno.value || entrada.value?.status !== 'EmEdicao') return
+  const pendentes = itensEditaveis.value.filter((i: any) => !i._produtoId)
+  if (!pendentes.length) return
+
+  const achados: Record<string, any[]> = {}
+  await Promise.all(pendentes.map(async (i: any) => {
+    try {
+      const r = await api.get('/produtos/similares', {
+        params: { empresaId: auth.empresaId, descricao: i.descricaoXml, limite: 3 },
+      })
+      if (r.data?.length) achados[i.id] = r.data
+    } catch { /* sem sugestão para este item */ }
+  }))
+  sugestoes.value = achados
+}
+
 // ── Tipo da entrada: mercadoria (Produtos), material de consumo ou ativo ────
 const ehMaterialConsumo = computed(() => entrada.value?.tipoEntrada === 'MaterialConsumo')
 const ehAtivoImobilizado = computed(() => entrada.value?.tipoEntrada === 'AtivoImobilizado')
@@ -1256,6 +1333,52 @@ function precoSugerido(item: any) {
   return custoUnitario(item) * (1 + (item._markup || 0) / 100)
 }
 
+// Markup ⇄ preço de venda: editar um recalcula o outro. O markup continua sendo
+// o valor enviado ao backend (o preço é derivado dele lá).
+function onMarkupChange(item: any) {
+  item._precoVenda = Math.round(precoSugerido(item) * 100) / 100
+  item._alterado = true
+}
+function onPrecoVendaChange(item: any) {
+  const custo = custoUnitario(item)
+  const preco = Number(item._precoVenda) || 0
+  item._markup = custo > 0 ? Math.round((preco / custo - 1) * 10000) / 100 : 0
+  item._alterado = true
+}
+/** Garante _precoVenda coerente com o markup atual (ao carregar/ao entrar na etapa 4). */
+function sincronizarPrecoVenda(item: any) {
+  if (item._precoVenda == null)
+    item._precoVenda = Math.round(precoSugerido(item) * 100) / 100
+}
+
+/**
+ * Indicador de variação do preço com base no CUSTO desta entrada.
+ * Preço necessário para manter o markup atual = custo novo × (1 + markup atual).
+ *  • acima do preço atual  → custo subiu, PRECISA aumentar (seta para cima).
+ *  • abaixo do preço atual → custo caiu, PODE baixar ou manter (seta para baixo).
+ */
+function statusPreco(item: any) {
+  const precoAtual = Number(item._precoAtual) || 0
+  if (!precoAtual) {
+    return { icone: 'mdi-new-box', cor: 'grey', bg: undefined,
+      dica: 'Produto sem preço cadastrado — defina o preço de venda.' }
+  }
+  const necessario = custoUnitario(item) * (1 + (Number(item._markupAtual) || 0) / 100)
+  const tol = precoAtual * 0.005
+  if (necessario > precoAtual + tol) {
+    return { icone: 'mdi-arrow-up-bold', cor: 'error', bg: 'red-lighten-5',
+      dica: `Custo subiu: para manter o markup, aumente para ~R$ ${fmt(necessario)} `
+        + `(atual R$ ${fmt(precoAtual)}).` }
+  }
+  if (necessario < precoAtual - tol) {
+    return { icone: 'mdi-arrow-down-bold', cor: 'info', bg: 'blue-lighten-5',
+      dica: `Custo caiu: dá para baixar até ~R$ ${fmt(necessario)} (ou manter os `
+        + `R$ ${fmt(precoAtual)}).` }
+  }
+  return { icone: 'mdi-check-bold', cor: 'success', bg: undefined,
+    dica: `Custo estável: o preço atual (R$ ${fmt(precoAtual)}) segue adequado.` }
+}
+
 /** Cadastra automaticamente todos os itens sem produto, usando os dados da NF-e. */
 async function cadastrarTodosAutomaticamente() {
   const pendentes = itensEditaveis.value.filter((i: any) => !i._produtoId)
@@ -1426,6 +1549,7 @@ async function carregar() {
   // exibe o id em vez da descrição.
   if (r.data.tipoEntrada === 'MaterialConsumo') await carregarMateriais()
   else if (r.data.tipoEntrada === 'AtivoImobilizado') await carregarAtivos()
+  else carregarSugestoes()   // nota de mercadoria: sugere produtos parecidos já cadastrados
 
   // Nota já processada → abre direto na etapa de finalização (somente leitura)
   if (r.data.status === 'Processada') passo.value = 6
@@ -1524,14 +1648,36 @@ function aplicarPadraoProduto(item: any, prod: any) {
   // Unidade de estoque = a do produto cadastrado (não a unidade comercial do XML)
   const sigla = prod.unidadeSigla ?? prod.unidadeMedida
   if (sigla) item._unidade = sigla
-  // Markup = o do produto (multiplicador → %); mantém o atual se o produto não tiver
+  // Markup = o último cadastrado no produto (multiplicador → %); mantém o atual se não houver
   if (prod.markup && prod.markup > 1) item._markup = Math.round((prod.markup - 1) * 100)
+  // Referências para o indicador de variação: preço e markup atuais do cadastro
+  item._precoAtual = prod.precoVenda || 0
+  item._markupAtual = prod.markup && prod.markup > 1 ? Math.round((prod.markup - 1) * 100) : (item._markup || 0)
+  item._precoVenda = Math.round(precoSugerido(item) * 100) / 100   // preço acompanha o markup
 }
 
-function onProdutoInline(item: any, id: string | null) {
+async function onProdutoInline(item: any, id: string | null) {
   const prod = produtos.value.find((p: any) => p.id === id)
   if (prod) aplicarPadraoProduto(item, prod)
+  item._produtoId = id
   item._alterado = true
+  // Vinculou agora: já traz a conversão usada na última entrada deste produto
+  if (id) await aplicarConversaoDoProduto(item, id)
+}
+
+/** Aplica ao item a conversão (fator + unidade) da última entrada do produto. */
+async function aplicarConversaoDoProduto(item: any, produtoId: string) {
+  if (ehUsoInterno.value || item.unidadeEstoque) return
+  try {
+    const r = await api.get('/fiscal/entradas/conversoes-anteriores', {
+      params: { empresaId: auth.empresaId, produtoIds: produtoId },
+    })
+    const c = (r.data ?? [])[0]
+    if (!c) return
+    item._fator = c.fatorConversao || 1
+    item._unidade = c.unidadeEstoque || item._unidade
+    item._alterado = true
+  } catch { /* segue sem pré-preencher */ }
 }
 
 // Para itens já vinculados a um produto, puxa unidade/markup do produto quando o
@@ -1547,7 +1693,42 @@ function enriquecerItensComProduto() {
     }
     if (!item.markupSugerido && prod.markup && prod.markup > 1)
       item._markup = Math.round((prod.markup - 1) * 100)
+    if (item._precoAtual == null) item._precoAtual = prod.precoVenda || 0
+    if (item._markupAtual == null)
+      item._markupAtual = prod.markup && prod.markup > 1 ? Math.round((prod.markup - 1) * 100) : (item._markup || 0)
+    sincronizarPrecoVenda(item)
   }
+}
+
+/**
+ * Pré-preenche a conversão com a usada na última entrada do mesmo produto —
+ * quem já recebeu "caixa com 12" não precisa informar de novo. Só preenche o
+ * que ainda não foi configurado nesta nota; o usuário edita se vier diferente.
+ */
+async function aplicarConversoesAnteriores() {
+  if (ehUsoInterno.value || entrada.value?.status !== 'EmEdicao') return
+  const pendentes = itensEditaveis.value.filter((i: any) => i._produtoId && !i.unidadeEstoque)
+  if (!pendentes.length) return
+
+  try {
+    const ids = [...new Set(pendentes.map((i: any) => i._produtoId))].join(',')
+    const r = await api.get('/fiscal/entradas/conversoes-anteriores', {
+      params: { empresaId: auth.empresaId, produtoIds: ids },
+    })
+    const porProduto = new Map<string, any>((r.data ?? []).map((c: any) => [c.produtoId, c]))
+
+    let aplicados = 0
+    for (const item of pendentes) {
+      const c = porProduto.get(item._produtoId)
+      if (!c) continue
+      item._fator = c.fatorConversao || 1
+      item._unidade = c.unidadeEstoque || item._unidade
+      item._alterado = true
+      aplicados++
+    }
+    if (aplicados > 0)
+      notif.aviso(`${aplicados} item(ns) com a conversão da última entrada — confira e ajuste se mudou.`)
+  } catch { /* segue sem pré-preencher */ }
 }
 
 const CATEGORIA_KEYWORDS: Record<string, string[]> = {
@@ -1995,5 +2176,7 @@ onMounted(async () => {
   await Promise.all([carregar(), carregarAuxiliares()])
   // Depois que produtos e itens estão carregados, aplica unidade/markup do produto
   enriquecerItensComProduto()
+  // …e a conversão usada na última entrada de cada produto
+  await aplicarConversoesAnteriores()
 })
 </script>

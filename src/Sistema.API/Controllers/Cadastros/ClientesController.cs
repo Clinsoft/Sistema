@@ -61,6 +61,31 @@ public class ClientesController(IMediator mediator, IClienteRepository repo,
         return CreatedAtAction(nameof(ObterPorId), new { id }, new { id });
     }
 
+    /// <summary>
+    /// Garante que a pessoa (colaborador ou fornecedor) exista como cliente.
+    /// Idempotente: se já houver cliente com o mesmo CPF/CNPJ, retorna o existente;
+    /// caso contrário, cria com os dados básicos. Usado pela opção "também é cliente".
+    /// </summary>
+    [HttpPost("garantir")]
+    public async Task<IActionResult> Garantir([FromBody] GarantirClienteRequest req, CancellationToken ct)
+    {
+        var doc = string.IsNullOrWhiteSpace(req.CpfCnpj) ? null : req.CpfCnpj.Trim();
+
+        var existente = await db.Clientes.AsNoTracking().FirstOrDefaultAsync(c =>
+            c.EmpresaId == req.EmpresaId &&
+            (doc != null ? c.CpfCnpj == doc : c.Nome == req.Nome), ct);
+        if (existente is not null)
+            return Ok(new { id = existente.Id, jaExistia = true });
+
+        var tipo = (doc?.Length == 14) ? Domain.Cadastros.Entities.TipoPessoa.Juridica
+                                       : Domain.Cadastros.Entities.TipoPessoa.Fisica;
+        var cliente = Domain.Cadastros.Entities.Cliente.Criar(
+            req.EmpresaId, req.Nome, tipo, doc, req.Email, req.Telefone);
+        db.Clientes.Add(cliente);
+        await uow.SalvarAsync(ct);
+        return Ok(new { id = cliente.Id, jaExistia = false });
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarClienteRequest req, CancellationToken ct)
     {
@@ -160,3 +185,5 @@ public record AtualizarClienteRequest(
     decimal LimiteCredito = 0, string? Classificacao = null);
 
 public record ResgatarPontosRequest(int Pontos);
+public record GarantirClienteRequest(Guid EmpresaId, string Nome, string? CpfCnpj = null,
+    string? Email = null, string? Telefone = null);

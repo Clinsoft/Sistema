@@ -29,11 +29,17 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
                 || (f.Cnpj != null && f.Cnpj.Contains(busca)));
 
         var fornecedores = await query.OrderBy(f => f.RazaoSocial).ToListAsync(ct);
+
+        var docsClientes = (await db.Clientes.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.CpfCnpj != null)
+            .Select(c => c.CpfCnpj!).ToListAsync(ct)).ToHashSet();
+
         return Ok(fornecedores.Select(f => new
         {
             f.Id, f.RazaoSocial, f.NomeFantasia, f.Cnpj,
             f.Email, f.Telefone, f.Celular, f.Contato, f.Cidade, f.Uf,
             tipos = string.IsNullOrEmpty(f.Tipos) ? new[] { "Fornecedor" } : f.Tipos.Split(','),
+            ehCliente = f.Cnpj != null && docsClientes.Contains(f.Cnpj),
             f.PrazoPagamentoDias, f.Ativo
         }));
     }

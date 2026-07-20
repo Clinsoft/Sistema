@@ -28,6 +28,7 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
             {
                 u.Id, u.Nome, u.Cpf, u.Telefone, u.Cargo, u.Salario, u.DataAdmissao, u.Observacao,
                 u.Email, u.Perfil, temAcesso = u.Email != null && u.SenhaHash != null,
+                ehCliente = u.Cpf != null && db.Clientes.Any(c => c.EmpresaId == u.EmpresaId && c.CpfCnpj == u.Cpf),
                 u.Ativo, u.UltimoAcesso,
             })
             .OrderBy(u => u.Nome)

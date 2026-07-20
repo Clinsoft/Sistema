@@ -100,6 +100,12 @@
                   <div v-if="!form.tipos?.length" class="text-caption text-error mt-1">
                     Selecione ao menos um tipo
                   </div>
+                  <v-checkbox v-model="form.ehCliente" density="compact" hide-details color="primary"
+                    :disabled="editandoTinhaCliente" class="mt-1"
+                    label="Também é cliente (cadastrar na carteira de clientes)" />
+                  <div v-if="editandoTinhaCliente" class="text-caption text-medium-emphasis ml-8">
+                    Já está cadastrado como cliente.
+                  </div>
                 </div>
               </div>
               <!-- Seção: Dados da Empresa -->
@@ -229,6 +235,7 @@ const fornecedores = ref<any[]>([])
 const carregando = ref(false)
 const dialog = ref(false)
 const editando = ref<string | null>(null)
+const editandoTinhaCliente = ref(false)
 const salvando = ref(false)
 const busca = ref('')
 const filtroAtivo = ref<boolean | null>(true)
@@ -286,20 +293,22 @@ async function listar() {
 
 function abrirNovo() {
   editando.value = null
-  form.value = { ativo: true, tipos: ['Fornecedor'], prazoPagamentoDias: 30 }
+  editandoTinhaCliente.value = false
+  form.value = { ativo: true, tipos: ['Fornecedor'], prazoPagamentoDias: 30, ehCliente: false }
   cnpjStatus.value = 'idle'
   dialog.value = true
 }
 
 async function editar(item: any) {
   editando.value = item.id
+  editandoTinhaCliente.value = !!item.ehCliente
   form.value = { ...item }   // dados imediatos da lista
   cnpjStatus.value = 'idle'
   dialog.value = true
   // Busca o registro completo (endereço, IE, observação) para não perder campos ao salvar
   try {
     const { data } = await api.get(`/fornecedores/${item.id}`)
-    form.value = { ...data }
+    form.value = { ...data, ehCliente: !!item.ehCliente }
   } catch { /* mantém dados da lista */ }
 }
 
@@ -319,6 +328,15 @@ async function salvar() {
       await api.put(`/fornecedores/${editando.value}`, payload)
     } else {
       await api.post('/fornecedores', { ...payload, empresaId: auth.empresaId })
+    }
+    // Também é cliente → garante o cadastro na carteira (idempotente por CPF/CNPJ).
+    if (form.value.ehCliente && !editandoTinhaCliente.value) {
+      await api.post('/clientes/garantir', {
+        empresaId: auth.empresaId, nome: form.value.razaoSocial,
+        cpfCnpj: (form.value.cnpj ?? '').replace(/\D/g, '') || null,
+        email: form.value.email || null,
+        telefone: (form.value.telefone ?? '').slice(0, 20) || null,
+      }).catch(() => null)
     }
     notif.ok('Fornecedor salvo com sucesso!')
     dialog.value = false

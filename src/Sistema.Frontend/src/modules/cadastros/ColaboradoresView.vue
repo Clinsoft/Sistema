@@ -143,6 +143,15 @@
                     <v-textarea v-model="form.observacao" label="Observação" rows="2" auto-grow
                       variant="outlined" density="compact" />
                   </v-col>
+                  <v-col cols="12">
+                    <v-checkbox v-model="form.ehCliente" density="compact" hide-details
+                      :disabled="editandoTinhaCliente"
+                      color="primary"
+                      label="Também é cliente (cadastrar na carteira de clientes)" />
+                    <div v-if="editandoTinhaCliente" class="text-caption text-medium-emphasis ml-8">
+                      Já está cadastrado como cliente.
+                    </div>
+                  </v-col>
                 </v-row>
               </div>
             </div>
@@ -291,7 +300,7 @@ interface Colaborador {
   id: string; nome: string; email: string | null
   cpf: string | null; telefone: string | null; cargo: string | null
   salario: number | null; dataAdmissao: string | null; observacao: string | null
-  perfil: string | null; temAcesso: boolean; ativo: boolean; ultimoAcesso: string | null
+  perfil: string | null; temAcesso: boolean; ehCliente: boolean; ativo: boolean; ultimoAcesso: string | null
 }
 
 const colaboradores = ref<Colaborador[]>([])
@@ -304,6 +313,7 @@ const mostrarSenha = ref(false)
 const mostrarNovaSenha = ref(false)
 const editandoId = ref<string | null>(null)
 const editandoTinhaAcesso = ref(false)
+const editandoTinhaCliente = ref(false)
 const idAlterandoSenha = ref('')
 const nomeAlterandoSenha = ref('')
 const novaSenha = ref('')
@@ -311,7 +321,7 @@ const confirmarNovaSenha = ref('')
 
 const formPadrao = () => ({
   nome: '', cpf: '', telefone: '', cargo: '', salario: null as number | null,
-  dataAdmissao: '', observacao: '',
+  dataAdmissao: '', observacao: '', ehCliente: false,
   darAcesso: false, email: '', senha: '', confirmarSenha: '', perfil: 'Vendedor',
 })
 const form = ref(formPadrao())
@@ -419,6 +429,7 @@ async function carregar() {
 function abrirNovo() {
   editandoId.value = null
   editandoTinhaAcesso.value = false
+  editandoTinhaCliente.value = false
   form.value = formPadrao()
   mostrarSenha.value = false
   dialogForm.value = true
@@ -427,10 +438,11 @@ function abrirNovo() {
 function abrirEdicao(item: Colaborador) {
   editandoId.value = item.id
   editandoTinhaAcesso.value = item.temAcesso
+  editandoTinhaCliente.value = item.ehCliente
   form.value = {
     nome: item.nome, cpf: item.cpf ?? '', telefone: item.telefone ?? '',
     cargo: item.cargo ?? '', salario: item.salario, dataAdmissao: item.dataAdmissao?.slice(0, 10) ?? '',
-    observacao: item.observacao ?? '',
+    observacao: item.observacao ?? '', ehCliente: item.ehCliente,
     darAcesso: item.temAcesso, email: item.email ?? '', senha: '', confirmarSenha: '',
     perfil: item.perfil ?? 'Vendedor',
   }
@@ -490,6 +502,13 @@ async function salvar() {
     } else {
       await api.post('/usuarios', { ...dados, acesso: f.darAcesso ? acesso : null })
       notif.ok('Colaborador criado!')
+    }
+    // Também é cliente → garante o cadastro na carteira (idempotente por CPF).
+    if (f.ehCliente && !editandoTinhaCliente.value) {
+      await api.post('/clientes/garantir', {
+        empresaId: auth.empresaId, nome: f.nome.trim(),
+        cpfCnpj: f.cpf.trim() || null, telefone: f.telefone.trim() || null,
+      }).catch(() => null)
     }
     dialogForm.value = false
     await carregar()

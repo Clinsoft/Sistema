@@ -61,5 +61,6 @@ public class PagamentoVendaConfiguration : IEntityTypeConfiguration<PagamentoVen
         b.Property(p => p.Forma).HasConversion<string>().HasMaxLength(20);
         b.Property(p => p.Valor).HasColumnType("decimal(18,2)");
         b.Property(p => p.Descricao).HasMaxLength(100);
+        b.HasIndex(p => p.OperadoraCartaoId);
     }
 }

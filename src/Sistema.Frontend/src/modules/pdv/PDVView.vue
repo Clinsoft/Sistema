@@ -146,7 +146,9 @@
                     v-model.number="item.quantidade"
                     class="pdv-qtd-input"
                     type="number"
-                    min="1"
+                    :min="item.porPeso ? 0.001 : 1"
+                    :step="item.porPeso ? 0.1 : 1"
+                    :title="item.porPeso ? 'Quantidade em KG' : ''"
                     @change="recalcular(i)"
                     @click.stop
                   />
@@ -205,9 +207,16 @@
             placeholder="Buscar cliente..."
             class="mb-2"
             :loading="buscandoCliente"
-            no-data-text="Nenhum cliente encontrado"
             @update:search="pesquisarCliente"
-          />
+          >
+            <template #no-data>
+              <v-list-item v-if="buscaCliente && buscaCliente.trim().length >= 2"
+                :title="'Cadastrar cliente: ' + buscaCliente.trim()"
+                prepend-icon="mdi-account-plus-outline"
+                @click="cadastrarClienteRapido(buscaCliente.trim())" />
+              <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
+            </template>
+          </v-autocomplete>
           <div class="d-flex align-center ga-2">
             <v-btn-toggle v-model="tipoDocConsumidor" density="compact" mandatory variant="outlined" rounded="lg">
               <v-btn value="cpf" size="small">CPF</v-btn>
@@ -376,6 +385,78 @@
     </div>
 
     <!-- ══ DIALOG SCANNER CÂMERA ══════════════════════════════════ -->
+    <!-- Dialog: pagamento com cartão (operadora + parcelas + taxa) -->
+    <v-dialog v-model="dialogCartao" max-width="440">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="primary">mdi-credit-card-outline</v-icon>
+          Cartão de {{ cartaoTipo }}
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-select v-model="cartaoOperadoraId" :items="operadoras" item-title="nome" item-value="id"
+            label="Operadora / maquininha *" variant="outlined" density="compact" class="mb-2" hide-details />
+          <v-select v-if="cartaoTipo === 'Crédito'" v-model.number="cartaoParcelas"
+            :items="[1,2,3,4,5,6,7,8,9,10,11,12]" label="Parcelas"
+            variant="outlined" density="compact" hide-details>
+            <template #selection="{ item }">{{ item.value }}x</template>
+            <template #item="{ item, props }">
+              <v-list-item v-bind="props" :title="`${item.value}x`" />
+            </template>
+          </v-select>
+          <v-alert type="info" variant="tonal" density="compact" class="mt-3">
+            <div class="d-flex justify-space-between"><span>Valor</span><b>R$ {{ fmt(cartaoValor) }}</b></div>
+            <div class="d-flex justify-space-between">
+              <span>Taxa</span><span>{{ fmt(cartaoTaxa) }}% (− R$ {{ fmt(cartaoValor - cartaoLiquido) }})</span>
+            </div>
+            <div class="d-flex justify-space-between font-weight-bold text-success">
+              <span>Líquido a receber</span><span>R$ {{ fmt(cartaoLiquido) }}</span>
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogCartao = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :disabled="!cartaoOperadoraId" @click="confirmarCartao">
+            Adicionar pagamento
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: venda por peso (gramas) -->
+    <v-dialog v-model="dialogPeso" max-width="420">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="teal">mdi-scale</v-icon>Produto por peso
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <div class="text-body-2 font-weight-medium mb-1">{{ produtoPeso?.descricao }}</div>
+          <div class="text-caption text-medium-emphasis mb-3">
+            R$ {{ fmt(produtoPeso?.precoVenda ?? 0) }} / KG
+            · R$ {{ fmt(precoPor100g) }} / 100g
+          </div>
+          <v-text-field ref="inputGramas" v-model.number="gramas" label="Peso (gramas) *"
+            type="number" min="0" suffix="g" variant="outlined" density="compact"
+            autofocus hide-details @keyup.enter="confirmarPeso" />
+          <div class="d-flex flex-wrap gap-1 mt-2">
+            <v-chip v-for="g in [100, 200, 250, 500, 1000]" :key="g" size="small"
+              variant="tonal" color="teal" @click="gramas = g">{{ g }}g</v-chip>
+          </div>
+          <v-alert v-if="gramas > 0" type="info" variant="tonal" density="compact" class="mt-3">
+            {{ (gramas / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 }) }} KG ·
+            Total: <b>R$ {{ fmt(totalPeso) }}</b>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogPeso = false">Cancelar</v-btn>
+          <v-btn color="teal" rounded="lg" :disabled="!(gramas > 0)" @click="confirmarPeso">
+            Adicionar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="dialogScanner" max-width="420" persistent>
       <v-card rounded="xl">
         <v-card-title class="pa-4 pb-2 d-flex align-center">
@@ -655,16 +736,29 @@ const notif = useNotifStore()
 interface ItemVenda {
   produtoId: string; descricao: string; codigo: string
   precoUnitario: number; quantidade: number; total: number
-  unidade: string; desconto: number
+  unidade: string; desconto: number; porPeso?: boolean
 }
-interface Pagamento { tipo: string; valor: number }
-interface Produto { id: string; descricao: string; codigo: string; precoVenda: number; unidadeSigla: string }
+interface Pagamento {
+  tipo: string; valor: number
+  operadoraId?: string | null; parcelas?: number
+  taxa?: number; liquido?: number; operadoraNome?: string
+}
+interface Operadora {
+  id: string; nome: string; taxaDebito: number
+  taxaCreditoVista: number; taxaCreditoParcelado: number
+  prazoDebito: number; prazoCreditoVista: number; prazoCreditoParcelado: number
+}
+interface Produto {
+  id: string; descricao: string; codigo: string; precoVenda: number
+  unidadeSigla: string; vendidoFracionado?: boolean
+}
 interface Cliente { id: string; nome: string }
 interface Colaborador { id: string; nome: string; perfil: string }
 
 // ── Refs ─────────────────────────────────────────────────────────
 const inputCodigo = ref()
 const inputCliente = ref()
+const inputGramas = ref()
 const inputDesconto = ref()
 const inputCpf = ref()
 const canvasQr = ref<HTMLCanvasElement | null>(null)
@@ -677,6 +771,13 @@ const descontoReais = ref(0)
 const descontoPct = ref(0)
 const pagamentos = ref<Pagamento[]>([])
 const clienteId = ref<string | null>(null)
+
+// ── Cartão: operadoras + diálogo de seleção ───────────────────────
+const operadoras = ref<Operadora[]>([])
+const dialogCartao = ref(false)
+const cartaoTipo = ref<'Crédito' | 'Débito'>('Crédito')
+const cartaoOperadoraId = ref<string | null>(null)
+const cartaoParcelas = ref(1)
 const buscaCliente = ref('')
 const clientes = ref<Cliente[]>([])
 const buscandoCliente = ref(false)
@@ -829,12 +930,18 @@ function fmt(v: number) {
 
 function recalcular(i: number) {
   const item = itens.value[i]
-  item.quantidade = Math.max(1, item.quantidade)
+  // Por peso: quantidade em KG (aceita decimais). Unidade: mínimo 1.
+  const min = item.porPeso ? 0.001 : 1
+  item.quantidade = Math.max(min, Number(item.quantidade) || min)
   item.total = Math.max(0, item.quantidade * item.precoUnitario - item.desconto)
 }
 
 function ajustarQtd(idx: number, delta: number) {
-  itens.value[idx].quantidade = Math.max(1, itens.value[idx].quantidade + delta)
+  const item = itens.value[idx]
+  // Item por peso anda de 100g (0,1 KG); unitário anda de 1 em 1.
+  const passo = item.porPeso ? delta * 0.1 : delta
+  const min = item.porPeso ? 0.001 : 1
+  item.quantidade = Math.max(min, Math.round((item.quantidade + passo) * 1000) / 1000)
   recalcular(idx)
 }
 
@@ -858,12 +965,44 @@ function sincrDesconto(origem: 'reais' | 'pct') {
 
 function selecionarFormaPagamento(tipo: string) {
   const idx = pagamentos.value.findIndex(p => p.tipo === tipo)
-  if (idx >= 0) {
-    pagamentos.value.splice(idx, 1)
-  } else {
-    const restante = Math.max(0, total.value - totalPago.value)
-    pagamentos.value.push({ tipo, valor: restante || total.value })
+  if (idx >= 0) { pagamentos.value.splice(idx, 1); return }
+
+  // Cartão: abre o diálogo para escolher operadora + parcelas e calcular a taxa
+  if ((tipo === 'Crédito' || tipo === 'Débito') && operadoras.value.length) {
+    cartaoTipo.value = tipo
+    cartaoOperadoraId.value = operadoras.value[0]?.id ?? null
+    cartaoParcelas.value = 1
+    dialogCartao.value = true
+    return
   }
+
+  const restante = Math.max(0, total.value - totalPago.value)
+  pagamentos.value.push({ tipo, valor: restante || total.value })
+}
+
+/** Taxa (%) da forma/parcelas selecionadas na operadora escolhida. */
+const cartaoOperadora = computed(() =>
+  operadoras.value.find(o => o.id === cartaoOperadoraId.value) ?? null)
+const cartaoValor = computed(() => Math.max(0, total.value - totalPago.value) || total.value)
+const cartaoTaxa = computed(() => {
+  const o = cartaoOperadora.value
+  if (!o) return 0
+  if (cartaoTipo.value === 'Débito') return o.taxaDebito
+  return cartaoParcelas.value >= 2 ? o.taxaCreditoParcelado : o.taxaCreditoVista
+})
+const cartaoLiquido = computed(() =>
+  Math.round(cartaoValor.value * (1 - cartaoTaxa.value / 100) * 100) / 100)
+
+function confirmarCartao() {
+  const o = cartaoOperadora.value
+  if (!o) { notif.aviso('Selecione a operadora.'); return }
+  pagamentos.value.push({
+    tipo: cartaoTipo.value, valor: cartaoValor.value,
+    operadoraId: o.id, operadoraNome: o.nome,
+    parcelas: cartaoTipo.value === 'Crédito' ? cartaoParcelas.value : 1,
+    taxa: cartaoTaxa.value, liquido: cartaoLiquido.value,
+  })
+  dialogCartao.value = false
 }
 
 function dinheiroExato() {
@@ -906,8 +1045,16 @@ async function buscarProduto() {
   finally { codigoDigitado.value = '' }
 }
 
+/** Produto vendido por peso (preço por KG): a quantidade é informada em gramas. */
+function ehPorPeso(p: { vendidoFracionado?: boolean; unidadeSigla?: string }) {
+  return p.vendidoFracionado === true || (p.unidadeSigla || '').toUpperCase() === 'KG'
+}
+
 function adicionarProduto(p: Produto) {
   dialogProdutos.value = false
+  // Produto por peso → abre o diálogo de gramas em vez de somar 1 unidade
+  if (ehPorPeso(p)) { abrirPeso(p); return }
+
   const existe = itens.value.find(i => i.produtoId === p.id)
   if (existe) {
     existe.quantidade++
@@ -923,6 +1070,38 @@ function adicionarProduto(p: Produto) {
   nextTick(() => inputCodigo.value?.focus())
 }
 
+// ── Venda por peso (gramas) ───────────────────────────────────────
+const dialogPeso = ref(false)
+const produtoPeso = ref<Produto | null>(null)
+const gramas = ref<number>(0)
+const precoPor100g = computed(() =>
+  produtoPeso.value ? Math.round(produtoPeso.value.precoVenda / 10 * 100) / 100 : 0)
+const totalPeso = computed(() =>
+  produtoPeso.value ? Math.round((gramas.value / 1000) * produtoPeso.value.precoVenda * 100) / 100 : 0)
+
+function abrirPeso(p: Produto) {
+  produtoPeso.value = p
+  gramas.value = 0
+  dialogPeso.value = true
+  nextTick(() => inputGramas.value?.focus?.())
+}
+
+function confirmarPeso() {
+  const p = produtoPeso.value
+  const g = Number(gramas.value)
+  if (!p || !(g > 0)) { notif.aviso('Informe o peso em gramas.'); return }
+  const qtdKg = Math.round((g / 1000) * 1000) / 1000   // KG com 3 casas
+  itens.value.push({
+    produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
+    precoUnitario: p.precoVenda, quantidade: qtdKg,
+    total: Math.round(qtdKg * p.precoVenda * 100) / 100,
+    unidade: p.unidadeSigla || 'KG', desconto: 0, porPeso: true,
+  })
+  itemSelecionado.value = itens.value.length - 1
+  dialogPeso.value = false
+  nextTick(() => inputCodigo.value?.focus())
+}
+
 // ── Cliente ───────────────────────────────────────────────────────
 async function pesquisarCliente(q: string) {
   if (!q || q.length < 2) return
@@ -933,6 +1112,20 @@ async function pesquisarCliente(q: string) {
     })
     clientes.value = res.data
   } finally { buscandoCliente.value = false }
+}
+
+/** Cadastra um cliente só com o nome e já seleciona na venda. */
+async function cadastrarClienteRapido(nome: string) {
+  try {
+    const r = await api.post('/clientes', { empresaId: auth.empresaId, nome, tipoPessoa: 'Fisica' })
+    const novo: Cliente = { id: r.data.id ?? r.data, nome }
+    clientes.value = [novo, ...clientes.value]
+    clienteId.value = novo.id
+    buscaCliente.value = ''
+    notif.ok(`Cliente "${nome}" cadastrado e selecionado.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao cadastrar cliente.')
+  }
 }
 
 // ── Finalizar ─────────────────────────────────────────────────────
@@ -972,7 +1165,12 @@ async function finalizar() {
       numero: string; total: number; troco: number
       notaFiscalId?: string; qrCode?: string; chaveAcesso?: string
     }>(`/vendas/${vendaId}/finalizar`, {
-      pagamentos: pagamentos.value.map(p => ({ forma: mapaFormaPagamento[p.tipo] ?? p.tipo, valor: p.valor })),
+      pagamentos: pagamentos.value.map(p => ({
+        forma: mapaFormaPagamento[p.tipo] ?? p.tipo,
+        valor: p.valor,
+        parcelas: p.parcelas ?? 1,
+        operadoraCartaoId: p.operadoraId ?? null,
+      })),
       cpfCnpjConsumidor: docValido ? docRaw : null,
     })
 
@@ -1283,8 +1481,15 @@ onMounted(async () => {
   atualizarHora()
   clockTimer = setInterval(atualizarHora, 30000)
   document.addEventListener('keydown', onKeydown, true)
-  await Promise.all([carregarColaboradores(), verificarSessaoCaixa(), carregarPromocoes()])
+  await Promise.all([carregarColaboradores(), verificarSessaoCaixa(), carregarPromocoes(), carregarOperadoras()])
 })
+
+async function carregarOperadoras() {
+  try {
+    const r = await api.get('/financeiro/operadoras-cartao', { params: { empresaId: auth.empresaId } })
+    operadoras.value = r.data ?? []
+  } catch { operadoras.value = [] }
+}
 onUnmounted(() => {
   clearInterval(clockTimer)
   document.removeEventListener('keydown', onKeydown, true)

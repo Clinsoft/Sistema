@@ -5,7 +5,8 @@ using Sistema.Domain.Vendas.Interfaces;
 
 namespace Sistema.Application.Vendas.Commands;
 
-public record PagamentoDto(string Forma, decimal Valor, int Parcelas = 1, string? Descricao = null);
+public record PagamentoDto(string Forma, decimal Valor, int Parcelas = 1,
+    string? Descricao = null, Guid? OperadoraCartaoId = null);
 
 public record FinalizarVendaCommand(
     Guid VendaId,
@@ -38,11 +39,13 @@ public class FinalizarVendaHandler(IVendaRepository repo, IUnitOfWork uow)
         foreach (var p in cmd.Pagamentos)
         {
             var forma = Enum.Parse<FormaPagamento>(p.Forma);
-            venda.AdicionarPagamento(forma, p.Valor, p.Parcelas, p.Descricao);
+            venda.AdicionarPagamento(forma, p.Valor, p.Parcelas, p.Descricao, p.OperadoraCartaoId);
         }
 
         venda.Finalizar();
-        repo.Atualizar(venda);
+        // A venda vem rastreada de ObterComItensAsync: o SaveChanges já detecta os
+        // pagamentos novos (INSERT) e as mudanças da venda. Chamar Update() aqui
+        // marcaria os filhos novos como Modified → UPDATE de 0 linhas (concorrência).
         await uow.SalvarAsync(ct);
 
         // NotaFiscalId preenchido pelo EmitirNFCeHandler após publicação do evento

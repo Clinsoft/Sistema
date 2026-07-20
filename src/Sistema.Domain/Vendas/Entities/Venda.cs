@@ -65,9 +65,10 @@ public class Venda : Entity
         RecalcularTotais();
     }
 
-    public void AdicionarPagamento(FormaPagamento forma, decimal valor, int parcelas = 1, string? descricao = null)
+    public void AdicionarPagamento(FormaPagamento forma, decimal valor, int parcelas = 1,
+        string? descricao = null, Guid? operadoraCartaoId = null)
     {
-        _pagamentos.Add(PagamentoVenda.Criar(Id, forma, valor, parcelas, descricao));
+        _pagamentos.Add(PagamentoVenda.Criar(Id, forma, valor, parcelas, descricao, operadoraCartaoId));
         TotalPago = _pagamentos.Sum(p => p.Valor);
         Troco = Math.Max(0, TotalPago - Total);
     }

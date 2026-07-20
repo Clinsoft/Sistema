@@ -9,12 +9,19 @@ public class PagamentoVenda : Entity
     public decimal Valor { get; private set; }
     public int Parcelas { get; private set; }
     public string? Descricao { get; private set; }
+    /// <summary>Operadora de cartão (para calcular taxa e gerar o recebível).</summary>
+    public Guid? OperadoraCartaoId { get; private set; }
 
     private PagamentoVenda() { }
 
     public static PagamentoVenda Criar(Guid vendaId, FormaPagamento forma, decimal valor,
-        int parcelas = 1, string? descricao = null)
-        => new() { VendaId = vendaId, Forma = forma, Valor = valor, Parcelas = parcelas, Descricao = descricao };
+        int parcelas = 1, string? descricao = null, Guid? operadoraCartaoId = null)
+        => new()
+        {
+            VendaId = vendaId, Forma = forma, Valor = valor,
+            Parcelas = parcelas < 1 ? 1 : parcelas, Descricao = descricao,
+            OperadoraCartaoId = operadoraCartaoId,
+        };
 }
 
 public enum FormaPagamento

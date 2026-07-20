@@ -81,7 +81,7 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim)
+                && x.v.DataHora >= inicio.Date && x.v.DataHora < fim.Date.AddDays(1))
             .GroupBy(x => new { x.i.ProdutoId, x.i.Descricao })
             .Select(g => new
             {

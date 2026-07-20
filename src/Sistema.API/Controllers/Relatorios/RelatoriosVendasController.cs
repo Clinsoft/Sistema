@@ -52,7 +52,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
     {
         var dias = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim
+                && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .GroupBy(v => v.DataHora.Date)
             .Select(g => new
@@ -117,7 +117,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
         var ranking = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && v.DataHora >= inicio && v.DataHora <= fim)
+                && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1))
             .GroupBy(v => v.UsuarioId)
             .Select(g => new
             {

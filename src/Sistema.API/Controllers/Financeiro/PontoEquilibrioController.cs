@@ -12,8 +12,8 @@ namespace Sistema.API.Controllers.Financeiro;
 public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>
-    /// Calcula o ponto de equilíbrio com base nos custos fixos cadastrados
-    /// e na margem de contribuição média das vendas do período.
+    /// Calcula o ponto de equilíbrio usando as CONTAS A PAGAR do mês como custos
+    /// fixos (obrigações do período) e a margem de contribuição média das vendas.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> Calcular([FromQuery] Guid empresaId,
@@ -24,11 +24,15 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var inicio = new DateTime(anoRef, mesRef, 1);
         var fim = inicio.AddMonths(1).AddDays(-1);
 
-        // Total de custos fixos mensais cadastrados
-        var custosFixos = await db.CustosFixos.AsNoTracking()
-            .Where(c => c.EmpresaId == empresaId && c.Ativo)
+        // Custos fixos = contas a pagar que vencem no mês (exceto canceladas).
+        var contasPagar = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.DataVencimento >= inicio && l.DataVencimento <= fim)
+            .Select(l => new { l.Categoria, l.ValorOriginal })
             .ToListAsync(ct);
-        var totalCustosFixos = custosFixos.Sum(c => c.Valor);
+        var totalCustosFixos = contasPagar.Sum(c => c.ValorOriginal);
 
         // Margem de contribuição por item vendido = PrecoUnitario - CustoUnitario
         var itens = await db.ItensVenda.AsNoTracking()
@@ -64,8 +68,8 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         {
             periodo = new { ano = anoRef, mes = mesRef },
             totalCustosFixos,
-            detalhesCustosFixos = custosFixos.GroupBy(c => c.Categoria ?? "Outros")
-                .Select(g => new { categoria = g.Key, total = g.Sum(x => x.Valor) }),
+            detalhesCustosFixos = contasPagar.GroupBy(c => c.Categoria ?? "Outros")
+                .Select(g => new { categoria = g.Key, total = g.Sum(x => x.ValorOriginal) }),
             receitaTotal,
             custoVariavelTotal,
             margemContribuicao,

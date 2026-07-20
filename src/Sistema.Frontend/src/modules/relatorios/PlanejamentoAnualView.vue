@@ -266,7 +266,9 @@ const gaugeCanvas = ref<HTMLCanvasElement>()
 
 const anoAtual = new Date().getFullYear()
 const mesAtual = new Date().getMonth() + 1
-const ano = ref(anoAtual)
+// Base = ano anterior, para que a PROJEÇÃO (ano base + 1) seja o ano atual —
+// assim o plano criado aqui é o mesmo que o Dashboard mostra (ano atual).
+const ano = ref(anoAtual - 1)
 const meta = ref(10)
 const carregando = ref(false)
 

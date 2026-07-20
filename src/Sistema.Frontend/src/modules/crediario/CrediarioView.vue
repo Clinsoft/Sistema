@@ -129,6 +129,8 @@
           </v-chip>
         </template>
         <template #item.acoes="{ item }">
+          <v-btn v-if="item.saldoDevedor > 0" icon="mdi-cash-check" size="x-small" variant="text"
+            color="success" @click="receberPagamento(item)" title="Receber pagamento (dar baixa)" />
           <v-btn icon="mdi-eye-outline" size="x-small" variant="text" color="primary"
             @click="abrirParcelas(item)" title="Ver parcelas" />
           <v-btn icon="mdi-file-document-outline" size="x-small" variant="text" color="secondary"
@@ -362,7 +364,7 @@ const headers = [
   { title: 'Saldo Devedor', key: 'saldoDevedor', width: 140 },
   { title: 'Parcelas', key: 'numeroParcelas', width: 90 },
   { title: 'Situação', key: 'inadimplente', width: 130 },
-  { title: '', key: 'acoes', sortable: false, width: 120 },
+  { title: '', key: 'acoes', sortable: false, width: 160 },
 ]
 
 const headersParcelas = [
@@ -378,7 +380,12 @@ const headersParcelas = [
 const diasMes = Array.from({ length: 28 }, (_, i) => i + 1)
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-const fmtData = (d?: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+// Aceita "yyyy-MM-dd" ou ISO com hora ("yyyy-MM-ddTHH:mm:ss"): usa só a parte da data.
+const fmtData = (d?: string) => {
+  if (!d) return '—'
+  const dt = new Date(String(d).slice(0, 10) + 'T12:00:00')
+  return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-BR')
+}
 const hoje = new Date().toISOString().slice(0, 10)
 
 function eVencida(parcela: any) {
@@ -424,6 +431,15 @@ async function abrirParcelas(crediario: any) {
     const r = await api.get(`/crediario/${crediario.id}/parcelas`)
     parcelas.value = r.data
   } catch { /* silencioso */ } finally { carregandoParcelas.value = false }
+}
+
+// Atalho: dar baixa direto na linha do crediário — abre as parcelas e já leva
+// para o recebimento da próxima parcela em aberto.
+async function receberPagamento(crediario: any) {
+  await abrirParcelas(crediario)
+  const proxima = parcelas.value.find((p: any) => p.status !== 'Paga' && p.status !== 'Cancelada')
+  if (proxima) abrirPagamento(proxima)
+  else notif.aviso('Não há parcelas em aberto para receber.')
 }
 
 function abrirPagamento(parcela: any) {

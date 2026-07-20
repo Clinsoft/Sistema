@@ -6,7 +6,7 @@
         <div class="text-caption text-medium-emphasis">Descontos, combos e campanhas promocionais</div>
       </div>
       <v-spacer />
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNova">Nova Promoção</v-btn>
+      <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" @click="abrirNova">Nova Promoção</v-btn>
     </div>
 
     <GuiaPassos
@@ -66,10 +66,12 @@
         <template #item.acoes="{ item }">
           <v-btn icon="mdi-image-multiple-outline" size="x-small" variant="text"
             color="purple" title="Ver / Gerar Artes" @click="abrirArtes(item)" />
-          <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" @click="editar(item)" />
-          <v-btn :icon="item.status === 'Ativa' ? 'mdi-pause' : 'mdi-play'" size="x-small" variant="text"
-            :color="item.status === 'Ativa' ? 'warning' : 'success'" @click="alternarStatus(item)" />
-          <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="excluir(item.id)" />
+          <template v-if="!ehAtendente">
+            <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" @click="editar(item)" />
+            <v-btn :icon="item.status === 'Ativa' ? 'mdi-pause' : 'mdi-play'" size="x-small" variant="text"
+              :color="item.status === 'Ativa' ? 'warning' : 'success'" @click="alternarStatus(item)" />
+            <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="excluir(item.id)" />
+          </template>
         </template>
       </v-data-table>
     </v-card>
@@ -301,6 +303,8 @@ import ArtePromoCanvas from './ArtePromoCanvas.vue'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+// Atendente só visualiza promoções (e pode gerar artes); não cria/edita/exclui.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const carregando = ref(false)
 const salvando = ref(false)

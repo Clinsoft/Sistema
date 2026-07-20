@@ -151,18 +151,24 @@
             <v-slider v-model="ecoCfg.marcaOpacidade" :min="0" :max="60" :step="1"
               density="compact" hide-details />
 
-            <v-divider class="my-3" />
-            <v-btn color="primary" variant="flat" block rounded="lg" :loading="salvandoEco"
-              prepend-icon="mdi-content-save" @click="salvarTemplateEco">
-              Salvar template
-            </v-btn>
-            <div class="d-flex align-center mt-2">
-              <span class="text-caption text-medium-emphasis">
-                Salvo no servidor: vira o padrão da loja em todos os computadores.
-              </span>
-              <v-spacer />
-              <v-btn size="x-small" variant="text" color="error"
-                @click="restaurarPadraoEco">Restaurar padrão</v-btn>
+            <template v-if="!ehAtendente">
+              <v-divider class="my-3" />
+              <v-btn color="primary" variant="flat" block rounded="lg" :loading="salvandoEco"
+                prepend-icon="mdi-content-save" @click="salvarTemplateEco">
+                Salvar template
+              </v-btn>
+              <div class="d-flex align-center mt-2">
+                <span class="text-caption text-medium-emphasis">
+                  Salvo no servidor: vira o padrão da loja em todos os computadores.
+                </span>
+                <v-spacer />
+                <v-btn size="x-small" variant="text" color="error"
+                  @click="restaurarPadraoEco">Restaurar padrão</v-btn>
+              </div>
+            </template>
+            <div v-else class="text-caption text-medium-emphasis mt-3">
+              <v-icon size="14">mdi-lock-outline</v-icon>
+              Você pode imprimir etiquetas de produtos, mas não editar o template padrão.
             </div>
           </template>
 
@@ -423,6 +429,8 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+// Atendente pode imprimir etiquetas de produto, mas não editar/salvar o template.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const buscaProdutoTexto = ref('')
 const buscando = ref(false)
 const sugestoes = ref<any[]>([])

@@ -17,7 +17,7 @@
       :passos="[
         'Clique em <b>Novo Colaborador</b> e informe os dados de funcionário (nome, CPF, cargo, salário, admissão). O <b>acesso ao sistema é opcional</b>.',
         'Quem só recebe salário fica <b>sem login</b> — e mesmo assim aparece como beneficiário no <b>Contas a Pagar</b>. Para dar acesso, ligue a chave <b>Acesso ao Sistema</b> e informe e-mail, senha e perfil.',
-        'O <b>perfil</b> (Administrador, Vendedor, Financeiro, Contador) define as permissões — a tabela mostra o que cada um pode ver, adicionar, editar e excluir.',
+        'O <b>perfil</b> (Administrador, Atendente, Financeiro, Contador) define as permissões — a tabela mostra o que cada um pode ver, adicionar, editar e excluir.',
         'Use ✎ para editar, 🔑 para <b>redefinir a senha</b> (só quem tem acesso) e 🚫/✅ para <b>desativar/reativar</b>. Apenas <b>Administradores</b> gerenciam colaboradores.',
       ]"
     />
@@ -322,7 +322,7 @@ const confirmarNovaSenha = ref('')
 const formPadrao = () => ({
   nome: '', cpf: '', telefone: '', cargo: '', salario: null as number | null,
   dataAdmissao: '', observacao: '', ehCliente: false,
-  darAcesso: false, email: '', senha: '', confirmarSenha: '', perfil: 'Vendedor',
+  darAcesso: false, email: '', senha: '', confirmarSenha: '', perfil: 'Atendente',
 })
 const form = ref(formPadrao())
 
@@ -340,18 +340,18 @@ const fmtSalario = (v: number | null) =>
 
 const perfis = [
   { title: 'Administrador', value: 'Administrador' },
-  { title: 'Vendedor', value: 'Vendedor' },
+  { title: 'Atendente', value: 'Atendente' },
   { title: 'Financeiro', value: 'Financeiro' },
   { title: 'Contador', value: 'Contador' },
 ]
 
 function corPerfil(p: string) {
-  return { Administrador: 'error', Vendedor: 'primary', Financeiro: 'success', Contador: 'warning' }[p] ?? 'default'
+  return { Administrador: 'error', Atendente: 'primary', Financeiro: 'success', Contador: 'warning' }[p] ?? 'default'
 }
 function iconePerfil(p: string) {
   return {
     Administrador: 'mdi-shield-crown-outline',
-    Vendedor: 'mdi-cash-register',
+    Atendente: 'mdi-cash-register',
     Financeiro: 'mdi-currency-usd',
     Contador: 'mdi-calculator-variant-outline',
   }[p] ?? 'mdi-account-outline'
@@ -359,7 +359,7 @@ function iconePerfil(p: string) {
 function descricaoPerfil(p: string) {
   return {
     Administrador: 'Acesso total ao sistema: cadastros, vendas, estoque, financeiro, fiscal e configurações.',
-    Vendedor: 'Acesso ao PDV, histórico de vendas e consulta de produtos. Sem acesso a financeiro e configurações.',
+    Atendente: 'PDV/Vendas, Clientes, Etiquetas (só produtos), Controle de Validade e Marketing (Artes, Clube e Promoções). Sem acesso a financeiro, fiscal, estoque, configurações e templates.',
     Financeiro: 'Acesso ao módulo financeiro (contas, DRE, fluxo de caixa) e relatórios. Sem acesso ao PDV.',
     Contador: 'Acesso exclusivo ao Painel do Contador: XMLs, resumo fiscal e dados da empresa.',
   }[p] ?? ''
@@ -383,15 +383,15 @@ const matrizPermissoes: Record<string, PermModulo[]> = {
     { modulo: 'Configurações e Empresa',  ver: T, adicionar: T, editar: T, excluir: T },
     { modulo: 'Colaboradores / Usuários', ver: T, adicionar: T, editar: T, excluir: T },
   ],
-  Vendedor: [
-    { modulo: 'PDV / Vendas',            ver: T, adicionar: T, editar: T, excluir: F },
-    { modulo: 'Cadastros (clientes, produtos…)', ver: T, adicionar: T, editar: T, excluir: F },
-    { modulo: 'Estoque e Compras',       ver: T, adicionar: F, editar: F, excluir: F },
-    { modulo: 'Financeiro (contas, DRE)', ver: F, adicionar: F, editar: F, excluir: F },
-    { modulo: 'Fiscal (NF-e, SPED)',      ver: F, adicionar: F, editar: F, excluir: F },
-    { modulo: 'Contabilidade',            ver: F, adicionar: F, editar: F, excluir: F },
-    { modulo: 'Configurações e Empresa',  ver: F, adicionar: F, editar: F, excluir: F },
-    { modulo: 'Colaboradores / Usuários', ver: F, adicionar: F, editar: F, excluir: F },
+  Atendente: [
+    { modulo: 'PDV / Vendas',               ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Clientes',                   ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Etiquetas (só produtos)',    ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Controle de Validade',       ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Marketing — Artes',          ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Marketing — Clube (s/ config)', ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Marketing — Promoções',      ver: T, adicionar: T, editar: T, excluir: F },
+    { modulo: 'Demais módulos',             ver: F, adicionar: F, editar: F, excluir: F },
   ],
   Financeiro: [
     { modulo: 'PDV / Vendas',            ver: T, adicionar: F, editar: F, excluir: F },
@@ -444,7 +444,7 @@ function abrirEdicao(item: Colaborador) {
     cargo: item.cargo ?? '', salario: item.salario, dataAdmissao: item.dataAdmissao?.slice(0, 10) ?? '',
     observacao: item.observacao ?? '', ehCliente: item.ehCliente,
     darAcesso: item.temAcesso, email: item.email ?? '', senha: '', confirmarSenha: '',
-    perfil: item.perfil ?? 'Vendedor',
+    perfil: item.perfil ?? 'Atendente',
   }
   mostrarSenha.value = false
   dialogForm.value = true

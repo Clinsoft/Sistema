@@ -30,7 +30,7 @@
         <v-list density="compact" nav open-strategy="multiple">
 
           <!-- 1. Dashboard -->
-          <v-list-item prepend-icon="mdi-view-dashboard-outline" title="Dashboard"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-view-dashboard-outline" title="Dashboard"
             to="/" value="/" color="primary" rounded="lg" />
 
           <!-- 2. PDV / Vendas -->
@@ -45,7 +45,7 @@
               to="/pdv/vendas" value="/pdv/vendas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-cash-lock-open" title="Sessões de Caixa"
               to="/pdv/sessoes" value="/pdv/sessoes" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-keyboard-return" title="Devoluções"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-keyboard-return" title="Devoluções"
               to="/pdv/devolucoes" value="/pdv/devolucoes" color="warning" rounded="lg" class="pl-4" />
           </v-list-group>
 
@@ -55,24 +55,24 @@
               <v-list-item v-bind="props" prepend-icon="mdi-account-group-outline"
                 title="Cadastros" color="primary" rounded="lg" />
             </template>
-            <v-list-item prepend-icon="mdi-tag-multiple-outline" title="Categorias"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tag-multiple-outline" title="Categorias"
               to="/cadastros/categorias" value="/cadastros/categorias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-account-group-outline" title="Clientes"
               to="/cadastros/clientes" value="/cadastros/clientes" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-account-tie-outline" title="Colaboradores"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-account-tie-outline" title="Colaboradores"
               to="/cadastros/colaboradores" value="/cadastros/colaboradores" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"
               to="/cadastros/fornecedores" value="/cadastros/fornecedores" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-warehouse" title="Locais de Estoque"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-warehouse" title="Locais de Estoque"
               to="/cadastros/locais-estoque" value="/cadastros/locais-estoque" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-package-variant-closed" title="Produtos"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Produtos"
               to="/estoque/produtos" value="/estoque/produtos" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-ruler-square" title="Unidades de Medida"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-ruler-square" title="Unidades de Medida"
               to="/cadastros/unidades-medida" value="/cadastros/unidades-medida" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
           <!-- 4. Financeiro -->
-          <v-list-group value="financeiro">
+          <v-list-group v-if="!ehAtendente" value="financeiro">
             <template #activator="{ props }">
               <v-list-item v-bind="props" prepend-icon="mdi-currency-usd"
                 title="Financeiro" color="primary" rounded="lg" />
@@ -96,17 +96,17 @@
           </v-list-group>
 
           <!-- 5. Relatórios -->
-          <v-list-item prepend-icon="mdi-chart-bar" title="Relatórios"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-chart-bar" title="Relatórios"
             to="/relatorios" value="/relatorios" color="primary" rounded="lg" />
 
           <!-- Restante em ordem alfabética -->
-          <v-list-item prepend-icon="mdi-book-open-outline" title="Contabilidade"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"
             to="/contabilidade" value="/contabilidade" color="primary" rounded="lg" />
 
-          <v-list-item prepend-icon="mdi-truck-delivery-outline" title="Compras"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Compras"
             to="/compras" value="/compras" color="primary" rounded="lg" />
 
-          <v-list-item prepend-icon="mdi-account-multiple-outline" title="Crediário"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-account-multiple-outline" title="Crediário"
             to="/crediario" value="/crediario" color="primary" rounded="lg" />
 
           <!-- Estoque (sem Produtos) -->
@@ -115,29 +115,29 @@
               <v-list-item v-bind="props" prepend-icon="mdi-package-variant-closed"
                 title="Estoque" color="primary" rounded="lg" />
             </template>
-            <v-list-item prepend-icon="mdi-view-dashboard" title="Painel Estoque"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-view-dashboard" title="Painel Estoque"
               to="/estoque" value="/estoque" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-swap-horizontal" title="Movimentações"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-swap-horizontal" title="Movimentações"
               to="/estoque/movimentacoes" value="/estoque/movimentacoes" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-list-status" title="Posição de Estoque"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-list-status" title="Posição de Estoque"
               to="/estoque/posicao" value="/estoque/posicao" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-transfer" title="Transferências"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-transfer" title="Transferências"
               to="/estoque/transferencias" value="/estoque/transferencias" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-tune-vertical" title="Ajuste de Estoque"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tune-vertical" title="Ajuste de Estoque"
               to="/estoque/ajuste" value="/estoque/ajuste" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tag-outline" title="Etiquetas"
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"
               to="/estoque/materiais" value="/estoque/materiais" color="teal" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-desktop-classic" title="Ativo Imobilizado"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-desktop-classic" title="Ativo Imobilizado"
               to="/estoque/ativos" value="/estoque/ativos" color="indigo" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-currency-usd" title="Alterar Preços"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-currency-usd" title="Alterar Preços"
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-item prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
             to="/fiscal" value="/fiscal" color="primary" rounded="lg" />
 
           <v-list-group value="marketing">
@@ -153,7 +153,7 @@
               to="/marketing/promocoes" value="/marketing/promocoes" color="error" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-item prepend-icon="mdi-whatsapp" title="WhatsApp"
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-whatsapp" title="WhatsApp"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />
 
         </v-list>
@@ -161,9 +161,9 @@
         <template #append>
           <v-divider />
           <v-list density="compact" nav class="pb-2">
-            <v-list-item prepend-icon="mdi-cog-outline" title="Configurações"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-cog-outline" title="Configurações"
               to="/configuracoes" color="primary" rounded="lg" />
-            <v-list-item prepend-icon="mdi-store-outline" title="Filiais / Unidades"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-store-outline" title="Filiais / Unidades"
               to="/configuracoes/filiais" color="primary" rounded="lg" />
             <v-list-item prepend-icon="mdi-logout" title="Sair"
               @click="auth.sair()" color="error" rounded="lg" />
@@ -275,6 +275,9 @@ const rail = ref(false)
 const tema = ref<'ecoGranelLight' | 'ecoGranelDark'>('ecoGranelLight')
 
 const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel')
+
+// Perfil "Atendente" só enxerga um conjunto reduzido de telas no menu.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).
 const pdvFullscreen = computed(() => mobile.value && route.path === '/pdv')
 

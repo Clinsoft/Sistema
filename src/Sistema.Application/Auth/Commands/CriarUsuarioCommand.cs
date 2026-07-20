@@ -11,7 +11,7 @@ public record CriarUsuarioCommand(
 
 public class CriarUsuarioValidator : AbstractValidator<CriarUsuarioCommand>
 {
-    private static readonly string[] PerfisValidos = ["Administrador", "Vendedor", "Financeiro", "Contador"];
+    private static readonly string[] PerfisValidos = ["Administrador", "Atendente", "Financeiro", "Contador"];
 
     public CriarUsuarioValidator()
     {
@@ -19,7 +19,7 @@ public class CriarUsuarioValidator : AbstractValidator<CriarUsuarioCommand>
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
         RuleFor(x => x.Senha).NotEmpty().MinimumLength(6);
         RuleFor(x => x.Perfil).Must(p => PerfisValidos.Contains(p))
-            .WithMessage("Perfil inválido. Use: Administrador, Vendedor, Financeiro ou Contador.");
+            .WithMessage("Perfil inválido. Use: Administrador, Atendente, Financeiro ou Contador.");
     }
 }
 

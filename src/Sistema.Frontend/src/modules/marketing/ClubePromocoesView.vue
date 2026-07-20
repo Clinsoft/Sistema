@@ -6,7 +6,7 @@
         <div class="text-caption text-medium-emphasis">Programa de fidelidade com cashback e benefícios exclusivos</div>
       </div>
       <v-spacer />
-      <v-btn color="primary" prepend-icon="mdi-cog-outline" variant="tonal" class="mr-2" @click="dialogConfig = true">
+      <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-cog-outline" variant="tonal" class="mr-2" @click="dialogConfig = true">
         Configurações
       </v-btn>
       <v-btn color="success" prepend-icon="mdi-account-plus" @click="abrirNovoMembro">
@@ -296,6 +296,8 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+// Atendente usa o Clube (membros/cashback), mas não altera as configurações.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const tab = ref('membros')
 const carregando = ref(false)

@@ -145,9 +145,22 @@ const router = createRouter({
   ]
 })
 
+// Rotas que o perfil "Atendente" pode acessar (o resto é bloqueado por URL também).
+const ROTAS_ATENDENTE = [
+  '/pdv', '/pdv/vendas', '/pdv/sessoes',
+  '/cadastros/clientes',
+  '/estoque/etiquetas', '/estoque/validade',
+  '/marketing', '/marketing/clube', '/marketing/promocoes',
+]
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!to.meta.publica && !auth.logado) return '/login'
+  // Atendente: se tentar abrir uma tela fora do permitido, manda para o PDV.
+  if (auth.logado && auth.usuario?.role === 'Atendente'
+      && !to.meta.publica && !ROTAS_ATENDENTE.includes(to.path)) {
+    return '/pdv'
+  }
 })
 
 export default router

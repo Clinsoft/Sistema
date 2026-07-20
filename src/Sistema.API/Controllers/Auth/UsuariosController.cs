@@ -18,7 +18,7 @@ namespace Sistema.API.Controllers.Auth;
 [Authorize(Roles = "Administrador")]
 public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IUnitOfWork uow) : ControllerBase
 {
-    private static readonly string[] PerfisValidos = ["Administrador", "Vendedor", "Financeiro", "Contador"];
+    private static readonly string[] PerfisValidos = ["Administrador", "Atendente", "Financeiro", "Contador"];
 
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId, CancellationToken ct)
@@ -147,7 +147,7 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
         if (string.IsNullOrWhiteSpace(acesso.Senha) || acesso.Senha.Length < 6)
             return "A senha deve ter ao menos 6 caracteres.";
         if (!PerfisValidos.Contains(acesso.Perfil))
-            return "Perfil inválido. Use: Administrador, Vendedor, Financeiro ou Contador.";
+            return "Perfil inválido. Use: Administrador, Atendente, Financeiro ou Contador.";
 
         var emailEmUso = await db.Usuarios.AsNoTracking().AnyAsync(u =>
             u.EmpresaId == empresaId && u.Email == acesso.Email && u.Id != ignorarId, ct);

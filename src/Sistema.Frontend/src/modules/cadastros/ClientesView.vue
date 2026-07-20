@@ -37,9 +37,9 @@
             @click="abrirEdicao(item)" title="Editar" />
           <v-btn icon="mdi-history" size="x-small" variant="text" color="info"
             @click="verHistorico(item)" title="Histórico de compras" />
-          <v-btn v-if="item.ativo" icon="mdi-account-cancel-outline" size="x-small" variant="text" color="error"
+          <v-btn v-if="item.ativo && !ehAtendente" icon="mdi-account-cancel-outline" size="x-small" variant="text" color="error"
             @click="inativar(item)" title="Inativar cliente" />
-          <v-btn v-else icon="mdi-account-check-outline" size="x-small" variant="text" color="success"
+          <v-btn v-else-if="!item.ativo && !ehAtendente" icon="mdi-account-check-outline" size="x-small" variant="text" color="success"
             @click="reativar(item)" title="Reativar cliente" />
         </template>
       </v-data-table>
@@ -177,13 +177,15 @@
 </template>
 <script setup lang="ts">
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import { cnpjRaw, maskCpfCnpj } from '@/utils/documento'
 
 const auth = useAuthStore(); const notif = useNotifStore()
+// Atendente pode ver/adicionar/editar cliente, mas não inativar/reativar.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const carregando = ref(false); const salvando = ref(false); const buscandoCep = ref(false)
 const buscandoDoc = ref(false)
 const docStatus = ref<'idle'|'ok'|'erro'>('idle')

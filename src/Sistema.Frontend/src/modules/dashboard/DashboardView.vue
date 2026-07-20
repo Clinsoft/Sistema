@@ -92,9 +92,12 @@
           </v-card-text>
         </v-card>
       </v-col>
+    </v-row>
 
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
+    <!-- Curva ABC + Contas a Pagar do dia -->
+    <v-row class="mt-2">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-2 font-weight-bold d-flex align-center flex-wrap">
             <v-icon icon="mdi-chart-bar-stacked" class="mr-2" color="deep-orange" size="18" />
             Curva ABC de Produtos
@@ -122,11 +125,78 @@
           </v-card-text>
         </v-card>
       </v-col>
+
+      <!-- Contas a Pagar — Agenda do mês -->
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="error" />
+            Contas a Pagar — {{ mesAtual }}
+            <v-spacer />
+            <v-chip v-if="totalMesPagar > 0" color="error" size="small" label>{{ fmt(totalMesPagar) }}</v-chip>
+          </v-card-title>
+
+          <v-card-text class="pt-1">
+            <div v-if="carregandoCP" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="error" />
+            </div>
+            <template v-else>
+              <div class="dash-cal-head">
+                <span v-for="(d, i) in ['D','S','T','Q','Q','S','S']" :key="i">{{ d }}</span>
+              </div>
+              <div class="dash-cal-grid">
+                <div v-for="(cel, i) in celasCalendario" :key="i" class="dash-cal-cell"
+                  :class="{
+                    'dash-cal-empty': !cel.dia,
+                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-tem': cel.total > 0,
+                    'dash-cal-venc': cel.vencido,
+                    'dash-cal-sel': cel.dia === diaSelecionado && cel.total > 0,
+                  }"
+                  @click="cel.total > 0 && (diaSelecionado = cel.dia)">
+                  <template v-if="cel.dia">
+                    <div class="dash-cal-num">{{ cel.dia }}</div>
+                    <div v-if="cel.total > 0" class="dash-cal-val">{{ fmtMil(cel.total) }}</div>
+                  </template>
+                </div>
+              </div>
+
+              <div v-if="contasDoDia.length" class="mt-2">
+                <div class="text-caption font-weight-bold mb-1">
+                  {{ String(diaSelecionado).padStart(2, '0') }}/{{ String(mesNum).padStart(2, '0') }} —
+                  {{ contasDoDia.length }} conta(s)
+                </div>
+                <v-list density="compact" class="pa-0" style="max-height: 120px; overflow-y: auto">
+                  <v-list-item v-for="c in contasDoDia" :key="c.id" class="px-2" min-height="34">
+                    <template #prepend>
+                      <v-icon :icon="c.vencido ? 'mdi-alert-circle' : 'mdi-clock-outline'"
+                        :color="c.vencido ? 'error' : 'warning'" size="16" class="mr-1" />
+                    </template>
+                    <v-list-item-title class="text-caption">{{ c.descricao }}</v-list-item-title>
+                    <template #append>
+                      <span class="text-caption font-weight-bold text-error">{{ fmt(c.saldo) }}</span>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </div>
+              <div v-else class="text-caption text-medium-emphasis text-center mt-2">
+                Toque num dia com valor para ver as contas. Nada a pagar em {{ String(diaSelecionado).padStart(2,'0') }}/{{ String(mesNum).padStart(2,'0') }}.
+              </div>
+            </template>
+          </v-card-text>
+
+          <v-card-actions class="pa-2 pt-0">
+            <v-btn variant="text" size="small" color="error" to="/financeiro/contas-pagar" append-icon="mdi-arrow-right">
+              Ver todas
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
     </v-row>
 
-    <!-- Ponto de Equilíbrio + Contas a Pagar do dia -->
+    <!-- Ponto de Equilíbrio -->
     <v-row class="mt-2">
-      <v-col cols="12" md="7">
+      <v-col cols="12">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
@@ -196,55 +266,6 @@
         </v-card>
       </v-col>
 
-      <!-- Contas a Pagar do dia -->
-      <v-col cols="12" md="5">
-        <v-card rounded="xl" elevation="1" height="100%">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-calendar-today" class="mr-2" color="error" />
-            Contas a Pagar — Hoje
-            <v-spacer />
-            <v-chip v-if="contasPagarHoje.length" color="error" size="small" label>
-              {{ fmt(totalPagarHoje) }}
-            </v-chip>
-          </v-card-title>
-
-          <v-card-text v-if="carregandoCP" class="d-flex justify-center pa-6">
-            <v-progress-circular indeterminate color="error" />
-          </v-card-text>
-
-          <div v-else-if="contasPagarHoje.length === 0" class="text-center text-medium-emphasis pa-6">
-            <v-icon icon="mdi-check-circle-outline" color="success" size="36" class="mb-2" />
-            <div class="text-body-2">Nenhuma conta vence hoje.</div>
-          </div>
-
-          <v-list v-else density="compact" class="pa-2" style="max-height: 260px; overflow-y: auto">
-            <v-list-item v-for="c in contasPagarHoje" :key="c.id" rounded="lg" class="mb-1">
-              <template #prepend>
-                <v-icon
-                  :icon="c.status === 'Pago' ? 'mdi-check-circle' : c.vencido ? 'mdi-alert-circle' : 'mdi-clock-outline'"
-                  :color="c.status === 'Pago' ? 'success' : c.vencido ? 'error' : 'warning'"
-                  size="20" class="mr-2"
-                />
-              </template>
-              <v-list-item-title class="text-body-2">{{ c.descricao }}</v-list-item-title>
-              <v-list-item-subtitle class="text-caption">
-                {{ c.totalParcelas > 1 ? `${c.parcela}/${c.totalParcelas} · ` : '' }}{{ fmtData(c.dataVencimento) }}
-              </v-list-item-subtitle>
-              <template #append>
-                <span class="text-body-2 font-weight-bold" :class="c.status === 'Pago' ? 'text-success' : 'text-error'">
-                  {{ fmt(c.saldo) }}
-                </span>
-              </template>
-            </v-list-item>
-          </v-list>
-
-          <v-card-actions class="pa-2 pt-0">
-            <v-btn variant="text" size="small" color="error" to="/financeiro/contas-pagar" append-icon="mdi-arrow-right">
-              Ver todas
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-col>
     </v-row>
 
     <!-- Planejamento + Vendas por Colaborador -->
@@ -604,26 +625,67 @@ function renderizarGraficoPe() {
   })
 }
 
-// ── Contas a Pagar do Dia ────────────────────────────────────────────────────
+// ── Contas a Pagar — Agenda do mês ───────────────────────────────────────────
 interface ContaPagar {
   id: string; descricao: string; saldo: number; dataVencimento: string
   status: string; parcela: number; totalParcelas: number; vencido: boolean
 }
-const contasPagarHoje = ref<ContaPagar[]>([])
+const contasMes = ref<ContaPagar[]>([])
 const carregandoCP = ref(true)
-const totalPagarHoje = computed(() =>
-  contasPagarHoje.value.filter(c => c.status !== 'Pago').reduce((s, c) => s + c.saldo, 0)
-)
 
-async function carregarContasPagarHoje() {
+const anoRef = new Date().getFullYear()
+const mesRef = new Date().getMonth()          // 0-based
+const mesNum = mesRef + 1
+const diaHoje = new Date().getDate()
+const diaSelecionado = ref(diaHoje)
+
+const fmtMil = (v: number) =>
+  v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(v).toString()
+
+const totalMesPagar = computed(() => contasMes.value.reduce((s, c) => s + c.saldo, 0))
+
+// Agrupa por dia do mês { dia: { total, vencido, itens } }
+const contasPorDia = computed(() => {
+  const map: Record<number, { total: number; vencido: boolean; itens: ContaPagar[] }> = {}
+  for (const c of contasMes.value) {
+    const d = new Date(String(c.dataVencimento).slice(0, 10) + 'T12:00:00')
+    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    const dia = d.getDate()
+    if (!map[dia]) map[dia] = { total: 0, vencido: false, itens: [] }
+    map[dia].total += c.saldo
+    map[dia].itens.push(c)
+    if (c.vencido) map[dia].vencido = true
+  }
+  return map
+})
+
+// Células do calendário (com espaços em branco antes do 1º dia)
+const celasCalendario = computed(() => {
+  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()   // 0=Dom
+  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const cells: { dia: number | null; total: number; vencido: boolean }[] = []
+  for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0, vencido: false })
+  for (let d = 1; d <= diasNoMes; d++) {
+    const info = contasPorDia.value[d]
+    cells.push({ dia: d, total: info?.total ?? 0, vencido: info?.vencido ?? false })
+  }
+  return cells
+})
+
+const contasDoDia = computed(() => contasPorDia.value[diaSelecionado.value]?.itens ?? [])
+
+async function carregarContasMes() {
   if (!auth.empresaId) { carregandoCP.value = false; return }
+  carregandoCP.value = true
   try {
-    const hoje = new Date().toISOString().slice(0, 10)
+    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<ContaPagar[]>('/contas-pagar', {
-      params: { empresaId: auth.empresaId, inicio: hoje, fim: hoje }
+      params: { empresaId: auth.empresaId, inicio, fim }
     })
-    contasPagarHoje.value = res.data
-  } catch { contasPagarHoje.value = [] } finally { carregandoCP.value = false }
+    // Só o que ainda falta pagar (em aberto / parcial), não cancelado nem quitado.
+    contasMes.value = (res.data ?? []).filter(c => c.status !== 'Pago' && c.status !== 'Cancelado')
+  } catch { contasMes.value = [] } finally { carregandoCP.value = false }
 }
 
 // ── Vendas por Colaborador ───────────────────────────────────────────────────
@@ -877,34 +939,45 @@ function renderizarCurvaAbc() {
   const canvas = abcCanvas.value
   if (!canvas || !curvaAbc.value.length) return
   const ctx = canvas.getContext('2d'); if (!ctx) return
-  // Mostra os 12 primeiros para não poluir
-  const dados = curvaAbc.value.slice(0, 12)
-  const W = canvas.offsetWidth || 800, H = 150
+  const dados = curvaAbc.value.slice(0, 15)
+  const W = canvas.offsetWidth || 800, H = 175
   canvas.width = W; canvas.height = H
   ctx.clearRect(0, 0, W, H)
-  const padL = 8, padR = 8, padT = 12, padB = 30
+  const padL = 8, padR = 8, padT = 18, padB = 34
   const areaW = W - padL - padR, areaH = H - padT - padB
   const maxPart = Math.max(...dados.map(d => d.participacao), 1)
-  const barW = Math.floor(areaW / dados.length) - 6
   const corCurva = (c: string) => c === 'A' ? '#4caf50' : c === 'B' ? '#ff9800' : '#ef5350'
 
+  // Largura da barra limitada (não estica quando há poucos produtos); o conjunto
+  // é centralizado para não ficar tudo amontoado num canto.
+  const slot = Math.min(areaW / dados.length, 130)
+  const barW = Math.min(slot - 16, 64)
+  const offsetX = padL + (areaW - slot * dados.length) / 2
+
+  const cx = (i: number) => offsetX + slot * (i + 0.5)
+  const py = (v: number) => padT + areaH - (v / 100) * areaH
+
   dados.forEach((d, i) => {
-    const x = padL + i * (areaW / dados.length) + 3
-    const bh = Math.round((d.participacao / maxPart) * areaH)
+    const x = cx(i)
+    const bh = Math.max(3, Math.round((d.participacao / maxPart) * areaH))
     ctx.fillStyle = corCurva(d.curva)
-    ctx.beginPath(); ctx.roundRect(x, padT + areaH - bh, barW, bh, [3, 3, 0, 0]); ctx.fill()
-    ctx.fillStyle = '#9e9e9e'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
-    const nome = d.descricao.length > 10 ? d.descricao.slice(0, 9) + '…' : d.descricao
-    ctx.save(); ctx.translate(x + barW / 2, H - 4); ctx.rotate(-Math.PI / 9); ctx.fillText(nome, 0, 0); ctx.restore()
+    ctx.beginPath(); ctx.roundRect(x - barW / 2, padT + areaH - bh, barW, bh, [4, 4, 0, 0]); ctx.fill()
+    // % de participação em cima da barra
+    ctx.fillStyle = '#616161'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(Math.round(d.participacao) + '%', x, padT + areaH - bh - 6)
+    // nome do produto embaixo
+    ctx.fillStyle = '#9e9e9e'; ctx.font = '10px sans-serif'
+    const nome = d.descricao.length > 16 ? d.descricao.slice(0, 15) + '…' : d.descricao
+    ctx.fillText(nome, x, H - 8)
   })
 
-  // Linha de % acumulado (Pareto)
-  const px = (i: number) => padL + i * (areaW / dados.length) + (areaW / dados.length) / 2
-  const py = (v: number) => padT + areaH - (v / 100) * areaH
-  ctx.strokeStyle = '#5c6bc0'; ctx.lineWidth = 2; ctx.beginPath()
-  dados.forEach((d, i) => i === 0 ? ctx.moveTo(px(i), py(d.participacaoAcumulada)) : ctx.lineTo(px(i), py(d.participacaoAcumulada)))
-  ctx.stroke()
-  dados.forEach((d, i) => { ctx.fillStyle = '#5c6bc0'; ctx.beginPath(); ctx.arc(px(i), py(d.participacaoAcumulada), 2.5, 0, Math.PI * 2); ctx.fill() })
+  // Linha de % acumulado (Pareto) — só desenha com 2+ produtos
+  if (dados.length >= 2) {
+    ctx.strokeStyle = '#5c6bc0'; ctx.lineWidth = 2; ctx.beginPath()
+    dados.forEach((d, i) => i === 0 ? ctx.moveTo(cx(i), py(d.participacaoAcumulada)) : ctx.lineTo(cx(i), py(d.participacaoAcumulada)))
+    ctx.stroke()
+    dados.forEach((d, i) => { ctx.fillStyle = '#5c6bc0'; ctx.beginPath(); ctx.arc(cx(i), py(d.participacaoAcumulada), 2.5, 0, Math.PI * 2); ctx.fill() })
+  }
 }
 
 onMounted(async () => {
@@ -912,7 +985,7 @@ onMounted(async () => {
     carregarResumo(),
     carregarVendas7dias(),
     carregarPe(),
-    carregarContasPagarHoje(),
+    carregarContasMes(),
     carregarVendasColaborador(),
     carregarDre(),
     carregarPlanejamento(),
@@ -920,3 +993,25 @@ onMounted(async () => {
   ])
 })
 </script>
+
+<style scoped>
+.dash-cal-head {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  font-size: 10px; font-weight: 700; color: #9e9e9e; text-align: center; margin-bottom: 4px;
+}
+.dash-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dash-cal-cell {
+  aspect-ratio: 1 / 0.82; border-radius: 8px; border: 1px solid #eef0f3;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 2px; position: relative;
+}
+.dash-cal-empty { border: none; }
+.dash-cal-num { font-size: 11px; color: #616161; line-height: 1; }
+.dash-cal-val { font-size: 10px; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #f57c00; }
+.dash-cal-tem { background: #fff8e1; border-color: #ffe0b2; cursor: pointer; }
+.dash-cal-venc { background: #ffebee; border-color: #ffcdd2; }
+.dash-cal-venc .dash-cal-val { color: #e53935; }
+.dash-cal-hoje { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }
+.dash-cal-hoje .dash-cal-num { font-weight: 800; color: rgb(var(--v-theme-primary)); }
+.dash-cal-sel { box-shadow: 0 0 0 2px #e53935 inset; }
+</style>

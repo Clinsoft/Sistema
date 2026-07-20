@@ -107,6 +107,18 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        // Todas as entidades geram o Id no domínio (Entity: Id = Guid.NewGuid()).
+        // Sem isto, o EF trata a chave Guid preenchida como "registro existente" e,
+        // ao adicionar um filho novo a uma coleção rastreada (ex.: item de venda),
+        // marca-o como Modified → UPDATE de 0 linhas (DbUpdateConcurrencyException).
+        foreach (var entity in modelBuilder.Model.GetEntityTypes())
+        {
+            var id = entity.FindProperty("Id");
+            if (id is not null && id.ClrType == typeof(Guid) && entity.FindPrimaryKey()?.Properties.Count == 1)
+                id.ValueGenerated = Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never;
+        }
+
         base.OnModelCreating(modelBuilder);
     }
 

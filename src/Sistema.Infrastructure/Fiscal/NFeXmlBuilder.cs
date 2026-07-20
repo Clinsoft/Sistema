@@ -33,9 +33,25 @@ public static class NFeXmlBuilder
         string? informacoesAdicionais = null)
     {
         var chave44 = CalcularChaveAcesso(nota, empresa, config);
-        var xml = ConstruirNFe(nota, empresa, config, chave44, pagamentos, informacoesAdicionais);
-        var xmlAssinado = Assinar(xml, chave44, config);
+        var xmlAssinado = GerarXmlAssinadoComChave(nota, empresa, config, chave44, pagamentos, informacoesAdicionais);
         return (xmlAssinado, chave44);
+    }
+
+    /// <summary>
+    /// Assina o XML usando uma chave JÁ calculada. Necessário para a NFC-e, onde o
+    /// QR Code precisa conter a mesma chave do XML — como CalcularChaveAcesso sorteia
+    /// o cNF, a chave tem de ser calculada uma única vez e reaproveitada aqui.
+    /// </summary>
+    public static string GerarXmlAssinadoComChave(
+        NotaFiscal nota,
+        Empresa empresa,
+        ConfiguracaoFiscal config,
+        string chave44,
+        IReadOnlyList<(string TPag, decimal VPag)> pagamentos,
+        string? informacoesAdicionais = null)
+    {
+        var xml = ConstruirNFe(nota, empresa, config, chave44, pagamentos, informacoesAdicionais);
+        return Assinar(xml, chave44, config);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -225,8 +241,16 @@ public static class NFeXmlBuilder
         w.WriteEndElement(); // dest
     }
 
+    // Descrição obrigatória do 1º item em homologação (a SEFAZ rejeita a nota se
+    // vier qualquer outra descrição no primeiro item quando tpAmb=2).
+    private const string XProdHomologacao =
+        "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL";
+
     private static void EscreverItens(XmlWriter w, NotaFiscal nota, ConfiguracaoFiscal config)
     {
+        var homologacao = config.Ambiente == AmbienteFiscal.Homologacao;
+        var primeiro = true;
+
         foreach (var item in nota.Itens)
         {
             w.WriteStartElement("det");
@@ -236,7 +260,12 @@ public static class NFeXmlBuilder
             w.WriteStartElement("prod");
             w.WriteElementString("cProd",    item.Codigo[..Math.Min(60, item.Codigo.Length)]);
             w.WriteElementString("cEAN",     "SEM GTIN");
-            w.WriteElementString("xProd",    item.Descricao[..Math.Min(120, item.Descricao.Length)]);
+            // Em homologação, o 1º item leva a frase obrigatória; os demais, a descrição real.
+            var xProd = homologacao && primeiro
+                ? XProdHomologacao
+                : item.Descricao[..Math.Min(120, item.Descricao.Length)];
+            w.WriteElementString("xProd",    xProd);
+            primeiro = false;
             w.WriteElementString("NCM",      ApenasDigitos(item.Ncm ?? "00000000").PadLeft(8, '0')[..8]);
             if (!string.IsNullOrWhiteSpace(item.Cest))
                 w.WriteElementString("CEST", ApenasDigitos(item.Cest).PadLeft(7, '0')[..7]);

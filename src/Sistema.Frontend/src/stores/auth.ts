@@ -27,14 +27,24 @@ export const useAuthStore = defineStore('auth', () => {
   const temFiliais = computed(() => filiais.value.length > 1)
 
   async function login(email: string, senha: string) {
-    const res = await api.post<{ token: string; usuario: Usuario; empresaId: string }>(
-      '/auth/login', { email, senha }
-    )
+    // O backend responde achatado: { token, nome, perfil, expiracao, empresaId, usuarioId }.
+    // Montamos o objeto `usuario` a partir daí — antes o código lia res.data.usuario
+    // (inexistente), então auth.usuario.id ficava undefined e caixa/vendas iam sem usuário.
+    const res = await api.post<{
+      token: string; nome: string; perfil: string; empresaId: string; usuarioId: string
+    }>('/auth/login', { email, senha })
+
+    const u: Usuario = {
+      id: res.data.usuarioId,
+      nome: res.data.nome,
+      email,
+      role: res.data.perfil,
+    }
     token.value = res.data.token
-    usuario.value = res.data.usuario
+    usuario.value = u
     empresaId.value = res.data.empresaId
     localStorage.setItem('token', res.data.token)
-    localStorage.setItem('usuario', JSON.stringify(res.data.usuario))
+    localStorage.setItem('usuario', JSON.stringify(u))
     localStorage.setItem('empresaId', res.data.empresaId)
     api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
 

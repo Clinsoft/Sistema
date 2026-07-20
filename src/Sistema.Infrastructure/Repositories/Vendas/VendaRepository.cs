@@ -14,12 +14,17 @@ public class VendaRepository(SistemaDbContext db) : BaseRepository<Venda>(db), I
             .FirstOrDefaultAsync(v => v.Id == id, ct);
 
     public async Task<IReadOnlyList<Venda>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
-        => await _set.AsNoTracking()
+    {
+        // 'fim' chega como a data (00:00). Incluir o dia inteiro do fim, senão as
+        // vendas de hoje (que têm hora > 00:00) ficavam de fora do histórico.
+        var fimExclusivo = fim.Date.AddDays(1);
+        return await _set.AsNoTracking()
             .Include(v => v.Itens)
             .Include(v => v.Pagamentos)
-            .Where(v => v.EmpresaId == empresaId && v.DataHora >= inicio && v.DataHora <= fim)
+            .Where(v => v.EmpresaId == empresaId && v.DataHora >= inicio.Date && v.DataHora < fimExclusivo)
             .OrderByDescending(v => v.DataHora)
             .ToListAsync(ct);
+    }
 
     public async Task<string> ProximoNumeroAsync(Guid empresaId, CancellationToken ct = default)
     {
@@ -34,8 +39,11 @@ public class VendaRepository(SistemaDbContext db) : BaseRepository<Venda>(db), I
     }
 
     public async Task<decimal> TotalVendidasAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
-        => await _set
+    {
+        var fimExclusivo = fim.Date.AddDays(1);
+        return await _set
             .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada &&
-                        v.DataHora >= inicio && v.DataHora <= fim)
+                        v.DataHora >= inicio.Date && v.DataHora < fimExclusivo)
             .SumAsync(v => v.Total, ct);
+    }
 }

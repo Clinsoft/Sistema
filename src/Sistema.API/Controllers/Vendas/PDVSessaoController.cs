@@ -18,6 +18,16 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
     [HttpPost("abrir")]
     public async Task<IActionResult> Abrir([FromBody] AbrirSessaoCommand cmd, CancellationToken ct)
     {
+        // O usuário é o AUTENTICADO (do token), nunca o que o cliente envia. Se o
+        // frontend mandar vazio, a sessão ficava com UsuarioId zerado e a verificação
+        // (que usa o usuário do token) nunca a encontrava → "abra o caixa" em loop.
+        if (cmd.UsuarioId == Guid.Empty &&
+            Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid))
+            cmd = cmd with { UsuarioId = uid };
+
+        if (cmd.UsuarioId == Guid.Empty)
+            return BadRequest(new { mensagem = "Usuário não identificado. Faça login novamente." });
+
         var id = await mediator.Send(cmd, ct);
         return Ok(new { id });
     }

@@ -1,6 +1,8 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Fiscal.Entities;
+using Sistema.Domain.Fiscal.Interfaces;
+using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Vendas.Events;
 using Sistema.Infrastructure.Data;
 using System.Security.Cryptography;
@@ -9,11 +11,12 @@ using System.Text;
 namespace Sistema.Infrastructure.Fiscal;
 
 /// <summary>
-/// Emite NFC-e automaticamente ao receber VendaFinalizadaEvent.
-/// Stub completo: gera a entidade, QR Code e registra status pendente.
-/// Transmissão real à SEFAZ ocorre via DFe.NET quando certificado A1 estiver configurado.
+/// Emite a NFC-e ao finalizar a venda: monta e assina o XML, transmite à SEFAZ
+/// (ambiente conforme a Configuração Fiscal) e registra autorização ou rejeição.
+/// A transmissão é protegida — uma falha não derruba a venda.
 /// </summary>
-public class EmitirNFCeHandler(SistemaDbContext db) : INotificationHandler<VendaFinalizadaEvent>
+public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService transmissao)
+    : INotificationHandler<VendaFinalizadaEvent>
 {
     // URLs de consulta QR Code por UF (NT 2013.001 rev. 9 — produção)
     private static readonly Dictionary<string, string> UrlConsultaPorUf = new(StringComparer.OrdinalIgnoreCase)
@@ -132,20 +135,40 @@ public class EmitirNFCeHandler(SistemaDbContext db) : INotificationHandler<Venda
             nfce.AdicionarItem(item);
         }
 
-        // Gerar QR Code (NT 2013.001 rev. 9 — sem transmissão, chave temporária)
-        var chaveTemp = GerarChaveTemp(empresa.Cnpj, config.SerieNFCe, numero, config.Ambiente);
-        nfce.RegistrarTransmissao(chaveTemp, ""); // xml será gerado pelo DFe.NET
+        // Chave de acesso (44 díg.) calculada UMA vez e reaproveitada no QR e no XML.
+        var chave44 = NFeXmlBuilder.CalcularChaveAcesso(nfce, empresa, config);
 
+        // QR Code (NT 2013.001) com a chave real e o CSC da NFC-e
         var uf = empresa.Uf.ToUpper();
         var ambienteId = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
-        var urlBase = (config.Ambiente == AmbienteFiscal.Producao
-            ? UrlConsultaPorUf
-            : UrlHomologacaoPorUf)
+        var urlBase = (config.Ambiente == AmbienteFiscal.Producao ? UrlConsultaPorUf : UrlHomologacaoPorUf)
             .GetValueOrDefault(uf, UrlConsultaPorUf.GetValueOrDefault("SP", "https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica")!);
+        var qrCodeData = GerarQrCodeData(chave44, ambienteId, config.CscIdNFCe, config.CscTokenNFCe);
+        nfce.RegistrarQrCode(qrCodeData, $"{urlBase}?p={qrCodeData}");
 
-        var qrCodeData = GerarQrCodeData(chaveTemp, ambienteId, config.CscIdNFCe, config.CscTokenNFCe);
-        var urlConsulta = $"{urlBase}?p={qrCodeData}";
-        nfce.RegistrarQrCode(qrCodeData, urlConsulta);
+        // Monta, assina e TRANSMITE à SEFAZ. Uma falha de transmissão (SEFAZ fora,
+        // rejeição, sem certificado) NÃO pode derrubar a venda — a nota fica salva
+        // com o status correspondente e pode ser retransmitida depois.
+        try
+        {
+            var pagamentos = evt.Pagamentos
+                .Select(p => (TPag: MapearTPag(p.Forma), VPag: p.Valor))
+                .ToList();
+            var xmlAssinado = NFeXmlBuilder.GerarXmlAssinadoComChave(nfce, empresa, config, chave44, pagamentos);
+            nfce.RegistrarTransmissao(chave44, xmlAssinado);
+
+            var resultado = await transmissao.TransmitirAsync(xmlAssinado, config, ct);
+            if (resultado.Autorizada)
+                nfce.RegistrarAutorizacao(resultado.Protocolo!, resultado.XmlRetorno ?? xmlAssinado);
+            else
+                nfce.RegistrarRejeicao(resultado.MotivoRejeicao ?? "Rejeitada pela SEFAZ",
+                    resultado.XmlRetorno ?? "");
+        }
+        catch (Exception ex)
+        {
+            // Sem certificado / SEFAZ indisponível: mantém a nota pendente para retransmitir.
+            nfce.RegistrarRejeicao($"Falha na transmissão: {ex.Message}", "");
+        }
 
         db.NotasFiscais.Add(nfce);
 
@@ -153,36 +176,24 @@ public class EmitirNFCeHandler(SistemaDbContext db) : INotificationHandler<Venda
         var venda = await db.Vendas.FirstOrDefaultAsync(v => v.Id == evt.VendaId, ct);
         venda?.VincularNotaFiscal(nfce.Id);
 
-        // SaveChanges é feito pelo contexto externo (VendaFinalizadaHandler já chama uow.SalvarAsync)
-        // mas como este handler é chamado APÓS o save via MediatR Publish pós-save,
-        // precisamos salvar aqui.
         await db.SaveChangesAsync(ct);
     }
 
-    // Gera chave de acesso de 44 dígitos conforme leiaute SEFAZ
-    private static string GerarChaveTemp(string cnpj, int serie, long numero, AmbienteFiscal ambiente)
+    /// <summary>Forma de pagamento interna → tPag da SEFAZ (Anexo I do MOC).</summary>
+    private static string MapearTPag(FormaPagamento forma) => forma switch
     {
-        var now = DateTime.Now;
-        // CNPJ alfanumérico (IN RFB 2.229/2024): remove pontuação mas preserva letras A–Z
-        var cnpjNum = cnpj.Replace(".", "").Replace("/", "").Replace("-", "").ToUpperInvariant();
-        var cNF = Random.Shared.Next(10000000, 99999999).ToString();
-        // cMF=65 (NFC-e), cEmi=1 (emissão normal)
-        var semDv = $"35{now:yyMM}{cnpjNum}65{serie:D3}{now:yyMM}{numero:D9}1{cNF}";
-        var dv = CalcularDv(semDv);
-        return semDv + dv;
-    }
+        FormaPagamento.Dinheiro      => "01",
+        FormaPagamento.Cheque        => "02",
+        FormaPagamento.CartaoCredito => "03",
+        FormaPagamento.CartaoDebito  => "04",
+        FormaPagamento.Crediario     => "05",  // crédito loja
+        FormaPagamento.Vale          => "10",  // vale alimentação/refeição (aprox.)
+        FormaPagamento.Boleto        => "15",  // boleto bancário
+        FormaPagamento.Pix           => "17",  // pagamento instantâneo (Pix)
+        _                            => "99",  // outros
+    };
 
-    private static int CalcularDv(string chave)
-    {
-        int peso = 2, soma = 0;
-        for (int i = chave.Length - 1; i >= 0; i--)
-        {
-            soma += int.Parse(chave[i].ToString()) * peso;
-            peso = peso == 9 ? 2 : peso + 1;
-        }
-        var resto = soma % 11;
-        return resto < 2 ? 0 : 11 - resto;
-    }
+    // A chave de acesso é calculada por NFeXmlBuilder.CalcularChaveAcesso (única fonte).
 
     // Monta o parâmetro p= do QR Code conforme NT 2013.001
     // Formato: chave|versao|ambiente|csc_id|digest_sha1_hex

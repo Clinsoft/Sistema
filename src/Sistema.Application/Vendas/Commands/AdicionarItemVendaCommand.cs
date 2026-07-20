@@ -34,7 +34,9 @@ public class AdicionarItemVendaHandler(IVendaRepository vendaRepo, IProdutoRepos
         var preco = cmd.PrecoUnitario ?? produto.PrecoVenda;
         venda.AdicionarItem(produto.Id, produto.Descricao, cmd.Quantidade, preco, cmd.PercentualDesconto);
 
-        vendaRepo.Atualizar(venda);
+        // A venda vem rastreada de ObterComItensAsync: o SaveChanges já insere o
+        // item novo. Chamar Update() marcaria o item novo como Modified → UPDATE
+        // de 0 linhas (DbUpdateConcurrencyException).
         await uow.SalvarAsync(ct);
     }
 }

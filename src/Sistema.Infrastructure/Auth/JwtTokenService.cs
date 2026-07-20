@@ -21,9 +21,9 @@ public class JwtTokenService(IConfiguration config) : IJwtTokenService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, usuario.Email),
+            new Claim(JwtRegisteredClaimNames.Email, usuario.Email ?? ""),
             new Claim("empresaId", usuario.EmpresaId.ToString()),
-            new Claim(ClaimTypes.Role, usuario.Perfil),
+            new Claim(ClaimTypes.Role, usuario.Perfil ?? ""),
             new Claim("nome", usuario.Nome)
         };
 

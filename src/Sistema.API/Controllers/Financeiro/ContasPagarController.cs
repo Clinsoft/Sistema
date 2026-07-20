@@ -40,13 +40,23 @@ public class ContasPagarController(
                 .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct)
             : new Dictionary<Guid, string>();
 
+        var colaboradorIds = lista.Where(l => l.ColaboradorId.HasValue)
+            .Select(l => l.ColaboradorId!.Value).Distinct().ToList();
+        var colaboradores = colaboradorIds.Any()
+            ? await db.Usuarios.AsNoTracking()
+                .Where(u => colaboradorIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Nome, ct)
+            : new Dictionary<Guid, string>();
+
         return Ok(lista.Select(l => new
         {
             l.Id, l.Descricao, l.ValorOriginal, l.ValorPago,
             saldo = l.Saldo, l.DataVencimento, l.DataPagamento,
             status = l.Status.ToString(), l.Parcela, l.TotalParcelas, l.Observacao,
-            categoria = l.Categoria, l.FornecedorId,
-            fornecedorNome = l.FornecedorId.HasValue && fornecedores.TryGetValue(l.FornecedorId.Value, out var fn) ? fn : null,
+            categoria = l.Categoria, l.FornecedorId, l.ColaboradorId,
+            fornecedorNome = l.FornecedorId.HasValue && fornecedores.TryGetValue(l.FornecedorId.Value, out var fn) ? fn
+                           : l.ColaboradorId.HasValue && colaboradores.TryGetValue(l.ColaboradorId.Value, out var cn) ? cn
+                           : null,
             l.DocumentoOrigem, vencido = l.Vencido
         }));
     }
@@ -56,6 +66,43 @@ public class ContasPagarController(
     {
         var lancamentos = await repo.ListarVencidosAsync(empresaId, TipoLancamento.ContaPagar, ct);
         return Ok(new { total = lancamentos.Sum(l => l.Saldo), lancamentos });
+    }
+
+    /// <summary>
+    /// Lista de beneficiários para o campo Fornecedor/Beneficiário: fornecedores
+    /// e colaboradores (funcionários), já unificados e marcados com o tipo.
+    /// </summary>
+    [HttpGet("beneficiarios")]
+    public async Task<IActionResult> Beneficiarios([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var fornecedores = await db.Fornecedores.AsNoTracking()
+            .Where(f => f.EmpresaId == empresaId && f.Ativo)
+            .Select(f => new { id = f.Id, nome = f.RazaoSocial, tipo = "Fornecedor", documento = f.Cnpj })
+            .ToListAsync(ct);
+
+        var colaboradores = await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.Ativo)
+            .Select(u => new { id = u.Id, nome = u.Nome, tipo = "Colaborador", documento = u.Cpf })
+            .ToListAsync(ct);
+
+        return Ok(fornecedores.Concat(colaboradores).OrderBy(x => x.nome));
+    }
+
+    /// <summary>
+    /// Cadastro rápido de colaborador (funcionário) direto do Contas a Pagar, para
+    /// lançar salário sem sair da tela. Cria só os dados básicos, sem login.
+    /// </summary>
+    [HttpPost("colaborador")]
+    public async Task<IActionResult> CriarColaborador([FromBody] CriarColaboradorRapidoRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { mensagem = "Informe o nome do colaborador." });
+
+        var colaborador = Sistema.Domain.Cadastros.Entities.Usuario.CriarColaborador(
+            req.EmpresaId, req.Nome.Trim(), req.Cpf, req.Telefone);
+        db.Usuarios.Add(colaborador);
+        await uow.SalvarAsync(ct);
+        return Ok(new { colaborador.Id });
     }
 
     [HttpPost]
@@ -74,7 +121,8 @@ public class ContasPagarController(
                 fornecedorId: req.FornecedorId, categoriaId: req.CategoriaId,
                 contaBancariaId: req.ContaBancariaId,
                 documentoOrigem: req.DocumentoOrigem,
-                parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo);
+                parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo,
+                colaboradorId: req.ColaboradorId);
 
             l.DefinirClassificacao(req.Categoria, null, req.Observacao);
 
@@ -114,7 +162,8 @@ public class ContasPagarController(
     {
         var lancamento = await repo.ObterPorIdAsync(id, ct)
             ?? throw new KeyNotFoundException("Lançamento não encontrado.");
-        lancamento.Editar(req.Descricao, req.ValorOriginal, req.DataVencimento, req.Observacao, req.FornecedorId);
+        lancamento.Editar(req.Descricao, req.ValorOriginal, req.DataVencimento, req.Observacao,
+            req.FornecedorId, req.ColaboradorId);
         lancamento.DefinirClassificacao(req.Categoria, lancamento.ClienteNome, req.Observacao);
         repo.Atualizar(lancamento);
         await uow.SalvarAsync(ct);
@@ -144,12 +193,14 @@ public class ContasPagarController(
     }
 }
 
-public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null);
+public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null, Guid? ColaboradorId = null);
 public record RenegociarPagarRequest(decimal NovoValor, DateTime NovoVencimento, string? Motivo = null);
+public record CriarColaboradorRapidoRequest(Guid EmpresaId, string Nome, string? Cpf = null, string? Telefone = null);
 
 public record CriarContaPagarRequest(
     Guid EmpresaId, string Descricao, decimal Valor,
     DateTime PrimeiroVencimento, int TotalParcelas = 1,
     Guid? FornecedorId = null, Guid? CategoriaId = null,
     Guid? ContaBancariaId = null, string? DocumentoOrigem = null,
-    string? Categoria = null, string? Observacao = null);
+    string? Categoria = null, string? Observacao = null,
+    Guid? ColaboradorId = null);

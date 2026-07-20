@@ -3,7 +3,7 @@
     <div class="d-flex align-center mb-4">
       <div>
         <div class="text-h6 font-weight-bold">Colaboradores</div>
-        <div class="text-caption text-medium-emphasis">Usuários do sistema com acesso e perfil de permissão</div>
+        <div class="text-caption text-medium-emphasis">Funcionários da empresa — dados de RH e acesso ao sistema (opcional)</div>
       </div>
       <v-spacer />
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">
@@ -15,10 +15,10 @@
       id="colaboradores"
       titulo="Como usar o cadastro de Colaboradores"
       :passos="[
-        'Clique em <b>Novo Colaborador</b> e informe nome, e-mail e senha — o e-mail e a senha são usados para <b>acessar o sistema</b>.',
-        'Escolha o <b>perfil de acesso</b> (Administrador, Vendedor, Financeiro, Contador). A tabela de permissões mostra exatamente o que cada perfil pode <b>ver, adicionar, editar e excluir</b>.',
-        'Use ✎ para editar nome/perfil, 🔑 para <b>redefinir a senha</b> e 🚫/✅ para <b>desativar/reativar</b> o acesso.',
-        'Apenas <b>Administradores</b> podem gerenciar colaboradores. O e-mail não pode ser alterado após criado.',
+        'Clique em <b>Novo Colaborador</b> e informe os dados de funcionário (nome, CPF, cargo, salário, admissão). O <b>acesso ao sistema é opcional</b>.',
+        'Quem só recebe salário fica <b>sem login</b> — e mesmo assim aparece como beneficiário no <b>Contas a Pagar</b>. Para dar acesso, ligue a chave <b>Acesso ao Sistema</b> e informe e-mail, senha e perfil.',
+        'O <b>perfil</b> (Administrador, Vendedor, Financeiro, Contador) define as permissões — a tabela mostra o que cada um pode ver, adicionar, editar e excluir.',
+        'Use ✎ para editar, 🔑 para <b>redefinir a senha</b> (só quem tem acesso) e 🚫/✅ para <b>desativar/reativar</b>. Apenas <b>Administradores</b> gerenciam colaboradores.',
       ]"
     />
 
@@ -38,19 +38,27 @@
             </v-avatar>
             <div>
               <div class="text-body-2 font-weight-medium">{{ item.nome }}</div>
-              <div class="text-caption text-medium-emphasis">{{ item.email }}</div>
+              <div class="text-caption text-medium-emphasis">
+                {{ item.email || item.cpf || '—' }}
+              </div>
             </div>
           </div>
         </template>
 
-        <template #item.perfil="{ item }">
-          <v-chip
-            size="small"
-            :color="corPerfil(item.perfil)"
-            variant="tonal"
-            :prepend-icon="iconePerfil(item.perfil)"
-          >
+        <template #item.cargo="{ item }">
+          <div class="text-body-2">{{ item.cargo || '—' }}</div>
+          <div v-if="item.salario != null" class="text-caption text-medium-emphasis">
+            {{ fmtSalario(item.salario) }}
+          </div>
+        </template>
+
+        <template #item.acesso="{ item }">
+          <v-chip v-if="item.temAcesso" size="small" :color="corPerfil(item.perfil || '')"
+            variant="tonal" :prepend-icon="iconePerfil(item.perfil || '')">
             {{ item.perfil }}
+          </v-chip>
+          <v-chip v-else size="small" color="grey" variant="tonal" prepend-icon="mdi-account-off-outline">
+            Sem acesso
           </v-chip>
         </template>
 
@@ -69,7 +77,7 @@
         <template #item.actions="{ item }">
           <v-btn icon="mdi-pencil-outline" size="x-small" variant="text"
             color="primary" title="Editar" @click="abrirEdicao(item)" />
-          <v-btn icon="mdi-lock-reset" size="x-small" variant="text"
+          <v-btn v-if="item.temAcesso" icon="mdi-lock-reset" size="x-small" variant="text"
             color="warning" title="Alterar senha" @click="abrirSenha(item)" />
           <v-btn v-if="item.ativo" icon="mdi-account-off-outline" size="x-small"
             variant="text" color="error" title="Desativar" @click="desativar(item.id)" />
@@ -80,7 +88,7 @@
     </v-card>
 
     <!-- ══ Dialog: Novo / Editar ══════════════════════════════════════ -->
-    <v-dialog v-model="dialogForm" max-width="560" persistent>
+    <v-dialog v-model="dialogForm" max-width="720" persistent>
       <v-card rounded="xl" style="display:flex;flex-direction:column;max-height:90vh">
         <div class="cad-header">
           <div class="d-flex align-center" style="gap:12px">
@@ -98,11 +106,11 @@
         </div>
         <v-card-text class="pa-0" style="overflow-y:auto">
           <div class="cad-body">
-            <!-- Seção: Acesso ao Sistema -->
+            <!-- Seção: Dados do colaborador -->
             <div class="cad-secao">
               <div class="cad-secao-header">
-                <v-icon size="14">mdi-account-circle-outline</v-icon>
-                Acesso ao Sistema
+                <v-icon size="14">mdi-account-tie-outline</v-icon>
+                Dados do colaborador
               </div>
               <div class="cad-secao-body">
                 <v-row dense>
@@ -111,33 +119,70 @@
                       variant="outlined" density="compact"
                       :rules="[r => !!r || 'Obrigatório']" />
                   </v-col>
-                  <v-col cols="12">
-                    <v-text-field v-model="form.email" label="E-mail *" type="email"
-                      variant="outlined" density="compact"
-                      :disabled="!!editandoId"
-                      :rules="[r => !!r || 'Obrigatório']" />
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="form.cpf" label="CPF"
+                      variant="outlined" density="compact" />
                   </v-col>
-                  <!-- Senha só no cadastro inicial -->
-                  <template v-if="!editandoId">
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="form.telefone" label="Telefone"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="form.cargo" label="Cargo"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model.number="form.salario" label="Salário" type="number"
+                      prefix="R$" variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-text-field v-model="form.dataAdmissao" label="Data de admissão" type="date"
+                      variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12">
+                    <v-textarea v-model="form.observacao" label="Observação" rows="2" auto-grow
+                      variant="outlined" density="compact" />
+                  </v-col>
+                </v-row>
+              </div>
+            </div>
+
+            <!-- Seção: Acesso ao Sistema (opcional) -->
+            <div class="cad-secao">
+              <div class="cad-secao-header">
+                <v-icon size="14">mdi-account-circle-outline</v-icon>
+                Acesso ao Sistema
+              </div>
+              <div class="cad-secao-body">
+                <v-switch v-model="form.darAcesso" color="primary" density="compact" hide-details
+                  :label="form.darAcesso ? 'Este colaborador acessa o sistema (login)' : 'Sem acesso ao sistema (só cadastro/folha)'"
+                  class="mb-2" />
+                <v-row dense v-if="form.darAcesso">
+                  <v-col cols="12">
+                    <v-text-field v-model="form.email" label="E-mail de acesso *" type="email"
+                      variant="outlined" density="compact"
+                      :disabled="editandoTinhaAcesso"
+                      :hint="editandoTinhaAcesso ? 'O e-mail de acesso não é alterado por aqui.' : ''"
+                      persistent-hint />
+                  </v-col>
+                  <!-- Senha só ao conceder acesso (não tinha antes) -->
+                  <template v-if="!editandoTinhaAcesso">
                     <v-col cols="12" md="6">
                       <v-text-field v-model="form.senha" label="Senha *"
                         :type="mostrarSenha ? 'text' : 'password'"
                         variant="outlined" density="compact"
                         :append-inner-icon="mostrarSenha ? 'mdi-eye-off' : 'mdi-eye'"
-                        @click:append-inner="mostrarSenha = !mostrarSenha"
-                        :rules="[r => !!r || 'Obrigatório', r => r.length >= 6 || 'Mínimo 6 caracteres']" />
+                        @click:append-inner="mostrarSenha = !mostrarSenha" />
                     </v-col>
                     <v-col cols="12" md="6">
                       <v-text-field v-model="form.confirmarSenha" label="Confirmar senha *"
                         :type="mostrarSenha ? 'text' : 'password'"
-                        variant="outlined" density="compact"
-                        :rules="[r => r === form.senha || 'Senhas não conferem']" />
+                        variant="outlined" density="compact" />
                     </v-col>
                   </template>
                   <v-col cols="12">
                     <v-select v-model="form.perfil" label="Perfil de acesso *"
-                      :items="perfis" variant="outlined" density="compact"
-                      :rules="[r => !!r || 'Obrigatório']">
+                      :items="perfis" variant="outlined" density="compact">
                       <template #item="{ item, props }">
                         <v-list-item v-bind="props">
                           <template #prepend>
@@ -148,11 +193,16 @@
                       </template>
                     </v-select>
                   </v-col>
+                  <v-col v-if="editandoTinhaAcesso" cols="12">
+                    <div class="text-caption text-medium-emphasis">
+                      Para trocar a senha, use o botão 🔑 na lista.
+                    </div>
+                  </v-col>
                 </v-row>
               </div>
             </div>
             <!-- Seção: Permissões do Perfil -->
-            <div class="cad-secao" v-if="form.perfil">
+            <div class="cad-secao" v-if="form.darAcesso && form.perfil">
               <div class="cad-secao-header">
                 <v-icon size="14">mdi-shield-outline</v-icon>
                 Permissões do perfil {{ form.perfil }}
@@ -238,8 +288,10 @@ const auth = useAuthStore()
 const notif = useNotifStore()
 
 interface Colaborador {
-  id: string; nome: string; email: string
-  perfil: string; ativo: boolean; ultimoAcesso: string | null
+  id: string; nome: string; email: string | null
+  cpf: string | null; telefone: string | null; cargo: string | null
+  salario: number | null; dataAdmissao: string | null; observacao: string | null
+  perfil: string | null; temAcesso: boolean; ativo: boolean; ultimoAcesso: string | null
 }
 
 const colaboradores = ref<Colaborador[]>([])
@@ -251,20 +303,30 @@ const salvandoSenha = ref(false)
 const mostrarSenha = ref(false)
 const mostrarNovaSenha = ref(false)
 const editandoId = ref<string | null>(null)
+const editandoTinhaAcesso = ref(false)
 const idAlterandoSenha = ref('')
 const nomeAlterandoSenha = ref('')
 const novaSenha = ref('')
 const confirmarNovaSenha = ref('')
 
-const form = ref({ nome: '', email: '', senha: '', confirmarSenha: '', perfil: '' })
+const formPadrao = () => ({
+  nome: '', cpf: '', telefone: '', cargo: '', salario: null as number | null,
+  dataAdmissao: '', observacao: '',
+  darAcesso: false, email: '', senha: '', confirmarSenha: '', perfil: 'Vendedor',
+})
+const form = ref(formPadrao())
 
 const headers = [
   { title: 'Colaborador', key: 'nome', sortable: true },
-  { title: 'Perfil', key: 'perfil', width: 150 },
+  { title: 'Cargo', key: 'cargo', width: 160 },
+  { title: 'Acesso', key: 'acesso', width: 160 },
   { title: 'Status', key: 'ativo', width: 100 },
-  { title: 'Último acesso', key: 'ultimoAcesso', width: 180 },
-  { title: '', key: 'actions', sortable: false, width: 130 },
+  { title: 'Último acesso', key: 'ultimoAcesso', width: 170 },
+  { title: '', key: 'actions', sortable: false, width: 160 },
 ]
+
+const fmtSalario = (v: number | null) =>
+  v == null ? '—' : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
 const perfis = [
   { title: 'Administrador', value: 'Administrador' },
@@ -356,14 +418,23 @@ async function carregar() {
 
 function abrirNovo() {
   editandoId.value = null
-  form.value = { nome: '', email: '', senha: '', confirmarSenha: '', perfil: 'Vendedor' }
+  editandoTinhaAcesso.value = false
+  form.value = formPadrao()
   mostrarSenha.value = false
   dialogForm.value = true
 }
 
 function abrirEdicao(item: Colaborador) {
   editandoId.value = item.id
-  form.value = { nome: item.nome, email: item.email, senha: '', confirmarSenha: '', perfil: item.perfil }
+  editandoTinhaAcesso.value = item.temAcesso
+  form.value = {
+    nome: item.nome, cpf: item.cpf ?? '', telefone: item.telefone ?? '',
+    cargo: item.cargo ?? '', salario: item.salario, dataAdmissao: item.dataAdmissao?.slice(0, 10) ?? '',
+    observacao: item.observacao ?? '',
+    darAcesso: item.temAcesso, email: item.email ?? '', senha: '', confirmarSenha: '',
+    perfil: item.perfil ?? 'Vendedor',
+  }
+  mostrarSenha.value = false
   dialogForm.value = true
 }
 
@@ -376,26 +447,54 @@ function abrirSenha(item: Colaborador) {
   dialogSenha.value = true
 }
 
+function validarAcesso(): string | null {
+  const f = form.value
+  if (!f.darAcesso) return null
+  if (!f.email.trim()) return 'Informe o e-mail de acesso.'
+  // Senha obrigatória só quando está concedendo acesso agora (não tinha antes).
+  if (!editandoTinhaAcesso.value) {
+    if (f.senha.length < 6) return 'A senha deve ter ao menos 6 caracteres.'
+    if (f.senha !== f.confirmarSenha) return 'As senhas não conferem.'
+  }
+  return null
+}
+
 async function salvar() {
+  const f = form.value
+  if (!f.nome.trim()) { notif.erro('Informe o nome do colaborador.'); return }
+  const erroAcesso = validarAcesso()
+  if (erroAcesso) { notif.erro(erroAcesso); return }
+
+  const dados = {
+    empresaId: auth.empresaId, nome: f.nome.trim(),
+    cpf: f.cpf.trim() || null, telefone: f.telefone.trim() || null,
+    cargo: f.cargo.trim() || null, salario: f.salario,
+    dataAdmissao: f.dataAdmissao || null, observacao: f.observacao.trim() || null,
+  }
+  const acesso = { email: f.email.trim(), senha: f.senha, perfil: f.perfil }
+
   salvando.value = true
   try {
     if (editandoId.value) {
-      await api.put(`/usuarios/${editandoId.value}`, { nome: form.value.nome, perfil: form.value.perfil })
+      const id = editandoId.value
+      await api.put(`/usuarios/${id}`, dados)
+      // Ajusta o acesso conforme a mudança
+      if (editandoTinhaAcesso.value && !f.darAcesso) {
+        await api.delete(`/usuarios/${id}/acesso`)
+      } else if (!editandoTinhaAcesso.value && f.darAcesso) {
+        await api.post(`/usuarios/${id}/acesso`, acesso)
+      } else if (editandoTinhaAcesso.value && f.darAcesso && f.perfil !== '') {
+        await api.patch(`/usuarios/${id}/perfil`, { perfil: f.perfil })
+      }
       notif.ok('Colaborador atualizado!')
     } else {
-      await api.post('/usuarios', {
-        empresaId: auth.empresaId,
-        nome: form.value.nome,
-        email: form.value.email,
-        senha: form.value.senha,
-        perfil: form.value.perfil,
-      })
+      await api.post('/usuarios', { ...dados, acesso: f.darAcesso ? acesso : null })
       notif.ok('Colaborador criado!')
     }
     dialogForm.value = false
     await carregar()
   } catch (e: any) {
-    notif.erro(e?.response?.data ?? 'Erro ao salvar.')
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data ?? 'Erro ao salvar.')
   } finally { salvando.value = false }
 }
 

@@ -8,6 +8,7 @@ public class LancamentoFinanceiro : Entity
     public Guid EmpresaId { get; private set; }
     public Guid? ClienteId { get; private set; }
     public Guid? FornecedorId { get; private set; }
+    public Guid? ColaboradorId { get; private set; }   // beneficiário colaborador (ex.: salário)
     public Guid? ContaBancariaId { get; private set; }
     public Guid? CategoriaId { get; private set; }
     public TipoLancamento Tipo { get; private set; }
@@ -32,13 +33,14 @@ public class LancamentoFinanceiro : Entity
         string descricao, decimal valor, DateTime dataVencimento,
         Guid? clienteId = null, Guid? fornecedorId = null, Guid? categoriaId = null,
         Guid? contaBancariaId = null, string? documentoOrigem = null,
-        int parcela = 1, int totalParcelas = 1, string? grupoParcelamento = null)
+        int parcela = 1, int totalParcelas = 1, string? grupoParcelamento = null,
+        Guid? colaboradorId = null)
         => new()
         {
             EmpresaId = empresaId, Tipo = tipo, Descricao = descricao,
             ValorOriginal = valor, DataEmissao = DateTime.Today,
             DataVencimento = dataVencimento, Status = StatusLancamento.EmAberto,
-            ClienteId = clienteId, FornecedorId = fornecedorId,
+            ClienteId = clienteId, FornecedorId = fornecedorId, ColaboradorId = colaboradorId,
             CategoriaId = categoriaId, ContaBancariaId = contaBancariaId,
             DocumentoOrigem = documentoOrigem,
             Parcela = parcela, TotalParcelas = totalParcelas,
@@ -76,13 +78,28 @@ public class LancamentoFinanceiro : Entity
     /// </summary>
     public void DefinirFornecedor(Guid fornecedorId) => FornecedorId = fornecedorId;
 
-    public void Editar(string descricao, decimal valorOriginal, DateTime dataVencimento, string? observacao, Guid? fornecedorId = null)
+    /// <summary>
+    /// Define o beneficiário: fornecedor OU colaborador (nunca os dois). Passar um
+    /// deles zera o outro, para o benefíciário ficar sempre consistente.
+    /// </summary>
+    public void DefinirBeneficiario(Guid? fornecedorId, Guid? colaboradorId)
+    {
+        FornecedorId = fornecedorId;
+        ColaboradorId = colaboradorId;
+    }
+
+    public void Editar(string descricao, decimal valorOriginal, DateTime dataVencimento, string? observacao,
+        Guid? fornecedorId = null, Guid? colaboradorId = null)
     {
         Descricao = descricao;
         ValorOriginal = valorOriginal;
         DataVencimento = dataVencimento;
         Observacao = observacao;
-        if (fornecedorId.HasValue) FornecedorId = fornecedorId;
+        if (fornecedorId.HasValue || colaboradorId.HasValue)
+        {
+            FornecedorId = fornecedorId;
+            ColaboradorId = colaboradorId;
+        }
     }
 
     public void Renegociar(decimal novoValor, DateTime novoVencimento, string? observacao = null)

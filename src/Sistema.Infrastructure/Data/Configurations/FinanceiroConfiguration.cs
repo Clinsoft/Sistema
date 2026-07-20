@@ -47,6 +47,7 @@ public class LancamentoFinanceiroConfiguration : IEntityTypeConfiguration<Lancam
         b.HasIndex(x => new { x.EmpresaId, x.DataVencimento });
         b.HasIndex(x => x.ClienteId);
         b.HasIndex(x => x.FornecedorId);
+        b.HasIndex(x => x.ColaboradorId);
 
         // Propriedades calculadas — ignoradas no mapeamento
         b.Ignore(x => x.Saldo);

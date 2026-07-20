@@ -27,7 +27,9 @@ public class LoginHandler(IUsuarioRepository repo, IJwtTokenService jwt, IUnitOf
         var usuario = await repo.ObterPorEmailAsync(cmd.EmpresaId, cmd.Email, ct)
             ?? throw new UnauthorizedAccessException("E-mail ou senha inválidos.");
 
-        if (!BCrypt.Net.BCrypt.Verify(cmd.Senha, usuario.SenhaHash))
+        // Colaborador sem acesso (sem senha) não faz login.
+        if (string.IsNullOrEmpty(usuario.SenhaHash) ||
+            !BCrypt.Net.BCrypt.Verify(cmd.Senha, usuario.SenhaHash))
             throw new UnauthorizedAccessException("E-mail ou senha inválidos.");
 
         usuario.RegistrarAcesso();
@@ -35,6 +37,6 @@ public class LoginHandler(IUsuarioRepository repo, IJwtTokenService jwt, IUnitOf
         await uow.SalvarAsync(ct);
 
         var token = jwt.GerarToken(usuario);
-        return new LoginResult(token, usuario.Nome, usuario.Perfil, jwt.Expiracao, usuario.EmpresaId, usuario.Id);
+        return new LoginResult(token, usuario.Nome, usuario.Perfil ?? "", jwt.Expiracao, usuario.EmpresaId, usuario.Id);
     }
 }

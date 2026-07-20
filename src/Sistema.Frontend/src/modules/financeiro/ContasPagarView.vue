@@ -147,9 +147,19 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-autocomplete v-model="form.fornecedorId" label="Fornecedor / Beneficiário"
-                :items="fornecedores" item-title="razaoSocial" item-value="id"
+                :items="fornecedores" item-title="nome" item-value="id"
                 variant="outlined" density="compact" hide-details clearable auto-select-first
                 :search="form._buscaForneced" @update:search="v => form._buscaForneced = v">
+                <template #item="{ item, props }">
+                  <v-list-item v-bind="props" :title="item.raw.nome"
+                    :subtitle="item.raw.tipo + (item.raw.documento ? ' · ' + item.raw.documento : '')">
+                    <template #prepend>
+                      <v-icon size="18" :color="item.raw.tipo === 'Colaborador' ? 'indigo' : 'primary'">
+                        {{ item.raw.tipo === 'Colaborador' ? 'mdi-account-tie-outline' : 'mdi-truck-outline' }}
+                      </v-icon>
+                    </template>
+                  </v-list-item>
+                </template>
                 <template #append-inner>
                   <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact"
                     tabindex="-1" title="Cadastrar fornecedor/beneficiário"
@@ -254,10 +264,20 @@
                 :items="categorias" variant="outlined" density="compact" clearable hide-details />
             </v-col>
             <v-col cols="12" sm="6">
-              <v-autocomplete v-model="edicao.fornecedorId" label="Fornecedor"
-                :items="fornecedores" item-title="razaoSocial" item-value="id"
+              <v-autocomplete v-model="edicao.fornecedorId" label="Fornecedor / Beneficiário"
+                :items="fornecedores" item-title="nome" item-value="id"
                 variant="outlined" density="compact" hide-details clearable auto-select-first
                 :search="edicao._buscaForneced" @update:search="v => edicao._buscaForneced = v">
+                <template #item="{ item, props }">
+                  <v-list-item v-bind="props" :title="item.raw.nome"
+                    :subtitle="item.raw.tipo + (item.raw.documento ? ' · ' + item.raw.documento : '')">
+                    <template #prepend>
+                      <v-icon size="18" :color="item.raw.tipo === 'Colaborador' ? 'indigo' : 'primary'">
+                        {{ item.raw.tipo === 'Colaborador' ? 'mdi-account-tie-outline' : 'mdi-truck-outline' }}
+                      </v-icon>
+                    </template>
+                  </v-list-item>
+                </template>
                 <template #append-inner>
                   <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact"
                     tabindex="-1" title="Cadastrar fornecedor/beneficiário"
@@ -397,7 +417,13 @@
           Novo fornecedor / beneficiário
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
-          <v-text-field v-model="formForneced.razaoSocial" label="Nome / Razão Social *"
+          <v-btn-toggle v-model="formForneced.tipo" mandatory divided density="comfortable"
+            color="primary" class="mb-3">
+            <v-btn value="Fornecedor" size="small"><v-icon start>mdi-truck-outline</v-icon>Fornecedor</v-btn>
+            <v-btn value="Colaborador" size="small"><v-icon start>mdi-account-tie-outline</v-icon>Colaborador</v-btn>
+          </v-btn-toggle>
+          <v-text-field v-model="formForneced.razaoSocial"
+            :label="formForneced.tipo === 'Colaborador' ? 'Nome do colaborador *' : 'Nome / Razão Social *'"
             variant="outlined" density="compact" autofocus class="mb-2"
             @keyup.enter="salvarFornecedorRapido" />
           <v-text-field v-model="formForneced.cnpj" label="CPF / CNPJ"
@@ -626,7 +652,7 @@ async function salvarNova(continuar = false) {
       empresaId: auth.empresaId,
       descricao: f.descricao,
       categoria: f.categoria,
-      fornecedorId: f.fornecedorId || null,
+      ...beneficiarioPayload(f.fornecedorId),
       observacao: f.observacao,
     }
 
@@ -701,7 +727,7 @@ function abrirEditar(item: any) {
     valorOriginal: item.valorOriginal,
     dataVencimento: item.dataVencimento?.slice(0, 10) ?? '',
     observacao: item.observacao ?? '',
-    fornecedorId: item.fornecedorId ?? null,
+    fornecedorId: item.fornecedorId ?? item.colaboradorId ?? null,
     modo: 'unico',
     quantas: 2,
     periodo: 'mensal',
@@ -717,13 +743,13 @@ async function confirmarEdicao() {
       await api.put(`/contas-pagar/${e.id}`, {
         descricao: e.descricao, categoria: e.categoria,
         valorOriginal: e.valorOriginal, dataVencimento: e.dataVencimento,
-        observacao: e.observacao, fornecedorId: e.fornecedorId || null,
+        observacao: e.observacao, ...beneficiarioPayload(e.fornecedorId),
       })
     } else {
       // Cancel existing entry, then create N new ones
       await api.post(`/contas-pagar/${e.id}/cancelar`, {})
       const n = Math.max(2, e.quantas || 2)
-      const base = { empresaId: auth.empresaId, descricao: e.descricao, categoria: e.categoria, observacao: e.observacao, fornecedorId: e.fornecedorId || null }
+      const base = { empresaId: auth.empresaId, descricao: e.descricao, categoria: e.categoria, observacao: e.observacao, ...beneficiarioPayload(e.fornecedorId) }
       for (let i = 0; i < n; i++) {
         const valor = e.modo === 'parcelar'
           ? (i === n - 1 ? Math.round((e.valorOriginal - Math.round(e.valorOriginal / n * 100) / 100 * (n - 1)) * 100) / 100 : Math.round(e.valorOriginal / n * 100) / 100)
@@ -779,18 +805,19 @@ async function cancelarTitulo(item: any) {
 const dlgFornecedor = ref(false)
 const salvandoForneced = ref(false)
 const contextoForneced = ref<'nova' | 'editar'>('nova')
-const formForneced = ref({ razaoSocial: '', cnpj: '', telefone: '' })
+const formForneced = ref({ tipo: 'Fornecedor', razaoSocial: '', cnpj: '', telefone: '' })
 
 function abrirNovoFornecedor(contexto: 'nova' | 'editar', nome = '') {
   contextoForneced.value = contexto
-  formForneced.value = { razaoSocial: nome, cnpj: '', telefone: '' }
+  formForneced.value = { tipo: 'Fornecedor', razaoSocial: nome, cnpj: '', telefone: '' }
   dlgFornecedor.value = true
 }
 
 async function salvarFornecedorRapido() {
   const nome = formForneced.value.razaoSocial.trim()
   if (!nome) return
-  // O backend aceita CPF (11 dígitos) ou CNPJ (14); em branco fica sem documento.
+  const colaborador = formForneced.value.tipo === 'Colaborador'
+  // Aceita CPF (11 dígitos) ou CNPJ (14); em branco fica sem documento.
   const doc = formForneced.value.cnpj.replace(/[^\dA-Za-z]/g, '')
   if (doc && doc.length !== 11 && doc.length !== 14) {
     notif.aviso('CPF deve ter 11 dígitos ou CNPJ 14 caracteres.')
@@ -799,16 +826,22 @@ async function salvarFornecedorRapido() {
 
   salvandoForneced.value = true
   try {
-    const r = await api.post('/fornecedores', {
-      empresaId: auth.empresaId,
-      razaoSocial: nome,
-      cnpj: doc || null,
-      telefone: formForneced.value.telefone.trim() || null,
-    }, { _quiet: true } as any)
+    const tel = formForneced.value.telefone.trim() || null
+    let novoId: string
+    if (colaborador) {
+      const r = await api.post('/contas-pagar/colaborador', {
+        empresaId: auth.empresaId, nome, cpf: doc || null, telefone: tel,
+      }, { _quiet: true } as any)
+      novoId = r.data.id ?? r.data
+    } else {
+      const r = await api.post('/fornecedores', {
+        empresaId: auth.empresaId, razaoSocial: nome, cnpj: doc || null, telefone: tel,
+      }, { _quiet: true } as any)
+      novoId = r.data.id ?? r.data
+    }
 
-    const novo = { id: r.data.id ?? r.data, razaoSocial: nome }
-    fornecedores.value = [...fornecedores.value, novo]
-      .sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial))
+    const novo = { id: novoId, nome, tipo: formForneced.value.tipo, documento: doc || null }
+    fornecedores.value = [...fornecedores.value, novo].sort((a, b) => a.nome.localeCompare(b.nome))
 
     if (contextoForneced.value === 'nova') {
       form.value.fornecedorId = novo.id
@@ -818,15 +851,31 @@ async function salvarFornecedorRapido() {
       edicao.value._buscaForneced = ''
     }
     dlgFornecedor.value = false
-    notif.ok(`Fornecedor "${nome}" cadastrado e selecionado.`)
+    notif.ok(`${colaborador ? 'Colaborador' : 'Fornecedor'} "${nome}" cadastrado e selecionado.`)
   } catch (e: any) {
-    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao cadastrar fornecedor.')
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao cadastrar.')
   } finally { salvandoForneced.value = false }
+}
+
+// Beneficiários = fornecedores + colaboradores (funcionários). Cada item traz o
+// tipo, para na hora de salvar mandar fornecedorId OU colaboradorId.
+async function carregarBeneficiarios() {
+  const r = await api.get('/contas-pagar/beneficiarios', { params: { empresaId: auth.empresaId } })
+    .catch(() => ({ data: [] }))
+  fornecedores.value = r.data ?? []
+}
+
+/** Dado o id selecionado no campo, devolve o par fornecedorId/colaboradorId. */
+function beneficiarioPayload(id: string | null) {
+  if (!id) return { fornecedorId: null, colaboradorId: null }
+  const b = fornecedores.value.find((x: any) => x.id === id)
+  return b?.tipo === 'Colaborador'
+    ? { fornecedorId: null, colaboradorId: id }
+    : { fornecedorId: id, colaboradorId: null }
 }
 
 onMounted(async () => {
   await carregar()
-  const rf = await api.get('/fornecedores', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] }))
-  fornecedores.value = rf.data?.items ?? rf.data ?? []
+  await carregarBeneficiarios()
 })
 </script>

@@ -4,6 +4,8 @@
     <!-- ══ BARRA SUPERIOR ══════════════════════════════════════════ -->
     <div class="pdv-topbar">
       <div class="pdv-topbar-left">
+        <v-btn v-if="mobile" icon="mdi-menu" variant="text" size="small" color="white"
+          class="pdv-menu-btn" title="Menu" @click="ui.alternarMenu()" />
         <div class="pdv-brand">
           <v-icon icon="mdi-point-of-sale" size="20" color="rgba(255,255,255,.7)" />
           <span class="pdv-brand-name">PDV</span>
@@ -32,12 +34,18 @@
           autofocus
           rounded="lg"
           class="pdv-search"
+          enterkeyhint="search"
+          inputmode="search"
           @keyup.enter="buscarProduto"
         >
           <template #append-inner>
-            <v-btn icon size="x-small" variant="text" color="rgba(255,255,255,.6)"
+            <v-btn icon size="small" variant="text" color="rgba(255,255,255,.75)"
+              title="Buscar produto" @click="buscarProduto">
+              <v-icon size="22">mdi-magnify</v-icon>
+            </v-btn>
+            <v-btn icon size="small" variant="text" color="rgba(255,255,255,.75)"
               title="Escanear com câmera" @click="abrirScanner">
-              <v-icon size="18">mdi-camera</v-icon>
+              <v-icon size="22">mdi-camera</v-icon>
             </v-btn>
           </template>
         </v-text-field>
@@ -295,6 +303,9 @@
               <div class="pdv-pag-forma-label">
                 <v-icon :icon="formasPagamento.find(f => f.tipo === pag.tipo)?.icon" size="16" class="mr-1" />
                 {{ pag.tipo }}
+                <span v-if="pag.operadoraNome" class="text-caption text-medium-emphasis">
+                  · {{ pag.operadoraNome }}<span v-if="(pag.parcelas ?? 1) > 1"> {{ pag.parcelas }}x</span>
+                </span>
               </div>
               <v-text-field
                 v-model.number="pag.valor"
@@ -393,30 +404,38 @@
           Cartão de {{ cartaoTipo }}
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
-          <v-select v-model="cartaoOperadoraId" :items="operadoras" item-title="nome" item-value="id"
-            label="Operadora / maquininha *" variant="outlined" density="compact" class="mb-2" hide-details />
+          <div class="text-body-2 font-weight-medium mb-2">Bandeira do cartão</div>
+          <div v-if="opcoesCartao.length" class="d-flex flex-wrap gap-2 mb-2">
+            <v-chip v-for="op in opcoesCartao" :key="op.label" size="large" label
+              :color="cartaoBandeiraSel?.label === op.label ? 'primary' : undefined"
+              :variant="cartaoBandeiraSel?.label === op.label ? 'flat' : 'outlined'"
+              @click="cartaoBandeiraSel = op">
+              {{ op.label }}
+            </v-chip>
+          </div>
+          <v-alert v-else type="warning" variant="tonal" density="compact" class="mb-2">
+            Nenhuma bandeira/maquininha cadastrada em Financeiro → Operadoras de Cartão.
+          </v-alert>
+
           <v-select v-if="cartaoTipo === 'Crédito'" v-model.number="cartaoParcelas"
             :items="[1,2,3,4,5,6,7,8,9,10,11,12]" label="Parcelas"
-            variant="outlined" density="compact" hide-details>
+            variant="outlined" density="compact" hide-details class="mt-1">
             <template #selection="{ item }">{{ item.value }}x</template>
             <template #item="{ item, props }">
               <v-list-item v-bind="props" :title="`${item.value}x`" />
             </template>
           </v-select>
+
           <v-alert type="info" variant="tonal" density="compact" class="mt-3">
-            <div class="d-flex justify-space-between"><span>Valor</span><b>R$ {{ fmt(cartaoValor) }}</b></div>
             <div class="d-flex justify-space-between">
-              <span>Taxa</span><span>{{ fmt(cartaoTaxa) }}% (− R$ {{ fmt(cartaoValor - cartaoLiquido) }})</span>
-            </div>
-            <div class="d-flex justify-space-between font-weight-bold text-success">
-              <span>Líquido a receber</span><span>R$ {{ fmt(cartaoLiquido) }}</span>
+              <span>Valor a cobrar</span><b>R$ {{ fmt(cartaoValor) }}</b>
             </div>
           </v-alert>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dialogCartao = false">Cancelar</v-btn>
-          <v-btn color="primary" rounded="lg" :disabled="!cartaoOperadoraId" @click="confirmarCartao">
+          <v-btn color="primary" rounded="lg" :disabled="!cartaoBandeiraSel" @click="confirmarCartao">
             Adicionar pagamento
           </v-btn>
         </v-card-actions>
@@ -722,15 +741,19 @@
 <script setup lang="ts">
 // PDV — layout profissional v2
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import { useUiStore } from '@/stores/ui'
 import QRCode from 'qrcode'
 import { formatarCpf, maskCnpj, cpfRaw, cnpjRaw } from '@/utils/documento'
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser'
+import { BrowserMultiFormatReader } from '@zxing/browser'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+const ui = useUiStore()
+const { mobile } = useDisplay()
 
 // ── Tipos ────────────────────────────────────────────────────────
 interface ItemVenda {
@@ -744,10 +767,12 @@ interface Pagamento {
   taxa?: number; liquido?: number; operadoraNome?: string
 }
 interface Operadora {
-  id: string; nome: string; taxaDebito: number
+  id: string; nome: string; cor?: string; bandeiras?: string[]
+  taxaDebito: number
   taxaCreditoVista: number; taxaCreditoParcelado: number
   prazoDebito: number; prazoCreditoVista: number; prazoCreditoParcelado: number
 }
+interface OpcaoCartao { label: string; operadoraId: string; cor?: string }
 interface Produto {
   id: string; descricao: string; codigo: string; precoVenda: number
   unidadeSigla: string; vendidoFracionado?: boolean
@@ -776,8 +801,22 @@ const clienteId = ref<string | null>(null)
 const operadoras = ref<Operadora[]>([])
 const dialogCartao = ref(false)
 const cartaoTipo = ref<'Crédito' | 'Débito'>('Crédito')
-const cartaoOperadoraId = ref<string | null>(null)
+const cartaoBandeiraSel = ref<OpcaoCartao | null>(null)
 const cartaoParcelas = ref(1)
+
+// Bandeiras que o caixa escolhe. Cada bandeira já pertence a uma maquininha
+// (operadora) cadastrada — usamos a taxa dela por trás, sem exibir ao caixa.
+// Se a mesma bandeira estiver em duas maquininhas, vale a primeira (ordem por nome).
+const opcoesCartao = computed<OpcaoCartao[]>(() => {
+  const comBandeira = operadoras.value.flatMap(o =>
+    (o.bandeiras ?? []).map(b => ({ label: b, operadoraId: o.id, cor: o.cor })))
+  if (comBandeira.length) {
+    const vistos = new Set<string>()
+    return comBandeira.filter(x => (vistos.has(x.label) ? false : vistos.add(x.label)))
+  }
+  // Sem bandeiras cadastradas: cai para as próprias maquininhas.
+  return operadoras.value.map(o => ({ label: o.nome, operadoraId: o.id, cor: o.cor }))
+})
 const buscaCliente = ref('')
 const clientes = ref<Cliente[]>([])
 const buscandoCliente = ref(false)
@@ -967,10 +1006,10 @@ function selecionarFormaPagamento(tipo: string) {
   const idx = pagamentos.value.findIndex(p => p.tipo === tipo)
   if (idx >= 0) { pagamentos.value.splice(idx, 1); return }
 
-  // Cartão: abre o diálogo para escolher operadora + parcelas e calcular a taxa
+  // Cartão: abre o diálogo para o caixa escolher a bandeira (a taxa fica por trás)
   if ((tipo === 'Crédito' || tipo === 'Débito') && operadoras.value.length) {
     cartaoTipo.value = tipo
-    cartaoOperadoraId.value = operadoras.value[0]?.id ?? null
+    cartaoBandeiraSel.value = opcoesCartao.value[0] ?? null
     cartaoParcelas.value = 1
     dialogCartao.value = true
     return
@@ -980,9 +1019,9 @@ function selecionarFormaPagamento(tipo: string) {
   pagamentos.value.push({ tipo, valor: restante || total.value })
 }
 
-/** Taxa (%) da forma/parcelas selecionadas na operadora escolhida. */
+// Maquininha por trás da bandeira escolhida (usada só para o cálculo interno).
 const cartaoOperadora = computed(() =>
-  operadoras.value.find(o => o.id === cartaoOperadoraId.value) ?? null)
+  operadoras.value.find(o => o.id === cartaoBandeiraSel.value?.operadoraId) ?? null)
 const cartaoValor = computed(() => Math.max(0, total.value - totalPago.value) || total.value)
 const cartaoTaxa = computed(() => {
   const o = cartaoOperadora.value
@@ -994,11 +1033,13 @@ const cartaoLiquido = computed(() =>
   Math.round(cartaoValor.value * (1 - cartaoTaxa.value / 100) * 100) / 100)
 
 function confirmarCartao() {
+  const sel = cartaoBandeiraSel.value
   const o = cartaoOperadora.value
-  if (!o) { notif.aviso('Selecione a operadora.'); return }
+  if (!sel || !o) { notif.aviso('Escolha a bandeira do cartão.'); return }
   pagamentos.value.push({
     tipo: cartaoTipo.value, valor: cartaoValor.value,
-    operadoraId: o.id, operadoraNome: o.nome,
+    // operadoraId vai por trás (taxa/recebível); o caixa vê apenas a bandeira.
+    operadoraId: o.id, operadoraNome: sel.label,
     parcelas: cartaoTipo.value === 'Crédito' ? cartaoParcelas.value : 1,
     taxa: cartaoTaxa.value, liquido: cartaoLiquido.value,
   })
@@ -2100,13 +2141,19 @@ onUnmounted(() => {
 
 /* ══ MOBILE RESPONSIVO ══════════════════════════════════════════ */
 @media (max-width: 640px) {
-  .pdv-shell { height: 100dvh; }
+  /* No celular o PDV ocupa a tela inteira (a app-bar global fica escondida) */
+  .pdv-shell { height: 100dvh; min-height: 0; }
 
-  .pdv-topbar { padding: 0 12px; gap: 8px; height: 52px; }
-  .pdv-topbar-center { flex: 1; max-width: none; }
+  /* Barra do PDV quebra em duas linhas: caixa/menu em cima, busca em baixo */
+  .pdv-topbar { flex-wrap: wrap; height: auto; padding: 8px 10px; gap: 8px; }
+  .pdv-brand { display: none; }              /* espaço para a busca */
   .pdv-topbar-right .pdv-info-pill { display: none; }
-  .pdv-brand-name { display: none; }
-  .pdv-brand { padding-right: 8px; }
+
+  /* Busca em linha própria, ocupando toda a largura e com toque confortável */
+  .pdv-topbar-center { order: 3; flex: 1 0 100%; max-width: none; margin: 2px 0 0; }
+  .pdv-search .v-field { min-height: 48px; border-radius: 10px !important; }
+  .pdv-search input { font-size: 16px !important; }        /* evita zoom do iOS */
+  .pdv-search .v-field__prepend-inner .v-icon { color: rgba(255,255,255,.7) !important; }
 
   /* Empilha colunas verticalmente */
   .pdv-body { flex-direction: column; overflow-y: auto; }
@@ -2135,9 +2182,17 @@ onUnmounted(() => {
   /* Formas de pagamento em grid 2x2 mais generoso */
   .pdv-fp-btn { padding: 16px 6px; font-size: 12px; }
 
-  /* Botão Finalizar maior para toque */
-  .pdv-btn-finalizar { height: 64px; font-size: 17px; }
-  .pdv-acoes { padding: 16px 16px 24px; }
+  /* Botão Finalizar maior para toque, fixo no rodapé para sempre poder finalizar */
+  .pdv-btn-finalizar { height: 60px; font-size: 17px; }
+  .pdv-acoes {
+    position: sticky;
+    bottom: 0;
+    background: #ffffff;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 16px rgba(15, 23, 42, .1);
+    z-index: 6;
+  }
+  .pdv-btn-cancelar { margin-top: 8px; }
 
   /* Totais compactos */
   .pdv-total-valor { font-size: 24px; }

@@ -1,8 +1,9 @@
 <template>
   <v-app :theme="tema">
     <template v-if="auth.logado">
-      <!-- Drawer lateral -->
-      <v-navigation-drawer v-model="drawer" :rail="rail" permanent>
+      <!-- Drawer lateral: permanente no desktop, temporário (overlay) no celular -->
+      <v-navigation-drawer v-model="drawer" :rail="!mobile && rail"
+        :permanent="!mobile" :temporary="mobile">
         <v-list-item nav class="py-3">
           <template #prepend>
             <img src="/logo-ecogranel.png" alt="EcoGranel"
@@ -170,11 +171,11 @@
         </template>
       </v-navigation-drawer>
 
-      <!-- Top bar -->
-      <v-app-bar elevation="1" color="surface">
+      <!-- Top bar (escondida no PDV mobile, que tem barra própria em tela cheia) -->
+      <v-app-bar v-if="!pdvFullscreen" elevation="1" color="surface">
         <template #prepend>
-          <v-btn :icon="rail ? 'mdi-menu' : 'mdi-menu-open'"
-            variant="text" @click="rail = !rail" />
+          <v-btn :icon="mobile ? 'mdi-menu' : (rail ? 'mdi-menu' : 'mdi-menu-open')"
+            variant="text" @click="mobile ? (drawer = !drawer) : (rail = !rail)" />
         </template>
         <v-app-bar-title>
           <span class="text-body-1 font-weight-medium">{{ tituloPagina }}</span>
@@ -227,7 +228,7 @@
       </v-app-bar>
 
       <v-main>
-        <v-container fluid class="pa-4">
+        <v-container fluid :class="mobile ? 'pa-0' : 'pa-4'">
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
               <component :is="Component" />
@@ -253,20 +254,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import { useUiStore } from '@/stores/ui'
+import { storeToRefs } from 'pinia'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
 const route = useRoute()
+const { mobile } = useDisplay()
+const ui = useUiStore()
+const { drawer } = storeToRefs(ui)
 
-const drawer = ref(true)
+// No celular o menu começa fechado (overlay); no desktop começa aberto.
+drawer.value = !mobile.value
 const rail = ref(false)
 const tema = ref<'ecoGranelLight' | 'ecoGranelDark'>('ecoGranelLight')
 
 const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel')
+// No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).
+const pdvFullscreen = computed(() => mobile.value && route.path === '/pdv')
+
+// Ao navegar no celular, fecha o menu overlay; ao alternar mobile/desktop, ajusta.
+watch(() => route.path, () => { if (mobile.value) drawer.value = false })
+watch(mobile, m => { drawer.value = !m })
 
 function alternarTema() {
   tema.value = tema.value === 'ecoGranelLight' ? 'ecoGranelDark' : 'ecoGranelLight'

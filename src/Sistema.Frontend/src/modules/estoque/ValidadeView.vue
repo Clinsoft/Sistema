@@ -17,7 +17,7 @@
       titulo="Como usar o Controle de Validade"
       :passos="[
         '<b>Monitoramento</b>: veja os lotes que estão vencidos ou próximos do vencimento, agrupados por status (Vencido, Urgente, Vermelho, Amarelo). Clique nos cards/chips para filtrar e acompanhe o <b>valor em risco</b>.',
-        '<b>Registrar Validade</b>: escaneie (ou digite) o <b>código de barras</b> do produto, informe a <b>data de validade</b>, o número do lote e a quantidade, e clique em <b>Registrar</b>. O sistema calcula os dias restantes e o desconto automático.',
+        '<b>Registrar Validade</b>: dois modos. <b>Por código de barras</b> — escaneie (ou digite) o código, informe a data e clique em Registrar. <b>Por nota fiscal</b> — digite o número da NF de entrada para listar os produtos e registre a validade de cada um; você pode <b>tirar foto da etiqueta</b> com o celular para o sistema ler a data automaticamente.',
         '<b>Lotes</b>: cadastre um <b>Novo Lote</b> (produto, local, número, quantidade, custo, validade e fabricação). Na tabela você pode <b>editar</b> (✏️), <b>excluir</b> (🗑️) ou <b>transferir</b> (⇄) o lote para outra filial.',
         'Em <b>Configurações</b> defina os prazos de alerta (amarelo/vermelho/urgente) e o desconto automático. Os prazos alimentam os status do painel de monitoramento.',
       ]"
@@ -153,7 +153,129 @@
 
     <!-- ═══════════════════ ABA: REGISTRAR VALIDADE ═══════════════════ -->
     <div v-if="aba === 'registrar'">
-      <v-row>
+      <v-btn-toggle v-model="modoRegistro" mandatory divided density="comfortable"
+        color="primary" class="mb-4">
+        <v-btn value="codigo"><v-icon start>mdi-barcode-scan</v-icon>Por código de barras</v-btn>
+        <v-btn value="nota"><v-icon start>mdi-file-document-outline</v-icon>Por nota fiscal</v-btn>
+      </v-btn-toggle>
+
+      <!-- ─────────── MODO: POR NOTA FISCAL ─────────── -->
+      <div v-if="modoRegistro === 'nota'">
+        <v-card rounded="xl" elevation="1" class="mb-4">
+          <v-card-text>
+            <div class="text-body-2 font-weight-bold mb-2">
+              <v-icon icon="mdi-file-document-outline" class="mr-1" />
+              Digite o número da NF de entrada para listar os produtos
+            </div>
+            <v-row dense align="center">
+              <v-col cols="12" sm="5" md="4">
+                <v-text-field v-model="numeroNota" label="Número da NF *" type="number"
+                  variant="outlined" density="compact" hide-details autofocus
+                  prepend-inner-icon="mdi-pound" @keyup.enter="buscarNota" />
+              </v-col>
+              <v-col cols="auto">
+                <v-btn color="primary" :loading="buscandoNota" @click="buscarNota">
+                  <v-icon start>mdi-magnify</v-icon>Buscar produtos
+                </v-btn>
+              </v-col>
+              <v-col v-if="itensNota.length" cols="12" sm="5" md="4">
+                <v-text-field v-model="barcodeNota" label="Escanear código p/ localizar na lista"
+                  variant="outlined" density="compact" hide-details clearable
+                  prepend-inner-icon="mdi-barcode-scan" @keyup.enter="localizarPorBarcode" />
+              </v-col>
+            </v-row>
+            <div v-if="notaEmitente" class="text-caption text-medium-emphasis mt-2">
+              Emitente: <b>{{ notaEmitente }}</b> · {{ itensNota.length }} produto(s) ·
+              📷 tire foto da etiqueta para preencher a validade automaticamente
+            </div>
+          </v-card-text>
+        </v-card>
+
+        <v-card v-if="itensNota.length" rounded="xl" elevation="1">
+          <v-list lines="two">
+            <template v-for="(it, idx) in itensNota" :key="it.itemId">
+              <v-divider v-if="idx > 0" />
+              <v-list-item :class="{ 'validade-destaque': it._destaque }">
+                <template #prepend>
+                  <v-avatar v-if="it.imagemUrl" size="40" rounded class="mr-3">
+                    <v-img :src="it.imagemUrl" cover />
+                  </v-avatar>
+                  <v-icon v-else class="mr-3" size="30"
+                    :color="it._salvo ? 'success' : 'grey-lighten-1'">
+                    {{ it._salvo ? 'mdi-check-circle' : 'mdi-package-variant-closed' }}
+                  </v-icon>
+                </template>
+                <template #default>
+                  <div class="text-body-2 font-weight-medium">{{ it.descricao }}</div>
+                  <div class="text-caption text-medium-emphasis mb-1">
+                    {{ it.codigoBarras || it.codigo || '—' }} · {{ it.quantidadeEstoque }} un.
+                  </div>
+                  <v-row dense align="center">
+                    <v-col cols="6" sm="3">
+                      <v-text-field v-model="it._validade" type="date" label="Validade"
+                        variant="outlined" density="compact" hide-details />
+                    </v-col>
+                    <v-col cols="6" sm="3">
+                      <v-text-field v-model="it._lote" label="Lote"
+                        variant="outlined" density="compact" hide-details />
+                    </v-col>
+                    <v-col cols="auto">
+                      <v-btn size="small" variant="tonal" :loading="it._ocr" @click="dispararFoto(it)">
+                        <v-icon start>mdi-camera</v-icon>Foto
+                      </v-btn>
+                      <input type="file" accept="image/*" capture="environment"
+                        class="d-none" :ref="(el: any) => setFotoRef(it.itemId, el)"
+                        @change="onFoto(it, $event)" />
+                    </v-col>
+                    <v-col cols="auto">
+                      <v-btn size="small" color="primary" :loading="it._salvando"
+                        :disabled="!it._validade || it._salvo" @click="registrarItemNota(it)">
+                        <v-icon start>mdi-content-save-outline</v-icon>
+                        {{ it._salvo ? 'Registrado' : 'Registrar' }}
+                      </v-btn>
+                    </v-col>
+                  </v-row>
+                  <div v-if="it._ocr" class="text-caption text-info mt-1">
+                    Lendo a foto…
+                  </div>
+                  <div v-else-if="it._ocrLido" class="text-caption mt-1"
+                    :class="it._validade ? 'text-success' : 'text-warning'">
+                    <v-icon size="14">mdi-camera-outline</v-icon>
+                    <span v-if="it._validade"> Data lida da foto: {{ fmtData(it._validade) }}</span>
+                    <span v-else> Não consegui ler a data — digite manualmente.</span>
+                    <span v-if="it._ocrCandidatas && it._ocrCandidatas.length > 1">
+                      (outras: {{ it._ocrCandidatas.slice(1).map(fmtData).join(', ') }})
+                    </span>
+                  </div>
+                </template>
+              </v-list-item>
+            </template>
+          </v-list>
+          <v-card-actions class="pa-3">
+            <span class="text-caption text-medium-emphasis ml-2">
+              {{ itensNota.filter(i => i._salvo).length }}/{{ itensNota.length }} registrados
+            </span>
+            <v-spacer />
+            <v-btn color="primary" variant="flat" :loading="salvandoTodos"
+              :disabled="!itensNota.some(i => i._validade && !i._salvo)"
+              @click="registrarTodosNota">
+              <v-icon start>mdi-content-save-all</v-icon>Registrar todos com validade
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+        <v-card v-else-if="notaBuscada" rounded="xl" elevation="0" variant="tonal" color="info">
+          <v-card-text class="text-center py-6">
+            <v-icon icon="mdi-file-search-outline" size="48" color="info" />
+            <div class="mt-2 text-body-2">
+              Nenhum produto encontrado para a NF nº {{ numeroNota }}.
+              Confira o número ou se a nota já foi importada na Escrituração.
+            </div>
+          </v-card-text>
+        </v-card>
+      </div>
+
+      <!-- ─────────── MODO: POR CÓDIGO DE BARRAS (existente) ─────────── -->
+      <v-row v-else>
         <!-- Coluna esquerda: scanner + produto -->
         <v-col cols="12" md="4">
 
@@ -174,9 +296,14 @@
                 @keyup.enter="buscarProduto"
                 @click:append-inner="buscarProduto"
                 :loading="buscando" />
-              <v-btn v-if="produto" variant="text" size="small" class="mt-2" @click="limpar">
-                <v-icon start>mdi-close</v-icon>Limpar
-              </v-btn>
+              <div class="d-flex align-center gap-2 mt-2">
+                <v-btn color="primary" variant="tonal" size="small" @click="scannerAberto = true">
+                  <v-icon start>mdi-camera</v-icon>Escanear com o celular
+                </v-btn>
+                <v-btn v-if="produto" variant="text" size="small" @click="limpar">
+                  <v-icon start>mdi-close</v-icon>Limpar
+                </v-btn>
+              </div>
             </v-card-text>
           </v-card>
 
@@ -299,6 +426,9 @@
         </v-col>
       </v-row>
     </div>
+
+    <!-- Scanner de câmera (modo por código de barras) -->
+    <BarcodeScanner v-model="scannerAberto" @detected="onScanBarcode" />
 
     <!-- ═══════════════════ ABA: LOTES ═══════════════════ -->
     <div v-if="aba === 'lotes'">
@@ -566,7 +696,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
+import BarcodeScanner from '@/components/BarcodeScanner.vue'
 import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
+import { lerDataValidadeDaImagem } from '@/utils/ocrValidade'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -705,7 +837,13 @@ const produto = ref<any>(null)
 const marca = ref('')
 const lotes = ref<any[]>([])
 const barcodeInput = ref<any>(null)
+const scannerAberto = ref(false)
 const salvando = ref(false)
+
+function onScanBarcode(codigo: string) {
+  barcode.value = codigo
+  buscarProduto()
+}
 const form = ref({ numeroLote: '', dataValidade: '', quantidade: 1, loteId: null as string | null })
 
 async function buscarProduto() {
@@ -758,6 +896,124 @@ async function registrar() {
   } catch {
     notif.erro('Erro ao registrar validade.')
   } finally { salvando.value = false }
+}
+
+// ─── Registrar por Nota Fiscal ───────────────────────────────────────────────
+const modoRegistro = ref<'codigo' | 'nota'>('codigo')
+const numeroNota = ref('')
+const buscandoNota = ref(false)
+const notaBuscada = ref(false)
+const notaEmitente = ref('')
+const itensNota = ref<any[]>([])
+const barcodeNota = ref('')
+const salvandoTodos = ref(false)
+const fotoRefs = new Map<string, HTMLInputElement>()
+
+function setFotoRef(id: string, el: HTMLInputElement | null) {
+  if (el) fotoRefs.set(id, el); else fotoRefs.delete(id)
+}
+
+async function buscarNota() {
+  const n = String(numeroNota.value).trim()
+  if (!n) return
+  buscandoNota.value = true
+  notaBuscada.value = false
+  try {
+    const r = await api.get('/validade/por-nota', {
+      params: { empresaId: auth.empresaId, numeroNota: n },
+    })
+    notaEmitente.value = r.data.emitente ?? ''
+    itensNota.value = (r.data.itens ?? []).map((i: any) => ({
+      ...i,
+      _validade: i.validadeIso ?? '',
+      _lote: i.numeroLote ?? '',
+      _salvo: false, _salvando: false,
+      _ocr: false, _ocrLido: false, _ocrCandidatas: [] as string[],
+      _destaque: false,
+    }))
+  } catch (e: any) {
+    itensNota.value = []
+    notaEmitente.value = ''
+    if (e.response?.status === 404) notif.aviso(e.response.data?.mensagem ?? 'Nota não encontrada.')
+    else notif.erro('Erro ao buscar produtos da nota.')
+  } finally {
+    buscandoNota.value = false
+    notaBuscada.value = true
+  }
+}
+
+function localizarPorBarcode() {
+  const code = barcodeNota.value.trim()
+  if (!code) return
+  const alvo = itensNota.value.find(i => i.codigoBarras === code || i.codigo === code)
+  itensNota.value.forEach(i => (i._destaque = false))
+  if (alvo) {
+    alvo._destaque = true
+    barcodeNota.value = ''
+    // rola até o item destacado
+    setTimeout(() => {
+      document.querySelector('.validade-destaque')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
+  } else {
+    notif.aviso(`Código ${code} não está nesta nota.`)
+  }
+}
+
+function dispararFoto(it: any) {
+  fotoRefs.get(it.itemId)?.click()
+}
+
+async function onFoto(it: any, ev: Event) {
+  const file = (ev.target as HTMLInputElement).files?.[0]
+  ;(ev.target as HTMLInputElement).value = ''   // permite re-selecionar a mesma foto
+  if (!file) return
+  it._ocr = true; it._ocrLido = false
+  try {
+    const res = await lerDataValidadeDaImagem(file)
+    it._ocrCandidatas = res.candidatas
+    if (res.dataIso) it._validade = res.dataIso
+    it._ocrLido = true
+    if (!res.dataIso) notif.aviso('Não consegui ler a data na foto. Digite manualmente.')
+  } catch {
+    notif.erro('Falha ao processar a foto.')
+  } finally {
+    it._ocr = false
+  }
+}
+
+async function registrarItemNota(it: any) {
+  if (!it._validade) return
+  it._salvando = true
+  try {
+    await api.post('/validade/registrar', {
+      empresaId: auth.empresaId,
+      produtoId: it.produtoId,
+      dataValidade: it._validade,
+      loteId: it.loteId ?? undefined,
+      numeroLote: it._lote || undefined,
+      quantidade: it.quantidadeEstoque,
+    })
+    it._salvo = true
+    it._destaque = false
+  } catch {
+    notif.erro(`Erro ao registrar validade de ${it.descricao}.`)
+  } finally {
+    it._salvando = false
+  }
+}
+
+async function registrarTodosNota() {
+  const pendentes = itensNota.value.filter(i => i._validade && !i._salvo)
+  if (!pendentes.length) return
+  salvandoTodos.value = true
+  try {
+    for (const it of pendentes) await registrarItemNota(it)
+    const ok = itensNota.value.filter(i => i._salvo).length
+    notif.ok(`${ok} validade(s) registrada(s)!`)
+    carregarPainel()
+  } finally {
+    salvandoTodos.value = false
+  }
 }
 
 const diasRestantes = computed(() => {
@@ -1038,5 +1294,9 @@ onMounted(async () => {
 .validade-item { position: relative; padding-left: 12px !important; }
 .validade-status-bar {
   position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 4px 0 0 4px;
+}
+.validade-destaque {
+  background: rgba(76, 175, 80, 0.12);
+  box-shadow: inset 4px 0 0 rgb(var(--v-theme-primary));
 }
 </style>

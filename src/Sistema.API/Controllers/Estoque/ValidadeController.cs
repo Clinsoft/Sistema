@@ -144,6 +144,75 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
         return Ok(new { produto, marca, lotes });
     }
 
+    // ─── Produtos de uma Nota Fiscal de entrada (por número) ───────────────
+
+    /// <summary>
+    /// Lista os produtos de uma entrada de NF-e pelo número da nota, para
+    /// registrar a validade item a item. O número da NF fica embutido na chave
+    /// de acesso (posições 26–34, 9 dígitos), então filtramos por esse trecho.
+    /// </summary>
+    [HttpGet("por-nota")]
+    public async Task<IActionResult> ProdutosPorNota(
+        [FromQuery] Guid empresaId, [FromQuery] long numeroNota, CancellationToken ct)
+    {
+        if (numeroNota <= 0)
+            return BadRequest(new { mensagem = "Informe o número da nota." });
+
+        var numero9 = numeroNota.ToString("D9");
+
+        var entradas = await db.EntradasNFe.AsNoTracking()
+            .Include(e => e.Itens)
+            .Where(e => e.EmpresaId == empresaId
+                     && e.ChaveAcesso.Length == 44
+                     && e.ChaveAcesso.Substring(25, 9) == numero9)
+            .OrderByDescending(e => e.DataEntrada)
+            .ToListAsync(ct);
+
+        if (entradas.Count == 0)
+            return NotFound(new { mensagem = $"Nenhuma entrada encontrada para a NF nº {numeroNota}." });
+
+        // Só itens que viraram Produto (mercadoria) têm controle de validade.
+        var produtoIds = entradas.SelectMany(e => e.Itens)
+            .Where(i => i.ProdutoId.HasValue)
+            .Select(i => i.ProdutoId!.Value)
+            .Distinct()
+            .ToList();
+
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => produtoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Codigo, p.CodigoBarras, p.ImagemUrl, p.ControlarValidade })
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var itens = entradas.SelectMany(e => e.Itens
+                .Where(i => i.ProdutoId.HasValue)
+                .Select(i => new
+                {
+                    e.Id,                       // entradaId
+                    EmitenteNome = e.EmitenteNome,
+                    DataEmissao  = e.DataEmissao.ToString("dd/MM/yyyy"),
+                    ItemId       = i.Id,
+                    ProdutoId    = i.ProdutoId!.Value,
+                    Descricao    = i.ProdutoDescricao ?? i.DescricaoXml,
+                    CodigoBarras = produtos.TryGetValue(i.ProdutoId!.Value, out var p) ? p.CodigoBarras : i.CodigoBarras,
+                    Codigo       = produtos.TryGetValue(i.ProdutoId!.Value, out var p2) ? p2.Codigo : null,
+                    ImagemUrl    = produtos.TryGetValue(i.ProdutoId!.Value, out var p3) ? p3.ImagemUrl : null,
+                    i.QuantidadeEstoque,
+                    i.NumeroLote,
+                    i.LoteId,
+                    ValidadeIso  = i.Validade?.ToString("yyyy-MM-dd"),
+                }))
+            .OrderBy(i => i.Descricao)
+            .ToList();
+
+        return Ok(new
+        {
+            numeroNota,
+            emitente = entradas[0].EmitenteNome,
+            totalItens = itens.Count,
+            itens,
+        });
+    }
+
     // ─── Registrar validade ────────────────────────────────────────────────
 
     [HttpPost("registrar")]

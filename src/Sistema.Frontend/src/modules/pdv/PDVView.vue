@@ -306,6 +306,9 @@
                 <span v-if="pag.operadoraNome" class="text-caption text-medium-emphasis">
                   · {{ pag.operadoraNome }}<span v-if="(pag.parcelas ?? 1) > 1"> {{ pag.parcelas }}x</span>
                 </span>
+                <span v-else-if="pag.crediarioParcelas" class="text-caption text-medium-emphasis">
+                  · {{ pag.crediarioParcelas }}x<span v-if="(pag.crediarioEntrada ?? 0) > 0"> (entrada R$ {{ fmt(pag.crediarioEntrada) }})</span>
+                </span>
               </div>
               <v-text-field
                 v-model.number="pag.valor"
@@ -436,6 +439,47 @@
           <v-spacer />
           <v-btn variant="text" @click="dialogCartao = false">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :disabled="!cartaoBandeiraSel" @click="confirmarCartao">
+            Adicionar pagamento
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: crediário (parcelas + entrada; exige cliente) -->
+    <v-dialog v-model="dialogCrediario" max-width="440">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="deep-purple">mdi-account-credit-card-outline</v-icon>
+          Crediário
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-alert v-if="clienteSelecionadoNome" type="info" variant="tonal" density="compact" class="mb-3">
+            Cliente: <b>{{ clienteSelecionadoNome }}</b>
+          </v-alert>
+          <v-row dense>
+            <v-col cols="6">
+              <v-text-field v-model.number="crediarioParcelas" label="Nº de parcelas *"
+                type="number" min="1" max="60" variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="crediarioEntrada" label="Entrada (R$)"
+                type="number" min="0" prefix="R$" variant="outlined" density="compact" hide-details />
+            </v-col>
+          </v-row>
+          <v-alert type="info" variant="tonal" density="compact" class="mt-3">
+            <div class="d-flex justify-space-between"><span>Valor financiado</span><b>R$ {{ fmt(crediarioValor) }}</b></div>
+            <div class="d-flex justify-space-between">
+              <span>{{ crediarioParcelas }}x de</span>
+              <b>R$ {{ fmt(crediarioValorParcela) }}</b>
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogCrediario = false">Cancelar</v-btn>
+          <v-btn color="deep-purple" rounded="lg"
+            :disabled="!(crediarioParcelas >= 1) || crediarioEntrada >= crediarioValorBase"
+            @click="confirmarCrediario">
             Adicionar pagamento
           </v-btn>
         </v-card-actions>
@@ -765,6 +809,7 @@ interface Pagamento {
   tipo: string; valor: number
   operadoraId?: string | null; parcelas?: number
   taxa?: number; liquido?: number; operadoraNome?: string
+  crediarioParcelas?: number; crediarioEntrada?: number
 }
 interface Operadora {
   id: string; nome: string; cor?: string; bandeiras?: string[]
@@ -1015,8 +1060,48 @@ function selecionarFormaPagamento(tipo: string) {
     return
   }
 
+  // Crediário: exige cliente e abre o diálogo de parcelas/entrada.
+  if (tipo === 'Crediário') {
+    if (!clienteId.value) {
+      notif.aviso('Selecione um cliente para vender no crediário.')
+      return
+    }
+    crediarioParcelas.value = 2
+    crediarioEntrada.value = 0
+    dialogCrediario.value = true
+    return
+  }
+
   const restante = Math.max(0, total.value - totalPago.value)
   pagamentos.value.push({ tipo, valor: restante || total.value })
+}
+
+// ── Crediário ─────────────────────────────────────────────────────
+const dialogCrediario = ref(false)
+const crediarioParcelas = ref(2)
+const crediarioEntrada = ref(0)
+// Base do crediário = valor restante da venda (o que ainda falta pagar).
+const crediarioValorBase = computed(() => Math.max(0, total.value - totalPago.value) || total.value)
+const crediarioValor = computed(() => crediarioValorBase.value)
+const crediarioValorParcela = computed(() => {
+  const financiado = Math.max(0, crediarioValorBase.value - (crediarioEntrada.value || 0))
+  const n = Math.max(1, crediarioParcelas.value || 1)
+  return Math.round(financiado / n * 100) / 100
+})
+const clienteSelecionadoNome = computed(() =>
+  clientes.value.find(c => c.id === clienteId.value)?.nome ?? '')
+
+function confirmarCrediario() {
+  if (!(crediarioParcelas.value >= 1)) { notif.aviso('Informe o número de parcelas.'); return }
+  if (crediarioEntrada.value >= crediarioValorBase.value) {
+    notif.aviso('A entrada não pode ser maior ou igual ao valor.'); return
+  }
+  pagamentos.value.push({
+    tipo: 'Crediário', valor: crediarioValorBase.value,
+    crediarioParcelas: crediarioParcelas.value,
+    crediarioEntrada: crediarioEntrada.value || 0,
+  })
+  dialogCrediario.value = false
 }
 
 // Maquininha por trás da bandeira escolhida (usada só para o cálculo interno).
@@ -1214,6 +1299,25 @@ async function finalizar() {
       })),
       cpfCnpjConsumidor: docValido ? docRaw : null,
     })
+
+    // Crediário: abre o contrato (gera parcelas → contas a receber) vinculado à venda.
+    const pagCrediario = pagamentos.value.find(p => p.tipo === 'Crediário')
+    if (pagCrediario && clienteId.value) {
+      try {
+        await api.post('/crediario', {
+          empresaId: auth.empresaId,
+          clienteId: clienteId.value,
+          usuarioId: colaboradorId.value || auth.usuario?.id,
+          valorTotal: pagCrediario.valor,
+          valorEntrada: pagCrediario.crediarioEntrada ?? 0,
+          numeroParcelas: pagCrediario.crediarioParcelas ?? 1,
+          taxaJurosMensal: 0,
+          vendaId,
+        })
+      } catch {
+        notif.erro('Venda finalizada, mas houve erro ao abrir o crediário. Registre-o manualmente na tela Crediário.')
+      }
+    }
 
     ultimaVendaId.value = vendaId
     ultimaVendaNumero.value = res.data.numero

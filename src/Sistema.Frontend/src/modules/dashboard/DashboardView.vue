@@ -24,62 +24,102 @@
       </v-col>
     </v-row>
 
-    <!-- Gráfico de vendas + atalhos -->
-    <v-row class="mt-2">
-      <v-col cols="12" md="8">
+    <!-- Indicadores: Margem de Contribuição + CMV -->
+    <v-row class="mt-3">
+      <v-col cols="12" sm="6">
         <v-card rounded="xl" elevation="1">
-          <v-card-title class="pa-4 pb-0 text-body-1 font-weight-bold">
-            Vendas — últimos 7 dias
-          </v-card-title>
-          <v-card-text>
-            <div v-if="carregando" class="d-flex justify-center pa-8">
-              <v-progress-circular indeterminate color="primary" />
+          <v-card-text class="d-flex align-center pa-4">
+            <v-avatar color="deep-purple" size="48" class="mr-3">
+              <v-icon icon="mdi-percent-outline" color="white" size="26" />
+            </v-avatar>
+            <div class="flex-grow-1">
+              <div class="text-caption text-medium-emphasis">Índice de Margem de Contribuição — {{ mesAtual }}</div>
+              <div class="text-h5 font-weight-bold text-deep-purple">
+                {{ pe ? pe.percentualMargemContribuicao + '%' : '--' }}
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                {{ pe ? fmt(pe.margemContribuicao) + ' de contribuição' : 'sem vendas no mês' }}
+              </div>
             </div>
-            <canvas v-else ref="graficoCanvas" height="200" />
+            <v-progress-circular v-if="pe" :model-value="Math.min(pe.percentualMargemContribuicao, 100)"
+              :size="52" :width="6" color="deep-purple">
+              <span class="text-caption font-weight-bold">{{ Math.round(pe.percentualMargemContribuicao) }}%</span>
+            </v-progress-circular>
           </v-card-text>
         </v-card>
       </v-col>
 
-      <v-col cols="12" md="4">
-        <v-card rounded="xl" elevation="1" height="100%" style="display:flex;flex-direction:column">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
-            Planejamento — {{ anoAtual }}
-            <v-spacer />
-            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Ver
-            </v-btn>
-          </v-card-title>
-
-          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis flex-grow-1 d-flex flex-column justify-center pa-6">
-            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
-            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Criar Planejamento
-            </v-btn>
-          </v-card-text>
-
-          <div v-else class="pa-3 pt-0 flex-grow-1">
-            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
-              <div class="d-flex align-center mb-1">
-                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
-                <span class="text-caption font-weight-bold"
-                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
-                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
-                </span>
+      <v-col cols="12" sm="6">
+        <v-card rounded="xl" elevation="1">
+          <v-card-text class="d-flex align-center pa-4">
+            <v-avatar color="orange-darken-2" size="48" class="mr-3">
+              <v-icon icon="mdi-cart-arrow-down" color="white" size="26" />
+            </v-avatar>
+            <div class="flex-grow-1">
+              <div class="text-caption text-medium-emphasis">Custo da Mercadoria Vendida (CMV) — {{ mesAtual }}</div>
+              <div class="text-h5 font-weight-bold text-orange-darken-2">
+                {{ dre ? fmt(dre.cmv) : 'R$ --' }}
               </div>
-              <v-progress-linear
-                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
-                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
-                height="5" rounded
-              />
+              <div class="text-caption text-medium-emphasis">
+                {{ dre && dre.receitaLiquida > 0
+                  ? Math.round(dre.cmv / dre.receitaLiquida * 100) + '% da receita líquida'
+                  : 'sem receita no mês' }}
+              </div>
             </div>
-            <v-divider class="my-2" />
-            <div class="d-flex justify-space-between text-caption">
-              <span class="text-medium-emphasis">Realizado YTD</span>
-              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
+            <v-progress-circular v-if="dre && dre.receitaLiquida > 0"
+              :model-value="Math.min(dre.cmv / dre.receitaLiquida * 100, 100)"
+              :size="52" :width="6" color="orange-darken-2">
+              <span class="text-caption font-weight-bold">{{ Math.round(dre.cmv / dre.receitaLiquida * 100) }}%</span>
+            </v-progress-circular>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Vendas 7 dias + Curva ABC (gráficos lado a lado) -->
+    <v-row class="mt-3">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-0 text-body-2 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-chart-bar" class="mr-2" color="success" size="18" />
+            Vendas — últimos 30 dias
+          </v-card-title>
+          <v-card-text class="pb-2">
+            <div v-if="carregando" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="primary" />
             </div>
-          </div>
+            <canvas v-else ref="graficoCanvas" height="185" style="width:100%;display:block" />
+          </v-card-text>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-2 text-body-2 font-weight-bold d-flex align-center flex-wrap">
+            <v-icon icon="mdi-chart-bar-stacked" class="mr-2" color="deep-orange" size="18" />
+            Curva ABC de Produtos
+            <v-spacer />
+            <div class="d-flex ga-1">
+              <v-chip size="x-small" color="success" variant="tonal" label>A: {{ abcResumo.A }}</v-chip>
+              <v-chip size="x-small" color="warning" variant="tonal" label>B: {{ abcResumo.B }}</v-chip>
+              <v-chip size="x-small" color="error" variant="tonal" label>C: {{ abcResumo.C }}</v-chip>
+            </div>
+          </v-card-title>
+          <v-card-text class="pb-2">
+            <div v-if="carregandoAbc" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="deep-orange" />
+            </div>
+            <div v-else-if="!curvaAbc.length" class="text-center text-medium-emphasis pa-6">
+              <v-icon icon="mdi-package-variant" size="32" class="mb-2" />
+              <div class="text-body-2">Sem vendas de produtos no período.</div>
+            </div>
+            <template v-else>
+              <canvas ref="abcCanvas" height="170" style="width:100%;display:block" />
+              <div class="text-caption text-medium-emphasis mt-1 text-center">
+                Participação por produto · linha = % acumulado (Pareto).
+              </div>
+            </template>
+          </v-card-text>
         </v-card>
       </v-col>
     </v-row>
@@ -103,9 +143,9 @@
 
           <v-card-text v-else-if="!pe || pe.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
             <v-icon icon="mdi-information-outline" class="mb-2" size="32" />
-            <div class="text-body-2">Cadastre os <strong>custos fixos</strong> do mês para calcular o ponto de equilíbrio.</div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple" to="/financeiro/custos-fixos">
-              Cadastrar custos
+            <div class="text-body-2">Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.</div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple" to="/financeiro/contas-pagar">
+              Ver contas a pagar
             </v-btn>
           </v-card-text>
 
@@ -130,7 +170,7 @@
               <v-col cols="12" sm="5">
                 <div class="d-flex flex-column gap-2 text-body-2">
                   <div class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">Custos fixos</span>
+                    <span class="text-medium-emphasis">Contas a pagar (mês)</span>
                     <span class="font-weight-bold text-error">{{ fmt(pe.totalCustosFixos) }}</span>
                   </div>
                   <div class="d-flex justify-space-between">
@@ -207,10 +247,53 @@
       </v-col>
     </v-row>
 
-    <!-- Vendas por Colaborador + DRE do Mês -->
+    <!-- Planejamento + Vendas por Colaborador -->
     <v-row class="mt-2">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" style="display:flex;flex-direction:column">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
+            Planejamento — {{ anoAtual }}
+            <v-spacer />
+            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Ver
+            </v-btn>
+          </v-card-title>
+
+          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis flex-grow-1 d-flex flex-column justify-center pa-6">
+            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
+            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Criar Planejamento
+            </v-btn>
+          </v-card-text>
+
+          <div v-else class="pa-3 pt-0 flex-grow-1">
+            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
+              <div class="d-flex align-center mb-1">
+                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
+                <span class="text-caption font-weight-bold"
+                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
+                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
+                </span>
+              </div>
+              <v-progress-linear
+                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
+                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
+                height="5" rounded
+              />
+            </div>
+            <v-divider class="my-2" />
+            <div class="d-flex justify-space-between text-caption">
+              <span class="text-medium-emphasis">Realizado YTD</span>
+              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+
       <!-- Vendas por Colaborador -->
-      <v-col cols="12" md="5">
+      <v-col cols="12" md="6">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-account-group-outline" class="mr-2" color="teal" />
@@ -270,8 +353,11 @@
         </v-card>
       </v-col>
 
-      <!-- DRE do Mês -->
-      <v-col cols="12" md="7">
+    </v-row>
+
+    <!-- DRE do Mês -->
+    <v-row class="mt-2">
+      <v-col cols="12">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
@@ -684,7 +770,7 @@ async function carregarVendas7dias() {
   if (!auth.empresaId) { carregando.value = false; return }
   try {
     const hoje = new Date()
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 6).toISOString().slice(0, 10)
+    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 29).toISOString().slice(0, 10)
     const fim = hoje.toISOString().slice(0, 10)
     const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
       params: { empresaId: auth.empresaId, inicio, fim }
@@ -703,44 +789,122 @@ function renderizarGraficoVendas() {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  // Monta série contínua dos últimos 7 dias (preenche dias sem venda com 0)
+  // Monta série contínua dos últimos 30 dias (preenche dias sem venda com 0)
   const hoje = new Date()
   const dias: { label: string; valor: number }[] = []
   const mapa = Object.fromEntries(
     vendas7dias.value.map(d => [d.data.slice(0, 10), d.totalVendido])
   )
-  for (let i = 6; i >= 0; i--) {
+  for (let i = 29; i >= 0; i--) {
     const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - i)
     const iso = d.toISOString().slice(0, 10)
-    dias.push({ label: MESES_PT[d.getMonth()] + ' ' + d.getDate(), valor: mapa[iso] ?? 0 })
+    // Rótulo a cada 5 dias (evita amontoado); o mês aparece no rótulo mais à
+    // esquerda e no começo de cada mês.
+    const mostrar = i % 5 === 0
+    const label = !mostrar ? ''
+      : (i === 25 || d.getDate() <= 5) ? MESES_PT[d.getMonth()] + ' ' + d.getDate()
+      : String(d.getDate())
+    dias.push({ label, valor: mapa[iso] ?? 0 })
   }
 
-  const W = canvas.offsetWidth || 600, H = 200
+  const W = canvas.offsetWidth || 600, H = 185
   canvas.width = W; canvas.height = H
   ctx.clearRect(0, 0, W, H)
 
-  const padL = 8, padR = 8, padTop = 16, padBottom = 24
+  const padL = 44, padR = 12, padTop = 22, padBottom = 26
   const chartW = W - padL - padR, chartH = H - padTop - padBottom
   const maxV = Math.max(...dias.map(d => d.valor), 1)
-  const barGap = 12
-  const barW = Math.floor(chartW / dias.length) - barGap
 
+  // Grade horizontal + rótulos do eixo Y
+  for (let g = 0; g <= 3; g++) {
+    const y = padTop + chartH - (g / 3) * chartH
+    ctx.strokeStyle = '#eeeeee'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke()
+    const val = (maxV * g / 3)
+    ctx.fillStyle = '#9e9e9e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right'
+    ctx.fillText(val >= 1000 ? (val / 1000).toFixed(1) + 'k' : Math.round(val).toString(), padL - 6, y + 4)
+  }
+
+  // Barras: só aparece onde houve venda; dias zerados ficam com um tracinho leve.
+  const slot = chartW / dias.length
+  const barW = Math.min(24, Math.max(6, slot * 0.55))
+  const baseY = padTop + chartH
   dias.forEach((d, i) => {
-    const x = padL + i * (barW + barGap) + barGap / 2
-    const barH = Math.round((d.valor / maxV) * chartH)
-    const y = padTop + chartH - barH
-    ctx.fillStyle = d.valor > 0 ? '#66bb6a' : '#e0e0e0'
-    ctx.beginPath(); ctx.roundRect(x, y, barW, Math.max(barH, 2), [4, 4, 0, 0]); ctx.fill()
-    // valor
+    const cx = padL + slot * (i + 0.5)
     if (d.valor > 0) {
-      ctx.fillStyle = '#43a047'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      const rotulo = d.valor >= 1000 ? (d.valor / 1000).toFixed(1) + 'k' : Math.round(d.valor).toString()
-      ctx.fillText(rotulo, x + barW / 2, y - 4)
+      const bh = Math.max(3, Math.round((d.valor / maxV) * chartH))
+      ctx.fillStyle = '#66bb6a'
+      ctx.beginPath(); ctx.roundRect(cx - barW / 2, baseY - bh, barW, bh, [4, 4, 0, 0]); ctx.fill()
+      ctx.fillStyle = '#2e7d32'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(d.valor >= 1000 ? (d.valor / 1000).toFixed(1) + 'k' : Math.round(d.valor).toString(), cx, baseY - bh - 6)
+    } else {
+      ctx.fillStyle = '#e0e0e0'
+      ctx.beginPath(); ctx.roundRect(cx - barW / 2, baseY - 2, barW, 2, 1); ctx.fill()
     }
-    // dia
-    ctx.fillStyle = '#9e9e9e'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText(d.label, x + barW / 2, H - 8)
+    if (d.label) {
+      ctx.fillStyle = '#757575'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(d.label, cx, H - 6)
+    }
   })
+}
+
+// ── Curva ABC de Produtos ────────────────────────────────────────────────────
+interface AbcItem { descricao: string; totalVendido: number; participacao: number; participacaoAcumulada: number; curva: string }
+const abcCanvas = ref<HTMLCanvasElement>()
+const curvaAbc = ref<AbcItem[]>([])
+const carregandoAbc = ref(true)
+const abcResumo = computed(() => ({
+  A: curvaAbc.value.filter(i => i.curva === 'A').length,
+  B: curvaAbc.value.filter(i => i.curva === 'B').length,
+  C: curvaAbc.value.filter(i => i.curva === 'C').length,
+}))
+
+async function carregarCurvaAbc() {
+  if (!auth.empresaId) { carregandoAbc.value = false; return }
+  try {
+    const inicio = `${anoAtual}-01-01`
+    const fim = new Date().toISOString().slice(0, 10)
+    const res = await api.get<{ itens: AbcItem[] }>('/estoque/curva-abc', {
+      params: { empresaId: auth.empresaId, inicio, fim }
+    })
+    curvaAbc.value = res.data.itens ?? []
+    await nextTick()
+    renderizarCurvaAbc()
+  } catch { curvaAbc.value = [] } finally { carregandoAbc.value = false }
+}
+
+function renderizarCurvaAbc() {
+  const canvas = abcCanvas.value
+  if (!canvas || !curvaAbc.value.length) return
+  const ctx = canvas.getContext('2d'); if (!ctx) return
+  // Mostra os 12 primeiros para não poluir
+  const dados = curvaAbc.value.slice(0, 12)
+  const W = canvas.offsetWidth || 800, H = 150
+  canvas.width = W; canvas.height = H
+  ctx.clearRect(0, 0, W, H)
+  const padL = 8, padR = 8, padT = 12, padB = 30
+  const areaW = W - padL - padR, areaH = H - padT - padB
+  const maxPart = Math.max(...dados.map(d => d.participacao), 1)
+  const barW = Math.floor(areaW / dados.length) - 6
+  const corCurva = (c: string) => c === 'A' ? '#4caf50' : c === 'B' ? '#ff9800' : '#ef5350'
+
+  dados.forEach((d, i) => {
+    const x = padL + i * (areaW / dados.length) + 3
+    const bh = Math.round((d.participacao / maxPart) * areaH)
+    ctx.fillStyle = corCurva(d.curva)
+    ctx.beginPath(); ctx.roundRect(x, padT + areaH - bh, barW, bh, [3, 3, 0, 0]); ctx.fill()
+    ctx.fillStyle = '#9e9e9e'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
+    const nome = d.descricao.length > 10 ? d.descricao.slice(0, 9) + '…' : d.descricao
+    ctx.save(); ctx.translate(x + barW / 2, H - 4); ctx.rotate(-Math.PI / 9); ctx.fillText(nome, 0, 0); ctx.restore()
+  })
+
+  // Linha de % acumulado (Pareto)
+  const px = (i: number) => padL + i * (areaW / dados.length) + (areaW / dados.length) / 2
+  const py = (v: number) => padT + areaH - (v / 100) * areaH
+  ctx.strokeStyle = '#5c6bc0'; ctx.lineWidth = 2; ctx.beginPath()
+  dados.forEach((d, i) => i === 0 ? ctx.moveTo(px(i), py(d.participacaoAcumulada)) : ctx.lineTo(px(i), py(d.participacaoAcumulada)))
+  ctx.stroke()
+  dados.forEach((d, i) => { ctx.fillStyle = '#5c6bc0'; ctx.beginPath(); ctx.arc(px(i), py(d.participacaoAcumulada), 2.5, 0, Math.PI * 2); ctx.fill() })
 }
 
 onMounted(async () => {
@@ -752,6 +916,7 @@ onMounted(async () => {
     carregarVendasColaborador(),
     carregarDre(),
     carregarPlanejamento(),
+    carregarCurvaAbc(),
   ])
 })
 </script>

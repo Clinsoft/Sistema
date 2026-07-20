@@ -2,11 +2,35 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Infrastructure.Data;
+using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace Sistema.API.Controllers.Estoque;
 
-/// <summary>Exportação de produtos para balanças eletrônicas (Filizola, Toledo, Ramuza, Urano).</summary>
+/// <summary>
+/// Exportação de produtos para balanças eletrônicas (Filizola, Toledo, Ramuza, Urano).
+///
+/// Os layouts abaixo foram obtidos por engenharia reversa de arquivos reais que
+/// funcionam nos softwares de importação de cada fabricante e são reproduzidos
+/// byte a byte. Cada balança importa uma PASTA com nomes de arquivo fixos, por
+/// isso o retorno é um ZIP:
+///   • Toledo (MGV5/6/7) e Ramuza (Atena): ITENSMGV.TXT + INFNUTRI.TXT
+///   • Filizola (Smart) e Urano (Integra): CADTXT.TXT
+///
+/// Layout do registro de produto (largura fixa, sem separador, codificação Latin-1):
+///
+/// Toledo/Ramuza ITENSMGV.TXT
+///   "01" + código(7) + preço-centavos(6) + validade-dias(3) + descrição(50)
+///   MGV5 (153): + código(16) + "11" + zeros(50) + código(7) + zeros(8)
+///   MGV6/MGV7/Ramuza (260): + código(16) + "11" + zeros(49) + código(7) + zeros(14)
+///                            + "|01|" + espaços(70) + zeros(25) + "||0||"
+///
+/// Filizola/Urano CADTXT.TXT (165)
+///   código(6) + "P" + descrição(22) + preço-centavos(7) + validade-dias(3)
+///   + "@" + espaços(35) + zeros(63) + "*"×18
+///   Filizola: + "000000000"      Urano: + "0,0000000"
+/// </summary>
 [ApiController]
 [Route("api/balanca")]
 [Authorize]
@@ -16,31 +40,35 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> Exportar(
         [FromQuery] Guid empresaId,
         [FromQuery] string modelo,
-        [FromQuery] int identificadorPesavel = 2,
-        [FromQuery] int tamanhoCodigoProduto = 5,
-        [FromQuery] string tipoInformacao = "PrecoTotal",
         CancellationToken ct = default)
     {
-        var cfg = new BalancaConfig(
-            Math.Clamp(identificadorPesavel, 1, 9),
-            Math.Clamp(tamanhoCodigoProduto, 4, 6),
-            tipoInformacao);
-
         var produtos = await ObterProdutosBalancaAsync(empresaId, ct);
 
-        var conteudo = modelo.ToUpper() switch
+        var (arquivos, familia) = modelo.ToUpperInvariant() switch
         {
-            "FILIZOLA" or "FILIZOLA_SMART" => GerarFilizolaSmart(produtos, cfg),
-            "TOLEDO_MGV5"                  => GerarToledoMgv5(produtos, cfg),
-            "TOLEDO_MGV6"                  => GerarToledoMgv6(produtos, cfg),
-            "TOLEDO_MGV7"                  => GerarToledoMgv7(produtos, cfg),
-            "RAMUZA" or "RAMUZA_ATENA"     => GerarRamuzaAtena(produtos, cfg),
-            "URANO" or "URANO_INTEGRA"     => GerarUranoIntegra(produtos, cfg),
+            "FILIZOLA" or "FILIZOLA_SMART" => (GerarFilizolaUrano(produtos, urano: false), "filizola"),
+            "URANO" or "URANO_INTEGRA"     => (GerarFilizolaUrano(produtos, urano: true),  "urano"),
+            "TOLEDO_MGV5"                  => (GerarToledoRamuza(produtos, mgv5: true),     "toledo_mgv5"),
+            "TOLEDO_MGV6"                  => (GerarToledoRamuza(produtos, mgv5: false),    "toledo_mgv6"),
+            "TOLEDO_MGV7"                  => (GerarToledoRamuza(produtos, mgv5: false),    "toledo_mgv7"),
+            "RAMUZA" or "RAMUZA_ATENA"     => (GerarToledoRamuza(produtos, mgv5: false),    "ramuza"),
             _ => throw new InvalidOperationException($"Modelo '{modelo}' não suportado.")
         };
 
-        var nomeArquivo = $"balanca_{modelo.ToLower()}_{DateTime.Now:yyyyMMdd_HHmm}.txt";
-        return File(Encoding.Latin1.GetBytes(conteudo), "text/plain", nomeArquivo);
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (nome, conteudo) in arquivos)
+            {
+                var entry = zip.CreateEntry(nome, CompressionLevel.Optimal);
+                using var s = entry.Open();
+                var bytes = Encoding.Latin1.GetBytes(conteudo);
+                s.Write(bytes, 0, bytes.Length);
+            }
+        }
+
+        var nomeZip = $"balanca_{familia}_{DateTime.Now:yyyyMMdd_HHmm}.zip";
+        return File(ms.ToArray(), "application/zip", nomeZip);
     }
 
     /// <summary>
@@ -75,113 +103,79 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> ProdutosParaExportar([FromQuery] Guid empresaId, CancellationToken ct)
         => Ok(await ObterProdutosBalancaAsync(empresaId, ct));
 
-    // ─── Filizola SMART ──────────────────────────────────────────────────────
-    // Formato: PLU|DESCRICAO|PRECO|VALIDADE_DIAS
-    private static string GerarFilizolaSmart(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
+    // ─── Toledo (MGV5/6/7) e Ramuza (Atena) ─────────────────────────────────
+    private static List<(string nome, string conteudo)> GerarToledoRamuza(
+        IReadOnlyList<ProdutoBalancaDto> produtos, bool mgv5)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine($"#CONFIG IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
+        var itens = new StringBuilder();
+        var nutri = new StringBuilder();
+
         foreach (var p in produtos)
         {
-            var plu = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
-            var desc = p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao.PadRight(22);
-            sb.AppendLine($"{plu}|{desc}|{p.PrecoVenda:F2}|{p.ValidadeEmDias ?? 0}");
+            var cod7  = p.Plu.ToString("D7");
+            var cod16 = p.Plu.ToString("D16");
+            var preco = Centavos(p.PrecoVenda).ToString("D6");   // R$ 0000.00 → 6 dígitos
+            var val   = (p.ValidadeEmDias ?? 0).ToString("D3");
+            // MGV5 preserva acentuação (Latin-1); MGV6/7/Ramuza usam ASCII sem acento.
+            var descTxt = (mgv5 ? p.Descricao : RemoverAcentos(p.Descricao)).ToUpperInvariant();
+            var desc  = TruncarPadDireita(descTxt, 50);
+
+            var prefixo = $"01{cod7}{preco}{val}{desc}";
+
+            if (mgv5)
+                itens.Append($"{prefixo}  {cod16}11{Zeros(50)}{cod7}{Zeros(8)}");
+            else
+                itens.Append(
+                    $"{prefixo}{cod16}11{Zeros(49)}{cod7}{Zeros(14)}|01|{Espacos(70)}{Zeros(25)}||0||");
+            itens.Append("\r\n");
+
+            // INFNUTRI: uma linha por produto (dados nutricionais zerados por padrão).
+            nutri.Append($"N{p.Plu:D6}{Zeros(38)}\r\n");
         }
-        return sb.ToString();
+
+        return
+        [
+            ("ITENSMGV.TXT", itens.ToString()),
+            ("INFNUTRI.TXT", nutri.ToString()),
+        ];
     }
 
-    // ─── Toledo MGV5 ─────────────────────────────────────────────────────────
-    // Formato fixo: PLU (N dígitos), descrição (22 chars), preço (7 dígitos sem separador), validade (3 dígitos)
-    private static string GerarToledoMgv5(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
+    // ─── Filizola (Smart) e Urano (Integra) ─────────────────────────────────
+    private static List<(string nome, string conteudo)> GerarFilizolaUrano(
+        IReadOnlyList<ProdutoBalancaDto> produtos, bool urano)
     {
         var sb = new StringBuilder();
+        var fim = urano ? "0,0000000" : "000000000";
+
         foreach (var p in produtos)
         {
-            var plu  = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
-            var desc = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
-            var preco    = ((long)(p.PrecoVenda * 100)).ToString("D7");
-            var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
-            sb.AppendLine($"{plu}{desc}{preco}{validade}");
+            var cod6  = p.Plu.ToString("D6");
+            var desc  = TruncarPadDireita(RemoverAcentos(p.Descricao).ToUpperInvariant(), 22);
+            var preco = Centavos(p.PrecoVenda).ToString("D7");   // 7 dígitos
+            var val   = (p.ValidadeEmDias ?? 0).ToString("D3");
+            sb.Append($"{cod6}P{desc}{preco}{val}@{Espacos(35)}{Zeros(63)}{new string('*', 18)}{fim}\r\n");
         }
-        return sb.ToString();
+
+        return [("CADTXT.TXT", sb.ToString())];
     }
 
-    // ─── Toledo MGV6 ─────────────────────────────────────────────────────────
-    private static string GerarToledoMgv6(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"01CABECALHO IP={cfg.IdentificadorPesavel} TC={cfg.TamanhoCodigoProduto} TI={cfg.TipoInformacao}");
-        foreach (var p in produtos)
-        {
-            var plu      = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
-            var desc     = (p.Descricao.Length > 30 ? p.Descricao[..30] : p.Descricao).PadRight(30);
-            var preco    = $"{p.PrecoVenda:F2}".Replace(",", "").PadLeft(8, '0');
-            var validade = (p.ValidadeEmDias ?? 0).ToString("D4");
-            sb.AppendLine($"02{plu}{desc}{preco}{validade}");
-        }
-        sb.AppendLine("99FIM");
-        return sb.ToString();
-    }
+    private static long Centavos(decimal preco) => (long)Math.Round(preco * 100m, MidpointRounding.AwayFromZero);
+    private static string Zeros(int n) => new('0', n);
+    private static string Espacos(int n) => new(' ', n);
 
-    // ─── Toledo MGV7 ─────────────────────────────────────────────────────────
-    private static string GerarToledoMgv7(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("[Configuracao]");
-        sb.AppendLine($"IdentificadorPesavel={cfg.IdentificadorPesavel}");
-        sb.AppendLine($"TamanhoCodigoProduto={cfg.TamanhoCodigoProduto}");
-        sb.AppendLine($"TipoInformacao={cfg.TipoInformacao}");
-        sb.AppendLine();
-        foreach (var p in produtos)
-        {
-            var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
-            sb.AppendLine("[Produto]");
-            sb.AppendLine($"PLU={p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}")}");
-            sb.AppendLine($"Nome={p.Descricao[..Math.Min(p.Descricao.Length, 30)]}");
-            sb.AppendLine($"Preco={preco}");
-            sb.AppendLine($"Validade={p.ValidadeEmDias ?? 0}");
-            sb.AppendLine();
-        }
-        return sb.ToString();
-    }
+    private static string TruncarPadDireita(string s, int largura)
+        => (s.Length > largura ? s[..largura] : s).PadRight(largura);
 
-    // ─── Ramuza Atena ────────────────────────────────────────────────────────
-    private static string GerarRamuzaAtena(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
+    private static string RemoverAcentos(string texto)
     {
-        var sb = new StringBuilder();
-        foreach (var p in produtos)
-        {
-            var plu      = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
-            var desc     = (p.Descricao.Length > 22 ? p.Descricao[..22] : p.Descricao).PadRight(22);
-            var preco    = ((long)(p.PrecoVenda * 100)).ToString("D6");
-            var validade = (p.ValidadeEmDias ?? 0).ToString("D3");
-            sb.AppendLine($"{plu}{desc}{preco}{validade}");
-        }
-        return sb.ToString();
-    }
-
-    // ─── Urano Integra ───────────────────────────────────────────────────────
-    private static string GerarUranoIntegra(
-        IEnumerable<ProdutoBalancaDto> produtos, BalancaConfig cfg)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"PRODUTOS IP={cfg.IdentificadorPesavel};TC={cfg.TamanhoCodigoProduto};TI={cfg.TipoInformacao}");
-        foreach (var p in produtos)
-        {
-            var plu   = p.Plu.ToString($"D{cfg.TamanhoCodigoProduto}");
-            var preco = p.PrecoVenda.ToString("F2").Replace(",", ".");
-            sb.AppendLine($"{plu};{p.Descricao[..Math.Min(p.Descricao.Length, 25)]};{preco};{p.ValidadeEmDias ?? 0}");
-        }
-        return sb.ToString();
+        var normalizado = texto.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalizado.Length);
+        foreach (var c in normalizado)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 }
-
-public record BalancaConfig(int IdentificadorPesavel, int TamanhoCodigoProduto, string TipoInformacao);
 
 /// <summary>Produto já preparado para a balança (PLU resolvido).</summary>
 public record ProdutoBalancaDto(int Plu, string Descricao, decimal PrecoVenda, int? ValidadeEmDias);

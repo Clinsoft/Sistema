@@ -224,19 +224,16 @@ async function exportar() {
       params: {
         empresaId: auth.empresaId,
         modelo: cfg.modelo,
-        identificadorPesavel: cfg.identificadorPesavel,
-        tamanhoCodigoProduto: cfg.tamanhoCodigoProduto,
-        tipoInformacao: cfg.tipoInformacao,
       },
       responseType: 'blob',
     })
     const url = URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = `balanca_${cfg.modelo.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.txt`
+    a.download = `balanca_${cfg.modelo.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.zip`
     a.click()
     URL.revokeObjectURL(url)
-    notif.ok(`Arquivo exportado com ${produtos.value.length} produtos!`)
+    notif.ok(`Arquivo exportado com ${produtos.value.length} produtos! Descompacte o ZIP e importe a pasta na balança.`)
   } catch {
     notif.erro('Erro ao exportar arquivo para balança.')
   } finally {

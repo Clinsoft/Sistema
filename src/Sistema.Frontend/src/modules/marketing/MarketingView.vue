@@ -17,7 +17,7 @@
       id="marketing-artes"
       titulo="Como criar Artes para Redes Sociais"
       :passos="[
-        'Clique em <b>Gerar com IA</b> para criar a arte automaticamente com o <b>Nano Banana 2</b> (Gemini): escolha o formato (Feed/Story/Banner), descreva a arte no <b>prompt</b> (produto, oferta, estilo, cores) e clique em <b>Gerar</b>.',
+        'Clique em <b>Gerar com IA</b> para criar a arte automaticamente com o <b>gpt-image-1</b> (OpenAI): escolha o formato (Feed/Story/Banner), descreva a arte no <b>prompt</b> (produto, oferta, estilo, cores) e clique em <b>Gerar</b>.',
         'A imagem gerada é salva na <b>Galeria</b>. Use <b>Nova Arte</b> ou um <b>Template</b> para montar manualmente com texto, preço e fundo.',
         'Na galeria, cada arte tem <b>Editar</b> (✏️), <b>Baixar PNG</b> (⬇), <b>Compartilhar no WhatsApp</b> e <b>Excluir</b> (🗑️).',
         'Na aba <b>Agendamentos</b>, escolha uma arte, a plataforma (Instagram/Facebook/WhatsApp) e a data/hora para agendar a publicação.',
@@ -187,7 +187,7 @@
         <v-card-title class="pa-4 d-flex align-center gap-2">
           <v-avatar color="deep-purple" size="36"><v-icon color="white">mdi-robot-happy-outline</v-icon></v-avatar>
           Gerar Arte com IA
-          <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-1">Nano Banana 2 · Gemini</v-chip>
+          <v-chip size="x-small" color="deep-purple" variant="tonal" class="ml-1">gpt-image-1 · OpenAI</v-chip>
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" density="compact" @click="dialogIA = false" />
         </v-card-title>

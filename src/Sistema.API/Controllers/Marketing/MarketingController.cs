@@ -12,7 +12,9 @@ namespace Sistema.API.Controllers.Marketing;
 [Authorize]
 public class MarketingController(
     SistemaDbContext db, IUnitOfWork uow,
-    Sistema.Infrastructure.Services.GeminiImageService gemini) : ControllerBase
+    Sistema.Infrastructure.Services.GeminiImageService gemini,
+    Sistema.Infrastructure.Services.OpenAiImageService openaiImg,
+    Sistema.Infrastructure.Services.ArteBrandingService branding) : ControllerBase
 {
     // ─── Templates ────────────────────────────────────────────────────────────
 
@@ -141,33 +143,56 @@ public class MarketingController(
         return File(bytes, "image/png", $"arte_{arte.Nome}.png");
     }
 
-    // ─── Geração de imagem com IA (Nano Banana 2 — Gemini) ────────────────────
+    // ─── Geração de imagem com IA (OpenAI gpt-image-1; Gemini como reserva) ────
 
-    /// <summary>Gera a imagem da arte usando o Gemini (Nano Banana 2) a partir de um prompt.</summary>
+    /// <summary>Gera a imagem da arte usando IA a partir de um prompt.
+    /// Prefere a OpenAI (gpt-image-1); usa o Gemini como alternativa se a OpenAI não estiver configurada.</summary>
     [HttpPost("artes/gerar-ia")]
     public async Task<IActionResult> GerarArteIA([FromBody] GerarArteIaRequest req, CancellationToken ct)
     {
-        if (!gemini.Configurado)
+        if (!openaiImg.Configurado && !gemini.Configurado)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new
             {
-                mensagem = "Gemini (Nano Banana 2) não configurado. Defina a chave da API no servidor (Gemini:ApiKey)."
+                mensagem = "IA de imagem não configurada no servidor. Defina OpenAI:ApiKey (ou Gemini:ApiKey)."
             });
 
         var formato = Enum.TryParse<FormatoArte>(req.Formato, out var fm) ? fm : FormatoArte.FeedQuadrado;
         var tipo = Enum.TryParse<TipoArteMarketing>(req.Tipo, out var tp) ? tp : TipoArteMarketing.Generico;
 
-        // Enrique o prompt com a proporção do formato para melhor enquadramento
-        var proporcao = formato switch
+        // Proporção (texto do prompt) e tamanho aceito pelo gpt-image-1
+        var (proporcao, size) = formato switch
         {
-            FormatoArte.StoryVertical => "proporção vertical 9:16 (Story/Reels)",
-            FormatoArte.BannerHorizontal => "proporção horizontal 1200x628 (banner)",
-            _ => "proporção quadrada 1:1 (feed)"
+            FormatoArte.StoryVertical    => ("proporção vertical 9:16 (Story/Reels)", "1024x1536"),
+            FormatoArte.BannerHorizontal => ("proporção horizontal (banner)", "1536x1024"),
+            _                            => ("proporção quadrada 1:1 (feed)", "1024x1024")
         };
+        // Identidade da marca EcoGranel: paleta de cores injetada no prompt.
+        // A logo oficial é sobreposta depois (a IA não reproduz o arquivo real).
+        const string marca =
+            "Siga a identidade visual da marca EcoGranel (produtos naturais): paleta em tons de marrom " +
+            "(#5C2D0C e #8B4513), verde-folha (#6AAF2E) e fundo bege claro (#FAF7F4). Estilo natural, " +
+            "orgânico, saudável e acolhedor. Deixe o canto superior esquerdo mais limpo e sem texto, com " +
+            "espaço livre para a logomarca. Não escreva nenhum logotipo, marca d'água nem nome de marca na imagem.";
         var promptFinal = $"{req.Prompt}. Formato: {proporcao}. Arte publicitária profissional para redes sociais, " +
-                          "texto legível e bem posicionado, alta qualidade.";
+                          $"texto legível e bem posicionado, alta qualidade. {marca}";
 
         byte[] bytes;
-        try { (bytes, _) = await gemini.GerarImagemAsync(promptFinal, ct); }
+        string gerador, modelo;
+        try
+        {
+            if (openaiImg.Configurado)
+            {
+                bytes = await openaiImg.GerarImagemAsync(promptFinal, size, ct);
+                gerador = "OpenAI"; modelo = openaiImg.ModeloAtual;
+            }
+            else
+            {
+                (bytes, _) = await gemini.GerarImagemAsync(promptFinal, ct);
+                gerador = "GeminiNanoBanana2"; modelo = gemini.ModeloAtual;
+            }
+            // Sobrepõe a logo oficial da loja (canto inferior direito).
+            bytes = await branding.AplicarLogoAsync(bytes, ct);
+        }
         catch (Exception ex) { return BadRequest(new { mensagem = ex.Message }); }
 
         // Salva o PNG em wwwroot/uploads/artes
@@ -177,7 +202,7 @@ public class MarketingController(
         var arte = ArteMarketing.Criar(req.EmpresaId,
             string.IsNullOrWhiteSpace(req.Titulo) ? "Arte IA" : req.Titulo,
             tipo, formato,
-            System.Text.Json.JsonSerializer.Serialize(new { gerador = "GeminiNanoBanana2", prompt = req.Prompt }));
+            System.Text.Json.JsonSerializer.Serialize(new { gerador, prompt = req.Prompt }));
 
         var nomeArquivo = $"{arte.Id}.png";
         await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, nomeArquivo), bytes, ct);
@@ -186,7 +211,7 @@ public class MarketingController(
         db.ArtesMarketing.Add(arte);
         await uow.SalvarAsync(ct);
 
-        return Ok(new { id = arte.Id, url = arte.UrlExportada, modelo = gemini.ModeloAtual });
+        return Ok(new { id = arte.Id, url = arte.UrlExportada, modelo });
     }
 
     // ─── Agendamentos ─────────────────────────────────────────────────────────

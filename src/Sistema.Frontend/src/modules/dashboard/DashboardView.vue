@@ -128,7 +128,7 @@
                   @click="cel.total > 0 && (diaSelecionadoV = cel.dia)">
                   <template v-if="cel.dia">
                     <div class="dash-cal-num">{{ cel.dia }}</div>
-                    <div v-if="cel.total > 0" class="dash-cal-val dash-cal-val-v">{{ fmtMil(cel.total) }}</div>
+                    <div v-if="cel.total > 0" class="dash-cal-val dash-cal-val-v">{{ fmtCel(cel.total) }}</div>
                   </template>
                 </div>
               </div>
@@ -182,7 +182,7 @@
                   @click="cel.total > 0 && (diaSelecionado = cel.dia)">
                   <template v-if="cel.dia">
                     <div class="dash-cal-num">{{ cel.dia }}</div>
-                    <div v-if="cel.total > 0" class="dash-cal-val">{{ fmtMil(cel.total) }}</div>
+                    <div v-if="cel.total > 0" class="dash-cal-val">{{ fmtCel(cel.total) }}</div>
                   </template>
                 </div>
               </div>
@@ -667,6 +667,10 @@ const diaSelecionado = ref(diaHoje)
 const fmtMil = (v: number) =>
   v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(v).toString()
 
+// Valor exato (com centavos, sem "R$") para as células dos calendários — sem arredondar.
+const fmtCel = (v: number) =>
+  (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 const totalMesPagar = computed(() => contasMes.value.reduce((s, c) => s + c.saldo, 0))
 
 // Agrupa por dia do mês { dia: { total, vencido, itens } }
@@ -992,7 +996,11 @@ onMounted(async () => {
 }
 .dash-cal-empty { border: none; }
 .dash-cal-num { font-size: 11px; color: #616161; line-height: 1; }
-.dash-cal-val { font-size: 10px; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #f57c00; }
+.dash-cal-val {
+  font-size: 8.5px; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #f57c00;
+  font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.2px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
 .dash-cal-tem { background: #fff8e1; border-color: #ffe0b2; cursor: pointer; }
 .dash-cal-vend { background: #e8f5e9; border-color: #c8e6c9; cursor: pointer; }
 .dash-cal-val-v { color: #2e7d32; }

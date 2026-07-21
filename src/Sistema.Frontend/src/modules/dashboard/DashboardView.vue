@@ -123,15 +123,29 @@
                     'dash-cal-empty': !cel.dia,
                     'dash-cal-hoje': cel.dia === diaHoje,
                     'dash-cal-vend': cel.total > 0,
-                  }">
+                    'dash-cal-sel-v': cel.dia === diaSelecionadoV && cel.total > 0,
+                  }"
+                  @click="cel.total > 0 && (diaSelecionadoV = cel.dia)">
                   <template v-if="cel.dia">
                     <div class="dash-cal-num">{{ cel.dia }}</div>
                     <div v-if="cel.total > 0" class="dash-cal-val dash-cal-val-v">{{ fmtMil(cel.total) }}</div>
                   </template>
                 </div>
               </div>
-              <div class="text-caption text-medium-emphasis text-center mt-2">
-                Total vendido em cada dia do mês.
+
+              <div v-if="vendasDoDia" class="mt-2 d-flex align-center dash-cal-resumo">
+                <div class="text-caption font-weight-bold">
+                  {{ String(diaSelecionadoV).padStart(2, '0') }}/{{ String(mesNum).padStart(2, '0') }}
+                </div>
+                <v-spacer />
+                <v-chip size="small" color="success" variant="tonal" label class="mr-1">
+                  {{ vendasDoDia.qtd }} venda{{ vendasDoDia.qtd !== 1 ? 's' : '' }}
+                </v-chip>
+                <span class="text-body-2 font-weight-bold text-success">{{ fmt(vendasDoDia.total) }}</span>
+                <span class="text-caption text-medium-emphasis ml-2">TM {{ fmt(vendasDoDia.ticket) }}</span>
+              </div>
+              <div v-else class="text-caption text-medium-emphasis text-center mt-2">
+                Toque num dia com venda. Sem vendas em {{ String(diaSelecionadoV).padStart(2,'0') }}/{{ String(mesNum).padStart(2,'0') }}.
               </div>
             </template>
           </v-card-text>
@@ -859,6 +873,15 @@ const celasVendas = computed(() => {
   return cells
 })
 
+const diaSelecionadoV = ref(diaHoje)
+const vendasDoDia = computed(() => {
+  const entry = vendasMes.value.find(v => {
+    const d = new Date(String(v.data).slice(0, 10) + 'T12:00:00')
+    return d.getDate() === diaSelecionadoV.value && d.getMonth() === mesRef && d.getFullYear() === anoRef
+  })
+  return entry ? { qtd: entry.qtdVendas, total: entry.totalVendido, ticket: entry.ticketMedio } : null
+})
+
 async function carregarVendasMes() {
   carregando.value = true
   if (!auth.empresaId) { carregando.value = false; return }
@@ -971,8 +994,10 @@ onMounted(async () => {
 .dash-cal-num { font-size: 11px; color: #616161; line-height: 1; }
 .dash-cal-val { font-size: 10px; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #f57c00; }
 .dash-cal-tem { background: #fff8e1; border-color: #ffe0b2; cursor: pointer; }
-.dash-cal-vend { background: #e8f5e9; border-color: #c8e6c9; }
+.dash-cal-vend { background: #e8f5e9; border-color: #c8e6c9; cursor: pointer; }
 .dash-cal-val-v { color: #2e7d32; }
+.dash-cal-sel-v { box-shadow: 0 0 0 2px #2e7d32 inset; }
+.dash-cal-resumo { min-height: 28px; }
 .dash-cal-venc { background: #ffebee; border-color: #ffcdd2; }
 .dash-cal-venc .dash-cal-val { color: #e53935; }
 .dash-cal-hoje { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }

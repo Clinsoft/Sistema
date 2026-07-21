@@ -320,6 +320,7 @@ async function salvar() {
     const payload = {
       ...form.value,
       tipos: (form.value.tipos ?? []).join(','),
+      cnpj: cnpjRaw(form.value.cnpj ?? '') || null,             // remove máscara (. / -), preserva letras do CNPJ alfanumérico
       cep: (form.value.cep ?? '').replace(/\D/g, '') || null,   // só dígitos (coluna tem 8)
       telefone: (form.value.telefone ?? '').slice(0, 20) || null,
       celular: (form.value.celular ?? '').slice(0, 20) || null,

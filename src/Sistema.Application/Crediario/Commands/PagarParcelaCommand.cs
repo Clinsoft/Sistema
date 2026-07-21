@@ -1,5 +1,7 @@
 using MediatR;
 using Sistema.Domain.Crediario.Interfaces;
+using Sistema.Domain.Financeiro.Entities;
+using Sistema.Domain.Financeiro.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 
 namespace Sistema.Application.Crediario.Commands;
@@ -8,7 +10,9 @@ public record PagarParcelaCommand(Guid ParcelaId, decimal ValorPago) : IRequest<
 
 public record PagarParcelaResult(bool Liquidado, decimal SaldoRestante);
 
-public class PagarParcelaHandler(IParcelaCrediarioRepository parcelaRepo, ICrediarioRepository crediarioRepo, IUnitOfWork uow)
+public class PagarParcelaHandler(
+    IParcelaCrediarioRepository parcelaRepo, ICrediarioRepository crediarioRepo,
+    ILancamentoFinanceiroRepository lancRepo, IUnitOfWork uow)
     : IRequestHandler<PagarParcelaCommand, PagarParcelaResult>
 {
     public async Task<PagarParcelaResult> Handle(PagarParcelaCommand cmd, CancellationToken ct)
@@ -17,6 +21,15 @@ public class PagarParcelaHandler(IParcelaCrediarioRepository parcelaRepo, ICredi
             ?? throw new KeyNotFoundException("Parcela não encontrada.");
 
         parcela.Pagar(cmd.ValorPago);
+
+        // Baixa também o título de Contas a Receber vinculado, se houver.
+        if (parcela.ContaReceberId is Guid crId)
+        {
+            var lanc = await lancRepo.ObterPorIdAsync(crId, ct);
+            if (lanc is not null && lanc.Status != StatusLancamento.Pago)
+                lanc.Baixar(cmd.ValorPago, DateTime.Today);
+        }
+
         await uow.SalvarAsync(ct);
 
         var crediario = await crediarioRepo.ObterComParcelasAsync(parcela.CrediarioId, ct);

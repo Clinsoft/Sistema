@@ -44,9 +44,12 @@ public class ParcelaCrediario : Entity
     {
         ValorPago = valorPago;
         DataPagamento = DateTime.UtcNow;
-        ContaReceberId = contaReceberId;
+        ContaReceberId ??= contaReceberId;
         Status = StatusParcela.Paga;
     }
+
+    /// <summary>Vincula o título de Contas a Receber criado para esta parcela.</summary>
+    public void VincularContaReceber(Guid contaReceberId) => ContaReceberId = contaReceberId;
 
     public void DefinirPix(string copiaCola) => PixCopiaCola = copiaCola;
 }

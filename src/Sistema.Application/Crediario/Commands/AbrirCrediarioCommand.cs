@@ -2,6 +2,9 @@ using FluentValidation;
 using MediatR;
 using CrediarioEntity = Sistema.Domain.Crediario.Entities.Crediario;
 using Sistema.Domain.Crediario.Interfaces;
+using Sistema.Domain.Cadastros.Interfaces;
+using Sistema.Domain.Financeiro.Entities;
+using Sistema.Domain.Financeiro.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 
 namespace Sistema.Application.Crediario.Commands;
@@ -27,8 +30,11 @@ public class AbrirCrediarioValidator : AbstractValidator<AbrirCrediarioCommand>
     }
 }
 
-public class AbrirCrediarioHandler(ICrediarioRepository repo, IUnitOfWork uow)
-    : IRequestHandler<AbrirCrediarioCommand, AbrirCrediarioResult>
+public class AbrirCrediarioHandler(
+    ICrediarioRepository repo,
+    ILancamentoFinanceiroRepository lancRepo,
+    IClienteRepository clienteRepo,
+    IUnitOfWork uow) : IRequestHandler<AbrirCrediarioCommand, AbrirCrediarioResult>
 {
     public async Task<AbrirCrediarioResult> Handle(AbrirCrediarioCommand cmd, CancellationToken ct)
     {
@@ -40,6 +46,24 @@ public class AbrirCrediarioHandler(ICrediarioRepository repo, IUnitOfWork uow)
             cmd.NumeroParcelas, cmd.TaxaJurosMensal,
             DateTime.Today, cmd.VendaId,
             cmd.DataPrimeiraParcela, cmd.DiaVencimento, cmd.Observacao);
+
+        // Cada parcela do crediário vira um título em Contas a Receber, vinculado à
+        // parcela — assim o Contas a Receber vira o painel único do que entra a prazo.
+        var clienteNome = (await clienteRepo.ObterPorIdAsync(cmd.ClienteId, ct))?.Nome;
+        foreach (var parcela in crediario.Parcelas)
+        {
+            var lanc = LancamentoFinanceiro.Criar(cmd.EmpresaId, TipoLancamento.ContaReceber,
+                $"Crediário Nº {numero} - Parcela {parcela.Numero}/{cmd.NumeroParcelas}",
+                parcela.Valor, parcela.DataVencimento,
+                clienteId: cmd.ClienteId,
+                documentoOrigem: $"Crediário {numero}",
+                parcela: parcela.Numero, totalParcelas: cmd.NumeroParcelas,
+                grupoParcelamento: crediario.Id.ToString());
+            lanc.DefinirClassificacao("Crediário", clienteNome, cmd.Observacao);
+
+            await lancRepo.AdicionarAsync(lanc, ct);
+            parcela.VincularContaReceber(lanc.Id);
+        }
 
         await repo.AdicionarAsync(crediario, ct);
         await uow.SalvarAsync(ct);

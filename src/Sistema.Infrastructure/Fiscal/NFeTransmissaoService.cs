@@ -18,13 +18,15 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
     // NF-e (mod 55) SP
     private const string UrlNFeProducao    = "https://nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx";
     private const string UrlNFeHomologacao = "https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx";
-    // NFC-e (mod 65) SP
-    private const string UrlNFCeProducao    = "https://nfce.fazenda.sp.gov.br/ws/nfceautorizacao4.asmx";
-    private const string UrlNFCeHomologacao = "https://homologacao.nfce.fazenda.sp.gov.br/ws/nfceautorizacao4.asmx";
+    // NFC-e (mod 65) SP — usa o MESMO serviço NFeAutorizacao4 da NF-e, só muda o host.
+    // (Não existe serviço "NFCeAutorizacao4" na SEFAZ — usar esse nome retorna HTTP 404.)
+    private const string UrlNFCeProducao    = "https://nfce.fazenda.sp.gov.br/ws/NFeAutorizacao4.asmx";
+    private const string UrlNFCeHomologacao = "https://homologacao.nfce.fazenda.sp.gov.br/ws/NFeAutorizacao4.asmx";
 
-    // ── SOAP actions ──────────────────────────────────────────────────────────
+    // ── SOAP action ───────────────────────────────────────────────────────────
+    // O serviço de autorização é sempre NFeAutorizacao4 (NF-e e NFC-e).
     private const string ActionNFe  = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeAutorizacaoLote";
-    private const string ActionNFCe = "http://www.portalfiscal.inf.br/nfe/wsdl/NFCeAutorizacao4/nfceAutorizacaoLote";
+    private const string ActionNFCe = ActionNFe;
 
     public async Task<ResultadoTransmissao> TransmitirAsync(
         string xmlAssinado,
@@ -41,9 +43,8 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
             (false, _)                           => UrlNFeHomologacao
         };
         var action = isNFCe ? ActionNFCe : ActionNFe;
-        var wsdlNs = isNFCe
-            ? "http://www.portalfiscal.inf.br/nfe/wsdl/NFCeAutorizacao4"
-            : "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4";
+        // Namespace do serviço é sempre NFeAutorizacao4 (vale para NF-e e NFC-e).
+        var wsdlNs = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4";
         var tpAmb = config.Ambiente == AmbienteFiscal.Producao ? "1" : "2";
 
         try
@@ -73,12 +74,17 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
 
     private static string MontarEnvelopeSOAP(string xmlNFe, string wsdlNs, string idLote, string tpAmb)
     {
+        // Remove o prólogo <?xml ...?> — ele NÃO pode ir embutido no meio do
+        // envelope SOAP (senão o documento fica malformado e a SEFAZ devolve HTTP 400).
+        xmlNFe = System.Text.RegularExpressions.Regex.Replace(
+            xmlNFe, @"^\s*<\?xml[^>]*\?>\s*", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+
         // Extrair o cUF do XML (usado no cabeçalho)
         var cUF = "35"; // SP padrão; extrai do XML se presente
         var mCUF = System.Text.RegularExpressions.Regex.Match(xmlNFe, @"<cUF>(\d+)</cUF>");
         if (mCUF.Success) cUF = mCUF.Groups[1].Value;
 
-        return $"""
+        var env = $"""
             <?xml version="1.0" encoding="utf-8"?>
             <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
               <soap12:Header>
@@ -98,6 +104,12 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
               </soap12:Body>
             </soap12:Envelope>
             """;
+
+        // A SEFAZ recusa (cStat 588) qualquer caractere de edição (quebra de linha,
+        // tab, espaço) ENTRE as tags. Remove os espaços entre tags e apara as pontas.
+        // Não afeta o conteúdo de texto (só casa ">" seguido de espaços e depois "<")
+        // nem a assinatura (o infNFe já é escrito sem espaços entre tags).
+        return System.Text.RegularExpressions.Regex.Replace(env, @">\s+<", "><").Trim();
     }
 
     // ── Envio HTTP ────────────────────────────────────────────────────────────

@@ -149,7 +149,9 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
         var urlBase = (config.Ambiente == AmbienteFiscal.Producao ? UrlConsultaPorUf : UrlHomologacaoPorUf)
             .GetValueOrDefault(uf, UrlConsultaPorUf.GetValueOrDefault("SP", "https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica")!);
         var qrCodeData = GerarQrCodeData(chave44, ambienteId, config.CscIdNFCe, config.CscTokenNFCe);
-        nfce.RegistrarQrCode(qrCodeData, $"{urlBase}?p={qrCodeData}");
+        // No XML da NFC-e: <qrCode> é a URL COMPLETA (base?p=params) e <urlChave> é
+        // apenas a URL base de consulta (máx. 85 caracteres). Antes estavam trocados.
+        nfce.RegistrarQrCode($"{urlBase}?p={qrCodeData}", urlBase);
 
         // Monta, assina e TRANSMITE à SEFAZ. Uma falha de transmissão (SEFAZ fora,
         // rejeição, sem certificado) NÃO pode derrubar a venda — a nota fica salva

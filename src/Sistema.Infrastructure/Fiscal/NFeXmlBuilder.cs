@@ -204,22 +204,17 @@ public static class NFeXmlBuilder
         w.WriteEndElement(); // enderEmit
 
         w.WriteElementString("IE",         ApenasDigitos(empresa.InscricaoEstadual));
-        w.WriteElementString("indIEDest",  "1"); // 1=contribuinte ICMS
+        // indIEDest NÃO pertence ao <emit> (é do <dest>) — incluí-lo quebra o schema (cStat 225).
         w.WriteElementString("CRT",        crt);
         w.WriteEndElement(); // emit
     }
 
     private static void EscreverDest(XmlWriter w, NotaFiscal nota)
     {
-        // NFC-e sem destinatário identificado
+        // NFC-e sem destinatário identificado → o grupo <dest> deve ser OMITIDO
+        // por completo (enviar dest só com xNome/indIEDest, sem documento, quebra o schema).
         if (nota.Modelo == ModeloNF.NFCe && string.IsNullOrWhiteSpace(nota.CpfCnpjDestinatario))
-        {
-            w.WriteStartElement("dest");
-            w.WriteElementString("xNome", "NF-e emitida para consumidor final");
-            w.WriteElementString("indIEDest", "9");
-            w.WriteEndElement();
             return;
-        }
 
         if (string.IsNullOrWhiteSpace(nota.CpfCnpjDestinatario)) return;
 
@@ -314,16 +309,11 @@ public static class NFeXmlBuilder
                     w.WriteElementString("vICMSSTRet",    "0.00");
                     w.WriteEndElement();
                     break;
-                case "102":
+                default: // 102, 103, 300 e 400 → todos usam o grupo <ICMSSN102>
+                    // (não existe elemento ICMSSN400; o nome do elemento é ICMSSN102 e o CSOSN varia)
                     w.WriteStartElement("ICMSSN102");
                     w.WriteElementString("orig",  orig);
-                    w.WriteElementString("CSOSN", "102");
-                    w.WriteEndElement();
-                    break;
-                default: // 400
-                    w.WriteStartElement("ICMSSN400");
-                    w.WriteElementString("orig",  orig);
-                    w.WriteElementString("CSOSN", "400");
+                    w.WriteElementString("CSOSN", csosn is "102" or "103" or "300" or "400" ? csosn : "400");
                     w.WriteEndElement();
                     break;
             }
@@ -490,10 +480,15 @@ public static class NFeXmlBuilder
         {
             SigningKey = cert.GetRSAPrivateKey()
         };
+        // A NFe exige assinatura RSA-SHA1 / SHA1 e C14N padrão. Sem setar isto, o
+        // .NET (Core/Linux) usa SHA-256 por padrão, o que quebra o schema (cStat 225).
+        signedXml.SignedInfo.SignatureMethod        = SignedXml.XmlDsigRSASHA1Url;
+        signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigC14NTransformUrl;
 
         var reference = new Reference($"#NFe{chave44}");
+        reference.DigestMethod = SignedXml.XmlDsigSHA1Url;
         reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
-        reference.AddTransform(new XmlDsigExcC14NTransform());
+        reference.AddTransform(new XmlDsigC14NTransform());
         signedXml.AddReference(reference);
 
         var keyInfo = new KeyInfo();

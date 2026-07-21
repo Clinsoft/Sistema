@@ -1761,6 +1761,14 @@ function sugerirCategoria(descricao: string): string | undefined {
  * Usado no "Cadastrar todos automaticamente" da etapa 3.
  * Se já existir produto com o mesmo código de barras, apenas vincula.
  */
+// Busca automática da foto do produto pelo EAN (Open Food Facts), em segundo
+// plano — não bloqueia nem falha a importação se não achar imagem.
+function buscarFotoAuto(produtoId: string, ean: string | null) {
+  if (!produtoId || !ean) return
+  api.post(`/produtos/${produtoId}/imagem-codigo-barras`, { codigoBarras: ean },
+    { _quiet: true } as any).catch(() => null)
+}
+
 async function criarProdutoDoItem(item: any) {
   const custo = custoDisplay(item)
   const ean = /^\d{8,14}$/.test(item.codigoBarras ?? '') ? item.codigoBarras : null
@@ -1837,6 +1845,9 @@ async function criarProdutoDoItem(item: any) {
     aliquotaPis: trib.aliquotaPis,
     aliquotaCofins: trib.aliquotaCofins,
   }, { _quiet: true } as any).catch(() => null)
+
+  // Foto automática pelo EAN (background)
+  buscarFotoAuto(novoId, ean)
 
   // Vincula ao item e adiciona à lista local
   item._produtoId = novoId
@@ -1972,6 +1983,9 @@ async function salvarNovoProduto() {
       precoVenda: precoFinal,
     })
     const novoProdId = r.data.id ?? r.data.Id
+
+    // Foto automática pelo EAN (background)
+    buscarFotoAuto(novoProdId, eanLimpo)
 
     // 3. Inserir na lista local para o autocomplete exibir o nome imediatamente
     if (!produtos.value.find((p: any) => p.id === novoProdId)) {

@@ -13,8 +13,86 @@ namespace Sistema.API.Controllers.Estoque;
 [ApiController]
 [Route("api/produtos")]
 [Authorize]
-public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOfWork uow) : ControllerBase
+public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOfWork uow,
+    Sistema.Infrastructure.Services.GeminiImageService gemini,
+    Sistema.Infrastructure.Services.OpenAiTextService openai,
+    Sistema.Infrastructure.Services.ImagemProdutoService imagemProduto) : ControllerBase
 {
+    /// <summary>Busca a imagem do produto pelo código de barras (Open Food Facts) e associa ao produto.</summary>
+    [HttpPost("{id:guid}/imagem-codigo-barras")]
+    public async Task<IActionResult> ImagemPorCodigoBarras(Guid id,
+        [FromBody] ImagemPorCodigoBarrasRequest req, CancellationToken ct)
+    {
+        var produto = await db.Produtos.FindAsync([id], ct);
+        if (produto is null) return NotFound(new { mensagem = "Produto não encontrado." });
+
+        var codigo = req.CodigoBarras ?? produto.CodigoBarras;
+        if (string.IsNullOrWhiteSpace(codigo))
+            return BadRequest(new { mensagem = "Produto sem código de barras para a busca." });
+
+        var achado = await imagemProduto.BuscarAsync(codigo, ct);
+        if (achado is null)
+            return NotFound(new { mensagem = "Nenhuma imagem encontrada para este código de barras." });
+
+        var (bytes, mime, _) = achado.Value;
+        var ext = mime switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => ".jpg"
+        };
+
+        var dir = Path.Combine("wwwroot", "uploads", "produtos");
+        Directory.CreateDirectory(dir);
+
+        // Remove imagem anterior (qualquer extensão) para não deixar órfã.
+        if (!string.IsNullOrEmpty(produto.ImagemUrl))
+        {
+            var old = Path.Combine("wwwroot", produto.ImagemUrl.TrimStart('/'));
+            if (System.IO.File.Exists(old)) System.IO.File.Delete(old);
+        }
+
+        var nomeArquivo = $"{id}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, nomeArquivo), bytes, ct);
+
+        var url = $"/uploads/produtos/{nomeArquivo}";
+        produto.EditarInfoAdicional(url, produto.Marcador, produto.Tags, produto.InformacaoAdicional);
+        db.Produtos.Update(produto);
+        await uow.SalvarAsync(ct);
+
+        return Ok(new { url });
+    }
+
+    /// <summary>Sugere a descrição complementar (benefícios) de um produto usando IA.
+    /// Prefere a OpenAI (ChatGPT); usa o Gemini como alternativa se a OpenAI não estiver configurada.</summary>
+    [HttpPost("sugerir-descricao")]
+    public async Task<IActionResult> SugerirDescricao([FromBody] SugerirDescricaoRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { mensagem = "Informe o nome do produto." });
+        if (!openai.Configurado && !gemini.Configurado)
+            return StatusCode(503, new { mensagem = "IA não configurada no servidor. Defina OpenAI:ApiKey (ou Gemini:ApiKey)." });
+
+        var prompt =
+            $"Você é um especialista em produtos naturais e saudáveis de uma loja brasileira. " +
+            $"Escreva uma descrição complementar curta (2 a 4 frases, em português do Brasil) destacando os " +
+            $"principais benefícios e sugestões de consumo do produto \"{req.Nome}\". " +
+            $"Escreva em tom informativo e comercial, sem inventar dados nutricionais específicos nem fazer " +
+            $"promessas de cura. Responda apenas com o texto, sem título, sem markdown e sem aspas.";
+
+        try
+        {
+            var texto = openai.Configurado
+                ? await openai.GerarTextoAsync(prompt, ct)
+                : await gemini.GerarTextoAsync(prompt, ct);
+            return Ok(new { texto });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { mensagem = ex.Message });
+        }
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId,
@@ -590,6 +668,10 @@ public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 public record EtiquetasImpressasRequest(List<Guid> Ids);
 
 public record UnificarProdutosRequest(Guid DestinoId, List<Guid> OrigemIds);
+
+public record SugerirDescricaoRequest(string Nome);
+
+public record ImagemPorCodigoBarrasRequest(string? CodigoBarras);
 
 public record EditarProdutoCompletoRequest(
     // Geral

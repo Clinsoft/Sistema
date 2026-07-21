@@ -17,6 +17,51 @@ public class GeminiImageService(HttpClient http, IConfiguration config)
 
     public string ModeloAtual => config["Gemini:ImageModel"] ?? "gemini-3.1-flash-image-preview";
 
+    public string ModeloTexto => config["Gemini:TextModel"] ?? "gemini-2.5-flash";
+
+    /// <summary>
+    /// Gera texto a partir de um prompt (usado, por ex., para sugerir a descrição
+    /// complementar de um produto com seus benefícios). Retorna o texto puro.
+    /// </summary>
+    public async Task<string> GerarTextoAsync(string prompt, CancellationToken ct = default)
+    {
+        var apiKey = config["Gemini:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                "Chave da API Gemini não configurada. Defina 'Gemini:ApiKey' nas configurações do servidor.");
+        if (string.IsNullOrWhiteSpace(prompt))
+            throw new ArgumentException("Prompt vazio.", nameof(prompt));
+
+        var url = $"{BaseUrl}/{ModeloTexto}:generateContent?key={apiKey}";
+        var payload = new
+        {
+            contents = new[]
+            {
+                new { role = "user", parts = new[] { new { text = prompt } } }
+            }
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        using var resp = await http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Erro do Gemini ({(int)resp.StatusCode}): {ExtrairErro(body)}");
+
+        using var doc = JsonDocument.Parse(body);
+        if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
+            throw new InvalidOperationException($"Gemini não retornou texto. Resposta: {ExtrairErro(body)}");
+
+        var sb = new StringBuilder();
+        foreach (var part in candidates[0].GetProperty("content").GetProperty("parts").EnumerateArray())
+            if (part.TryGetProperty("text", out var t))
+                sb.Append(t.GetString());
+
+        return sb.ToString().Trim();
+    }
+
     /// <summary>Gera uma imagem a partir de um prompt textual. Retorna os bytes e o mime-type.</summary>
     public async Task<(byte[] Bytes, string Mime)> GerarImagemAsync(string prompt, CancellationToken ct = default)
     {

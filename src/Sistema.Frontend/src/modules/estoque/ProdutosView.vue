@@ -62,6 +62,42 @@
             <b>Ação irreversível.</b>
           </v-alert>
 
+          <!-- Seleção manual: unir quaisquer produtos, mesmo sem auto-detecção -->
+          <v-card variant="outlined" rounded="lg" class="mb-4 pa-3">
+            <div class="d-flex align-center gap-2 mb-2">
+              <v-icon size="small" color="primary">mdi-cursor-default-click-outline</v-icon>
+              <span class="font-weight-medium">Seleção manual</span>
+              <span class="text-caption text-medium-emphasis">— escolha você mesmo quais unir</span>
+            </div>
+            <v-autocomplete v-model="selManual" :items="produtosOrdenados"
+              :item-title="itemTituloProduto" item-value="id" multiple chips closable-chips
+              label="Buscar e selecionar produtos (2 ou mais)" variant="outlined" density="compact"
+              hide-details clearable class="mb-2" />
+            <template v-if="produtosSelManual.length >= 2">
+              <div class="text-caption text-medium-emphasis mb-1">Qual <b>manter</b>? (os outros serão fundidos nele)</div>
+              <v-radio-group v-model="manterManual" density="compact" hide-details>
+                <v-radio v-for="p in produtosSelManual" :key="p.id" :value="p.id">
+                  <template #label>
+                    <div class="d-flex align-center gap-2 flex-wrap">
+                      <span class="font-weight-medium">{{ p.descricao }}</span>
+                      <v-chip size="x-small" variant="tonal">cód. {{ p.codigo }}</v-chip>
+                      <span class="text-caption text-medium-emphasis">estoque {{ p.estoqueAtual }} · R$ {{ fmtN(p.precoVenda) }}</span>
+                    </div>
+                  </template>
+                </v-radio>
+              </v-radio-group>
+              <v-btn color="warning" size="small" rounded="lg" class="mt-2" :loading="unificando"
+                :disabled="!manterManual" @click="unificarManual">
+                Unificar selecionados ({{ produtosSelManual.length }})
+              </v-btn>
+            </template>
+            <div v-else-if="selManual.length === 1" class="text-caption text-medium-emphasis">
+              Selecione pelo menos mais um produto para unir.
+            </div>
+          </v-card>
+
+          <div class="text-caption text-medium-emphasis mb-2">Grupos detectados automaticamente:</div>
+
           <div v-if="carregandoDup" class="text-center py-6">
             <v-progress-circular indeterminate color="warning" />
           </div>
@@ -132,8 +168,8 @@
             @update:model-value="listar" />
         </v-col>
         <v-col cols="12" md="3">
-          <v-autocomplete v-model="filtroFornecedor" :items="fornecedores"
-            item-title="razaoSocial" item-value="id"
+          <v-autocomplete v-model="filtroFornecedor" :items="fornecedoresComProduto"
+            item-title="razaoSocial" item-value="id" multiple chips closable-chips
             label="Fornecedor" variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="12" md="2">
@@ -241,6 +277,12 @@
                         class="mt-1" :loading="removendoImagem" @click="removerImagem">
                         Remover
                       </v-btn>
+                      <v-btn v-if="form.codigoBarras" size="x-small" variant="tonal" color="primary"
+                        class="mt-1" prepend-icon="mdi-barcode-scan"
+                        :loading="buscandoImagem" @click="buscarImagemPorCodigoBarras"
+                        title="Buscar a foto do produto pelo código de barras (Open Food Facts)">
+                        Buscar foto (EAN)
+                      </v-btn>
                     </div>
 
                     <!-- Campos principais -->
@@ -324,8 +366,17 @@
                         placeholder="ex: orgânico, sem glúten" />
                     </v-col>
                     <v-col cols="12" md="6">
-                      <v-text-field v-model="form.descricaoComplementar" label="Descrição complementar"
-                        variant="outlined" density="compact" />
+                      <v-textarea v-model="form.descricaoComplementar" label="Descrição complementar"
+                        variant="outlined" density="compact" rows="2" auto-grow
+                        hint="Ex.: benefícios do produto. Use ✨ para sugerir com IA.">
+                        <template #append-inner>
+                          <v-btn :icon="true" size="x-small" variant="text" color="primary"
+                            :loading="sugerindoDesc" :disabled="!form.descricao"
+                            title="Sugerir descrição com IA (Gemini)" @click="sugerirDescricao">
+                            <v-icon>mdi-creation</v-icon>
+                          </v-btn>
+                        </template>
+                      </v-textarea>
                     </v-col>
                     <v-col cols="12" md="3">
                       <v-text-field v-model="form.referencia" label="Referência interna"
@@ -819,7 +870,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -832,6 +883,7 @@ const { mobile } = useDisplay()
 
 const carregando = ref(false)
 const salvando = ref(false)
+const sugerindoDesc = ref(false)
 const excluindo = ref(false)
 const inativando = ref(false)
 const dialog = ref(false)
@@ -854,15 +906,24 @@ const loteForm = ref<any>({})
 
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
-const filtroFornecedor = ref<string | null>(null)
+const filtroFornecedor = ref<string[]>([])
 const filtroAtivo = ref<boolean | null>(true)
 const formulario = ref<any>(null)
 const produtoEditandoId = ref<string | null>(null)
 
-// Filtro por fornecedor aplicado no cliente (a lista já traz todos os produtos)
+// Só fornecedores que realmente têm produtos aparecem no filtro — evita poluir com
+// colaboradores, prestadores de serviço, órgãos e pessoas físicas sem produtos.
+const fornecedoresComProduto = computed(() => {
+  const ids = new Set(produtos.value.map((p: any) => p.fornecedorPrincipalId).filter(Boolean))
+  return fornecedores.value
+    .filter((f: any) => ids.has(f.id))
+    .sort((a: any, b: any) => a.razaoSocial.localeCompare(b.razaoSocial))
+})
+
+// Filtro por fornecedor (múltipla seleção) aplicado no cliente (a lista já traz todos os produtos)
 const produtosFiltrados = computed(() =>
-  filtroFornecedor.value
-    ? produtos.value.filter((p: any) => p.fornecedorPrincipalId === filtroFornecedor.value)
+  filtroFornecedor.value?.length
+    ? produtos.value.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
     : produtos.value
 )
 
@@ -930,7 +991,29 @@ function recalcularPrecos() {
 const arquivoImagem = ref<File | null>(null)
 const enviandoImagem = ref(false)
 const removendoImagem = ref(false)
+const buscandoImagem = ref(false)
 const previewImagem = ref<string | null>(null)
+
+// Busca a foto do produto pelo código de barras (Open Food Facts) e associa.
+async function buscarImagemPorCodigoBarras() {
+  const ean = (form.value.codigoBarras || '').trim()
+  if (!ean) { notif.aviso('Preencha o código de barras (EAN) primeiro.'); return }
+  if (!produtoEditandoId.value) { notif.aviso('Salve o produto primeiro para buscar a foto.'); return }
+  buscandoImagem.value = true
+  try {
+    const { data } = await api.post(`/produtos/${produtoEditandoId.value}/imagem-codigo-barras`, { codigoBarras: ean })
+    if (data?.url) {
+      form.value.imagemUrl = data.url + '?t=' + Date.now()  // quebra cache pra mostrar a nova
+      notif.ok('Foto encontrada e associada ao produto!')
+    } else {
+      notif.aviso('Nenhuma foto encontrada para este código de barras.')
+    }
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Nenhuma foto encontrada para este código de barras.')
+  } finally {
+    buscandoImagem.value = false
+  }
+}
 
 function previewImagemLocal() {
   if (!arquivoImagem.value) { previewImagem.value = null; return }
@@ -941,6 +1024,26 @@ function onFileImagem(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0] ?? null
   arquivoImagem.value = file
   previewImagemLocal()
+}
+
+// Sugere a descrição complementar (benefícios) do produto via IA (Gemini).
+async function sugerirDescricao() {
+  const nome = (form.value.descricao || '').trim()
+  if (!nome) { notif.aviso('Preencha a descrição do produto primeiro.'); return }
+  sugerindoDesc.value = true
+  try {
+    const { data } = await api.post('/produtos/sugerir-descricao', { nome })
+    if (data?.texto) {
+      form.value.descricaoComplementar = data.texto
+      notif.ok('Sugestão gerada! Revise antes de salvar.')
+    } else {
+      notif.aviso('A IA não retornou texto. Tente novamente.')
+    }
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Não foi possível gerar a sugestão.')
+  } finally {
+    sugerindoDesc.value = false
+  }
 }
 
 async function enviarImagem() {
@@ -1255,6 +1358,43 @@ const dlgUnificar = ref(false)
 const carregandoDup = ref(false)
 const unificando = ref(false)
 const gruposDup = ref<any[]>([])
+
+// ── Seleção manual de duplicados ──
+const selManual = ref<string[]>([])
+const manterManual = ref<string | null>(null)
+
+const produtosOrdenados = computed(() =>
+  [...produtos.value].sort((a: any, b: any) => a.descricao.localeCompare(b.descricao)))
+
+const produtosSelManual = computed(() =>
+  produtos.value.filter((p: any) => selManual.value.includes(p.id)))
+
+const itemTituloProduto = (p: any) => `${p.descricao} — cód. ${p.codigo}`
+
+// Mantém a seleção do "manter" válida conforme a lista muda.
+watch(selManual, (ids) => {
+  if (!ids.includes(manterManual.value as string)) manterManual.value = ids[0] ?? null
+})
+
+async function unificarManual() {
+  const ids = selManual.value
+  if (ids.length < 2 || !manterManual.value) return
+  const destino = produtos.value.find((p: any) => p.id === manterManual.value)
+  const origemIds = ids.filter(id => id !== manterManual.value)
+  if (!confirm(`Unificar ${origemIds.length} produto(s) em "${destino?.descricao}"? Ação irreversível.`)) return
+  unificando.value = true
+  try {
+    await api.post('/produtos/unificar', { destinoId: manterManual.value, origemIds })
+    notif.ok(`${origemIds.length} produto(s) unificado(s) em "${destino?.descricao}".`)
+    selManual.value = []
+    manterManual.value = null
+    await listar()
+    // Recarrega a auto-detecção (os fundidos somem)
+    await abrirUnificar()
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao unificar produtos.')
+  } finally { unificando.value = false }
+}
 
 async function abrirUnificar() {
   dlgUnificar.value = true

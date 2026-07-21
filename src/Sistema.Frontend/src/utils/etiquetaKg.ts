@@ -51,7 +51,7 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
       ${it.validade ? `<div class="etq-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
       <div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>
       <div class="etq-rodape">
-        ${qr ? `<img class="qr" src="${qr}"/>` : '<span></span>'}
+        ${qr ? `<div class="qr-wrap"><img class="qr" src="${qr}"/><div class="qr-saiba">Saiba mais pelo QR Code</div></div>` : '<span></span>'}
         <div class="frase">${esc(o.fraseRodape || 'Natural como deve ser!')}</div>
       </div>
     </div>`
@@ -125,11 +125,14 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   .etq-preco .v { font-size: ${(40 * escPreco).toFixed(1)}pt; font-weight: 900; color: ${corPreco}; line-height: 1; }
   .etq-preco .l { display: block; font-size: 8pt; color: ${corRotulo}; text-align: right; }
   .etq-val { text-align: center; font-size: 10pt; color: #222; margin-bottom: 1mm; }
-  .etq-desc { font-size: 8pt; color: #333; text-align: center; line-height: 1.35; flex: 1;
-    display: flex; align-items: center; justify-content: center; }
-  .etq-rodape { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 2mm; }
+  .etq-desc { font-size: 8pt; color: #333; text-align: center; line-height: 1.35;
+    flex: 1 1 auto; min-height: 0;
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .etq-rodape { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; margin-top: 2mm; }
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; }
   .etq-rodape .qr { width: 20mm; height: 20mm; }
-  .etq-rodape .frase { font-size: 9pt; font-weight: 900; color: ${cor}; text-align: right; line-height: 1.2; }
+  .qr-saiba { font-size: 6.5pt; font-weight: 900; color: ${cor}; text-align: center; margin-top: 0.5mm; }
+  .etq-rodape .frase { font-size: 9pt; font-weight: 900; color: ${cor}; text-align: right; max-width: 50%; line-height: 1.2; }
 `}
 
 /**

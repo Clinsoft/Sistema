@@ -230,6 +230,16 @@
             @keyup.enter="buscarPorCodigoBarras"
             hint="Pode bipar o código de barras: o produto entra na lista sozinho"
             persistent-hint class="mb-2" />
+          <div class="d-flex gap-2 flex-wrap mb-2">
+            <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-scale-balance"
+              :loading="adicionandoKg" @click="adicionarTodosKg">
+              Adicionar todos por kg (balança)
+            </v-btn>
+            <v-btn v-if="produtosSel.length" size="small" variant="text" color="error"
+              prepend-icon="mdi-close" @click="produtosSel = []">
+              Limpar ({{ produtosSel.length }})
+            </v-btn>
+          </div>
           <v-list v-if="sugestoes.length" elevation="2" rounded="lg" class="mb-2"
             max-height="240" style="overflow-y:auto">
             <v-list-item v-for="p in sugestoes" :key="p.id"
@@ -329,6 +339,7 @@
               <div class="eco-rodape">
                 <div v-if="camposEco.qrcode" class="eco-qr-wrap">
                   <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                  <div class="eco-qr-saibamais">Saiba mais pelo QR Code</div>
                 </div>
                 <div v-if="camposEco.frase" class="eco-frase" :style="stFrase">
                   <strong>{{ ecoCfg.fraseRodape }}</strong>
@@ -803,6 +814,27 @@ function baixarZpl() {
 }
 
 // ── Busca de produtos ────────────────────────────────────────────────────────
+const adicionandoKg = ref(false)
+
+// Adiciona de uma vez todos os produtos por peso (balança) à seleção.
+async function adicionarTodosKg() {
+  adicionandoKg.value = true
+  try {
+    const r = await api.get('/produtos', {
+      params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
+    })
+    const kg = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.produtoBalanca)
+    let novos = 0
+    kg.forEach((p: any) => {
+      if (!produtosSel.value.find(x => x.id === p.id)) { produtosSel.value.push(p); novos++ }
+    })
+    if (!kg.length) notif.aviso('Nenhum produto por kg (balança) encontrado.')
+    else notif.ok(`${novos} produto(s) por kg adicionado(s)` +
+      (novos < kg.length ? ` (${kg.length - novos} já estavam na lista).` : '.'))
+  } catch { notif.erro('Erro ao carregar os produtos por kg.') }
+  finally { adicionandoKg.value = false }
+}
+
 let timer: any
 async function buscarProdutos(q: string) {
   if (!q || q.length < 2) { sugestoes.value = []; return }
@@ -931,15 +963,19 @@ function imprimir() {
       .eco-preco-valor { font-size: 60pt; font-weight: 900; color: #111; line-height: 1; letter-spacing: -2px; }
       .eco-preco-label { font-size: 9pt; color: #444; margin-top: 1mm; }
       .eco-validade { text-align: center; font-size: 10pt; color: #222; padding: 1mm 4mm; }
-      .eco-descricao { font-size: 9pt; color: #333; text-align: center;
-        padding: 2mm 5mm; line-height: 1.4; font-weight: 500; }
+      .eco-descricao { font-size: 8.5pt; color: #333; text-align: center;
+        padding: 1.5mm 5mm; line-height: 1.35; font-weight: 500;
+        flex: 1 1 auto; min-height: 0;
+        display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
       .eco-rodape {
-        flex: 1; display: flex; align-items: flex-end;
+        flex: 0 0 auto; display: flex; align-items: flex-end;
         justify-content: space-between; padding: 2mm 4mm 3mm;
       }
+      .eco-qr-wrap { display: flex; flex-direction: column; align-items: center; }
       .eco-qr-wrap canvas { width: 22mm !important; height: 22mm !important; display: block; }
+      .eco-qr-saibamais { font-size: 7pt; font-weight: 900; color: #1b5e20; text-align: center; margin-top: 0.5mm; }
       .eco-frase { font-size: 10pt; font-weight: 900; color: #1b5e20;
-        text-align: right; max-width: 55%; line-height: 1.3; }
+        text-align: right; max-width: 52%; line-height: 1.3; }
 
       /* ── Pote ── */
       .etiqueta-pote {
@@ -1060,10 +1096,12 @@ function imprimir() {
 }
 
 .eco-descricao {
-  flex: 1;                      /* ocupa o espaço entre validade e QR */
-  display: flex;
-  align-items: center;         /* centraliza o texto verticalmente */
-  justify-content: center;
+  flex: 1 1 auto;              /* ocupa o espaço entre validade e QR, sem empurrar */
+  min-height: 0;
+  display: -webkit-box;        /* limita a 5 linhas (o resto é cortado com …) */
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: 12px;
   color: #333;
   text-align: center;
@@ -1074,11 +1112,17 @@ function imprimir() {
 }
 
 .eco-rodape {
+  flex: 0 0 auto;              /* rodapé fixo no fim — QR nunca é cortado */
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   padding: 6px 14px 12px;
   z-index: 1;
+}
+
+.eco-qr-wrap { display: flex; flex-direction: column; align-items: center; }
+.eco-qr-saibamais {
+  font-size: 9px; font-weight: 900; color: #1b5e20; text-align: center; margin-top: 2px;
 }
 
 .eco-qr-canvas {

@@ -59,6 +59,9 @@
           <v-icon size="13">mdi-clock-outline</v-icon>
           {{ horaAtual }}
         </div>
+        <v-btn v-if="!mobile" :icon="emTelaCheia ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
+          size="small" variant="text" color="rgba(255,255,255,.6)"
+          :title="emTelaCheia ? 'Sair da tela cheia' : 'Tela cheia'" @click="alternarTelaCheia" />
         <v-btn icon="mdi-keyboard-outline" size="small" variant="text"
           color="rgba(255,255,255,.5)" @click="modalAtalhos = true" title="Atalhos (F1)" />
       </div>
@@ -289,9 +292,10 @@
               :key="fp.tipo"
               class="pdv-fp-btn"
               :class="{ 'pdv-fp-btn--ativo': pagamentos.some(p => p.tipo === fp.tipo) }"
+              :style="{ '--fp-cor': fp.cor }"
               @click="selecionarFormaPagamento(fp.tipo)"
             >
-              <v-icon :icon="fp.icon" size="20" />
+              <v-icon :icon="fp.icon" size="20" :color="fp.cor" />
               <span>{{ fp.label }}</span>
               <kbd v-if="fp.key" class="pdv-kbd-fp">{{ fp.key }}</kbd>
             </button>
@@ -799,6 +803,14 @@ const notif = useNotifStore()
 const ui = useUiStore()
 const { mobile } = useDisplay()
 
+// ── Tela cheia (desktop) ──────────────────────────────────────────
+const emTelaCheia = ref(false)
+function alternarTelaCheia() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.()
+  else document.exitFullscreen?.()
+}
+function onFullscreenChange() { emTelaCheia.value = !!document.fullscreenElement }
+
 // ── Tipos ────────────────────────────────────────────────────────
 interface ItemVenda {
   produtoId: string; descricao: string; codigo: string
@@ -972,11 +984,11 @@ const statusPagamentoClass = computed(() => {
 
 // ── Formas de pagamento ───────────────────────────────────────────
 const formasPagamento = [
-  { tipo: 'Dinheiro',  label: 'Dinheiro',  icon: 'mdi-cash',                     key: 'F4' },
-  { tipo: 'Pix',       label: 'Pix',        icon: 'mdi-qrcode',                   key: 'F6' },
-  { tipo: 'Crédito',   label: 'Crédito',    icon: 'mdi-credit-card-outline',      key: 'F7' },
-  { tipo: 'Débito',    label: 'Débito',     icon: 'mdi-credit-card-chip-outline', key: 'F8' },
-  { tipo: 'Crediário', label: 'Crediário',  icon: 'mdi-account-credit-card-outline', key: '' },
+  { tipo: 'Dinheiro',  label: 'Dinheiro',  icon: 'mdi-cash',                     key: 'F4', cor: '#2e7d32' },
+  { tipo: 'Pix',       label: 'Pix',        icon: 'mdi-qrcode',                   key: 'F6', cor: '#00897b' },
+  { tipo: 'Crédito',   label: 'Crédito',    icon: 'mdi-credit-card-outline',      key: 'F7', cor: '#3949ab' },
+  { tipo: 'Débito',    label: 'Débito',     icon: 'mdi-credit-card-chip-outline', key: 'F8', cor: '#1e88e5' },
+  { tipo: 'Crediário', label: 'Crediário / Recebido', icon: 'mdi-account-credit-card-outline', key: '', cor: '#8e24aa' },
 ]
 
 // De-para: rótulo exibido no PDV → valor do enum FormaPagamento no backend
@@ -1626,6 +1638,7 @@ onMounted(async () => {
   atualizarHora()
   clockTimer = setInterval(atualizarHora, 30000)
   document.addEventListener('keydown', onKeydown, true)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
   await Promise.all([carregarColaboradores(), verificarSessaoCaixa(), carregarPromocoes(), carregarOperadoras()])
 })
 
@@ -1638,6 +1651,7 @@ async function carregarOperadoras() {
 onUnmounted(() => {
   clearInterval(clockTimer)
   document.removeEventListener('keydown', onKeydown, true)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
   if (zxingReader) BrowserMultiFormatReader.releaseAllStreams()
 })
 </script>
@@ -1935,23 +1949,24 @@ onUnmounted(() => {
   padding: 14px 6px;
   border-radius: 12px;
   border: 1.5px solid #e2e8f0;
+  border-top: 3px solid var(--fp-cor, #94a3b8);
   background: #f8fafc;
-  color: #64748b;
+  color: #475569;
   cursor: pointer;
   font-size: 11px; font-weight: 600;
   transition: all .15s;
   position: relative;
 }
 .pdv-fp-btn:hover {
-  border-color: #3b82f6;
-  background: #eff6ff;
-  color: #2563eb;
+  border-color: var(--fp-cor, #3b82f6);
+  background: #ffffff;
 }
 .pdv-fp-btn--ativo {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: white;
-  box-shadow: 0 2px 8px rgba(37,99,235,.25);
+  border-color: var(--fp-cor, #2563eb);
+  color: var(--fp-cor, #2563eb);
+  background: #eef2ff;
+  background: color-mix(in srgb, var(--fp-cor) 14%, white);
+  box-shadow: inset 0 0 0 2px var(--fp-cor, #2563eb);
 }
 .pdv-kbd-fp {
   position: absolute; top: 5px; right: 7px;

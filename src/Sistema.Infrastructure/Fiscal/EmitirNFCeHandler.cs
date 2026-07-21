@@ -69,6 +69,11 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
 
     public async Task Handle(VendaFinalizadaEvent evt, CancellationToken ct)
     {
+        // Venda no crediário NÃO gera cupom fiscal (NFC-e) — apenas o cupom
+        // simples de venda é impresso pelo caixa.
+        if (evt.Pagamentos.Any(p => p.Forma == FormaPagamento.Crediario))
+            return;
+
         // Carregar config fiscal e empresa
         var config = await db.ConfiguracoesFiscais
             .FirstOrDefaultAsync(c => c.EmpresaId == evt.EmpresaId, ct);

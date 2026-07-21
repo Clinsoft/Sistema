@@ -91,59 +91,98 @@ public class ReciboController(SistemaDbContext db) : ControllerBase
         var empresa = await db.Empresas.AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == venda.EmpresaId, ct);
 
+        static string FormaTexto(Domain.Vendas.Entities.FormaPagamento f) => f switch
+        {
+            Domain.Vendas.Entities.FormaPagamento.Dinheiro      => "Dinheiro",
+            Domain.Vendas.Entities.FormaPagamento.Pix           => "Pix",
+            Domain.Vendas.Entities.FormaPagamento.CartaoCredito => "Cartao Credito",
+            Domain.Vendas.Entities.FormaPagamento.CartaoDebito  => "Cartao Debito",
+            Domain.Vendas.Entities.FormaPagamento.Crediario     => "Crediario",
+            Domain.Vendas.Entities.FormaPagamento.Boleto        => "Boleto",
+            Domain.Vendas.Entities.FormaPagamento.Cheque        => "Cheque",
+            Domain.Vendas.Entities.FormaPagamento.Vale          => "Vale",
+            _ => f.ToString(),
+        };
+
+        // Cada linha é UM texto monoespaçado: rótulo à esquerda + valor à direita
+        // com preenchimento por espaços. Assim o valor SEMPRE aparece e fica
+        // alinhado, sem depender de colunas/AlignRight (que estavam cortando).
+        const int larg = 32;
+        static string Linha(string esq, string dir)
+        {
+            if (esq.Length + dir.Length + 1 > larg)
+                esq = esq[..Math.Max(0, larg - dir.Length - 1)];
+            return esq + new string(' ', Math.Max(1, larg - esq.Length - dir.Length)) + dir;
+        }
+        var traco = new string('-', larg);
+        var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
+        RegistrarFonteMono();
+        var fonteMono = _fonteMonoDisponivel ? "DejaVu Sans Mono" : null;
+
         var pdf = Document.Create(doc =>
         {
             doc.Page(page =>
             {
-                page.Size(80, 300, Unit.Millimetre); // Bobina térmica 80mm
+                page.ContinuousSize(80, Unit.Millimetre);  // bobina térmica 80mm, altura contínua
                 page.Margin(4, Unit.Millimetre);
-                page.DefaultTextStyle(t => t.FontSize(8));
+                page.DefaultTextStyle(t => fonteMono != null ? t.FontSize(9).FontFamily(fonteMono) : t.FontSize(9));
 
                 page.Content().Column(col =>
                 {
-                    col.Item().AlignCenter().Text(empresa?.RazaoSocial ?? "LOJA").Bold().FontSize(10);
-                    col.Item().AlignCenter().Text($"CNPJ: {empresa?.Cnpj ?? ""}");
-                    col.Item().AlignCenter().Text("------- COMPROVANTE -------");
-                    col.Item().Text($"Venda Nº: {venda.Numero}");
-                    col.Item().Text($"Data: {venda.DataHora:dd/MM/yyyy HH:mm}");
-                    col.Item().Text("--------------------------------");
+                    col.Item().AlignCenter().Text(empresa?.RazaoSocial ?? "LOJA").Bold().FontSize(11);
+                    if (!string.IsNullOrWhiteSpace(empresa?.Cnpj))
+                        col.Item().AlignCenter().Text($"CNPJ {empresa!.Cnpj}").FontSize(8);
+                    col.Item().PaddingTop(2).AlignCenter().Text("COMPROVANTE DE VENDA").Bold();
+                    col.Item().AlignCenter().Text($"Venda {venda.Numero} - {venda.DataHora:dd/MM/yy HH:mm}").FontSize(8);
+                    col.Item().Text(traco);
 
                     foreach (var item in venda.Itens)
                     {
-                        col.Item().Text($"{item.Descricao}");
-                        col.Item().Row(row =>
-                        {
-                            row.RelativeItem().Text($"  {item.Quantidade}x R$ {item.PrecoUnitario:F2}");
-                            row.ConstantItem(60).AlignRight().Text($"R$ {item.Total:F2}");
-                        });
+                        col.Item().Text(item.Descricao);
+                        col.Item().Text(Linha($"  {item.Quantidade.ToString("0.###", brl)} x {item.PrecoUnitario.ToString("N2", brl)}",
+                                              item.Total.ToString("N2", brl)));
                     }
 
-                    col.Item().Text("--------------------------------");
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text("TOTAL").Bold();
-                        row.ConstantItem(60).AlignRight().Text($"R$ {venda.Total:F2}").Bold();
-                    });
+                    col.Item().Text(traco);
+                    col.Item().Text(Linha("TOTAL", "R$ " + venda.Total.ToString("N2", brl))).Bold();
 
+                    col.Item().PaddingTop(2).Text("Pagamento:").FontSize(8);
                     foreach (var pag in venda.Pagamentos)
-                        col.Item().Row(row =>
-                        {
-                            row.RelativeItem().Text(pag.Forma.ToString());
-                            row.ConstantItem(60).AlignRight().Text($"R$ {pag.Valor:F2}");
-                        });
-
+                        col.Item().Text(Linha(FormaTexto(pag.Forma), pag.Valor.ToString("N2", brl)));
                     if (venda.Troco > 0)
-                        col.Item().Row(row =>
-                        {
-                            row.RelativeItem().Text("TROCO");
-                            row.ConstantItem(60).AlignRight().Text($"R$ {venda.Troco:F2}");
-                        });
+                        col.Item().Text(Linha("Troco", venda.Troco.ToString("N2", brl)));
 
-                    col.Item().PaddingTop(4).AlignCenter().Text("Obrigado pela preferência!").Italic();
+                    col.Item().Text(traco);
+                    col.Item().PaddingTop(4).AlignCenter().Text("Obrigado pela preferencia!").Italic().FontSize(8);
+                    col.Item().AlignCenter().Text("Documento sem valor fiscal").FontSize(7);
                 });
             });
         });
 
         return File(pdf.GeneratePdf(), "application/pdf", $"recibo-venda-{venda.Numero}.pdf");
+    }
+
+    // Registra a fonte monoespaçada do sistema (Linux) uma única vez, para o
+    // cupom ficar alinhado. Se não achar, o QuestPDF usa a fonte padrão.
+    private static bool _fonteMonoTentada;
+    private static bool _fonteMonoDisponivel;
+    private static void RegistrarFonteMono()
+    {
+        if (_fonteMonoTentada) return;
+        _fonteMonoTentada = true;
+        try
+        {
+            string[] arquivos =
+            {
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            };
+            foreach (var a in arquivos)
+                if (System.IO.File.Exists(a))
+                    QuestPDF.Drawing.FontManager.RegisterFont(System.IO.File.OpenRead(a));
+            _fonteMonoDisponivel = System.IO.File.Exists(arquivos[0]);
+        }
+        catch { _fonteMonoDisponivel = false; }
     }
 }

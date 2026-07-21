@@ -41,7 +41,11 @@
             variant="outlined" density="compact" hide-details />
         </v-col>
       </v-row>
-      <div class="d-flex justify-end mt-2">
+      <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
+        <v-btn color="warning" variant="tonal" rounded="lg" prepend-icon="mdi-calendar-today"
+          :loading="carregando" @click="filtrarHoje">Hoje</v-btn>
+        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
+          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
         <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
           :loading="carregando" @click="carregar">Buscar</v-btn>
       </div>
@@ -78,6 +82,8 @@
         <template #item.actions="{ item }">
           <v-btn icon="mdi-cash-check" size="x-small" color="success" variant="text"
             title="Baixar" @click="abrirBaixa(item)" />
+          <v-btn icon="mdi-content-copy" size="x-small" color="indigo" variant="text"
+            title="Duplicar" @click="duplicarConta(item)" />
           <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
             title="Renegociar" @click="abrirRenegociacao(item)" />
         </template>
@@ -103,8 +109,24 @@
                 clearable clear-icon="mdi-close-circle" />
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model="form.clienteNome" label="Cliente / Pagador"
-                variant="outlined" density="compact" />
+              <v-autocomplete v-model="form.clienteId" v-model:search="form._buscaCliente"
+                label="Cliente / Pagador" :items="clientes" item-title="nome" item-value="id"
+                variant="outlined" density="compact" clearable hide-details
+                no-data-text="Nenhum cliente — use + para cadastrar">
+                <template #append-inner>
+                  <v-btn icon="mdi-plus" size="x-small" variant="text" density="compact" tabindex="-1"
+                    title="Cadastrar cliente" @click.stop="abrirNovoCliente(form._buscaCliente?.trim())" />
+                </template>
+                <template #no-data>
+                  <v-list-item @click="abrirNovoCliente(form._buscaCliente?.trim())">
+                    <v-list-item-title>
+                      <v-icon start size="16">mdi-plus</v-icon>Cadastrar
+                      <b v-if="form._buscaCliente?.trim()">"{{ form._buscaCliente.trim() }}"</b>
+                      <span v-else>novo cliente</span>
+                    </v-list-item-title>
+                  </v-list-item>
+                </template>
+              </v-autocomplete>
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="form.valorOriginal" label="Valor (R$) *"
@@ -147,10 +169,35 @@
             </v-col>
           </v-row>
         </v-card-text>
-        <v-card-actions class="pa-4 pt-0">
+        <v-card-actions class="pa-4 pt-0 flex-wrap">
           <v-spacer />
           <v-btn variant="text" @click="dialogNovo = false" :disabled="salvando">Cancelar</v-btn>
-          <v-btn color="primary" rounded="lg" :loading="salvando" @click="salvarNovo">Salvar</v-btn>
+          <v-btn variant="tonal" rounded="lg" :loading="salvando" @click="salvarNovo(true)">Salvar e nova</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvando" @click="salvarNovo(false)">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: cadastrar cliente sem sair do recebimento -->
+    <v-dialog v-model="dialogCliente" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2">
+          <v-icon color="primary">mdi-account-plus-outline</v-icon>
+          Novo cliente / pagador
+        </v-card-title>
+        <v-card-text>
+          <v-text-field v-model="formCliente.nome" label="Nome / Razão Social *"
+            variant="outlined" density="compact" autofocus class="mb-2" />
+          <v-text-field v-model="formCliente.cpfCnpj" label="CPF / CNPJ"
+            variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model="formCliente.telefone" label="Telefone"
+            variant="outlined" density="compact" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogCliente = false" :disabled="salvandoCliente">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoCliente"
+            :disabled="!formCliente.nome.trim()" @click="salvarClienteRapido">Cadastrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -247,12 +294,52 @@ const periodos = [
 ]
 
 const formPadrao = () => ({
-  descricao: '', categoria: '', clienteNome: '',
+  descricao: '', categoria: '', clienteId: null as string | null, _buscaCliente: '',
   valorOriginal: 0, dataVencimento: '', observacao: '',
   modo: 'unico' as 'unico' | 'parcelar' | 'repetir',
   quantas: 2, periodo: 'mensal',
 })
 const form = ref(formPadrao())
+
+// Clientes/pagadores (autocomplete + cadastro rápido, igual ao Contas a Pagar)
+const clientes = ref<any[]>([])
+async function carregarClientes() {
+  try {
+    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId } })
+    clientes.value = (r.data?.itens ?? r.data ?? []).map((c: any) => ({ id: c.id, nome: c.nome }))
+  } catch { /* silencioso */ }
+}
+
+// Diálogo de cadastro rápido de cliente (sem sair da tela)
+const dialogCliente = ref(false)
+const salvandoCliente = ref(false)
+const formCliente = ref({ nome: '', cpfCnpj: '', telefone: '' })
+function abrirNovoCliente(nome = '') {
+  formCliente.value = { nome, cpfCnpj: '', telefone: '' }
+  dialogCliente.value = true
+}
+async function salvarClienteRapido() {
+  const nome = formCliente.value.nome.trim()
+  if (!nome) return
+  const doc = formCliente.value.cpfCnpj.replace(/\D/g, '')
+  if (doc && doc.length !== 11 && doc.length !== 14) {
+    notif.aviso('CPF deve ter 11 dígitos ou CNPJ 14 caracteres.'); return
+  }
+  salvandoCliente.value = true
+  try {
+    const r = await api.post('/clientes/garantir', {
+      empresaId: auth.empresaId, nome, cpfCnpj: doc || null,
+      telefone: formCliente.value.telefone.trim() || null,
+    }, { _quiet: true } as any)
+    const novo = { id: r.data.id ?? r.data, nome }
+    if (!clientes.value.find(c => c.id === novo.id))
+      clientes.value = [...clientes.value, novo].sort((a, b) => a.nome.localeCompare(b.nome))
+    form.value.clienteId = novo.id
+    dialogCliente.value = false
+    notif.ok('Cliente cadastrado e selecionado!')
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cadastrar cliente.') }
+  finally { salvandoCliente.value = false }
+}
 
 const fmtParcela = computed(() =>
   fmt(Math.round((form.value.valorOriginal || 0) / (form.value.quantas || 1) * 100) / 100)
@@ -282,6 +369,7 @@ const filtros = ref({
   fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: 'Todas',
   status: 'Todos',
+  tudo: false,
 })
 
 const headers = [
@@ -308,7 +396,7 @@ const lancamentosFiltrados = computed(() => {
 
 const totais = computed(() => [
   { label: 'Em aberto',   valor: lancamentos.value.filter(l => l.status === 'EmAberto').reduce((s, l) => s + l.saldo, 0), classe: 'text-primary' },
-  { label: 'Vencidos',    valor: lancamentos.value.filter(l => l.status === 'EmAberto' && new Date(l.dataVencimento + 'T12:00:00') < hoje()).reduce((s, l) => s + l.saldo, 0), classe: 'text-error' },
+  { label: 'Vencidos',    valor: lancamentos.value.filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje()).reduce((s, l) => s + l.saldo, 0), classe: 'text-error' },
   { label: 'Recebidos',   valor: lancamentos.value.filter(l => l.status === 'Pago').reduce((s, l) => s + l.valorOriginal, 0), classe: 'text-success' },
   { label: 'Total geral', valor: lancamentos.value.reduce((s, l) => s + l.valorOriginal, 0), classe: '' },
 ])
@@ -324,7 +412,8 @@ function fmt(v: number) {
   return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 function fmtData(d?: string) {
-  return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+  // A data pode vir como "2026-08-05" ou ISO completo "2026-08-05T00:00:00" — normaliza para os 10 primeiros.
+  return d ? new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
 }
 function corStatus(s: string) {
   return ({ EmAberto: 'info', Pago: 'success', Cancelado: 'error', Renegociado: 'warning' } as any)[s] ?? 'default'
@@ -333,16 +422,26 @@ function corStatus(s: string) {
 async function carregar() {
   carregando.value = true
   try {
-    const res = await api.get('/contas-receber', {
-      params: {
-        empresaId: auth.empresaId,
-        inicio: filtros.value.inicio,
-        fim: filtros.value.fim,
-        status: filtros.value.status !== 'Todos' ? filtros.value.status : undefined,
-      },
-    })
+    // "Ver todas" → não envia datas (backend retorna tudo)
+    const params: any = { empresaId: auth.empresaId }
+    if (!filtros.value.tudo) {
+      params.inicio = filtros.value.inicio
+      params.fim = filtros.value.fim
+    }
+    const res = await api.get('/contas-receber', { params })
     lancamentos.value = res.data
   } finally { carregando.value = false }
+}
+
+// Filtro rápido "Hoje": mostra todos os títulos que vencem hoje (sem esconder por status/categoria).
+function filtrarHoje() {
+  const h = new Date().toISOString().slice(0, 10)
+  filtros.value.inicio = h
+  filtros.value.fim = h
+  filtros.value.tudo = false
+  filtros.value.status = 'Todos'
+  filtros.value.categoria = 'Todas'
+  carregar()
 }
 
 function abrirNovo() {
@@ -350,7 +449,22 @@ function abrirNovo() {
   dialogNovo.value = true
 }
 
-async function salvarNovo() {
+// Duplica um título: reabre "Novo Recebimento" com os dados e o cliente em branco.
+function duplicarConta(item: any) {
+  form.value = {
+    ...formPadrao(),
+    descricao: item.descricao ?? '',
+    categoria: item.categoria ?? '',
+    valorOriginal: item.valorOriginal ?? 0,
+    dataVencimento: (item.dataVencimento ?? '').slice(0, 10),
+    observacao: item.observacao ?? '',
+    clienteId: item.clienteId ?? null,
+  }
+  dialogNovo.value = true
+  notif.aviso('Cópia carregada. Confira os dados e salve.')
+}
+
+async function salvarNovo(continuar = false) {
   const f = form.value
   if (!f.descricao || f.valorOriginal <= 0 || !f.dataVencimento) {
     notif.erro('Preencha descrição, valor e vencimento.')
@@ -358,11 +472,13 @@ async function salvarNovo() {
   }
   salvando.value = true
   try {
+    const cli = clientes.value.find(c => c.id === f.clienteId)
     const base = {
       empresaId: auth.empresaId,
       descricao: f.descricao,
       categoria: f.categoria || null,
-      clienteNome: f.clienteNome || null,
+      pessoaId: f.clienteId || null,
+      clienteNome: cli?.nome || null,
       observacao: f.observacao || null,
     }
 
@@ -398,8 +514,15 @@ async function salvarNovo() {
       }
     }
 
-    notif.ok('Recebimento(s) cadastrado(s)!')
-    dialogNovo.value = false
+    if (continuar) {
+      // Mantém descrição/categoria/valor/vencimento e limpa só o cliente
+      f.clienteId = null
+      f._buscaCliente = ''
+      notif.ok('Recebimento cadastrado! Escolha o próximo cliente.')
+    } else {
+      notif.ok('Recebimento(s) cadastrado(s)!')
+      dialogNovo.value = false
+    }
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao salvar.') }
   finally { salvando.value = false }
@@ -448,5 +571,5 @@ async function confirmarRenegociacao() {
   finally { salvando.value = false }
 }
 
-onMounted(carregar)
+onMounted(() => { carregar(); carregarClientes() })
 </script>

@@ -11,7 +11,8 @@ public class Contador : Entity
     public string? Telefone { get; private set; }
     public string? CRC { get; private set; }                // Registro CRC
     public bool Ativo { get; private set; } = true;
-    public DateTime CriadoEm { get; private set; } = DateTime.UtcNow;
+    // CriadoEm é herdado de Entity (já com default UtcNow) — não redeclarar aqui,
+    // pois a duplicação causa "Ambiguous match found" por reflexão ao salvar.
 
     private Contador() { }
 

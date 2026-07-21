@@ -17,7 +17,9 @@ public class ConfiguracaoEtiqueta : Entity
     /// <summary>Configuração serializada (cores, textos, escalas, marca d'água…).</summary>
     public string ConfigJson { get; private set; } = "{}";
 
-    public DateTime AtualizadoEm { get; private set; } = DateTime.UtcNow;
+    // AtualizadoEm é herdado de Entity — não redeclarar aqui (a duplicação causava
+    // "Ambiguous match found" por reflexão ao salvar). A coluna é NOT NULL, então
+    // preenchemos sempre no Criar e no Atualizar.
 
     private ConfiguracaoEtiqueta() { }
 
@@ -27,6 +29,7 @@ public class ConfiguracaoEtiqueta : Entity
             EmpresaId = empresaId,
             Template = template,
             ConfigJson = string.IsNullOrWhiteSpace(configJson) ? "{}" : configJson,
+            AtualizadoEm = DateTime.UtcNow,
         };
 
     public void Atualizar(string configJson)

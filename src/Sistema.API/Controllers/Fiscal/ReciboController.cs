@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using Sistema.Domain.Fiscal.Entities;
+using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers.Fiscal;
@@ -11,8 +13,32 @@ namespace Sistema.API.Controllers.Fiscal;
 [ApiController]
 [Route("api/fiscal/recibo")]
 [Authorize]
-public class ReciboController(SistemaDbContext db) : ControllerBase
+public class ReciboController(SistemaDbContext db, IDanfeService danfe) : ControllerBase
 {
+    /// <summary>Reimprime o cupom fiscal (DANFE da NFC-e) de uma venda que teve NFC-e autorizada.</summary>
+    [HttpGet("venda/{vendaId:guid}/nfce")]
+    public async Task<IActionResult> ReciboFiscalVenda(Guid vendaId, CancellationToken ct)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var nota = await db.NotasFiscais.AsNoTracking()
+            .Include(n => n.Itens)
+            .Where(n => n.VendaId == vendaId && n.Modelo == ModeloNF.NFCe && n.Status == StatusNF.Autorizada)
+            .OrderByDescending(n => n.DataEmissao)
+            .FirstOrDefaultAsync(ct);
+
+        if (nota is null)
+            return NotFound(new { mensagem = "Esta venda não teve NFC-e autorizada — só é possível reimprimir o cupom simples." });
+
+        var empresa = await db.Empresas.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == nota.EmpresaId, ct);
+        if (empresa is null)
+            return NotFound(new { mensagem = "Empresa não encontrada." });
+
+        var pdf = danfe.GerarDanfe(nota, empresa);
+        return File(pdf, "application/pdf", $"nfce-{nota.Numero:D9}.pdf");
+    }
+
     /// <summary>Gera recibo PDF de pagamento de conta a receber.</summary>
     [HttpGet("lancamento/{id:guid}")]
     public async Task<IActionResult> ReciboPagamento(Guid id, CancellationToken ct)

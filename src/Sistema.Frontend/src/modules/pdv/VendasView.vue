@@ -88,7 +88,20 @@
         </template>
         <template #item.actions="{ item }">
           <v-btn icon="mdi-eye-outline" size="x-small" variant="text" color="primary"
-            @click.stop="abrirDetalhe(item)" />
+            title="Ver detalhe" @click.stop="abrirDetalhe(item)" />
+          <v-menu>
+            <template #activator="{ props }">
+              <v-btn icon="mdi-printer-outline" size="x-small" variant="text" color="success"
+                title="Reimprimir cupom" :loading="imprimindoId === item.id"
+                v-bind="props" @click.stop />
+            </template>
+            <v-list density="compact">
+              <v-list-item prepend-icon="mdi-receipt-text-outline" title="Cupom simples"
+                @click="reimprimirCupom(item)" />
+              <v-list-item prepend-icon="mdi-file-document-check-outline" title="Cupom fiscal (NFC-e)"
+                @click="reimprimirCupomFiscal(item)" />
+            </v-list>
+          </v-menu>
           <v-btn v-if="item.status === 'Finalizada'" icon="mdi-keyboard-return"
             size="x-small" variant="text" color="warning" title="Registrar Devolução"
             @click.stop="abrirDevolucao(item)" />
@@ -163,7 +176,18 @@
           <div class="text-body-2 text-medium-emphasis">{{ vendaSel.observacao }}</div>
         </div>
 
-        <div v-if="vendaSel.status === 'Finalizada'" class="mt-4">
+        <div class="mt-4 d-flex flex-column gap-2">
+          <v-btn block color="success" variant="tonal" prepend-icon="mdi-receipt-text-outline"
+            :loading="imprimindoId === vendaSel.id" @click="reimprimirCupom(vendaSel)">
+            Reimprimir cupom simples
+          </v-btn>
+          <v-btn block color="teal" variant="tonal" prepend-icon="mdi-file-document-check-outline"
+            :loading="imprimindoFiscalId === vendaSel.id" @click="reimprimirCupomFiscal(vendaSel)">
+            Reimprimir cupom fiscal (NFC-e)
+          </v-btn>
+        </div>
+
+        <div v-if="vendaSel.status === 'Finalizada'" class="mt-3">
           <v-btn block color="warning" variant="tonal" prepend-icon="mdi-keyboard-return"
             @click="abrirDevolucao(vendaSel)">
             Registrar Devolução
@@ -236,6 +260,41 @@ const carregando = ref(false)
 const vendas = ref<any[]>([])
 const drawerDetalhe = ref(false)
 const vendaSel = ref<any>(null)
+const imprimindoId = ref<string | null>(null)
+const imprimindoFiscalId = ref<string | null>(null)
+
+// Reimprime o cupom (comprovante simples) da venda — abre o PDF em nova aba.
+async function reimprimirCupom(venda: any) {
+  imprimindoId.value = venda.id
+  try {
+    const r = await api.get(`/fiscal/recibo/venda/${venda.id}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch {
+    notif.erro('Não foi possível gerar o cupom desta venda.')
+  } finally {
+    imprimindoId.value = null
+  }
+}
+
+// Reimprime o cupom fiscal (DANFE da NFC-e). Se a venda não teve NFC-e, avisa.
+async function reimprimirCupomFiscal(venda: any) {
+  imprimindoFiscalId.value = venda.id
+  try {
+    const r = await api.get(`/fiscal/recibo/venda/${venda.id}/nfce`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (e: any) {
+    // Erro vem como blob (responseType) → extrai a mensagem do JSON.
+    let msg = 'Esta venda não tem cupom fiscal (NFC-e) para reimprimir.'
+    try { msg = JSON.parse(await e?.response?.data?.text())?.mensagem || msg } catch { /* mantém padrão */ }
+    notif.aviso(msg)
+  } finally {
+    imprimindoFiscalId.value = null
+  }
+}
 
 const dialogDevolucao = ref(false)
 const vendaDevolucao = ref<any>(null)

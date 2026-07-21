@@ -16,8 +16,66 @@ namespace Sistema.API.Controllers.Estoque;
 public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOfWork uow,
     Sistema.Infrastructure.Services.GeminiImageService gemini,
     Sistema.Infrastructure.Services.OpenAiTextService openai,
-    Sistema.Infrastructure.Services.ImagemProdutoService imagemProduto) : ControllerBase
+    Sistema.Infrastructure.Services.ImagemProdutoService imagemProduto,
+    Sistema.Infrastructure.Services.SiteSyncService siteSync) : ControllerBase
 {
+    /// <summary>Sincroniza os produtos por kg (balança) com o site público (ecogranel.com.br).</summary>
+    [HttpPost("sincronizar-site")]
+    public async Task<IActionResult> SincronizarSite([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        if (!siteSync.Configurado)
+            return StatusCode(503, new { mensagem = "Sincronização com o site não configurada no servidor (Site:SyncUrl)." });
+
+        var lista = await MontarProdutosParaSiteAsync(empresaId, somenteBalanca: true, umId: null, ct);
+        if (lista.Count == 0)
+            return Ok(new { ok = true, qtd = 0, mensagem = "Nenhum produto por kg (balança) para sincronizar." });
+
+        var (ok, qtd, msg) = await siteSync.EnviarAsync(lista, ct);
+        return ok ? Ok(new { ok, qtd, mensagem = msg }) : StatusCode(502, new { ok, mensagem = msg });
+    }
+
+    // Monta os produtos no formato que o site espera (nome, descrição, foto, categoria,
+    // marca e tabela nutricional — sem preço). `umId` restringe a um único produto.
+    private async Task<IReadOnlyList<object>> MontarProdutosParaSiteAsync(
+        Guid empresaId, bool somenteBalanca, Guid? umId, CancellationToken ct)
+    {
+        var q = db.Produtos.AsNoTracking().Where(p => p.EmpresaId == empresaId && p.Ativo);
+        if (somenteBalanca) q = q.Where(p => p.ProdutoBalanca);
+        if (umId.HasValue) q = q.Where(p => p.Id == umId.Value);
+        var produtos = await q.ToListAsync(ct);
+        if (produtos.Count == 0) return System.Array.Empty<object>();
+
+        var catIds = produtos.Select(p => p.CategoriaId).Distinct().ToList();
+        var marcaIds = produtos.Select(p => p.MarcaId).Distinct().ToList();
+        var ids = produtos.Select(p => p.Id).ToList();
+        var cats = await db.Categorias.AsNoTracking().Where(c => catIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+        var marcas = await db.Marcas.AsNoTracking().Where(m => marcaIds.Contains(m.Id))
+            .ToDictionaryAsync(m => m.Id, m => m.Nome, ct);
+        var nuts = await db.TabelasNutricionais.AsNoTracking().Where(n => ids.Contains(n.ProdutoId))
+            .ToDictionaryAsync(n => n.ProdutoId, ct);
+        var baseUrl = siteSync.BaseImagens.TrimEnd('/');
+
+        return produtos.Select(p => (object)new
+        {
+            slug = Sistema.Infrastructure.Services.SiteSyncService.Slugify(p.Descricao),
+            codigo = p.Codigo,
+            nome = p.Descricao,
+            descricao = p.DescricaoComplementar,
+            imagemUrl = string.IsNullOrEmpty(p.ImagemUrl) ? null : baseUrl + p.ImagemUrl,
+            categoria = cats.GetValueOrDefault(p.CategoriaId),
+            marca = marcas.GetValueOrDefault(p.MarcaId),
+            ativo = p.Ativo,
+            nutricional = nuts.TryGetValue(p.Id, out var n) ? new
+            {
+                n.Porcao, n.Calorias, n.Proteinas, n.CarboidratosTotais, n.GordurasTotais,
+                n.GordurasSaturadas, n.GordurasTrans, n.Sodio, n.FibrasDieteticas, n.Acucares,
+                n.VitaminaA, n.VitaminaC, n.VitaminaD, n.Calcio, n.Ferro, n.Magnesio, n.Zinco,
+                n.Ingredientes, n.Alergenicos, n.ModoConservacao, n.InformacoesAdicionais
+            } : null,
+        }).ToList();
+    }
+
     /// <summary>Busca a imagem do produto pelo código de barras (Open Food Facts) e associa ao produto.</summary>
     [HttpPost("{id:guid}/imagem-codigo-barras")]
     public async Task<IActionResult> ImagemPorCodigoBarras(Guid id,
@@ -145,9 +203,18 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     public async Task<IActionResult> Criar([FromBody] CriarProdutoCommand cmd, CancellationToken ct)
     {
         var id = await mediator.Send(cmd, ct);
-        var codigo = await db.Produtos.AsNoTracking()
-            .Where(p => p.Id == id).Select(p => p.Codigo).FirstOrDefaultAsync(ct);
-        return CreatedAtAction(nameof(ObterPorId), new { id }, new { id, codigo });
+        var novo = await db.Produtos.AsNoTracking()
+            .Where(p => p.Id == id).Select(p => new { p.Codigo, p.ProdutoBalanca }).FirstOrDefaultAsync(ct);
+
+        // Produto por kg novo → sincroniza com o site. Os dados são montados agora
+        // (db ainda vivo) e só o POST HTTP fica em segundo plano (não bloqueia a resposta).
+        if (novo?.ProdutoBalanca == true && siteSync.Configurado)
+        {
+            var lista = await MontarProdutosParaSiteAsync(cmd.EmpresaId, somenteBalanca: false, umId: id, ct);
+            if (lista.Count > 0) _ = siteSync.EnviarAsync(lista);
+        }
+
+        return CreatedAtAction(nameof(ObterPorId), new { id }, new { id, codigo = novo?.Codigo });
     }
 
     [HttpPut("{id:guid}")]

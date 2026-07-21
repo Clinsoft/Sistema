@@ -127,6 +127,9 @@ public static class ServiceCollectionExtensions
         // Busca de imagem de produto por código de barras (Open Food Facts)
         services.AddHttpClient<Sistema.Infrastructure.Services.ImagemProdutoService>(c =>
             c.Timeout = TimeSpan.FromSeconds(20));
+        // Sincronização de produtos com o site público (ecogranel.com.br)
+        services.AddHttpClient<Sistema.Infrastructure.Services.SiteSyncService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
 
         return services;

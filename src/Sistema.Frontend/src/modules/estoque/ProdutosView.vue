@@ -5,6 +5,10 @@
       <v-col cols="12" sm="auto" class="d-flex flex-wrap gap-2">
         <v-btn color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
           @click="abrirUnificar">Unificar duplicados</v-btn>
+        <v-btn color="green-darken-1" variant="tonal" prepend-icon="mdi-cloud-sync-outline" :block="mobile"
+          :loading="sincronizandoSite" @click="sincronizarSite"
+          title="Envia os produtos por kg (nome, descrição, foto, categoria e tabela nutricional) para o site ecogranel.com.br">
+          Sincronizar site</v-btn>
         <v-btn color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
@@ -883,6 +887,22 @@ const { mobile } = useDisplay()
 
 const carregando = ref(false)
 const salvando = ref(false)
+const sincronizandoSite = ref(false)
+
+// Sincroniza os produtos por kg (balança) com o site público ecogranel.com.br.
+async function sincronizarSite() {
+  sincronizandoSite.value = true
+  try {
+    const { data } = await api.post('/produtos/sincronizar-site', null,
+      { params: { empresaId: auth.empresaId } })
+    if (data?.ok) notif.ok(`${data.qtd ?? 0} produto(s) sincronizado(s) com o site.`)
+    else notif.aviso(data?.mensagem || 'Não foi possível sincronizar com o site.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao sincronizar com o site.')
+  } finally {
+    sincronizandoSite.value = false
+  }
+}
 const sugerindoDesc = ref(false)
 const excluindo = ref(false)
 const inativando = ref(false)

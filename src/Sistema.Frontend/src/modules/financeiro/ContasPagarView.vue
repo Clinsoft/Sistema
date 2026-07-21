@@ -42,7 +42,7 @@
             variant="outlined" density="compact" hide-details />
         </v-col>
       </v-row>
-      <div class="d-flex align-center justify-end mt-2 gap-3">
+      <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
         <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
           label="Ver todas (ignora as datas)" @update:model-value="carregar" />
         <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
@@ -101,16 +101,37 @@
         <template #item.saldo="{ item }">R$ {{ fmt(item.saldo) }}</template>
         <template #item.dataVencimento="{ item }">{{ fmtData(item.dataVencimento) }}</template>
         <template #item.actions="{ item }">
-          <v-btn icon="mdi-cash-check" size="x-small" color="success" variant="text"
-            title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
-          <v-btn icon="mdi-pencil-outline" size="x-small" color="primary" variant="text"
-            title="Editar" @click="abrirEditar(item)" :disabled="item.status === 'Pago'" />
-          <v-btn icon="mdi-content-copy" size="x-small" color="indigo" variant="text"
-            title="Duplicar (mesmo valor, outro fornecedor)" @click="duplicarConta(item)" />
-          <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
-            title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
-          <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
-            title="Cancelar título" @click="cancelarTitulo(item)" :disabled="item.status === 'Pago' || item.status === 'Cancelado'" />
+          <template v-if="!mobile">
+            <v-btn icon="mdi-cash-check" size="x-small" color="success" variant="text"
+              title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
+            <v-btn icon="mdi-pencil-outline" size="x-small" color="primary" variant="text"
+              title="Editar" @click="abrirEditar(item)" :disabled="item.status === 'Pago'" />
+            <v-btn icon="mdi-content-copy" size="x-small" color="indigo" variant="text"
+              title="Duplicar (mesmo valor, outro fornecedor)" @click="duplicarConta(item)" />
+            <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
+              title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
+            <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
+              title="Cancelar título" @click="cancelarTitulo(item)" :disabled="item.status === 'Pago' || item.status === 'Cancelado'" />
+          </template>
+          <template v-else>
+            <v-btn icon="mdi-cash-check" size="small" color="success" variant="text"
+              title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
+            <v-menu>
+              <template #activator="{ props }">
+                <v-btn icon="mdi-dots-vertical" size="small" variant="text" v-bind="props" />
+              </template>
+              <v-list density="compact">
+                <v-list-item prepend-icon="mdi-pencil-outline" title="Editar"
+                  :disabled="item.status === 'Pago'" @click="abrirEditar(item)" />
+                <v-list-item prepend-icon="mdi-content-copy" title="Duplicar"
+                  @click="duplicarConta(item)" />
+                <v-list-item prepend-icon="mdi-refresh" title="Renegociar"
+                  :disabled="item.status === 'Pago'" @click="abrirRenegociar(item)" />
+                <v-list-item prepend-icon="mdi-cancel" title="Cancelar título"
+                  :disabled="item.status === 'Pago' || item.status === 'Cancelado'" @click="cancelarTitulo(item)" />
+              </v-list>
+            </v-menu>
+          </template>
         </template>
       </v-data-table>
     </v-card>
@@ -448,12 +469,14 @@
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
+import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+const { mobile } = useDisplay()
 const carregando = ref(false)
 const salvando = ref(false)
 const lancamentos = ref<any[]>([])
@@ -564,7 +587,7 @@ const totaisCategorias = computed(() => [
   { label: 'Impostos',           valor: somarAberto('Impostos'),           cor: 'error',       icon: 'mdi-gavel' },
 ])
 
-const headers = [
+const headersCompletos = [
   { title: 'Descrição',  key: 'descricao',     sortable: true },
   { title: 'Categoria',  key: 'categoria',     width: 170 },
   { title: 'Fornecedor', key: 'fornecedorNome' },
@@ -574,6 +597,14 @@ const headers = [
   { title: 'Status',     key: 'status' },
   { title: '',           key: 'actions', sortable: false },
 ]
+// No celular: só o essencial; as demais colunas ficam no detalhe/ações.
+const headersMobile = [
+  { title: 'Descrição',  key: 'descricao', sortable: true },
+  { title: 'Vence',      key: 'dataVencimento', width: 88 },
+  { title: 'Saldo',      key: 'saldo', width: 90 },
+  { title: '',           key: 'actions', sortable: false, width: 88 },
+]
+const headers = computed(() => mobile.value ? headersMobile : headersCompletos)
 
 function corCategoria(cat?: string) {
   const mapa: Record<string, string> = {

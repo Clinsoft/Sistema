@@ -1,11 +1,11 @@
 <template>
   <div>
     <v-row align="center" class="mb-4">
-      <v-col><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
-      <v-col cols="auto" class="d-flex gap-2">
-        <v-btn color="warning" variant="tonal" prepend-icon="mdi-merge"
+      <v-col cols="12" sm=""><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
+      <v-col cols="12" sm="auto" class="d-flex flex-wrap gap-2">
+        <v-btn color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
           @click="abrirUnificar">Unificar duplicados</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNovo">Novo Produto</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
 
@@ -176,9 +176,9 @@
           </v-chip>
         </template>
         <template #item.actions="{ item }">
-          <v-btn icon="mdi-tune-variant" size="x-small" variant="text" color="teal"
+          <v-btn v-if="!mobile" icon="mdi-tune-variant" size="x-small" variant="text" color="teal"
             title="Ajustar estoque" @click="abrirAjuste(item)" />
-          <v-btn icon="mdi-content-copy" size="x-small" variant="text" color="indigo"
+          <v-btn v-if="!mobile" icon="mdi-content-copy" size="x-small" variant="text" color="indigo"
             title="Duplicar produto" @click="duplicarProduto(item)" />
           <v-btn icon="mdi-pencil-outline" size="x-small" variant="text" color="primary"
             title="Editar" @click="abrirEdicao(item)" />
@@ -820,6 +820,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -827,6 +828,7 @@ import GuiaPassos from '@/components/GuiaPassos.vue'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+const { mobile } = useDisplay()
 
 const carregando = ref(false)
 const salvando = ref(false)
@@ -1187,7 +1189,7 @@ const marcadores = [
   { value: 'lancamento', label: 'Lançamento', cor: 'success',icone: 'mdi-new-box' },
 ]
 
-const headers = [
+const headersCompletos = [
   { title: 'Código', key: 'codigo', width: 90 },
   { title: 'Descrição', key: 'descricao', sortable: true },
   { title: 'Un.', key: 'unidadeSigla', width: 70 },
@@ -1199,6 +1201,14 @@ const headers = [
   { title: 'Status', key: 'ativo', width: 90 },
   { title: '', key: 'actions', sortable: false, width: 110 },
 ]
+// No celular mostramos só o essencial (o resto abre no detalhe do produto).
+const headersMobile = [
+  { title: 'Produto', key: 'descricao', sortable: true },
+  { title: 'Estoque', key: 'estoqueAtual', width: 76 },
+  { title: 'Preço', key: 'precoVenda', width: 84 },
+  { title: '', key: 'actions', sortable: false, width: 52 },
+]
+const headers = computed(() => mobile.value ? headersMobile : headersCompletos)
 
 // Produto vendido por peso (KG) → mostra preço por 100g (= preço/kg ÷ 10)
 function ehPorPeso(p: any) {

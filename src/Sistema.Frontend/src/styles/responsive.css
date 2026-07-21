@@ -1,0 +1,50 @@
+/* ============================================================================
+   Responsividade global — corrige os problemas mais comuns de celular em
+   TODAS as telas, sem precisar editar cada uma:
+   - a página nunca rola horizontalmente (conteúdo largo rola dentro do card);
+   - diálogos ocupam quase a largura toda no celular;
+   - tabelas rolam dentro do próprio card, com células mais compactas.
+   ============================================================================ */
+
+/* O corpo do app não rola na horizontal; tabelas/gráficos largos rolam no
+   próprio container (overflow-x:auto já vem no wrapper das tabelas do Vuetify). */
+html, body { overflow-x: hidden; max-width: 100%; }
+.v-main { overflow-x: hidden; }
+
+/* Tabelas sempre com rolagem horizontal segura dentro do card. */
+.v-table__wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 600px) {
+  /* Diálogos: ocupam quase a largura toda e sobem um pouco. */
+  .v-dialog > .v-overlay__content {
+    max-width: 96vw !important;
+    width: 96vw !important;
+    margin: 12px auto !important;
+  }
+  /* Card do diálogo não estoura a tela e rola se for alto. */
+  .v-dialog > .v-overlay__content > .v-card {
+    max-height: 92dvh;
+    overflow-y: auto;
+  }
+
+  /* Containers e cards com menos padding lateral p/ aproveitar a tela. */
+  .v-container { padding-left: 10px; padding-right: 10px; }
+  .v-card-text { padding: 12px; }
+
+  /* Tabelas: células mais compactas para caber mais no celular. */
+  .v-data-table .v-data-table__td,
+  .v-data-table .v-data-table__th,
+  .v-table > .v-table__wrapper > table > tbody > tr > td,
+  .v-table > .v-table__wrapper > table > thead > tr > th {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    font-size: 0.8rem;
+  }
+
+  /* Nada de card mais largo que a tela. */
+  .v-card, .v-sheet { max-width: 100%; }
+
+  /* Toolbars/cabeçalhos com botões (padrão d-flex) quebram linha em vez de
+     estourar para o lado. */
+  .v-toolbar__content { flex-wrap: wrap; height: auto !important; }
+}

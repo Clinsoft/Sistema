@@ -106,6 +106,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotaFiscalRepository, NotaFiscalRepository>();
         services.AddScoped<IConfiguracaoFiscalRepository, ConfiguracaoFiscalRepository>();
         services.AddScoped<Sistema.Infrastructure.Fiscal.SpedFiscalService>();
+        services.AddScoped<Sistema.Domain.Fiscal.Interfaces.IDanfeService,
+            Sistema.Infrastructure.Fiscal.DanfeService>();
         services.AddScoped<IDistribuicaoDFeService, DistribuicaoDFeService>();
         services.AddScoped<INFeTransmissaoService, NFeTransmissaoService>();
 
@@ -114,6 +116,17 @@ public static class ServiceCollectionExtensions
 
         // Gemini (Nano Banana 2) — geração de imagens para artes de marketing
         services.AddHttpClient<Sistema.Infrastructure.Services.GeminiImageService>();
+
+        // OpenAI (ChatGPT) — geração de texto (ex.: descrição complementar de produto)
+        services.AddHttpClient<Sistema.Infrastructure.Services.OpenAiTextService>();
+        // OpenAI (gpt-image-1) — geração de imagens para artes de marketing
+        services.AddHttpClient<Sistema.Infrastructure.Services.OpenAiImageService>(c =>
+            c.Timeout = TimeSpan.FromMinutes(3));
+        // Branding — sobrepõe a logo oficial nas artes geradas por IA
+        services.AddScoped<Sistema.Infrastructure.Services.ArteBrandingService>();
+        // Busca de imagem de produto por código de barras (Open Food Facts)
+        services.AddHttpClient<Sistema.Infrastructure.Services.ImagemProdutoService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
 
         return services;

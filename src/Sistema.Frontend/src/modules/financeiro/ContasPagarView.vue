@@ -43,6 +43,8 @@
         </v-col>
       </v-row>
       <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
+        <v-btn color="warning" variant="tonal" rounded="lg" prepend-icon="mdi-calendar-today"
+          :loading="carregando" @click="filtrarHoje">Hoje</v-btn>
         <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
           label="Ver todas (ignora as datas)" @update:model-value="carregar" />
         <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
@@ -640,6 +642,17 @@ async function carregar() {
     const r = await api.get('/contas-pagar', { params })
     lancamentos.value = r.data
   } finally { carregando.value = false }
+}
+
+// Filtro rápido "Hoje": mostra todas as contas que vencem hoje (sem esconder por status/categoria).
+function filtrarHoje() {
+  const hoje = new Date().toISOString().slice(0, 10)
+  filtros.value.inicio = hoje
+  filtros.value.fim = hoje
+  filtros.value.tudo = false
+  filtros.value.status = 'Todos'
+  filtros.value.categoria = 'Todas'
+  carregar()
 }
 
 function abrirNovo() {

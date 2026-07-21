@@ -24,9 +24,9 @@
       </v-col>
     </v-row>
 
-    <!-- Indicadores: Margem de Contribuição + CMV -->
+    <!-- Indicadores: Margem de Contribuição + CMV + Curva ABC -->
     <v-row class="mt-3">
-      <v-col cols="12" sm="6">
+      <v-col cols="12" md="4">
         <v-card rounded="xl" elevation="1">
           <v-card-text class="d-flex align-center pa-4">
             <v-avatar color="deep-purple" size="48" class="mr-3">
@@ -49,7 +49,7 @@
         </v-card>
       </v-col>
 
-      <v-col cols="12" sm="6">
+      <v-col cols="12" md="4">
         <v-card rounded="xl" elevation="1">
           <v-card-text class="d-flex align-center pa-4">
             <v-avatar color="orange-darken-2" size="48" class="mr-3">
@@ -74,52 +74,64 @@
           </v-card-text>
         </v-card>
       </v-col>
-    </v-row>
 
-    <!-- Vendas 7 dias + Curva ABC (gráficos lado a lado) -->
-    <v-row class="mt-3">
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
-          <v-card-title class="pa-4 pb-0 text-body-2 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-chart-bar" class="mr-2" color="success" size="18" />
-            Vendas — últimos 30 dias
-          </v-card-title>
-          <v-card-text class="pb-2">
-            <div v-if="carregando" class="d-flex justify-center pa-6">
-              <v-progress-circular indeterminate color="primary" />
+      <!-- Curva ABC — card pequeno -->
+      <v-col cols="12" md="4">
+        <v-card rounded="xl" elevation="1" to="/estoque/posicao">
+          <v-card-text class="d-flex align-center pa-4">
+            <v-avatar color="deep-orange" size="48" class="mr-3">
+              <v-icon icon="mdi-chart-bar-stacked" color="white" size="26" />
+            </v-avatar>
+            <div class="flex-grow-1">
+              <div class="text-caption text-medium-emphasis">Curva ABC de Produtos</div>
+              <div class="text-body-2 font-weight-medium mt-1">
+                {{ curvaAbc.length ? curvaAbc.length + ' produtos vendidos' : 'sem vendas no período' }}
+              </div>
+              <div v-if="curvaAbc.length" class="d-flex ga-1 mt-1">
+                <v-chip size="x-small" color="success" variant="tonal" label>A: {{ abcResumo.A }}</v-chip>
+                <v-chip size="x-small" color="warning" variant="tonal" label>B: {{ abcResumo.B }}</v-chip>
+                <v-chip size="x-small" color="error" variant="tonal" label>C: {{ abcResumo.C }}</v-chip>
+              </div>
             </div>
-            <canvas v-else ref="graficoCanvas" height="185" style="width:100%;display:block" />
+            <v-icon icon="mdi-chevron-right" color="grey" />
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
 
-    <!-- Curva ABC + Contas a Pagar do dia -->
-    <v-row class="mt-2">
+    <!-- Vendas + Contas a Pagar (agendas do mês, lado a lado) -->
+    <v-row class="mt-3">
       <v-col cols="12" md="6">
         <v-card rounded="xl" elevation="1" height="100%">
-          <v-card-title class="pa-4 pb-2 text-body-2 font-weight-bold d-flex align-center flex-wrap">
-            <v-icon icon="mdi-chart-bar-stacked" class="mr-2" color="deep-orange" size="18" />
-            Curva ABC de Produtos
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
+            Vendas — {{ mesAtual }}
             <v-spacer />
-            <div class="d-flex ga-1">
-              <v-chip size="x-small" color="success" variant="tonal" label>A: {{ abcResumo.A }}</v-chip>
-              <v-chip size="x-small" color="warning" variant="tonal" label>B: {{ abcResumo.B }}</v-chip>
-              <v-chip size="x-small" color="error" variant="tonal" label>C: {{ abcResumo.C }}</v-chip>
-            </div>
+            <v-chip v-if="totalMesVendas > 0" color="success" size="small" label>{{ fmt(totalMesVendas) }}</v-chip>
           </v-card-title>
-          <v-card-text class="pb-2">
-            <div v-if="carregandoAbc" class="d-flex justify-center pa-6">
-              <v-progress-circular indeterminate color="deep-orange" />
-            </div>
-            <div v-else-if="!curvaAbc.length" class="text-center text-medium-emphasis pa-6">
-              <v-icon icon="mdi-package-variant" size="32" class="mb-2" />
-              <div class="text-body-2">Sem vendas de produtos no período.</div>
+          <v-card-text class="pt-1">
+            <div v-if="carregando" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="success" />
             </div>
             <template v-else>
-              <canvas ref="abcCanvas" height="170" style="width:100%;display:block" />
-              <div class="text-caption text-medium-emphasis mt-1 text-center">
-                Participação por produto · linha = % acumulado (Pareto).
+              <div class="dash-cal-head">
+                <span v-for="(d, i) in ['D','S','T','Q','Q','S','S']" :key="i">{{ d }}</span>
+              </div>
+              <div class="dash-cal-grid">
+                <div v-for="(cel, i) in celasVendas" :key="i" class="dash-cal-cell"
+                  :class="{
+                    'dash-cal-empty': !cel.dia,
+                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-vend': cel.total > 0,
+                  }">
+                  <template v-if="cel.dia">
+                    <div class="dash-cal-num">{{ cel.dia }}</div>
+                    <div v-if="cel.total > 0" class="dash-cal-val dash-cal-val-v">{{ fmtMil(cel.total) }}</div>
+                  </template>
+                </div>
+              </div>
+              <div class="text-caption text-medium-emphasis text-center mt-2">
+                Total vendido em cada dia do mês.
               </div>
             </template>
           </v-card-text>
@@ -486,7 +498,6 @@ import { useAuthStore } from '@/stores/auth'
 import api from '@/composables/useApi'
 
 const auth = useAuthStore()
-const graficoCanvas = ref<HTMLCanvasElement>()
 const peCanvas = ref<HTMLCanvasElement>()
 const dreCanvas = ref<HTMLCanvasElement>()
 const carregando = ref(true)
@@ -823,91 +834,42 @@ function renderizarGraficoDre() {
   })
 }
 
-// ── Vendas últimos 7 dias ────────────────────────────────────────────────────
+// ── Vendas — Agenda do mês ───────────────────────────────────────────────────
 interface VendaDia { data: string; qtdVendas: number; totalVendido: number; ticketMedio: number }
-const vendas7dias = ref<VendaDia[]>([])
+const vendasMes = ref<VendaDia[]>([])
 
-async function carregarVendas7dias() {
+const totalMesVendas = computed(() => vendasMes.value.reduce((s, v) => s + v.totalVendido, 0))
+
+const vendasPorDia = computed(() => {
+  const map: Record<number, number> = {}
+  for (const v of vendasMes.value) {
+    const d = new Date(String(v.data).slice(0, 10) + 'T12:00:00')
+    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    map[d.getDate()] = (map[d.getDate()] ?? 0) + v.totalVendido
+  }
+  return map
+})
+
+const celasVendas = computed(() => {
+  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()
+  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const cells: { dia: number | null; total: number }[] = []
+  for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0 })
+  for (let d = 1; d <= diasNoMes; d++) cells.push({ dia: d, total: vendasPorDia.value[d] ?? 0 })
+  return cells
+})
+
+async function carregarVendasMes() {
   carregando.value = true
   if (!auth.empresaId) { carregando.value = false; return }
   try {
-    const hoje = new Date()
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - 29).toISOString().slice(0, 10)
-    const fim = hoje.toISOString().slice(0, 10)
+    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
       params: { empresaId: auth.empresaId, inicio, fim }
     })
-    vendas7dias.value = res.data
-  } catch { vendas7dias.value = [] } finally {
-    carregando.value = false
-    await nextTick()
-    renderizarGraficoVendas()
-  }
-}
-
-function renderizarGraficoVendas() {
-  const canvas = graficoCanvas.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  // Monta série contínua dos últimos 30 dias (preenche dias sem venda com 0)
-  const hoje = new Date()
-  const dias: { label: string; valor: number }[] = []
-  const mapa = Object.fromEntries(
-    vendas7dias.value.map(d => [d.data.slice(0, 10), d.totalVendido])
-  )
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - i)
-    const iso = d.toISOString().slice(0, 10)
-    // Rótulo a cada 5 dias (evita amontoado); o mês aparece no rótulo mais à
-    // esquerda e no começo de cada mês.
-    const mostrar = i % 5 === 0
-    const label = !mostrar ? ''
-      : (i === 25 || d.getDate() <= 5) ? MESES_PT[d.getMonth()] + ' ' + d.getDate()
-      : String(d.getDate())
-    dias.push({ label, valor: mapa[iso] ?? 0 })
-  }
-
-  const W = canvas.offsetWidth || 600, H = 185
-  canvas.width = W; canvas.height = H
-  ctx.clearRect(0, 0, W, H)
-
-  const padL = 44, padR = 12, padTop = 22, padBottom = 26
-  const chartW = W - padL - padR, chartH = H - padTop - padBottom
-  const maxV = Math.max(...dias.map(d => d.valor), 1)
-
-  // Grade horizontal + rótulos do eixo Y
-  for (let g = 0; g <= 3; g++) {
-    const y = padTop + chartH - (g / 3) * chartH
-    ctx.strokeStyle = '#eeeeee'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke()
-    const val = (maxV * g / 3)
-    ctx.fillStyle = '#9e9e9e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right'
-    ctx.fillText(val >= 1000 ? (val / 1000).toFixed(1) + 'k' : Math.round(val).toString(), padL - 6, y + 4)
-  }
-
-  // Barras: só aparece onde houve venda; dias zerados ficam com um tracinho leve.
-  const slot = chartW / dias.length
-  const barW = Math.min(24, Math.max(6, slot * 0.55))
-  const baseY = padTop + chartH
-  dias.forEach((d, i) => {
-    const cx = padL + slot * (i + 0.5)
-    if (d.valor > 0) {
-      const bh = Math.max(3, Math.round((d.valor / maxV) * chartH))
-      ctx.fillStyle = '#66bb6a'
-      ctx.beginPath(); ctx.roundRect(cx - barW / 2, baseY - bh, barW, bh, [4, 4, 0, 0]); ctx.fill()
-      ctx.fillStyle = '#2e7d32'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(d.valor >= 1000 ? (d.valor / 1000).toFixed(1) + 'k' : Math.round(d.valor).toString(), cx, baseY - bh - 6)
-    } else {
-      ctx.fillStyle = '#e0e0e0'
-      ctx.beginPath(); ctx.roundRect(cx - barW / 2, baseY - 2, barW, 2, 1); ctx.fill()
-    }
-    if (d.label) {
-      ctx.fillStyle = '#757575'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(d.label, cx, H - 6)
-    }
-  })
+    vendasMes.value = res.data ?? []
+  } catch { vendasMes.value = [] } finally { carregando.value = false }
 }
 
 // ── Curva ABC de Produtos ────────────────────────────────────────────────────
@@ -983,7 +945,7 @@ function renderizarCurvaAbc() {
 onMounted(async () => {
   await Promise.all([
     carregarResumo(),
-    carregarVendas7dias(),
+    carregarVendasMes(),
     carregarPe(),
     carregarContasMes(),
     carregarVendasColaborador(),
@@ -1009,6 +971,8 @@ onMounted(async () => {
 .dash-cal-num { font-size: 11px; color: #616161; line-height: 1; }
 .dash-cal-val { font-size: 10px; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #f57c00; }
 .dash-cal-tem { background: #fff8e1; border-color: #ffe0b2; cursor: pointer; }
+.dash-cal-vend { background: #e8f5e9; border-color: #c8e6c9; }
+.dash-cal-val-v { color: #2e7d32; }
 .dash-cal-venc { background: #ffebee; border-color: #ffcdd2; }
 .dash-cal-venc .dash-cal-val { color: #e53935; }
 .dash-cal-hoje { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }

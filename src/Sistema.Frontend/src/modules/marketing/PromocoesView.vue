@@ -191,7 +191,8 @@
                   <v-col cols="12" md="6">
                     <v-select v-model="form.aplicaEm"
                       :items="[{title:'Todos os produtos',value:'Todos'},{title:'Categoria específica',value:'Categoria'},{title:'Marca específica',value:'Marca'},{title:'Produto específico',value:'Produto'}]"
-                      label="Aplicar em" variant="outlined" density="compact" />
+                      label="Aplicar em" variant="outlined" density="compact"
+                      @update:model-value="form.referenciaId = null" />
                   </v-col>
                   <v-col cols="12" md="6" v-if="form.aplicaEm !== 'Todos'">
                     <v-autocomplete v-model="form.referenciaId" :items="itensFiltro"
@@ -294,7 +295,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -373,6 +374,28 @@ async function carregar() {
   } catch { promocoes.value = [] }
   finally { carregando.value = false }
 }
+
+// Carrega as opções do autocomplete conforme "Aplicar em" (produto/categoria/marca).
+async function carregarItensFiltro() {
+  const tipo = form.value.aplicaEm
+  if (tipo === 'Todos') { itensFiltro.value = []; return }
+  try {
+    if (tipo === 'Produto') {
+      const r = await api.get('/produtos', { params: { empresaId: auth.empresaId, pagina: 1, tamanhoPagina: 1000 } })
+      const itens: any[] = r.data?.itens ?? r.data ?? []
+      itensFiltro.value = itens.map(p => ({ id: p.id, nome: p.descricao }))
+    } else if (tipo === 'Categoria') {
+      const r = await api.get('/categorias', { params: { empresaId: auth.empresaId } })
+      itensFiltro.value = (r.data ?? []).map((c: any) => ({ id: c.id, nome: c.nome }))
+    } else if (tipo === 'Marca') {
+      const r = await api.get('/marcas', { params: { empresaId: auth.empresaId } })
+      itensFiltro.value = (r.data ?? []).map((m: any) => ({ id: m.id, nome: m.nome }))
+    }
+  } catch { itensFiltro.value = [] }
+}
+
+// Recarrega as opções sempre que o tipo de aplicação muda (inclui abertura de edição).
+watch(() => form.value.aplicaEm, () => { carregarItensFiltro() })
 
 function abrirNova() {
   editando.value = null

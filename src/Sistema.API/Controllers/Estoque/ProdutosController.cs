@@ -310,7 +310,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
 
         // A imagem é gerenciada pelos endpoints próprios (upload/remover) — a edição
         // geral NÃO deve tocar nela (senão um form desatualizado apaga a foto).
-        produto.EditarInfoAdicional(req.ImagemUrl, req.Marcador, req.Tags, req.InformacaoAdicional);
+        produto.EditarInfoAdicional(produto.ImagemUrl, req.Marcador, req.Tags, req.InformacaoAdicional);
 
         // Unidade pesável (KG) → sempre marcado para a balança.
         var pesavel = await db.UnidadesMedida.AsNoTracking()

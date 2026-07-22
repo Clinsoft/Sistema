@@ -1078,7 +1078,7 @@ async function enviarImagem() {
     const r = await api.post(`/produtos/${produtoEditandoId.value}/imagem`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
-    form.value.imagemUrl = r.data.url
+    form.value.imagemUrl = r.data.url + '?t=' + Date.now()  // quebra cache pra mostrar a nova
     arquivoImagem.value = null
     previewImagem.value = null
     notif.ok('Imagem enviada com sucesso!')
@@ -1755,6 +1755,8 @@ async function salvar() {
   try {
     if (editando.value && produtoEditandoId.value) {
       await api.put(`/produtos/${produtoEditandoId.value}`, { ...form.value })
+      // Sobe a foto nova, se foi selecionada (o PUT já não mexe na imagem).
+      if (arquivoImagem.value) await enviarImagem()
       notif.ok('Produto atualizado!')
     } else {
       const r = await api.post('/produtos', { empresaId: auth.empresaId, ...form.value })

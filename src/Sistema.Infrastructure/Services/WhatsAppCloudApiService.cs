@@ -211,6 +211,127 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
             tel = "55" + tel;
         return tel;
     }
+
+    /// <summary>
+    /// Cria um modelo (template) de mensagem na Meta e o envia para análise.
+    /// Categoria MARKETING, corpo com variáveis {{1}}..{{N}} e, opcionalmente, cabeçalho
+    /// de imagem — que exige subir a imagem de exemplo (resumable upload) e usar o handle.
+    /// </summary>
+    public async Task<(bool Ok, string? Status, string? Erro)> CriarTemplateAsync(
+        string wabaId, string accessToken, string? appId,
+        string nome, string corpo, IReadOnlyList<string> exemplos,
+        byte[]? imagemExemploPng, CancellationToken ct = default)
+    {
+        try
+        {
+            var componentes = new List<object>();
+
+            // Cabeçalho de imagem (opcional): precisa do handle da imagem de exemplo.
+            if (imagemExemploPng is { Length: > 0 })
+            {
+                // O App ID informado costuma vir errado (às vezes é o Phone Number ID);
+                // descobre o App ID real a partir do próprio token via debug_token.
+                var appIdReal = await ObterAppIdDoTokenAsync(accessToken, ct) ?? appId;
+                if (string.IsNullOrWhiteSpace(appIdReal))
+                    return (false, null, "Não foi possível determinar o App ID a partir do token.");
+
+                var handle = await SubirImagemExemploAsync(appIdReal, accessToken, imagemExemploPng, ct);
+                if (handle is null)
+                    return (false, null, "Não foi possível subir a imagem de exemplo do cabeçalho na Meta.");
+                componentes.Add(new
+                {
+                    type = "HEADER",
+                    format = "IMAGE",
+                    example = new { header_handle = new[] { handle } }
+                });
+            }
+
+            // Corpo com exemplos das variáveis (a Meta exige exemplos para aprovar).
+            componentes.Add(exemplos.Count > 0
+                ? new { type = "BODY", text = corpo, example = new { body_text = new[] { exemplos.ToArray() } } }
+                : (object)new { type = "BODY", text = corpo });
+
+            var payload = new
+            {
+                name = nome,
+                language = "pt_BR",
+                category = "MARKETING",
+                components = componentes.ToArray()
+            };
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/{wabaId}/message_templates")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload),
+                    System.Text.Encoding.UTF8, "application/json")
+            };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            var resp = await http.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                logger.LogWarning("[WhatsApp] Falha ao criar template: {Body}", body);
+                return (false, null, TentarExtrairErroMeta(body) ?? $"Meta {(int)resp.StatusCode}");
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            var status = doc.RootElement.TryGetProperty("status", out var st) ? st.GetString() : "PENDING";
+            return (true, status, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[WhatsApp] Erro ao criar template");
+            return (false, null, ex.Message);
+        }
+    }
+
+    /// <summary>Descobre o App ID da Meta a partir do próprio token (debug_token).</summary>
+    private async Task<string?> ObterAppIdDoTokenAsync(string token, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"{BaseUrl}/debug_token?input_token={Uri.EscapeDataString(token)}" +
+                      $"&access_token={Uri.EscapeDataString(token)}";
+            using var resp = await http.GetAsync(url, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode) { logger.LogWarning("[WhatsApp] debug_token falhou: {B}", body); return null; }
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("data", out var d) &&
+                d.TryGetProperty("app_id", out var a))
+                return a.GetString();
+        }
+        catch (Exception ex) { logger.LogWarning(ex, "[WhatsApp] erro ao obter app_id do token"); }
+        return null;
+    }
+
+    /// <summary>Sobe a imagem de exemplo via Resumable Upload e devolve o handle usado no template.</summary>
+    private async Task<string?> SubirImagemExemploAsync(
+        string appId, string accessToken, byte[] png, CancellationToken ct)
+    {
+        // 1) Abre a sessão de upload.
+        var startUrl = $"{BaseUrl}/{appId}/uploads?file_name=header.png&file_length={png.Length}" +
+                       $"&file_type=image/png&access_token={Uri.EscapeDataString(accessToken)}";
+        using var startResp = await http.PostAsync(startUrl, null, ct);
+        var startBody = await startResp.Content.ReadAsStringAsync(ct);
+        if (!startResp.IsSuccessStatusCode) { logger.LogWarning("[WhatsApp] upload start falhou: {B}", startBody); return null; }
+        using var startDoc = JsonDocument.Parse(startBody);
+        var sessionId = startDoc.RootElement.TryGetProperty("id", out var sid) ? sid.GetString() : null;
+        if (string.IsNullOrEmpty(sessionId)) return null;
+
+        // 2) Envia os bytes; a resposta traz o handle em "h".
+        using var upReq = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/{sessionId}")
+        {
+            Content = new ByteArrayContent(png)
+        };
+        upReq.Headers.TryAddWithoutValidation("Authorization", $"OAuth {accessToken}");
+        upReq.Headers.TryAddWithoutValidation("file_offset", "0");
+
+        using var upResp = await http.SendAsync(upReq, ct);
+        var upBody = await upResp.Content.ReadAsStringAsync(ct);
+        if (!upResp.IsSuccessStatusCode) { logger.LogWarning("[WhatsApp] upload bytes falhou: {B}", upBody); return null; }
+        using var upDoc = JsonDocument.Parse(upBody);
+        return upDoc.RootElement.TryGetProperty("h", out var h) ? h.GetString() : null;
+    }
 }
 
 public class MetaTemplatesResponse

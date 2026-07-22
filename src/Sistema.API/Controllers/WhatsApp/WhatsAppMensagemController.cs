@@ -169,6 +169,50 @@ public class WhatsAppMensagemController(
         return Ok(templates);
     }
 
+    /// <summary>Cria um template de promoção padrão na Meta e envia para análise.
+    /// Usa a arte mais recente como imagem de exemplo do cabeçalho, se houver.</summary>
+    [HttpPost("templates/criar-promocao")]
+    [Authorize]
+    public async Task<IActionResult> CriarTemplatePromocao(
+        [FromBody] CriarTemplatePromocaoRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg?.BusinessAccountId is null || cfg.AccessToken is null)
+            return BadRequest(new { mensagem = "Configure o Business Account ID e o Access Token primeiro." });
+
+        // Imagem de exemplo do cabeçalho: usa uma arte já gerada (PNG), se existir.
+        byte[]? imagemExemplo = null;
+        var arte = await db.ArtesMarketing.AsNoTracking()
+            .Where(a => a.EmpresaId == req.EmpresaId && a.UrlExportada != null)
+            .OrderByDescending(a => a.CriadoEm)
+            .FirstOrDefaultAsync(ct);
+        if (arte?.UrlExportada is { } url)
+        {
+            var caminho = Path.Combine("wwwroot", url.TrimStart('/'));
+            if (System.IO.File.Exists(caminho))
+                imagemExemplo = await System.IO.File.ReadAllBytesAsync(caminho, ct);
+        }
+
+        // Corpo padrão: {{1}} nome, {{2}} desconto, {{3}} produto, {{4}} de, {{5}} por.
+        const string corpo =
+            "🌿 Oferta EcoGranel!\n\n" +
+            "Olá {{1}}, aproveite {{2}} em {{3}}.\n" +
+            "De {{4}} por {{5}}.\n\n" +
+            "Válido por tempo limitado. Passe na loja ou responda aqui! 🛒";
+        var exemplos = new[] { "João", "10% de desconto", "Stévia Choco", "R$ 10,36", "R$ 9,32" };
+        var nome = string.IsNullOrWhiteSpace(req.Nome) ? "promocao_produto" : req.Nome!.Trim().ToLowerInvariant();
+
+        var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
+            cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
+            nome, corpo, exemplos, imagemExemplo, ct);
+
+        if (!ok)
+            return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
+
+        return Ok(new { nome, status, comImagem = imagemExemplo != null });
+    }
+
     // ─── Envio manual ─────────────────────────────────────────────────────────
 
     [HttpPost("enviar")]
@@ -366,3 +410,5 @@ public record EnviarMensagemRequest(
     string TipoDisparo = "Personalizado", Guid? ClienteId = null,
     string? Idioma = "pt_BR", IEnumerable<string>? Variaveis = null,
     string? HeaderImageUrl = null);
+
+public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);

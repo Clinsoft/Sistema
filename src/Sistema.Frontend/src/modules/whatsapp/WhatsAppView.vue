@@ -135,6 +135,11 @@
                   Use para enviar uma mensagem personalizada para um cliente específico.
                   O template precisa estar aprovado na Meta.
                 </v-alert>
+                <v-autocomplete v-model="promoSelecionada" :items="promocoes" item-title="nome" item-value="id"
+                  label="Preencher de uma promoção (opcional)" prepend-inner-icon="mdi-tag" clearable
+                  density="compact" class="mb-2" :loading="carregandoPromo"
+                  hint="Preenche automaticamente a imagem e as variáveis (nome, desconto, produto, preços)"
+                  persistent-hint @update:model-value="preencherDaPromocao" />
                 <v-row>
                   <v-col cols="12" sm="6">
                     <v-text-field v-model="envioManual.telefone" label="Telefone (com DDD)"
@@ -187,7 +192,11 @@
             </div>
           </v-col>
           <v-col cols="auto">
-            <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirDialogTemplate(null)">
+            <v-btn color="success" prepend-icon="mdi-send-check" @click="criarTemplatePromocao"
+              :loading="criandoTemplate">
+              Criar template de promoção (p/ análise)
+            </v-btn>
+            <v-btn color="primary" class="ml-2" prepend-icon="mdi-plus" @click="abrirDialogTemplate(null)">
               Novo Template
             </v-btn>
             <v-btn variant="outlined" class="ml-2" prepend-icon="mdi-cloud-download"
@@ -626,6 +635,21 @@ async function salvarTemplate() {
 
 const dialogMetaTemplates = ref(false)
 const templatesMeta = ref<any[]>([])
+const criandoTemplate = ref(false)
+
+// Cria um template de promoção padrão na Meta e envia para análise.
+async function criarTemplatePromocao() {
+  criandoTemplate.value = true
+  try {
+    const { data } = await api.post('/whatsapp/mensagem/templates/criar-promocao', { empresaId: auth.empresaId })
+    const img = data?.comImagem ? ' (com cabeçalho de imagem)' : ''
+    notif.ok(`Template "${data?.nome}" enviado para análise da Meta${img}. Status: ${data?.status ?? 'PENDING'}. A aprovação costuma levar de minutos a algumas horas.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao criar o template na Meta.')
+  } finally {
+    criandoTemplate.value = false
+  }
+}
 
 async function importarTemplatesMeta() {
   importandoTemplates.value = true
@@ -702,6 +726,43 @@ const envioManual = ref({
   templateName: '', idioma: 'pt_BR', tipoDisparo: 'Personalizado',
   variaveisTexto: '', headerImageUrl: '',
 })
+
+// Auto-preenchimento do envio manual a partir de uma promoção.
+const promocoes = ref<any[]>([])
+const promoSelecionada = ref<string | null>(null)
+const carregandoPromo = ref(false)
+
+async function carregarPromocoes() {
+  try {
+    const { data } = await api.get('/promocoes', { params: { empresaId: auth.empresaId } })
+    promocoes.value = Array.isArray(data) ? data : []
+  } catch { promocoes.value = [] }
+}
+
+async function preencherDaPromocao(promoId: string | null) {
+  if (!promoId) return
+  carregandoPromo.value = true
+  try {
+    const { data } = await api.get(`/promocoes/${promoId}/mensagem`)
+    // Imagem do cabeçalho: usa a arte (Feed) já gerada da promoção, se houver.
+    envioManual.value.headerImageUrl = data.arteUrl ? `${window.location.origin}${data.arteUrl}` : ''
+    // Variáveis na ordem do template padrão: {{1}} nome, {{2}} desconto, {{3}} produto, {{4}} de, {{5}} por.
+    envioManual.value.variaveisTexto = [
+      envioManual.value.nomeDestinatario || 'Cliente',
+      data.descontoTxt || '',
+      data.produtoNome || data.nomePromocao || '',
+      data.precoDE || '',
+      data.precoPOR || '',
+    ].join('\n')
+    envioManual.value.tipoDisparo = 'Promocao'
+    if (!data.arteUrl)
+      notif.aviso('Promoção sem arte gerada. Gere as artes em Promoções para incluir a imagem.')
+  } catch {
+    notif.erro('Não foi possível carregar os dados da promoção.')
+  } finally {
+    carregandoPromo.value = false
+  }
+}
 
 async function enviarManual() {
   enviando.value = true
@@ -827,6 +888,7 @@ onMounted(() => {
   carregarConfigCatalogo()
   carregarTemplates()
   carregarHistorico()
+  carregarPromocoes()
 })
 </script>
 

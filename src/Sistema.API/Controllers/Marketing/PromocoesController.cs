@@ -45,6 +45,51 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
         return Ok(resultado.ToList());
     }
 
+    /// <summary>Dados prontos para preencher uma mensagem de WhatsApp a partir da promoção:
+    /// texto do desconto, nome e preços do produto, e a arte (Feed) já gerada.</summary>
+    [HttpGet("{id:guid}/mensagem")]
+    public async Task<IActionResult> DadosMensagem(Guid id, CancellationToken ct)
+    {
+        var promo = await db.Promocoes.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (promo is null) return NotFound();
+
+        var ptBR = new System.Globalization.CultureInfo("pt-BR");
+
+        string? produtoNome = null;
+        decimal? precoDE = null;
+        if (promo.AplicaEm == "Produto" && promo.ReferenciaId is { } pid)
+        {
+            var prod = await db.Produtos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pid, ct);
+            produtoNome = prod?.Descricao;
+            precoDE = prod?.PrecoVenda;
+        }
+        decimal? precoPOR = precoDE is { } de
+            ? (promo.TipoDesconto == "Percentual" ? de * (1 - promo.Desconto / 100m) : de - promo.Desconto)
+            : null;
+
+        var descontoTxt = promo.TipoDesconto == "Percentual"
+            ? $"{promo.Desconto:0}% de desconto"
+            : $"R$ {promo.Desconto.ToString("0.00", ptBR)} de desconto";
+
+        // Arte Feed já gerada para esta promoção (usada como imagem do cabeçalho).
+        var arteFeed = await db.ArtesMarketing.AsNoTracking()
+            .Where(a => a.EmpresaId == promo.EmpresaId
+                     && a.Nome == promo.Nome + " — Feed"
+                     && a.UrlExportada != null)
+            .OrderByDescending(a => a.CriadoEm)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(new
+        {
+            nomePromocao = promo.Nome,
+            descontoTxt,
+            produtoNome,
+            precoDE  = precoDE  is { } d1 ? $"R$ {d1.ToString("0.00", ptBR)}" : null,
+            precoPOR = precoPOR is { } d2 ? $"R$ {d2.ToString("0.00", ptBR)}" : null,
+            arteUrl  = arteFeed != null ? $"/api/marketing/artes/{arteFeed.Id}/exportar" : null,
+        });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] PromocaoRequest req, CancellationToken ct)
     {

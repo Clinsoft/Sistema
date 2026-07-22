@@ -65,7 +65,7 @@
               to="/cadastros/fornecedores" value="/cadastros/fornecedores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-warehouse" title="Locais de Estoque"
               to="/cadastros/locais-estoque" value="/cadastros/locais-estoque" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Produtos"
+            <v-list-item prepend-icon="mdi-package-variant-closed" title="Produtos"
               to="/estoque/produtos" value="/estoque/produtos" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-ruler-square" title="Unidades de Medida"
               to="/cadastros/unidades-medida" value="/cadastros/unidades-medida" color="primary" rounded="lg" class="pl-4" />

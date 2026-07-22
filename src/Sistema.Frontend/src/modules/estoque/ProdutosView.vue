@@ -3,13 +3,13 @@
     <v-row align="center" class="mb-4">
       <v-col cols="12" sm=""><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
       <v-col cols="12" sm="auto" class="d-flex flex-wrap gap-2">
-        <v-btn color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
+        <v-btn v-if="!ehAtendente" color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
           @click="abrirUnificar">Unificar duplicados</v-btn>
-        <v-btn color="green-darken-1" variant="tonal" prepend-icon="mdi-cloud-sync-outline" :block="mobile"
+        <v-btn v-if="!ehAtendente" color="green-darken-1" variant="tonal" prepend-icon="mdi-cloud-sync-outline" :block="mobile"
           :loading="sincronizandoSite" @click="sincronizarSite"
           title="Envia os produtos por kg (nome, descrição, foto, categoria e tabela nutricional) para o site ecogranel.com.br">
           Sincronizar site</v-btn>
-        <v-btn color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
+        <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
 
@@ -429,7 +429,7 @@
               </div>
 
               <!-- ── SEÇÃO: PREÇOS ──────────────────────────────── -->
-              <div class="prod-secao">
+              <div v-if="!ehAtendente" class="prod-secao">
                 <div class="prod-secao-header">
                   <v-icon icon="mdi-tag-outline" size="16" />
                   <span>Preços</span>
@@ -498,7 +498,7 @@
               </div>
 
               <!-- ── SEÇÃO: FISCAL ──────────────────────────────── -->
-              <div class="prod-secao">
+              <div v-if="!ehAtendente" class="prod-secao">
                 <div class="prod-secao-header">
                   <v-icon icon="mdi-file-certificate-outline" size="16" />
                   <span>Fiscal</span>
@@ -544,7 +544,7 @@
               </div>
 
               <!-- ── SEÇÃO: EMBALAGENS ──────────────────────────── -->
-              <div class="prod-secao">
+              <div v-if="!ehAtendente" class="prod-secao">
                 <div class="prod-secao-header">
                   <v-icon icon="mdi-package-variant-closed" size="16" />
                   <span>Embalagens / Múltiplos GTINs</span>
@@ -739,11 +739,11 @@
         <v-divider />
         <v-card-actions class="pa-4">
           <v-btn variant="text" @click="fecharDialog">Cancelar</v-btn>
-          <v-btn v-if="editando" color="error" variant="tonal" prepend-icon="mdi-delete-outline"
+          <v-btn v-if="editando && !ehAtendente" color="error" variant="tonal" prepend-icon="mdi-delete-outline"
             :loading="excluindo" @click="excluirProduto">Excluir</v-btn>
-          <v-btn v-if="editando && form.ativo" color="warning" variant="tonal" prepend-icon="mdi-eye-off-outline"
+          <v-btn v-if="editando && !ehAtendente && form.ativo" color="warning" variant="tonal" prepend-icon="mdi-eye-off-outline"
             :loading="inativando" @click="inativarProduto">Inativar</v-btn>
-          <v-btn v-if="editando && !form.ativo" color="success" variant="tonal" prepend-icon="mdi-eye-check-outline"
+          <v-btn v-if="editando && !ehAtendente && !form.ativo" color="success" variant="tonal" prepend-icon="mdi-eye-check-outline"
             :loading="inativando" @click="reativarProduto">Reativar</v-btn>
           <v-spacer />
           <v-btn color="primary" :loading="salvando" @click="salvar"
@@ -884,6 +884,9 @@ import GuiaPassos from '@/components/GuiaPassos.vue'
 const auth = useAuthStore()
 const notif = useNotifStore()
 const { mobile } = useDisplay()
+
+// Atendente edita o cadastro, mas não vê preços nem dados fiscais, e não cria/exclui.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const carregando = ref(false)
 const salvando = ref(false)
@@ -1331,7 +1334,12 @@ const headersMobile = [
   { title: 'Preço', key: 'precoVenda', width: 84 },
   { title: '', key: 'actions', sortable: false, width: 52 },
 ]
-const headers = computed(() => mobile.value ? headersMobile : headersCompletos)
+// Colunas de valores (custo/markup/preço) ficam ocultas para o Atendente.
+const colunasPreco = ['custoUnitario', 'markup', 'precoVenda', 'preco100g']
+const headers = computed(() => {
+  const base = mobile.value ? headersMobile : headersCompletos
+  return ehAtendente.value ? base.filter(h => !colunasPreco.includes(h.key)) : base
+})
 
 // Produto vendido por peso (KG) → mostra preço por 100g (= preço/kg ÷ 10)
 function ehPorPeso(p: any) {

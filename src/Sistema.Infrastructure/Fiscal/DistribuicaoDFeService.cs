@@ -377,10 +377,19 @@ public class DistribuicaoDFeService(
             doc.LoadXml(xmlNota);
             var ns = new XmlNamespaceManager(doc.NameTable);
             ns.AddNamespace("n", "http://www.portalfiscal.inf.br/nfe");
+            ns.AddNamespace("c", "http://www.portalfiscal.inf.br/cte");
 
             // Resumo da NF-e (resNFe) — retornado ANTES da manifestação do destinatário.
             var res = doc.SelectSingleNode("//n:resNFe", ns);
             if (res != null) return ParsearResumo(res, ns, nsu);
+
+            // Resumo do CT-e (resCTe) — frete emitido pela transportadora.
+            var resCte = doc.SelectSingleNode("//c:resCTe", ns);
+            if (resCte != null) return ParsearResumoCTe(resCte, ns, nsu);
+
+            // CT-e completo (procCTe / cteProc).
+            var ideCte = doc.SelectSingleNode("//c:CTe//c:ide", ns);
+            if (ideCte != null) return ParsearCTeCompleto(doc, ideCte, ns, nsu);
 
             // NF-e completa (procNFe / nfeProc) — disponível após manifestar.
             var ide = doc.SelectSingleNode("//n:ide", ns);
@@ -420,6 +429,62 @@ public class DistribuicaoDFeService(
 
         return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
             emitCnpj, emitNome, emitUF, valor, situacao);
+    }
+
+    /// <summary>Parseia um resumo de CT-e (resCTe). Modelo=57; valor = vTPrest (valor do frete).</summary>
+    private static DFeDocumento? ParsearResumoCTe(XmlNode res, XmlNamespaceManager ns, string nsu)
+    {
+        var chave = res.SelectSingleNode("c:chCTe", ns)?.InnerText ?? "";
+        if (chave.Length != 44) return null;
+
+        // Emitente = transportadora que emitiu o CT-e.
+        var emitCnpj = res.SelectSingleNode("c:CNPJ", ns)?.InnerText
+                    ?? res.SelectSingleNode("c:CPF", ns)?.InnerText ?? "";
+        var emitNome = res.SelectSingleNode("c:xNome", ns)?.InnerText ?? "";
+        var dtStr    = res.SelectSingleNode("c:dhEmi", ns)?.InnerText;
+        var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
+        var valor = decimal.TryParse(res.SelectSingleNode("c:vTPrest", ns)?.InnerText,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+        // Chave: cUF(2) AAMM(4) CNPJ(14) mod(2)=57 serie(3) nCT(9) tpEmis(1) cCT(8) cDV(1)
+        var modelo = chave.Substring(20, 2);
+        var serieStr = chave.Substring(22, 3).TrimStart('0');
+        var serie = serieStr == "" ? "0" : serieStr;
+        var numero = long.TryParse(chave.Substring(25, 9), out var nn) ? nn : 0;
+        var emitUF = CodigoParaUf(chave.Substring(0, 2));
+
+        // cSitCTe: 1=autorizado, 3=cancelado
+        var situacao = res.SelectSingleNode("c:cSitCTe", ns)?.InnerText == "3"
+            ? SituacaoNFeRecebida.Cancelada : SituacaoNFeRecebida.Autorizada;
+
+        return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
+            emitCnpj, emitNome, emitUF, valor, situacao);
+    }
+
+    /// <summary>Parseia um CT-e completo (procCTe / cteProc). Valor = vTPrest.</summary>
+    private static DFeDocumento? ParsearCTeCompleto(XmlDocument doc, XmlNode ide, XmlNamespaceManager ns, string nsu)
+    {
+        var emit    = doc.SelectSingleNode("//c:emit", ns);
+        var infCte  = doc.SelectSingleNode("//c:infCte", ns);
+
+        var chave     = infCte?.Attributes?["Id"]?.Value?.Replace("CTe", "") ?? "";
+        if (chave.Length != 44) return null;
+        var modelo    = ide.SelectSingleNode("c:mod", ns)?.InnerText ?? "57";
+        var serie     = ide.SelectSingleNode("c:serie", ns)?.InnerText ?? "1";
+        var numero    = long.TryParse(ide.SelectSingleNode("c:nCT", ns)?.InnerText, out var n) ? n : 0;
+        var dtStr     = ide.SelectSingleNode("c:dhEmi", ns)?.InnerText;
+        var dtEmissao = DateTime.TryParse(dtStr, out var dt) ? dt : DateTime.UtcNow;
+        var emitCnpj  = emit?.SelectSingleNode("c:CNPJ", ns)?.InnerText ?? "";
+        var emitNome  = emit?.SelectSingleNode("c:xNome", ns)?.InnerText ?? "";
+        var emitUF    = emit?.SelectSingleNode("c:enderEmit/c:UF", ns)?.InnerText;
+        var valor     = decimal.TryParse(
+            doc.SelectSingleNode("//c:vPrest/c:vTPrest", ns)?.InnerText,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+        return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
+            emitCnpj, emitNome, emitUF, valor, SituacaoNFeRecebida.Autorizada);
     }
 
     /// <summary>Parseia a NF-e completa (procNFe / nfeProc).</summary>

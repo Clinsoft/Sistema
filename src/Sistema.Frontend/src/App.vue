@@ -139,6 +139,8 @@
 
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
             to="/fiscal" value="/fiscal" color="primary" rounded="lg" />
+          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-outline" title="CT-e recebidos"
+            to="/fiscal/cte-recebidos" value="/fiscal/cte-recebidos" color="primary" rounded="lg" />
 
           <v-list-group value="marketing">
             <template #activator="{ props }">

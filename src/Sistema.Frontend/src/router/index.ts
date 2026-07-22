@@ -90,6 +90,8 @@ const router = createRouter({
       meta: { titulo: 'Documentos Fiscais' } },
     { path: '/fiscal/entradas/:id', component: () => import('@/modules/fiscal/EntradaNFeView.vue'),
       meta: { titulo: 'Escrituração de Entrada' } },
+    { path: '/fiscal/cte-recebidos', component: () => import('@/modules/fiscal/CteRecebidosView.vue'),
+      meta: { titulo: 'CT-e recebidos' } },
 
     // Contabilidade
     { path: '/contabilidade', component: () => import('@/modules/contabilidade/ContabilidadeView.vue'),

@@ -1114,11 +1114,17 @@ async function enviarFicha() {
     fd.append('arquivo', arquivoFicha.value)
     const r = await api.post(`/produtos/${produtoEditandoId.value}/ficha-tecnica`, fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
     })
     form.value.fichaTecnicaUrl = r.data.url
     arquivoFicha.value = null
     notif.ok('Ficha técnica enviada!')
-  } catch { notif.erro('Erro ao enviar ficha técnica.') }
+  } catch (e: any) {
+    if (e?.response?.status === 413)
+      notif.erro('PDF muito grande para o servidor. Reduza o arquivo e tente novamente.')
+    else
+      notif.erro(e?.response?.data?.mensagem ?? 'Erro ao enviar ficha técnica.')
+  }
   finally { enviandoFicha.value = false }
 }
 
@@ -1760,21 +1766,26 @@ async function salvar() {
   if (!ok?.valid) return
 
   salvando.value = true
+  let fecharAoSalvar = false
   try {
     if (editando.value && produtoEditandoId.value) {
       await api.put(`/produtos/${produtoEditandoId.value}`, { ...form.value })
-      // Sobe a foto nova, se foi selecionada (o PUT já não mexe na imagem).
+      // Sobe a foto e a ficha técnica novas, se foram selecionadas (o PUT não mexe nelas).
       if (arquivoImagem.value) await enviarImagem()
+      if (arquivoFicha.value) await enviarFicha()
       notif.ok('Produto atualizado!')
+      fecharAoSalvar = true   // "Salvar Alterações" fecha a janela
     } else {
       const r = await api.post('/produtos', { empresaId: auth.empresaId, ...form.value })
       produtoEditandoId.value = r.data.id
       editando.value = true
-      // Envia imagem pendente automaticamente se selecionada
+      // Envia imagem e ficha pendentes automaticamente se selecionadas
       if (arquivoImagem.value) await enviarImagem()
+      if (arquivoFicha.value) await enviarFicha()
       notif.ok('Produto criado! Preencha os demais campos e salve novamente se necessário.')
     }
     await listar()
+    if (fecharAoSalvar) fecharDialog()
   } catch (e: any) {
     notif.erro(e?.response?.data?.title ?? e?.response?.data?.mensagem ?? 'Erro ao salvar.')
   } finally { salvando.value = false }

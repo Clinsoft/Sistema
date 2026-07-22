@@ -152,6 +152,42 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         }
     }
 
+    /// <summary>
+    /// Envia uma mensagem de texto livre (sessão) — resposta ao cliente. Só é aceita pela
+    /// Meta dentro da janela de 24h desde a última mensagem do cliente; fora dela é preciso
+    /// usar template. Retorna o wam_id em caso de sucesso.
+    /// </summary>
+    public async Task<(bool sucesso, string? wamId, string? erro)> EnviarTexto(
+        string phoneNumberId, string accessToken, string telefone, string texto)
+    {
+        var tel = NormalizarTelefone(telefone);
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to = tel,
+            type = "text",
+            text = new { body = texto }
+        };
+        try
+        {
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            var response = await http.PostAsJsonAsync($"{BaseUrl}/{phoneNumberId}/messages", payload);
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                return (false, null, TentarExtrairErroMeta(body) ?? body);
+
+            using var doc = JsonDocument.Parse(body);
+            var wamId = doc.RootElement.GetProperty("messages")[0].GetProperty("id").GetString();
+            return (true, wamId, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[WhatsApp] Erro ao enviar texto para {Tel}", tel);
+            return (false, null, ex.Message);
+        }
+    }
+
     /// <summary>Lista os templates aprovados na conta WABA via Graph API.
     /// Retorna também o erro cru da Meta quando a chamada falha, para diagnóstico de credenciais.</summary>
     public async Task<(List<MetaTemplateDto> Templates, string? Erro)> ListarTemplatesAprovados(

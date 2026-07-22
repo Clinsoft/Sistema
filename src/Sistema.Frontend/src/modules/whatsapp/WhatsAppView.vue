@@ -13,6 +13,10 @@
     </v-row>
 
     <v-tabs v-model="tab" class="mb-4">
+      <v-tab value="conversas">
+        Conversas
+        <v-badge v-if="totalNaoLidas > 0" :content="totalNaoLidas" color="error" inline />
+      </v-tab>
       <v-tab value="pedidos">Pedidos</v-tab>
       <v-tab value="mensagens">Mensagens Automáticas</v-tab>
       <v-tab value="templates">Templates</v-tab>
@@ -21,6 +25,64 @@
     </v-tabs>
 
     <v-window v-model="tab">
+      <!-- Caixa de entrada / conversas -->
+      <v-window-item value="conversas">
+        <v-row>
+          <v-col cols="12" md="4">
+            <v-card variant="outlined" rounded="lg">
+              <v-toolbar density="compact" color="transparent">
+                <v-toolbar-title class="text-body-1 font-weight-medium">Conversas</v-toolbar-title>
+                <v-btn icon="mdi-refresh" size="small" variant="text" @click="carregarConversas" />
+              </v-toolbar>
+              <v-divider />
+              <v-list v-if="conversas.length" density="compact" style="max-height:60vh;overflow:auto">
+                <v-list-item v-for="c in conversas" :key="c.telefone"
+                  :active="conversaAtiva?.telefone === c.telefone" @click="abrirConversa(c)">
+                  <v-list-item-title class="font-weight-medium">
+                    {{ c.nome || c.telefone }}
+                  </v-list-item-title>
+                  <v-list-item-subtitle class="text-truncate">{{ c.ultimaMensagem }}</v-list-item-subtitle>
+                  <template #append>
+                    <v-badge v-if="c.naoLidas > 0" :content="c.naoLidas" color="error" inline />
+                  </template>
+                </v-list-item>
+              </v-list>
+              <v-card-text v-else class="text-center text-medium-emphasis py-8">
+                Nenhuma conversa ainda. Quando um cliente enviar mensagem, ela aparece aqui.
+              </v-card-text>
+            </v-card>
+          </v-col>
+
+          <v-col cols="12" md="8">
+            <v-card variant="outlined" rounded="lg" v-if="conversaAtiva">
+              <v-toolbar density="compact" color="transparent">
+                <v-toolbar-title class="text-body-1 font-weight-medium">
+                  {{ conversaAtiva.nome || conversaAtiva.telefone }}
+                </v-toolbar-title>
+              </v-toolbar>
+              <v-divider />
+              <div ref="threadEl" style="height:52vh;overflow:auto" class="pa-4 d-flex flex-column ga-2">
+                <div v-for="m in mensagens" :key="m.id"
+                  :class="['msg-bolha', m.direcao === 'Enviada' ? 'align-self-end' : 'align-self-start']">
+                  <div class="text-body-2" style="white-space:pre-wrap">{{ m.texto }}</div>
+                  <div class="text-caption text-medium-emphasis text-right">{{ fmtHora(m.dataHora) }}</div>
+                </div>
+              </div>
+              <v-divider />
+              <div class="pa-2 d-flex ga-2">
+                <v-text-field v-model="respostaTexto" placeholder="Digite uma resposta…"
+                  density="compact" hide-details variant="outlined" @keyup.enter="responder" />
+                <v-btn color="success" icon="mdi-send" :loading="respondendo"
+                  :disabled="!respostaTexto.trim()" @click="responder" />
+              </div>
+            </v-card>
+            <v-card variant="outlined" rounded="lg" v-else class="d-flex align-center justify-center"
+              style="height:60vh">
+              <div class="text-medium-emphasis">Selecione uma conversa para ver as mensagens.</div>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-window-item>
       <!-- Pedidos -->
       <v-window-item value="pedidos">
         <v-row class="mb-2">
@@ -463,7 +525,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
@@ -471,7 +533,62 @@ import { useAuthStore } from '@/stores/auth'
 const notif = useNotifStore()
 const auth = useAuthStore()
 
-const tab = ref('pedidos')
+const tab = ref('conversas')
+
+// ─── Caixa de entrada (conversas) ───────────────────────────────
+const conversas = ref<any[]>([])
+const conversaAtiva = ref<any>(null)
+const mensagens = ref<any[]>([])
+const respostaTexto = ref('')
+const respondendo = ref(false)
+const totalNaoLidas = ref(0)
+const threadEl = ref<HTMLElement | null>(null)
+
+const fmtHora = (v: string) => {
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+async function carregarConversas() {
+  try {
+    const { data } = await api.get('/whatsapp/conversas', { params: { empresaId: auth.empresaId } })
+    conversas.value = Array.isArray(data) ? data : []
+  } catch { conversas.value = [] }
+  carregarNaoLidas()
+}
+
+async function carregarNaoLidas() {
+  try {
+    const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId } })
+    totalNaoLidas.value = data?.total ?? 0
+  } catch { /* silencioso */ }
+}
+
+async function abrirConversa(c: any) {
+  conversaAtiva.value = c
+  try {
+    const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId } })
+    mensagens.value = Array.isArray(data) ? data : []
+    c.naoLidas = 0
+    carregarNaoLidas()
+    await nextTick()
+    if (threadEl.value) threadEl.value.scrollTop = threadEl.value.scrollHeight
+  } catch { mensagens.value = [] }
+}
+
+async function responder() {
+  const texto = respostaTexto.value.trim()
+  if (!texto || !conversaAtiva.value) return
+  respondendo.value = true
+  try {
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
+      { empresaId: auth.empresaId, texto })
+    respostaTexto.value = ''
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar a resposta.')
+  } finally { respondendo.value = false }
+}
 const pedidos = ref<any[]>([])
 const carregandoPedidos = ref(false)
 
@@ -914,6 +1031,7 @@ async function carregarConfigCatalogo() {
 }
 
 onMounted(() => {
+  carregarConversas()
   listarPedidos()
   carregarCfgMsg()
   carregarConfigCatalogo()
@@ -922,5 +1040,17 @@ onMounted(() => {
   carregarPromocoes()
 })
 </script>
+
+<style scoped>
+.msg-bolha {
+  max-width: 75%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.05);
+}
+.msg-bolha.align-self-end {
+  background: rgba(76, 175, 80, 0.18);
+}
+</style>
 
 

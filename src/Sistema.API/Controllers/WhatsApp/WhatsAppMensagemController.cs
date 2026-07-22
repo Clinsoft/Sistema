@@ -313,6 +313,91 @@ public class WhatsAppMensagemController(
         return Ok(new { total, pagina, itens });
     }
 
+    // ─── Caixa de entrada (conversas) ─────────────────────────────────────────
+
+    /// <summary>Lista as conversas (agrupadas por telefone) com a última mensagem e não-lidas.</summary>
+    [HttpGet("/api/whatsapp/conversas")]
+    [Authorize]
+    public async Task<IActionResult> Conversas([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var conversas = await db.MensagensWhatsApp.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId)
+            .GroupBy(m => m.Telefone)
+            .Select(g => new
+            {
+                telefone = g.Key,
+                nome = g.OrderByDescending(x => x.DataHora).Select(x => x.NomeContato).FirstOrDefault(),
+                ultimaMensagem = g.OrderByDescending(x => x.DataHora).Select(x => x.Texto).FirstOrDefault(),
+                ultimaData = g.Max(x => x.DataHora),
+                naoLidas = g.Count(x => x.Direcao == DirecaoMensagemWhatsApp.Recebida && !x.Lida),
+            })
+            .OrderByDescending(c => c.ultimaData)
+            .ToListAsync(ct);
+        return Ok(conversas);
+    }
+
+    /// <summary>Mensagens de uma conversa (marca as recebidas como lidas).</summary>
+    [HttpGet("/api/whatsapp/conversas/{telefone}/mensagens")]
+    [Authorize]
+    public async Task<IActionResult> MensagensConversa(string telefone, [FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var msgs = await db.MensagensWhatsApp
+            .Where(m => m.EmpresaId == empresaId && m.Telefone == telefone)
+            .OrderBy(m => m.DataHora)
+            .ToListAsync(ct);
+
+        var novas = msgs.Where(m => m.Direcao == DirecaoMensagemWhatsApp.Recebida && !m.Lida).ToList();
+        if (novas.Count > 0)
+        {
+            foreach (var m in novas) m.MarcarLida();
+            await uow.SalvarAsync(ct);
+        }
+
+        return Ok(msgs.Select(m => new
+        {
+            m.Id, m.Texto, m.Tipo, m.NomeContato, m.DataHora,
+            direcao = m.Direcao.ToString(),
+        }));
+    }
+
+    /// <summary>Responde ao cliente com texto livre (mensagem de sessão, janela de 24h).</summary>
+    [HttpPost("/api/whatsapp/conversas/{telefone}/responder")]
+    [Authorize]
+    public async Task<IActionResult> Responder(string telefone, [FromBody] ResponderRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
+            return BadRequest(new { mensagem = "WhatsApp não configurado." });
+        if (string.IsNullOrWhiteSpace(req.Texto))
+            return BadRequest(new { mensagem = "Digite a mensagem." });
+
+        var (sucesso, wamId, erro) = await whatsAppService.EnviarTexto(
+            cfg.PhoneNumberId, cfg.AccessToken, telefone, req.Texto);
+        if (!sucesso)
+            return StatusCode(502, new { mensagem = $"Falha ao enviar: {erro}. " +
+                "Fora da janela de 24h só é possível enviar template." });
+
+        var nome = await db.MensagensWhatsApp
+            .Where(m => m.Telefone == telefone && m.NomeContato != null)
+            .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
+
+        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, req.Texto, wamId));
+        await uow.SalvarAsync(ct);
+        return Ok(new { wamId });
+    }
+
+    /// <summary>Total de mensagens recebidas não lidas (para o badge do menu).</summary>
+    [HttpGet("/api/whatsapp/conversas/nao-lidas")]
+    [Authorize]
+    public async Task<IActionResult> NaoLidas([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var total = await db.MensagensWhatsApp.CountAsync(
+            m => m.EmpresaId == empresaId
+              && m.Direcao == DirecaoMensagemWhatsApp.Recebida && !m.Lida, ct);
+        return Ok(new { total });
+    }
+
     // ─── Webhook Meta ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -358,27 +443,72 @@ public class WhatsAppMensagemController(
                 foreach (var ch in changes.EnumerateArray())
                 {
                     var value = ch.GetProperty("value");
-                    if (!value.TryGetProperty("statuses", out var statuses)) continue;
 
-                    foreach (var s in statuses.EnumerateArray())
+                    // Status das mensagens que ENVIAMOS (entregue/lido/falhou).
+                    if (value.TryGetProperty("statuses", out var statuses))
                     {
-                        var wamId  = s.GetProperty("id").GetString();
-                        var status = s.GetProperty("status").GetString(); // sent/delivered/read/failed
-
-                        var historico = await db.HistoricosMensagensWhatsApp
-                            .FirstOrDefaultAsync(h => h.WamId == wamId, ct);
-
-                        if (historico is null) continue;
-
-                        switch (status)
+                        foreach (var s in statuses.EnumerateArray())
                         {
-                            case "delivered": historico.MarcarEntregue(); break;
-                            case "read":      historico.MarcarLida();     break;
-                            case "failed":
-                                var erros = s.TryGetProperty("errors", out var errsEl)
-                                    ? errsEl.GetRawText() : "erro Meta";
-                                historico.MarcarFalha(erros);
-                                break;
+                            var wamId  = s.GetProperty("id").GetString();
+                            var status = s.GetProperty("status").GetString();
+
+                            var historico = await db.HistoricosMensagensWhatsApp
+                                .FirstOrDefaultAsync(h => h.WamId == wamId, ct);
+                            if (historico is null) continue;
+
+                            switch (status)
+                            {
+                                case "delivered": historico.MarcarEntregue(); break;
+                                case "read":      historico.MarcarLida();     break;
+                                case "failed":
+                                    var erros = s.TryGetProperty("errors", out var errsEl)
+                                        ? errsEl.GetRawText() : "erro Meta";
+                                    historico.MarcarFalha(erros);
+                                    break;
+                            }
+                        }
+                    }
+
+                    // Mensagens que os clientes ENVIARAM (caixa de entrada).
+                    if (value.TryGetProperty("messages", out var messages))
+                    {
+                        // Empresa dona do número que recebeu (pelo phone_number_id).
+                        var phoneNumberId = value.TryGetProperty("metadata", out var meta)
+                            && meta.TryGetProperty("phone_number_id", out var pnid)
+                            ? pnid.GetString() : null;
+                        var empresaId = phoneNumberId is null ? (Guid?)null
+                            : await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+                                .Where(c => c.PhoneNumberId == phoneNumberId)
+                                .Select(c => (Guid?)c.EmpresaId).FirstOrDefaultAsync(ct);
+                        if (empresaId is null) continue;
+
+                        // Nome do contato (perfil do cliente).
+                        string? nome = null;
+                        if (value.TryGetProperty("contacts", out var contacts) && contacts.GetArrayLength() > 0
+                            && contacts[0].TryGetProperty("profile", out var prof)
+                            && prof.TryGetProperty("name", out var nm))
+                            nome = nm.GetString();
+
+                        foreach (var m in messages.EnumerateArray())
+                        {
+                            var wamId = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                            // Ignora duplicatas (a Meta pode reenviar o mesmo evento).
+                            if (wamId != null && await db.MensagensWhatsApp.AnyAsync(x => x.WamId == wamId, ct))
+                                continue;
+
+                            var from = m.TryGetProperty("from", out var fromEl) ? fromEl.GetString() ?? "" : "";
+                            var tipo = m.TryGetProperty("type", out var tpEl) ? tpEl.GetString() ?? "text" : "text";
+                            var texto = tipo == "text" && m.TryGetProperty("text", out var txtEl)
+                                && txtEl.TryGetProperty("body", out var bodyEl)
+                                ? bodyEl.GetString() ?? ""
+                                : $"[{tipo}]";   // mídia: guarda o tipo como placeholder
+                            var dataHora = m.TryGetProperty("timestamp", out var tsEl)
+                                && long.TryParse(tsEl.GetString(), out var ts)
+                                ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime
+                                : DateTime.UtcNow;
+
+                            db.MensagensWhatsApp.Add(MensagemWhatsApp.Receber(
+                                empresaId.Value, from, nome, texto, tipo, wamId, dataHora));
                         }
                     }
                 }
@@ -412,3 +542,5 @@ public record EnviarMensagemRequest(
     string? HeaderImageUrl = null);
 
 public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);
+
+public record ResponderRequest(Guid EmpresaId, string Texto);

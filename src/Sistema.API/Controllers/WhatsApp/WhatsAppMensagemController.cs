@@ -476,6 +476,37 @@ public class WhatsAppMensagemController(
         return Ok(new { wamId });
     }
 
+    /// <summary>Envia a mensagem interativa de catálogo (catálogo conectado ao número).</summary>
+    [HttpPost("/api/whatsapp/conversas/{telefone}/enviar-catalogo")]
+    [Authorize]
+    public async Task<IActionResult> EnviarCatalogo(
+        string telefone, [FromBody] ResponderRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
+            return BadRequest(new { mensagem = "WhatsApp não configurado." });
+
+        var body = string.IsNullOrWhiteSpace(req.Texto)
+            ? "🌿 Confira nosso catálogo de produtos naturais! Toque em *Ver catálogo* abaixo."
+            : req.Texto;
+
+        // Sem thumbnail fixo: a Meta usa o primeiro produto do catálogo conectado.
+        // (Requer que o catálogo tenha produtos aprovados/disponíveis para WhatsApp.)
+        var (sucesso, wamId, erro) = await whatsAppService.EnviarCatalogo(
+            cfg.PhoneNumberId, cfg.AccessToken, telefone, body, null);
+        if (!sucesso)
+            return StatusCode(502, new { mensagem = $"Falha ao enviar catálogo: {erro}. " +
+                "Confirme que o catálogo está conectado ao número no WhatsApp Manager." });
+
+        var nome = await db.MensagensWhatsApp
+            .Where(m => m.Telefone == telefone && m.NomeContato != null)
+            .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
+        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, "📖 Catálogo enviado", wamId));
+        await uow.SalvarAsync(ct);
+        return Ok(new { wamId });
+    }
+
     /// <summary>Total de mensagens recebidas não lidas (para o badge do menu).</summary>
     [HttpGet("/api/whatsapp/conversas/nao-lidas")]
     [Authorize]

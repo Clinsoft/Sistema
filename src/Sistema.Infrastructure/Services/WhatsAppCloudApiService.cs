@@ -188,6 +188,46 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         }
     }
 
+    /// <summary>Envia a mensagem interativa de catálogo (o cliente vê os produtos e o botão
+    /// "Ver catálogo" dentro do WhatsApp). Usa o catálogo conectado ao número. O
+    /// thumbnailRetailerId define a foto de destaque (id/código de um produto do catálogo).</summary>
+    public async Task<(bool sucesso, string? wamId, string? erro)> EnviarCatalogo(
+        string phoneNumberId, string accessToken, string telefone, string body, string? thumbnailRetailerId)
+    {
+        var tel = NormalizarTelefone(telefone);
+        object action = string.IsNullOrWhiteSpace(thumbnailRetailerId)
+            ? new { name = "catalog_message" }
+            : new { name = "catalog_message", parameters = new { thumbnail_product_retailer_id = thumbnailRetailerId } };
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            to = tel,
+            type = "interactive",
+            interactive = new
+            {
+                type = "catalog_message",
+                body = new { text = body },
+                action,
+            }
+        };
+        try
+        {
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            var resp = await http.PostAsJsonAsync($"{BaseUrl}/{phoneNumberId}/messages", payload);
+            var respBody = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode) return (false, null, TentarExtrairErroMeta(respBody) ?? respBody);
+            var wamId = JsonDocument.Parse(respBody).RootElement
+                .GetProperty("messages")[0].GetProperty("id").GetString();
+            return (true, wamId, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[WhatsApp] Erro ao enviar catálogo para {Tel}", tel);
+            return (false, null, ex.Message);
+        }
+    }
+
     /// <summary>Baixa uma mídia recebida (image/audio/document…) pelo media_id.
     /// Passo 1: pega a URL temporária; passo 2: baixa os bytes (com Bearer).</summary>
     public async Task<(byte[]? Bytes, string? Mime)> BaixarMidia(string mediaId, string accessToken)

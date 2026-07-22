@@ -18,10 +18,10 @@
         <v-badge v-if="totalNaoLidas > 0" :content="totalNaoLidas" color="error" inline />
       </v-tab>
       <v-tab value="pedidos">Pedidos</v-tab>
-      <v-tab value="mensagens">Mensagens Automáticas</v-tab>
-      <v-tab value="templates">Templates</v-tab>
-      <v-tab value="historico">Histórico</v-tab>
-      <v-tab value="config">Configuração</v-tab>
+      <v-tab v-if="!ehAtendente" value="mensagens">Mensagens Automáticas</v-tab>
+      <v-tab v-if="!ehAtendente" value="templates">Templates</v-tab>
+      <v-tab v-if="!ehAtendente" value="historico">Histórico</v-tab>
+      <v-tab v-if="!ehAtendente" value="config">Configuração</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -131,6 +131,18 @@
                 <v-btn icon="mdi-paperclip" variant="text" size="small" @click="anexoInput?.click()" />
                 <input ref="anexoInput" type="file" hidden
                   accept="image/*,audio/*,video/*,application/pdf" @change="enviarAnexo" />
+                <v-menu location="top">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-storefront-outline" variant="text" size="small"
+                      title="Catálogo" :loading="respondendo" />
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item prepend-icon="mdi-cart-outline" title="Catálogo no WhatsApp"
+                      subtitle="Mostra os produtos dentro do chat" @click="enviarCatalogoNativo" />
+                    <v-list-item prepend-icon="mdi-link-variant" title="Link do site"
+                      subtitle="Envia o link ecogranel.com.br/produtos" @click="enviarLinkCatalogo" />
+                  </v-list>
+                </v-menu>
                 <template v-if="!gravando">
                   <v-text-field v-model="respostaTexto" placeholder="Digite uma mensagem…"
                     density="compact" hide-details variant="solo-filled" flat @keyup.enter="responder" />
@@ -604,6 +616,8 @@ import { useAuthStore } from '@/stores/auth'
 
 const notif = useNotifStore()
 const auth = useAuthStore()
+// Atendente vê apenas Conversas e Pedidos; o resto (config/templates) é do gestor.
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const tab = ref('conversas')
 
@@ -694,6 +708,32 @@ async function responder() {
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar a resposta.')
+  } finally { respondendo.value = false }
+}
+
+async function enviarCatalogoNativo() {
+  if (!conversaAtiva.value) return
+  respondendo.value = true
+  try {
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/enviar-catalogo`,
+      { empresaId: auth.empresaId, texto: '' })
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o catálogo.')
+  } finally { respondendo.value = false }
+}
+
+async function enviarLinkCatalogo() {
+  if (!conversaAtiva.value) return
+  const texto = '🌿 Confira nosso catálogo de produtos naturais EcoGranel:\n'
+    + 'https://ecogranel.com.br/produtos\n\nQualquer dúvida é só chamar! 🛒'
+  respondendo.value = true
+  try {
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
+      { empresaId: auth.empresaId, texto })
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o link do catálogo.')
   } finally { respondendo.value = false }
 }
 

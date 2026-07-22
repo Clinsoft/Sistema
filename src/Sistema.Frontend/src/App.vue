@@ -151,11 +151,11 @@
               to="/marketing" value="/marketing" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-star-circle-outline" title="Clube de Promoções"
               to="/marketing/clube" value="/marketing/clube" color="purple" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-tag-multiple-outline" title="Promoções"
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tag-multiple-outline" title="Promoções"
               to="/marketing/promocoes" value="/marketing/promocoes" color="error" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-whatsapp" title="WhatsApp"
+          <v-list-item prepend-icon="mdi-whatsapp" title="WhatsApp"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />
 
         </v-list>

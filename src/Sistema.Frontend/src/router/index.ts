@@ -153,7 +153,8 @@ const ROTAS_ATENDENTE = [
   '/cadastros/clientes',
   '/estoque/produtos',
   '/estoque/etiquetas', '/estoque/validade',
-  '/marketing', '/marketing/clube', '/marketing/promocoes',
+  '/whatsapp',
+  '/marketing', '/marketing/clube',
 ]
 
 router.beforeEach((to) => {

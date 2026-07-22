@@ -64,8 +64,10 @@
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
         </template>
         <template #item.acoes="{ item }">
-          <v-btn icon="mdi-image-multiple-outline" size="x-small" variant="text"
-            color="purple" title="Ver / Gerar Artes" @click="abrirArtes(item)" />
+          <v-btn size="small" variant="tonal" color="purple" class="mr-1"
+            prepend-icon="mdi-palette" @click="abrirArtes(item)">
+            Gerar Artes
+          </v-btn>
           <template v-if="!ehAtendente">
             <v-btn icon="mdi-pencil" size="x-small" variant="text" color="primary" @click="editar(item)" />
             <v-btn :icon="item.status === 'Ativa' ? 'mdi-pause' : 'mdi-play'" size="x-small" variant="text"
@@ -258,13 +260,14 @@
             <v-window v-model="tabArte">
               <v-window-item v-for="f in formatosArte" :key="f.id" :value="f.id">
                 <div class="d-flex flex-column align-center gap-3">
-                  <ArtePromoCanvas
-                    :ref="el => canvasRefs[f.id] = el"
-                    :layout="layoutParaFormato(f.id)"
-                    :previewW="f.previewW" />
+                  <v-img v-if="urlArteFormato(f.id)" :src="urlArteFormato(f.id)"
+                    :max-width="f.previewW" rounded="lg" class="border" />
+                  <v-alert v-else type="info" variant="tonal" density="compact">
+                    Este formato ainda não foi gerado. Clique em Regerar.
+                  </v-alert>
                   <div class="d-flex gap-2">
                     <v-btn prepend-icon="mdi-download" color="purple" variant="tonal"
-                      @click="baixarArte(f.id)">
+                      :disabled="!urlArteFormato(f.id)" @click="baixarArteUrl(f.id)">
                       Baixar PNG
                     </v-btn>
                     <v-btn prepend-icon="mdi-refresh" variant="text"
@@ -355,7 +358,7 @@ const headers = [
   { title: 'Período', key: 'periodo' },
   { title: 'Usos', key: 'qtdeUsada', width: 80 },
   { title: 'Status', key: 'status', width: 110 },
-  { title: '', key: 'acoes', sortable: false, width: 100 },
+  { title: '', key: 'acoes', sortable: false, width: 260 },
 ]
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
@@ -424,31 +427,12 @@ async function salvar() {
       notif.ok('Promoção atualizada!')
     } else {
       await api.post('/promocoes', { ...form.value, empresaId: auth.empresaId })
-      notif.ok('Promoção salva! Gerando artes...')
-      // Gera artes automaticamente ao criar nova promoção
-      gerarArtesAutomatico(form.value)
+      notif.ok('Promoção salva! Abra o ícone 🎨 para gerar as artes com IA.')
     }
     dialog.value = false
     await carregar()
   } catch { notif.erro('Erro ao salvar promoção.') }
   finally { salvando.value = false }
-}
-
-async function gerarArtesAutomatico(promocao: any) {
-  try {
-    await api.post('/marketing/artes/auto-promocao', {
-      empresaId: auth.empresaId,
-      nomePromocao: promocao.nome,
-      desconto: promocao.desconto,
-      tipoDesconto: promocao.tipoDesconto,
-      tipoPromocao: promocao.tipo,
-      aplicaEm: promocao.aplicaEm,
-      dataInicio: promocao.dataInicio,
-      dataFim: promocao.dataFim || null,
-      apenasClube: promocao.apenasClube,
-    })
-    notif.ok('Artes geradas! Acesse o ícone 🎨 na promoção para visualizar.')
-  } catch { /* silencioso — não bloqueia o fluxo */ }
 }
 
 function abrirArtes(item: any) {
@@ -464,29 +448,46 @@ async function carregarArtesDaPromocao(item: any) {
   try {
     const r = await api.get('/marketing/artes', { params: { empresaId: auth.empresaId } })
     const nome = item.nome
-    artesGeradas.value = (r.data ?? []).filter((a: any) => a.titulo?.startsWith(nome))
+    // Só conta artes com imagem gerada (ignora registros órfãos sem PNG),
+    // senão o botão de gerar fica escondido e o dialog mostra imagens quebradas.
+    artesGeradas.value = (r.data ?? []).filter((a: any) =>
+      a.titulo?.startsWith(nome + ' — ') && a.urlExportada)
   } catch { artesGeradas.value = [] }
 }
 
 async function gerarArtes() {
   if (!promocaoArtes.value) return
+  const p = promocaoArtes.value
   gerandoArtes.value = true
   try {
     await api.post('/marketing/artes/auto-promocao', {
       empresaId: auth.empresaId,
-      nomePromocao: promocaoArtes.value.nome,
-      desconto: promocaoArtes.value.desconto,
-      tipoDesconto: promocaoArtes.value.tipoDesconto,
-      tipoPromocao: promocaoArtes.value.tipo,
-      aplicaEm: promocaoArtes.value.aplicaEm,
-      dataInicio: promocaoArtes.value.dataInicio,
-      dataFim: promocaoArtes.value.dataFim || null,
-      apenasClube: promocaoArtes.value.apenasClube ?? false,
-    })
-    await carregarArtesDaPromocao(promocaoArtes.value)
-    notif.ok('Artes geradas com sucesso!')
-  } catch { notif.erro('Erro ao gerar artes.') }
-  finally { gerandoArtes.value = false }
+      nomePromocao: p.nome,
+      desconto: p.desconto,
+      tipoDesconto: p.tipoDesconto,
+      tipoPromocao: p.tipo,
+      aplicaEm: p.aplicaEm,
+      dataInicio: p.dataInicio,
+      dataFim: p.dataFim || null,
+      apenasClube: p.apenasClube ?? false,
+      // Foto do produto entra na arte quando a promoção é de um produto específico.
+      produtoId: p.aplicaEm === 'Produto' ? p.referenciaId : null,
+    }, { timeout: 180000 }) // geração de 3 imagens na IA pode levar ~40s
+    await carregarArtesDaPromocao(p)
+    notif.ok('Artes geradas com IA (logo, cores e foto da marca)!')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar artes.')
+  } finally { gerandoArtes.value = false }
+}
+
+// URL da imagem gerada para um formato (via endpoint /exportar, anônimo).
+function urlArteFormato(formatoId: string) {
+  const arte = artesGeradas.value.find((a: any) => a.formato === formatoId)
+  return arte ? `/api/marketing/artes/${arte.id}/exportar?t=${Date.parse(arte.criadoEm) || Date.now()}` : ''
+}
+function baixarArteUrl(formatoId: string) {
+  const arte = artesGeradas.value.find((a: any) => a.formato === formatoId)
+  if (arte) window.open(`/api/marketing/artes/${arte.id}/exportar?download=1`, '_blank')
 }
 
 function layoutParaFormato(formato: string) {

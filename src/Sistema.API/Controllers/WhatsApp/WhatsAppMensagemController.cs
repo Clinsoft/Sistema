@@ -75,6 +75,46 @@ public class WhatsAppMensagemController(
         return NoContent();
     }
 
+    // ─── Configuração do Catálogo (bloco separado na tela) ────────────────────
+
+    [HttpGet("/api/whatsapp/configuracao")]
+    [Authorize]
+    public async Task<IActionResult> ObterConfigCatalogo([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct)
+            ?? ConfiguracaoWhatsAppMensagem.Criar(empresaId);
+
+        return Ok(new
+        {
+            cfg.PhoneNumberId,
+            AccessToken = cfg.AccessToken is null ? "" : "****" + cfg.AccessToken[^Math.Min(6, cfg.AccessToken.Length)..],
+            cfg.CatalogId,
+            cfg.NumeroWhatsApp,
+            cfg.Ativo,
+        });
+    }
+
+    [HttpPut("/api/whatsapp/configuracao")]
+    [Authorize]
+    public async Task<IActionResult> SalvarConfigCatalogo(
+        [FromBody] SalvarConfigCatalogoRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg is null)
+        {
+            cfg = ConfiguracaoWhatsAppMensagem.Criar(req.EmpresaId);
+            db.ConfiguracoesWhatsAppMensagem.Add(cfg);
+        }
+
+        // Catálogo por feed: só grava CatalogId (informativo) e o número do link.
+        // NÃO toca no Access Token nem no Phone Number ID (do bloco de mensagens).
+        cfg.AtualizarCatalogo(req.CatalogId, req.NumeroWhatsApp);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     // ─── Templates ────────────────────────────────────────────────────────────
 
     [HttpGet("templates")]
@@ -120,8 +160,11 @@ public class WhatsAppMensagemController(
         if (cfg?.BusinessAccountId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "Configure o Business Account ID e o Access Token primeiro." });
 
-        var templates = await whatsAppService.ListarTemplatesAprovados(
+        var (templates, erro) = await whatsAppService.ListarTemplatesAprovados(
             cfg.BusinessAccountId, cfg.AccessToken);
+
+        if (erro is not null)
+            return StatusCode(502, new { mensagem = $"A Meta recusou a consulta: {erro}" });
 
         return Ok(templates);
     }
@@ -151,7 +194,8 @@ public class WhatsAppMensagemController(
 
         var (sucesso, wamId, erro) = await whatsAppService.EnviarTemplate(
             cfg.PhoneNumberId, cfg.AccessToken,
-            req.Telefone, req.TemplateName, req.Idioma ?? "pt_BR", req.Variaveis ?? []);
+            req.Telefone, req.TemplateName, req.Idioma ?? "pt_BR", req.Variaveis ?? [],
+            req.HeaderImageUrl);
 
         if (sucesso) historico.MarcarEnviada(wamId!);
         else         historico.MarcarFalha(erro ?? "Erro desconhecido");
@@ -309,6 +353,10 @@ public record SalvarConfigWhatsAppRequest(
     bool EnviarAniversario, bool EnviarPromocoes, bool EnviarNovidades,
     int HoraDisparo = 8);
 
+public record SalvarConfigCatalogoRequest(
+    Guid EmpresaId, string? PhoneNumberId, string? AccessToken,
+    string? CatalogId, string? NumeroWhatsApp, bool Ativo = false);
+
 public record CriarTemplateWhatsAppRequest(
     string NomeMeta, string TipoDisparo, string? Idioma = "pt_BR",
     string? VariaveisJson = null, string? ExemploTexto = null);
@@ -316,4 +364,5 @@ public record CriarTemplateWhatsAppRequest(
 public record EnviarMensagemRequest(
     Guid EmpresaId, string Telefone, string NomeDestinatario, string TemplateName,
     string TipoDisparo = "Personalizado", Guid? ClienteId = null,
-    string? Idioma = "pt_BR", IEnumerable<string>? Variaveis = null);
+    string? Idioma = "pt_BR", IEnumerable<string>? Variaveis = null,
+    string? HeaderImageUrl = null);

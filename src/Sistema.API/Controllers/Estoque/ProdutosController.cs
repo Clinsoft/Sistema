@@ -7,6 +7,7 @@ using Sistema.Application.Estoque.Queries;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
 using System.Net.Mime;
+using SixLabors.ImageSharp;
 
 namespace Sistema.API.Controllers.Estoque;
 
@@ -119,6 +120,74 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         await uow.SalvarAsync(ct);
 
         return Ok(new { url });
+    }
+
+    /// <summary>
+    /// Feed CSV do catálogo (formato Meta Commerce) — a Meta puxa por agendamento
+    /// como "Arquivo de dados". Público (sem login) para a Meta acessar. Só produtos
+    /// ativos, com preço e COM foto (a Meta exige image_link).
+    /// </summary>
+    [HttpGet("feed-catalogo")]
+    [AllowAnonymous]
+    public async Task<IActionResult> FeedCatalogo([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.PrecoVenda > 0
+                     && p.ImagemUrl != null && p.ImagemUrl != "")
+            .ToListAsync(ct);
+
+        const string baseImg = "https://sistema.ecogranel.com.br";
+        static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("id,title,description,availability,condition,price,link,image_link,brand");
+        foreach (var p in produtos)
+        {
+            var slug = Sistema.Infrastructure.Services.SiteSyncService.Slugify(p.Descricao);
+            var preco = p.PrecoVenda.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " BRL";
+            sb.Append(Csv(p.Codigo)).Append(',')
+              .Append(Csv(p.Descricao.Length > 150 ? p.Descricao[..150] : p.Descricao)).Append(',')
+              .Append(Csv(string.IsNullOrWhiteSpace(p.DescricaoComplementar) ? p.Descricao : p.DescricaoComplementar)).Append(',')
+              .Append("\"in stock\",\"new\",")
+              .Append(Csv(preco)).Append(',')
+              .Append(Csv($"https://ecogranel.com.br/produtos/produto.php?p={slug}")).Append(',')
+              .Append(Csv(baseImg + p.ImagemUrl)).Append(',')
+              .Append("\"EcoGranel\"").AppendLine();
+        }
+
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv; charset=utf-8", "catalogo-ecogranel.csv");
+    }
+
+    /// <summary>
+    /// Devolve a imagem do produto convertida em JPEG. Necessário para o cabeçalho de imagem
+    /// dos templates do WhatsApp, que aceita apenas JPEG/PNG (as fotos são salvas em .webp).
+    /// Público (sem login) para a Meta conseguir baixar a imagem.
+    /// URL estável: /api/produtos/{id}/imagem.jpg
+    /// </summary>
+    [HttpGet("{id:guid}/imagem.jpg")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ImagemJpeg(Guid id, CancellationToken ct)
+    {
+        var produto = await db.Produtos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (produto is null || string.IsNullOrEmpty(produto.ImagemUrl))
+            return NotFound();
+
+        var caminho = Path.Combine("wwwroot", produto.ImagemUrl.TrimStart('/'));
+        if (!System.IO.File.Exists(caminho))
+            return NotFound();
+
+        // Se já for JPEG, devolve direto; senão converte (webp/png → jpeg).
+        if (caminho.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            caminho.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))
+        {
+            return PhysicalFile(Path.GetFullPath(caminho), "image/jpeg");
+        }
+
+        using var imagem = await SixLabors.ImageSharp.Image.LoadAsync(caminho, ct);
+        var ms = new MemoryStream();
+        await imagem.SaveAsJpegAsync(ms, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 }, ct);
+        ms.Position = 0;
+        return File(ms, "image/jpeg");
     }
 
     /// <summary>Sugere a descrição complementar (benefícios) de um produto usando IA.
@@ -239,6 +308,8 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             req.CstPisCofins, req.AliquotaIcms, req.AliquotaPis, req.AliquotaCofins,
             req.Cfop, req.Origem ?? "0", req.CodigoFci);
 
+        // A imagem é gerenciada pelos endpoints próprios (upload/remover) — a edição
+        // geral NÃO deve tocar nela (senão um form desatualizado apaga a foto).
         produto.EditarInfoAdicional(req.ImagemUrl, req.Marcador, req.Tags, req.InformacaoAdicional);
 
         // Unidade pesável (KG) → sempre marcado para a balança.

@@ -14,6 +14,64 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
 {
     private const string BaseUrl = "https://graph.facebook.com/v19.0";
 
+    /// <summary>Produto no formato do catálogo comercial da Meta.</summary>
+    public record CatalogoProdutoMeta(string RetailerId, string Name, string? Description,
+        int PriceCents, string? ImageUrl, string? Url, bool Disponivel);
+
+    /// <summary>
+    /// Envia (upsert) uma lista de produtos ao catálogo comercial da Meta via /{catalog_id}/batch.
+    /// A Meta exige imagem por produto — os sem imagem devem ser filtrados antes.
+    /// </summary>
+    public async Task<(bool Ok, int Enviados, string Mensagem)> SincronizarCatalogoAsync(
+        string catalogId, string accessToken, IReadOnlyList<CatalogoProdutoMeta> produtos,
+        CancellationToken ct = default)
+    {
+        if (produtos.Count == 0) return (true, 0, "Nenhum produto (com foto) para enviar.");
+
+        var requests = produtos.Select(p => new
+        {
+            method = "UPDATE", // upsert pelo retailer_id
+            retailer_id = p.RetailerId,
+            data = new
+            {
+                name = p.Name,
+                description = string.IsNullOrWhiteSpace(p.Description) ? p.Name : p.Description,
+                url = p.Url ?? "",
+                image_url = p.ImageUrl,
+                price = p.PriceCents,
+                currency = "BRL",
+                availability = p.Disponivel ? "in stock" : "out of stock",
+                condition = "new",
+            }
+        }).ToArray();
+
+        try
+        {
+            // A Meta espera `requests` como campo de formulário contendo o JSON em string
+            // (não um corpo JSON com propriedade "requests").
+            var requestsJson = JsonSerializer.Serialize(requests);
+            var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["requests"]     = requestsJson,
+                ["access_token"] = accessToken,
+            });
+            var resp = await http.PostAsync($"{BaseUrl}/{catalogId}/batch", form, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Falha ao sincronizar catálogo Meta: {Body}", body);
+                var msg = body.Length > 300 ? body[..300] : body;
+                return (false, 0, $"Meta {(int)resp.StatusCode}: {msg}");
+            }
+            return (true, produtos.Count, "Catálogo sincronizado com a Meta.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao sincronizar catálogo Meta");
+            return (false, 0, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Envia uma mensagem de template para um número de telefone.
     /// O template deve estar aprovado na Meta Business Manager.
@@ -24,10 +82,30 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         string telefone,
         string templateName,
         string idioma,
-        IEnumerable<string> variaveis)
+        IEnumerable<string> variaveis,
+        string? headerImageUrl = null)
     {
         // Normaliza o telefone: apenas dígitos, com código do país
         var tel = NormalizarTelefone(telefone);
+
+        // Monta os componentes: cabeçalho de imagem (se o template exigir) + corpo.
+        var componentes = new List<object>();
+        if (!string.IsNullOrWhiteSpace(headerImageUrl))
+        {
+            componentes.Add(new
+            {
+                type       = "header",
+                parameters = new object[] { new { type = "image", image = new { link = headerImageUrl } } }
+            });
+        }
+        if (variaveis.Any())
+        {
+            componentes.Add(new
+            {
+                type       = "body",
+                parameters = variaveis.Select(v => new { type = "text", text = v }).ToArray()
+            });
+        }
 
         var payload = new
         {
@@ -38,14 +116,7 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
             {
                 name     = templateName,
                 language = new { code = idioma },
-                components = variaveis.Any() ? new object[]
-                {
-                    new
-                    {
-                        type       = "body",
-                        parameters = variaveis.Select(v => new { type = "text", text = v }).ToArray()
-                    }
-                } : Array.Empty<object>()
+                components = componentes.ToArray()
             }
         };
 
@@ -81,8 +152,9 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         }
     }
 
-    /// <summary>Lista os templates aprovados na conta WABA via Graph API.</summary>
-    public async Task<List<MetaTemplateDto>> ListarTemplatesAprovados(
+    /// <summary>Lista os templates aprovados na conta WABA via Graph API.
+    /// Retorna também o erro cru da Meta quando a chamada falha, para diagnóstico de credenciais.</summary>
+    public async Task<(List<MetaTemplateDto> Templates, string? Erro)> ListarTemplatesAprovados(
         string businessAccountId, string accessToken)
     {
         try
@@ -91,14 +163,44 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
 
             var url = $"{BaseUrl}/{businessAccountId}/message_templates?fields=name,status,category,language,components&limit=100";
-            var resp = await http.GetFromJsonAsync<MetaTemplatesResponse>(url);
-            return resp?.Data?.Where(t => t.Status == "APPROVED").ToList() ?? [];
+            var resp = await http.GetAsync(url);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                logger.LogWarning("[WhatsApp] Meta recusou listagem de templates: {Status} — {Body}",
+                    resp.StatusCode, body);
+                // Extrai a mensagem de erro amigável da Meta, se houver.
+                var erro = TentarExtrairErroMeta(body) ?? $"Meta {(int)resp.StatusCode}";
+                return ([], erro);
+            }
+
+            var dados = JsonSerializer.Deserialize<MetaTemplatesResponse>(body);
+            var aprovados = dados?.Data?.Where(t => t.Status == "APPROVED").ToList() ?? [];
+            return (aprovados, null);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "[WhatsApp] Erro ao listar templates");
-            return [];
+            return ([], ex.Message);
         }
+    }
+
+    /// <summary>Lê o campo error.message do corpo de erro padrão da Graph API.</summary>
+    private static string? TentarExtrairErroMeta(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var err))
+            {
+                var msg  = err.TryGetProperty("message", out var m) ? m.GetString() : null;
+                var tipo = err.TryGetProperty("type", out var t) ? t.GetString() : null;
+                return string.IsNullOrWhiteSpace(tipo) ? msg : $"{msg} ({tipo})";
+            }
+        }
+        catch { /* corpo não-JSON */ }
+        return null;
     }
 
     private static string NormalizarTelefone(string tel)

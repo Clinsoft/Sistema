@@ -17,6 +17,10 @@ public class ConfiguracaoWhatsAppMensagem : Entity
     public string? WebhookVerifyToken { get; private set; }  // token criado pelo lojista para verificar webhook
     public string? AppId              { get; private set; }  // ID do App no Meta
 
+    // Catálogo WhatsApp Business
+    public string? CatalogId          { get; private set; }  // ID do catálogo na Meta (Commerce)
+    public string? NumeroWhatsApp     { get; private set; }  // número usado no link wa.me
+
     // Comportamento
     public bool Ativo                 { get; private set; } = false;
 
@@ -46,5 +50,13 @@ public class ConfiguracaoWhatsAppMensagem : Entity
         EnviarPromocoes    = enviarPromocoes;
         EnviarNovidades    = enviarNovidades;
         HoraDisparo        = Math.Clamp(horaDisparo, 0, 23);
+    }
+
+    /// <summary>Atualiza apenas os campos do catálogo (feed) — NÃO toca no token/credenciais
+    /// de mensagens, que são gerenciadas no outro bloco.</summary>
+    public void AtualizarCatalogo(string? catalogId, string? numeroWhatsApp)
+    {
+        CatalogId      = catalogId;
+        NumeroWhatsApp = numeroWhatsApp;
     }
 }

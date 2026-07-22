@@ -6,14 +6,13 @@
         <div class="text-caption text-medium-emphasis">Catálogo, pedidos e mensagens automáticas</div>
       </v-col>
       <v-col cols="auto">
-        <v-btn color="success" prepend-icon="mdi-whatsapp" @click="sincronizarCatalogo" :loading="sincronizando">
-          Sincronizar Catálogo
+        <v-btn color="success" prepend-icon="mdi-content-copy" @click="copiarFeedUrl">
+          Copiar URL do feed
         </v-btn>
       </v-col>
     </v-row>
 
     <v-tabs v-model="tab" class="mb-4">
-      <v-tab value="catalogo">Catálogo</v-tab>
       <v-tab value="pedidos">Pedidos</v-tab>
       <v-tab value="mensagens">Mensagens Automáticas</v-tab>
       <v-tab value="templates">Templates</v-tab>
@@ -22,47 +21,6 @@
     </v-tabs>
 
     <v-window v-model="tab">
-      <!-- Catálogo -->
-      <v-window-item value="catalogo">
-        <v-row>
-          <v-col cols="12" md="4">
-            <v-btn prepend-icon="mdi-plus" variant="tonal" @click="adicionarProduto">
-              Adicionar Produto ao Catálogo
-            </v-btn>
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-text-field v-model="buscaCatalogo" label="Buscar produto" prepend-inner-icon="mdi-magnify"
-              density="compact" hide-details clearable />
-          </v-col>
-        </v-row>
-
-        <v-row class="mt-2">
-          <v-col v-for="item in itensFiltrados" :key="item.id" cols="12" sm="6" md="4" lg="3">
-            <v-card>
-              <v-img :src="item.foto || '/placeholder.png'" height="140" cover>
-                <template #error>
-                  <v-icon size="64" class="ma-auto d-flex" color="grey-lighten-2">mdi-image-off</v-icon>
-                </template>
-              </v-img>
-              <v-card-text class="pb-1">
-                <div class="font-weight-medium text-truncate">{{ item.descricao }}</div>
-                <div class="text-caption text-medium-emphasis">{{ item.categoria }}</div>
-                <div class="text-h6 text-success">R$ {{ item.precoWhatsApp?.toFixed(2) }}</div>
-              </v-card-text>
-              <v-card-actions class="pt-0">
-                <v-btn size="small" variant="text" @click="editarItemCatalogo(item)">Editar</v-btn>
-                <v-spacer />
-                <v-btn size="small" icon="mdi-delete" variant="text" color="error"
-                  @click="removerItemCatalogo(item.id)" />
-              </v-card-actions>
-            </v-card>
-          </v-col>
-          <v-col v-if="itensFiltrados.length === 0" cols="12">
-            <v-alert type="info" text="Nenhum produto no catálogo. Adicione produtos para começar." />
-          </v-col>
-        </v-row>
-      </v-window-item>
-
       <!-- Pedidos -->
       <v-window-item value="pedidos">
         <v-row class="mb-2">
@@ -188,11 +146,18 @@
                   <v-col cols="12" sm="6">
                     <v-select v-model="envioManual.templateId" :items="templates"
                       item-title="nomeMeta" item-value="id" label="Template" return-object
-                      @update:model-value="t => envioManual.templateName = t?.nomeMeta" />
+                      @update:model-value="t => { envioManual.templateName = t?.nomeMeta; envioManual.idioma = t?.idioma || 'pt_BR' }" />
                   </v-col>
                   <v-col cols="12" sm="6">
                     <v-select v-model="envioManual.tipoDisparo" label="Tipo"
                       :items="tiposDisparo" />
+                  </v-col>
+                  <v-col cols="12">
+                    <v-text-field v-model="envioManual.headerImageUrl"
+                      label="URL da imagem do cabeçalho (só templates de mídia)"
+                      prepend-inner-icon="mdi-image" clearable density="compact"
+                      hint="Deixe em branco para templates sem imagem. Ex.: https://sistema.ecogranel.com.br/uploads/produtos/xxx.jpg"
+                      persistent-hint />
                   </v-col>
                   <v-col cols="12">
                     <v-textarea v-model="envioManual.variaveisTexto" label="Variáveis (uma por linha)"
@@ -305,23 +270,39 @@
 
       <!-- Configuração -->
       <v-window-item value="config">
-        <!-- Config catálogo (existente) -->
+        <!-- Catálogo por feed (a Meta puxa sozinha) -->
         <v-card max-width="700" class="mb-4">
-          <v-card-title>Catálogo & Pedidos</v-card-title>
+          <v-card-title>Catálogo (sincronização por feed)</v-card-title>
           <v-card-text>
-            <v-alert type="info" class="mb-4" variant="tonal">
-              Para integrar com o WhatsApp Business, você precisa de uma conta Meta Business e acesso à API.
+            <v-alert type="success" variant="tonal" density="comfortable" class="mb-4">
+              O catálogo é sincronizado <strong>automaticamente</strong>: a Meta baixa o feed abaixo
+              por agendamento. <strong>Não precisa de token nem de permissão de catálogo.</strong>
             </v-alert>
-            <v-text-field v-model="config.phoneNumberId" label="Phone Number ID (Meta)" class="mb-2" />
-            <v-text-field v-model="config.accessToken" label="Access Token" type="password" class="mb-2" />
-            <v-text-field v-model="config.catalogId" label="Catalog ID" class="mb-2" />
-            <v-text-field v-model="config.numeroWhatsApp" label="Número WhatsApp (para link)"
-              hint="+5511999999999" class="mb-2" />
-            <v-switch v-model="config.ativo" label="Integração Ativa" color="success" />
+
+            <v-text-field :model-value="feedUrl" label="URL do feed (formato Meta Commerce)" readonly
+              density="compact" class="mb-1" prepend-inner-icon="mdi-rss">
+              <template #append-inner>
+                <v-btn icon="mdi-content-copy" size="small" variant="text" @click="copiarFeedUrl" title="Copiar URL" />
+                <v-btn icon="mdi-open-in-new" size="small" variant="text" :href="feedUrl" target="_blank" title="Abrir feed" />
+              </template>
+            </v-text-field>
+
+            <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+              <strong>Como conectar na Meta (uma vez só):</strong><br>
+              1. <strong>Commerce Manager</strong> → seu catálogo → <em>Fontes de dados</em> →
+              <em>Adicionar itens → Arquivo de dados → Usar URL agendada</em><br>
+              2. Cole a URL acima · Moeda: <strong>BRL</strong> · Agendamento: <strong>Diário</strong> (ou de hora em hora)<br>
+              3. A Meta baixa e importa. <em>Só entram produtos ativos, com preço e com foto.</em>
+            </v-alert>
+
+            <v-text-field v-model="config.numeroWhatsApp" label="Número do WhatsApp (para o link wa.me)"
+              hint="Ex.: +5518999998888" persistent-hint density="compact" class="mb-1" />
+            <v-text-field v-model="config.catalogId" label="Catalog ID (opcional, informativo)"
+              density="compact" class="mt-3" />
           </v-card-text>
           <v-card-actions>
             <v-spacer />
-            <v-btn color="primary" @click="salvarConfig">Salvar Configuração do Catálogo</v-btn>
+            <v-btn color="primary" @click="salvarConfig">Salvar</v-btn>
           </v-card-actions>
         </v-card>
 
@@ -421,26 +402,41 @@
       </v-card>
     </v-dialog>
 
-    <!-- Dialog Adicionar/Editar Item -->
-    <v-dialog v-model="dialogItem" max-width="520">
+    <!-- Dialog: templates aprovados encontrados na Meta (cadastro em 1 clique) -->
+    <v-dialog v-model="dialogMetaTemplates" max-width="720">
       <v-card>
-        <v-card-title>{{ itemEditando ? 'Editar Item' : 'Adicionar ao Catálogo' }}</v-card-title>
+        <v-card-title>Templates aprovados na Meta</v-card-title>
+        <v-card-subtitle>
+          Escolha o tipo de disparo e clique em Cadastrar para vincular ao sistema.
+        </v-card-subtitle>
         <v-card-text>
-          <v-autocomplete v-if="!itemEditando" v-model="novoItem.produtoId" :items="produtosBusca"
-            item-title="descricao" item-value="id" label="Produto" @update:search="buscarProdutos" />
-          <v-text-field v-model.number="novoItem.precoWhatsApp" label="Preço no Catálogo (R$)"
-            type="number" prefix="R$" />
-          <v-textarea v-model="novoItem.descricaoWhatsApp" label="Descrição para WhatsApp" rows="3"
-            hint="Texto que aparecerá na mensagem quando o cliente selecionar o produto" />
-          <v-switch v-model="novoItem.disponivel" label="Disponível no catálogo" color="success" />
+          <v-list lines="two">
+            <v-list-item v-for="mt in templatesMeta" :key="mt.name" class="px-0">
+              <template #prepend>
+                <v-icon :color="corTipoDisparo(mt._tipo)">{{ iconeTipoDisparo(mt._tipo) }}</v-icon>
+              </template>
+              <v-list-item-title class="font-weight-medium">{{ mt.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{ mt.category }} · {{ mt.language }}</v-list-item-subtitle>
+              <template #append>
+                <div class="d-flex align-center ga-2">
+                  <v-select v-model="mt._tipo" :items="tiposDisparo" density="compact" hide-details
+                    variant="outlined" style="min-width: 170px" :disabled="jaCadastrado(mt.name)" />
+                  <v-btn v-if="jaCadastrado(mt.name)" size="small" color="success" variant="tonal"
+                    prepend-icon="mdi-check" disabled>Cadastrado</v-btn>
+                  <v-btn v-else size="small" color="primary" prepend-icon="mdi-plus"
+                    @click="cadastrarTemplateMeta(mt)">Cadastrar</v-btn>
+                </div>
+              </template>
+            </v-list-item>
+          </v-list>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn @click="dialogItem = false">Cancelar</v-btn>
-          <v-btn color="primary" @click="salvarItem">Salvar</v-btn>
+          <v-btn @click="dialogMetaTemplates = false">Fechar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
   </v-container>
 </template>
 
@@ -453,27 +449,13 @@ import { useAuthStore } from '@/stores/auth'
 const notif = useNotifStore()
 const auth = useAuthStore()
 
-const tab = ref('catalogo')
-const itensCatalogo = ref<any[]>([])
+const tab = ref('pedidos')
 const pedidos = ref<any[]>([])
 const carregandoPedidos = ref(false)
-const sincronizando = ref(false)
-const buscaCatalogo = ref('')
-const dialogItem = ref(false)
-const itemEditando = ref<any>(null)
-const novoItem = ref<any>({})
-const produtosBusca = ref<any[]>([])
 
 const config = ref({
-  phoneNumberId: '', accessToken: '', catalogId: '',
-  numeroWhatsApp: '', ativo: false
+  catalogId: '', numeroWhatsApp: ''
 })
-
-const itensFiltrados = computed(() =>
-  itensCatalogo.value.filter(i =>
-    !buscaCatalogo.value || i.descricao?.toLowerCase().includes(buscaCatalogo.value.toLowerCase())
-  )
-)
 
 const statusPedidos = computed(() => {
   const contagem = (s: string) => pedidos.value.filter(p => p.status === s).length
@@ -497,11 +479,17 @@ const linkCatalogo = computed(() =>
   `https://wa.me/${config.value.numeroWhatsApp}?text=Quero+ver+o+catálogo`
 )
 
-async function listarCatalogo() {
+// URL pública do feed do catálogo (a Meta baixa por agendamento).
+const feedUrl = computed(() =>
+  `${window.location.origin}/api/produtos/feed-catalogo?empresaId=${auth.empresaId}`
+)
+async function copiarFeedUrl() {
   try {
-    const { data } = await api.get('/whatsapp/catalogo', { params: { empresaId: auth.empresaId } })
-    itensCatalogo.value = Array.isArray(data) ? data : []
-  } catch {}
+    await navigator.clipboard.writeText(feedUrl.value)
+    notif.ok('URL do feed copiada! Cole no Commerce Manager → Fontes de dados.')
+  } catch {
+    notif.aviso('Copie manualmente a URL do feed exibida na tela.')
+  }
 }
 
 async function listarPedidos() {
@@ -511,61 +499,6 @@ async function listarPedidos() {
     pedidos.value = Array.isArray(data) ? data : []
   } finally {
     carregandoPedidos.value = false
-  }
-}
-
-async function sincronizarCatalogo() {
-  sincronizando.value = true
-  try {
-    await api.post('/whatsapp/catalogo/sincronizar', { empresaId: auth.empresaId })
-    notif.ok('Catálogo sincronizado com sucesso!')
-  } catch {
-    notif.erro('Erro ao sincronizar. Verifique as configurações.')
-  } finally {
-    sincronizando.value = false
-  }
-}
-
-function adicionarProduto() {
-  itemEditando.value = null
-  novoItem.value = { disponivel: true, precoWhatsApp: 0 }
-  dialogItem.value = true
-}
-
-function editarItemCatalogo(item: any) {
-  itemEditando.value = item
-  novoItem.value = { ...item }
-  dialogItem.value = true
-}
-
-async function removerItemCatalogo(id: string) {
-  try {
-    await api.delete(`/whatsapp/catalogo/${id}`)
-    await listarCatalogo()
-  } catch {
-    notif.erro('Erro ao remover item.')
-  }
-}
-
-async function buscarProdutos(q: string) {
-  if (!q || q.length < 2) return
-  const { data } = await api.get('/produtos/buscar', { params: { empresaId: auth.empresaId, q } })
-  produtosBusca.value = Array.isArray(data) ? data : []
-}
-
-async function salvarItem() {
-  try {
-    const payload = { ...novoItem.value, empresaId: auth.empresaId }
-    if (itemEditando.value) {
-      await api.put(`/whatsapp/catalogo/${itemEditando.value.id}`, payload)
-    } else {
-      await api.post('/whatsapp/catalogo', payload)
-    }
-    notif.ok('Item salvo!')
-    dialogItem.value = false
-    await listarCatalogo()
-  } catch {
-    notif.erro('Erro ao salvar item.')
   }
 }
 
@@ -590,7 +523,12 @@ function responderWhatsApp(pedido: any) {
 
 async function salvarConfig() {
   try {
-    await api.put('/whatsapp/configuracao', { ...config.value, empresaId: auth.empresaId })
+    // Feed: só grava número (link wa.me) e Catalog ID informativo — não mexe no token.
+    await api.put('/whatsapp/configuracao', {
+      empresaId: auth.empresaId,
+      catalogId: config.value.catalogId || null,
+      numeroWhatsApp: config.value.numeroWhatsApp || null,
+    })
     notif.ok('Configuração salva!')
   } catch {
     notif.erro('Erro ao salvar configuração.')
@@ -686,19 +624,57 @@ async function salvarTemplate() {
   }
 }
 
+const dialogMetaTemplates = ref(false)
+const templatesMeta = ref<any[]>([])
+
 async function importarTemplatesMeta() {
   importandoTemplates.value = true
   try {
     const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
     if (Array.isArray(data) && data.length > 0) {
-      notif.ok(`${data.length} templates aprovados encontrados na Meta. Cadastre os que deseja usar.`)
+      // Prepara cada template com um tipo de disparo sugerido para cadastro em 1 clique.
+      templatesMeta.value = data.map((t: any) => ({ ...t, _tipo: sugerirTipo(t.name, t.category) }))
+      dialogMetaTemplates.value = true
     } else {
-      notif.aviso('Nenhum template aprovado encontrado. Verifique o Business Account ID e o token.')
+      notif.aviso('Conexão OK, mas nenhum template APROVADO na Meta ainda. Crie/aprove um template no WhatsApp Manager.')
     }
-  } catch {
-    notif.erro('Erro ao buscar templates na Meta. Verifique a configuração.')
+  } catch (e: any) {
+    // Mostra o motivo real devolvido pela Meta (token inválido, WABA errado, permissão, etc.)
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao buscar templates na Meta. Verifique a configuração.')
   } finally {
     importandoTemplates.value = false
+  }
+}
+
+// Já cadastrado localmente? (compara pelo nome exato da Meta)
+function jaCadastrado(nomeMeta: string) {
+  return templates.value.some(t => t.nomeMeta === nomeMeta)
+}
+
+// Palpite do tipo de disparo a partir do nome/categoria do template.
+function sugerirTipo(nome = '', categoria = '') {
+  const n = `${nome} ${categoria}`.toLowerCase()
+  if (/anivers|birthday/.test(n)) return 'Aniversario'
+  if (/promo|desconto|oferta|marketing/.test(n)) return 'Promocao'
+  if (/novidade|lancamento|news/.test(n)) return 'Novidade'
+  if (/bem.?vindo|welcome/.test(n)) return 'BemVindo'
+  if (/cobranc|lembrete|pagamento|vencimento|utility/.test(n)) return 'LembreteCobranca'
+  return 'Personalizado'
+}
+
+async function cadastrarTemplateMeta(mt: any) {
+  try {
+    await api.post('/whatsapp/mensagem/templates', {
+      nomeMeta: mt.name,
+      tipoDisparo: mt._tipo,
+      idioma: mt.language || 'pt_BR',
+      variaveisJson: '',
+      exemploTexto: '',
+    }, { params: { empresaId: auth.empresaId } })
+    notif.ok(`Template "${mt.name}" cadastrado como ${mt._tipo}.`)
+    await carregarTemplates()
+  } catch {
+    notif.erro('Erro ao cadastrar template.')
   }
 }
 
@@ -723,7 +699,8 @@ function iconeTipoDisparo(tipo: string) {
 const enviando = ref(false)
 const envioManual = ref({
   telefone: '', nomeDestinatario: '', templateId: null as any,
-  templateName: '', tipoDisparo: 'Personalizado', variaveisTexto: '',
+  templateName: '', idioma: 'pt_BR', tipoDisparo: 'Personalizado',
+  variaveisTexto: '', headerImageUrl: '',
 })
 
 async function enviarManual() {
@@ -736,14 +713,19 @@ async function enviarManual() {
       telefone:          envioManual.value.telefone,
       nomeDestinatario:  envioManual.value.nomeDestinatario,
       templateName:      envioManual.value.templateName,
+      idioma:            envioManual.value.idioma,
       tipoDisparo:       envioManual.value.tipoDisparo,
       variaveis,
+      headerImageUrl:    envioManual.value.headerImageUrl || null,
     })
     notif.ok('Mensagem enviada com sucesso!')
-    envioManual.value = { telefone: '', nomeDestinatario: '', templateId: null, templateName: '', tipoDisparo: 'Personalizado', variaveisTexto: '' }
+    envioManual.value = { telefone: '', nomeDestinatario: '', templateId: null, templateName: '', idioma: 'pt_BR', tipoDisparo: 'Personalizado', variaveisTexto: '', headerImageUrl: '' }
     await carregarHistorico()
-  } catch {
-    notif.erro('Falha ao enviar mensagem. Verifique a configuração da API.')
+  } catch (e: any) {
+    // Mostra o motivo real da Meta (janela 24h, nº de variáveis, template pausado, etc.)
+    const d = e?.response?.data
+    notif.erro(d?.erro ? `${d.mensagem ?? 'Falha no envio'}: ${d.erro}`
+      : (d?.mensagem ?? 'Falha ao enviar mensagem. Verifique a configuração da API.'))
   } finally {
     enviando.value = false
   }
@@ -830,10 +812,19 @@ async function carregarHistorico() {
   }
 }
 
+async function carregarConfigCatalogo() {
+  try {
+    const { data } = await api.get('/whatsapp/configuracao', { params: { empresaId: auth.empresaId } })
+    if (data) config.value = {
+      catalogId: data.catalogId ?? '', numeroWhatsApp: data.numeroWhatsApp ?? '',
+    }
+  } catch { /* silencioso */ }
+}
+
 onMounted(() => {
-  listarCatalogo()
   listarPedidos()
   carregarCfgMsg()
+  carregarConfigCatalogo()
   carregarTemplates()
   carregarHistorico()
 })

@@ -175,9 +175,11 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
                 return ([], erro);
             }
 
+            // Retorna TODOS os templates (com o status) — o chamador decide o que fazer.
+            // Assim dá para ver PENDING/REJECTED, não só APPROVED.
             var dados = JsonSerializer.Deserialize<MetaTemplatesResponse>(body);
-            var aprovados = dados?.Data?.Where(t => t.Status == "APPROVED").ToList() ?? [];
-            return (aprovados, null);
+            var todos = dados?.Data?.ToList() ?? [];
+            return (todos, null);
         }
         catch (Exception ex)
         {

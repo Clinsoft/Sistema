@@ -424,16 +424,25 @@
               <template #prepend>
                 <v-icon :color="corTipoDisparo(mt._tipo)">{{ iconeTipoDisparo(mt._tipo) }}</v-icon>
               </template>
-              <v-list-item-title class="font-weight-medium">{{ mt.name }}</v-list-item-title>
+              <v-list-item-title class="font-weight-medium">
+                {{ mt.name }}
+                <v-chip size="x-small" class="ml-1" :color="corStatusTpl(mt.status)" variant="flat">
+                  {{ rotuloStatusTpl(mt.status) }}
+                </v-chip>
+              </v-list-item-title>
               <v-list-item-subtitle>{{ mt.category }} · {{ mt.language }}</v-list-item-subtitle>
               <template #append>
                 <div class="d-flex align-center ga-2">
-                  <v-select v-model="mt._tipo" :items="tiposDisparo" density="compact" hide-details
-                    variant="outlined" style="min-width: 170px" :disabled="jaCadastrado(mt.name)" />
+                  <v-select v-if="mt.status === 'APPROVED'" v-model="mt._tipo" :items="tiposDisparo"
+                    density="compact" hide-details variant="outlined" style="min-width: 170px"
+                    :disabled="jaCadastrado(mt.name)" />
                   <v-btn v-if="jaCadastrado(mt.name)" size="small" color="success" variant="tonal"
                     prepend-icon="mdi-check" disabled>Cadastrado</v-btn>
-                  <v-btn v-else size="small" color="primary" prepend-icon="mdi-plus"
+                  <v-btn v-else-if="mt.status === 'APPROVED'" size="small" color="primary" prepend-icon="mdi-plus"
                     @click="cadastrarTemplateMeta(mt)">Cadastrar</v-btn>
+                  <span v-else class="text-caption text-medium-emphasis">
+                    {{ mt.status === 'PENDING' ? 'Aguardando aprovação' : 'Indisponível' }}
+                  </span>
                 </div>
               </template>
             </v-list-item>
@@ -660,7 +669,7 @@ async function importarTemplatesMeta() {
       templatesMeta.value = data.map((t: any) => ({ ...t, _tipo: sugerirTipo(t.name, t.category) }))
       dialogMetaTemplates.value = true
     } else {
-      notif.aviso('Conexão OK, mas nenhum template APROVADO na Meta ainda. Crie/aprove um template no WhatsApp Manager.')
+      notif.aviso('Conexão OK, mas nenhum template encontrado na Meta ainda. Crie um pelo botão "Criar template de promoção".')
     }
   } catch (e: any) {
     // Mostra o motivo real devolvido pela Meta (token inválido, WABA errado, permissão, etc.)
@@ -700,6 +709,13 @@ async function cadastrarTemplateMeta(mt: any) {
   } catch {
     notif.erro('Erro ao cadastrar template.')
   }
+}
+
+function corStatusTpl(status: string) {
+  return { APPROVED: 'success', PENDING: 'warning', REJECTED: 'error', PAUSED: 'grey' }[status] ?? 'grey'
+}
+function rotuloStatusTpl(status: string) {
+  return { APPROVED: 'Aprovado', PENDING: 'Em análise', REJECTED: 'Recusado', PAUSED: 'Pausado' }[status] ?? status
 }
 
 function corTipoDisparo(tipo: string) {

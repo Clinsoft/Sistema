@@ -1543,6 +1543,10 @@ async function carregar() {
   localEstoqueId.value = r.data.localEstoqueId ?? null
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
   popularItensEditaveis(r.data.itens ?? [])
+  // Repopula preço atual / markup atual e o novo preço sugerido dos itens já
+  // vinculados (popularItensEditaveis não faz isso). Sem esta chamada, o "Novo
+  // preço" e o indicador de variação ficam em branco a cada recarga.
+  enriquecerItensComProduto()
 
   // Nota de uso interno: a etapa 2 vincula materiais/bens, não produtos. Recarrega
   // sempre — a lista precisa conter os itens vinculados, senão o autocomplete

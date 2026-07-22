@@ -222,8 +222,12 @@
               <v-card-text v-if="t.exemploTexto" class="pt-0">
                 <div class="text-caption bg-grey-lighten-4 rounded pa-2">{{ t.exemploTexto }}</div>
               </v-card-text>
-              <v-card-text class="pt-0">
+              <v-card-text class="pt-0 d-flex align-center ga-2">
                 <v-chip size="x-small" :color="corTipoDisparo(t.tipoDisparo)">{{ t.tipoDisparo }}</v-chip>
+                <v-chip v-if="statusMeta[t.nomeMeta]" size="x-small" variant="flat"
+                  :color="corStatusTpl(statusMeta[t.nomeMeta])">
+                  {{ rotuloStatusTpl(statusMeta[t.nomeMeta]) }}
+                </v-chip>
               </v-card-text>
             </v-card>
           </v-col>
@@ -612,11 +616,22 @@ const novoTemplate = ref<any>({
   exemploTexto: '', variaveisJson: '',
 })
 
+// Status de cada template na Meta (nomeMeta → APPROVED/PENDING/REJECTED), para
+// exibir o selo nos cards de "Templates Cadastrados".
+const statusMeta = ref<Record<string, string>>({})
+
 async function carregarTemplates() {
   try {
     const { data } = await api.get('/whatsapp/mensagem/templates', { params: { empresaId: auth.empresaId } })
     templates.value = Array.isArray(data) ? data : []
   } catch {}
+  // Busca os status reais na Meta (silencioso — se não estiver configurado, ignora).
+  try {
+    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
+    const mapa: Record<string, string> = {}
+    for (const t of (Array.isArray(data) ? data : [])) mapa[t.name] = t.status
+    statusMeta.value = mapa
+  } catch { statusMeta.value = {} }
 }
 
 function abrirDialogTemplate(t: any) {

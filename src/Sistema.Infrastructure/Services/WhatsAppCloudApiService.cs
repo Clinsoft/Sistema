@@ -188,6 +188,86 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         }
     }
 
+    /// <summary>Baixa uma mídia recebida (image/audio/document…) pelo media_id.
+    /// Passo 1: pega a URL temporária; passo 2: baixa os bytes (com Bearer).</summary>
+    public async Task<(byte[]? Bytes, string? Mime)> BaixarMidia(string mediaId, string accessToken)
+    {
+        try
+        {
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            var meta = await http.GetFromJsonAsync<JsonElement>($"{BaseUrl}/{mediaId}");
+            var url = meta.TryGetProperty("url", out var u) ? u.GetString() : null;
+            var mime = meta.TryGetProperty("mime_type", out var m) ? m.GetString() : null;
+            if (url is null) return (null, null);
+
+            var bytes = await http.GetByteArrayAsync(url);
+            return (bytes, mime);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[WhatsApp] Falha ao baixar mídia {Id}", mediaId);
+            return (null, null);
+        }
+    }
+
+    /// <summary>Sobe uma mídia e envia como mensagem (image/document/audio). Retorna o wam_id.</summary>
+    public async Task<(bool sucesso, string? wamId, string? erro)> EnviarMidia(
+        string phoneNumberId, string accessToken, string telefone,
+        byte[] conteudo, string mime, string tipo, string? legenda, string? nomeArquivo)
+    {
+        var tel = NormalizarTelefone(telefone);
+        // O header ContentType aceita só "tipo/subtipo" — remove parâmetros como "; codecs=opus".
+        var mimeBase = (mime ?? "application/octet-stream").Split(';')[0].Trim();
+        try
+        {
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            // 1) Upload → media id.
+            using var form = new MultipartFormDataContent
+            {
+                { new StringContent("whatsapp"), "messaging_product" },
+            };
+            var fileContent = new ByteArrayContent(conteudo);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeBase);
+            form.Add(fileContent, "file", nomeArquivo ?? "arquivo");
+            var up = await http.PostAsync($"{BaseUrl}/{phoneNumberId}/media", form);
+            var upBody = await up.Content.ReadAsStringAsync();
+            if (!up.IsSuccessStatusCode) return (false, null, TentarExtrairErroMeta(upBody) ?? upBody);
+            var mediaId = JsonDocument.Parse(upBody).RootElement.GetProperty("id").GetString();
+
+            // 2) Envia a mensagem referenciando a mídia. Só image/video/document aceitam
+            // caption; áudio não aceita nenhum parâmetro além do id.
+            object midia = tipo switch
+            {
+                "document" => new { id = mediaId, caption = legenda, filename = nomeArquivo },
+                "audio"    => (object)new { id = mediaId },
+                _          => new { id = mediaId, caption = legenda },
+            };
+            var payload = new Dictionary<string, object>
+            {
+                ["messaging_product"] = "whatsapp",
+                ["to"] = tel,
+                ["type"] = tipo,
+                [tipo] = midia,
+            };
+            var resp = await http.PostAsJsonAsync($"{BaseUrl}/{phoneNumberId}/messages", payload);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode) return (false, null, TentarExtrairErroMeta(body) ?? body);
+
+            var wamId = JsonDocument.Parse(body).RootElement
+                .GetProperty("messages")[0].GetProperty("id").GetString();
+            return (true, wamId, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[WhatsApp] Erro ao enviar mídia para {Tel}", tel);
+            return (false, null, ex.Message);
+        }
+    }
+
     /// <summary>Lista os templates aprovados na conta WABA via Graph API.
     /// Retorna também o erro cru da Meta quando a chamada falha, para diagnóstico de credenciais.</summary>
     public async Task<(List<MetaTemplateDto> Templates, string? Erro)> ListarTemplatesAprovados(

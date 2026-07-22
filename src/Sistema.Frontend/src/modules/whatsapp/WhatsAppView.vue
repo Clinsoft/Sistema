@@ -27,59 +27,131 @@
     <v-window v-model="tab">
       <!-- Caixa de entrada / conversas -->
       <v-window-item value="conversas">
-        <v-row>
-          <v-col cols="12" md="4">
-            <v-card variant="outlined" rounded="lg">
-              <v-toolbar density="compact" color="transparent">
-                <v-toolbar-title class="text-body-1 font-weight-medium">Conversas</v-toolbar-title>
-                <v-btn icon="mdi-refresh" size="small" variant="text" @click="carregarConversas" />
-              </v-toolbar>
-              <v-divider />
-              <v-list v-if="conversas.length" density="compact" style="max-height:60vh;overflow:auto">
+        <v-row no-gutters style="height:70vh" class="border rounded-lg overflow-hidden">
+          <!-- Lista de conversas -->
+          <v-col cols="12" md="4" class="d-flex flex-column border-e" style="height:100%">
+            <div class="pa-2">
+              <v-text-field v-model="buscaConversa" placeholder="Buscar conversa…" density="compact"
+                hide-details variant="solo-filled" flat prepend-inner-icon="mdi-magnify" clearable
+                @update:model-value="carregarConversas" />
+            </div>
+            <v-divider />
+            <div style="flex:1;overflow:auto">
+              <v-list v-if="conversas.length" density="compact" class="py-0">
                 <v-list-item v-for="c in conversas" :key="c.telefone"
                   :active="conversaAtiva?.telefone === c.telefone" @click="abrirConversa(c)">
-                  <v-list-item-title class="font-weight-medium">
-                    {{ c.nome || c.telefone }}
-                  </v-list-item-title>
+                  <template #prepend>
+                    <v-avatar :color="corAvatar(c.telefone)" size="40">
+                      <span class="text-white">{{ inicial(c.nome || c.telefone) }}</span>
+                    </v-avatar>
+                  </template>
+                  <v-list-item-title class="font-weight-medium">{{ c.nome || c.telefone }}</v-list-item-title>
                   <v-list-item-subtitle class="text-truncate">{{ c.ultimaMensagem }}</v-list-item-subtitle>
                   <template #append>
-                    <v-badge v-if="c.naoLidas > 0" :content="c.naoLidas" color="error" inline />
+                    <div class="d-flex flex-column align-end" style="gap:4px">
+                      <span class="text-caption text-medium-emphasis">{{ fmtHoraCurta(c.ultimaData) }}</span>
+                      <v-badge v-if="c.naoLidas > 0" :content="c.naoLidas" color="success" inline />
+                    </div>
                   </template>
                 </v-list-item>
               </v-list>
-              <v-card-text v-else class="text-center text-medium-emphasis py-8">
-                Nenhuma conversa ainda. Quando um cliente enviar mensagem, ela aparece aqui.
-              </v-card-text>
-            </v-card>
+              <div v-else class="text-center text-medium-emphasis pa-8">
+                Nenhuma conversa ainda.
+              </div>
+            </div>
           </v-col>
 
-          <v-col cols="12" md="8">
-            <v-card variant="outlined" rounded="lg" v-if="conversaAtiva">
-              <v-toolbar density="compact" color="transparent">
-                <v-toolbar-title class="text-body-1 font-weight-medium">
-                  {{ conversaAtiva.nome || conversaAtiva.telefone }}
-                </v-toolbar-title>
-              </v-toolbar>
-              <v-divider />
-              <div ref="threadEl" style="height:52vh;overflow:auto" class="pa-4 d-flex flex-column ga-2">
-                <div v-for="m in mensagens" :key="m.id"
-                  :class="['msg-bolha', m.direcao === 'Enviada' ? 'align-self-end' : 'align-self-start']">
-                  <div class="text-body-2" style="white-space:pre-wrap">{{ m.texto }}</div>
-                  <div class="text-caption text-medium-emphasis text-right">{{ fmtHora(m.dataHora) }}</div>
+          <!-- Thread -->
+          <v-col cols="12" md="8" class="d-flex flex-column" style="height:100%">
+            <template v-if="conversaAtiva">
+              <div class="pa-3 d-flex align-center ga-3 border-b">
+                <v-avatar :color="corAvatar(conversaAtiva.telefone)" size="36">
+                  <span class="text-white">{{ inicial(conversaAtiva.nome || conversaAtiva.telefone) }}</span>
+                </v-avatar>
+                <div>
+                  <div class="font-weight-medium">{{ conversaAtiva.nome || conversaAtiva.telefone }}</div>
+                  <div class="text-caption text-medium-emphasis">+{{ conversaAtiva.telefone }}</div>
                 </div>
               </div>
               <v-divider />
-              <div class="pa-2 d-flex ga-2">
-                <v-text-field v-model="respostaTexto" placeholder="Digite uma resposta…"
-                  density="compact" hide-details variant="outlined" @keyup.enter="responder" />
-                <v-btn color="success" icon="mdi-send" :loading="respondendo"
-                  :disabled="!respostaTexto.trim()" @click="responder" />
+
+              <div ref="threadEl" style="flex:1;overflow:auto;background:rgba(0,0,0,.02)"
+                class="pa-4 d-flex flex-column ga-1">
+                <template v-for="(m, i) in mensagens" :key="m.id">
+                  <div v-if="mostrarData(i)" class="text-center my-2">
+                    <span class="text-caption px-3 py-1 rounded-pill"
+                      style="background:rgba(0,0,0,.06)">{{ separadorData(m.dataHora) }}</span>
+                  </div>
+                  <div :class="['msg-bolha', m.direcao === 'Enviada' ? 'align-self-end' : 'align-self-start']">
+                    <!-- Mídia -->
+                    <img v-if="m.tipo === 'image' && m.midiaUrl" :src="m.midiaUrl"
+                      style="max-width:240px;border-radius:8px;cursor:pointer" @click="abrirImagem(m.midiaUrl)" />
+                    <audio v-else-if="m.tipo === 'audio' && m.midiaUrl" :src="m.midiaUrl" controls
+                      style="max-width:240px" />
+                    <a v-else-if="m.midiaUrl" :href="m.midiaUrl" target="_blank"
+                      class="d-flex align-center ga-2 text-decoration-none">
+                      <v-icon color="error">mdi-file-document-outline</v-icon>
+                      <span class="text-body-2">{{ m.midiaNome || 'documento' }}</span>
+                    </a>
+                    <div v-if="m.texto" class="text-body-2" style="white-space:pre-wrap">{{ m.texto }}</div>
+                    <div class="d-flex align-center justify-end ga-1 mt-1">
+                      <span class="text-caption text-medium-emphasis">{{ fmtHoraCurta(m.dataHora) }}</span>
+                      <v-icon v-if="m.direcao === 'Enviada'" size="14" :color="corTique(m.status)">
+                        {{ m.status === 'Falhou' ? 'mdi-alert-circle' : m.status === 'Enviada' ? 'mdi-check' : 'mdi-check-all' }}
+                      </v-icon>
+                    </div>
+                  </div>
+                </template>
               </div>
-            </v-card>
-            <v-card variant="outlined" rounded="lg" v-else class="d-flex align-center justify-center"
-              style="height:60vh">
-              <div class="text-medium-emphasis">Selecione uma conversa para ver as mensagens.</div>
-            </v-card>
+
+              <v-divider />
+              <!-- Janela de 24h fechada → só template -->
+              <div v-if="conversaAtiva.dentroDe24h === false" class="pa-2">
+                <v-alert type="warning" variant="tonal" density="compact" class="mb-2">
+                  Passou de 24h desde a última mensagem do cliente. Só é possível enviar um <b>template aprovado</b>.
+                </v-alert>
+                <div class="d-flex ga-2">
+                  <v-select v-model="templateResposta" :items="templates" item-title="nomeMeta" item-value="nomeMeta"
+                    label="Template" density="compact" hide-details variant="outlined" />
+                  <v-btn color="primary" :disabled="!templateResposta" :loading="respondendo"
+                    @click="responderTemplate">Enviar template</v-btn>
+                </div>
+              </div>
+              <!-- Dentro das 24h → texto/emoji/mídia -->
+              <div v-else class="pa-2 d-flex align-center ga-1">
+                <v-menu :close-on-content-click="false" location="top">
+                  <template #activator="{ props }">
+                    <v-btn v-bind="props" icon="mdi-emoticon-outline" variant="text" size="small" />
+                  </template>
+                  <v-card max-width="260"><v-card-text class="d-flex flex-wrap ga-1 pa-2">
+                    <span v-for="e in emojis" :key="e" style="cursor:pointer;font-size:22px"
+                      @click="respostaTexto += e">{{ e }}</span>
+                  </v-card-text></v-card>
+                </v-menu>
+                <v-btn icon="mdi-paperclip" variant="text" size="small" @click="anexoInput?.click()" />
+                <input ref="anexoInput" type="file" hidden
+                  accept="image/*,audio/*,video/*,application/pdf" @change="enviarAnexo" />
+                <template v-if="!gravando">
+                  <v-text-field v-model="respostaTexto" placeholder="Digite uma mensagem…"
+                    density="compact" hide-details variant="solo-filled" flat @keyup.enter="responder" />
+                  <v-btn v-if="respostaTexto.trim()" color="success" icon="mdi-send" :loading="respondendo"
+                    @click="responder" />
+                  <v-btn v-else color="success" icon="mdi-microphone" variant="text"
+                    title="Gravar áudio" @click="iniciarGravacao" />
+                </template>
+                <template v-else>
+                  <div class="flex-grow-1 d-flex align-center ga-2 px-2 text-error">
+                    <v-icon color="error" class="pulse">mdi-record-circle</v-icon>
+                    <span>Gravando… {{ tempoGravacao }}s</span>
+                  </div>
+                  <v-btn icon="mdi-close" variant="text" size="small" @click="cancelarGravacao" />
+                  <v-btn color="success" icon="mdi-send" :loading="respondendo" @click="pararEnviarGravacao" />
+                </template>
+              </div>
+            </template>
+            <div v-else class="d-flex align-center justify-center text-medium-emphasis" style="height:100%">
+              Selecione uma conversa para ver as mensagens.
+            </div>
           </v-col>
         </v-row>
       </v-window-item>
@@ -525,7 +597,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
@@ -543,16 +615,48 @@ const respostaTexto = ref('')
 const respondendo = ref(false)
 const totalNaoLidas = ref(0)
 const threadEl = ref<HTMLElement | null>(null)
+const buscaConversa = ref('')
+const templateResposta = ref<string | null>(null)
+const anexoInput = ref<HTMLInputElement | null>(null)
+const emojis = ['😀','😁','😂','🥰','😊','😉','😍','😘','👍','🙏','👏','🎉','❤️','🔥','✅','⚠️','🛒','📦','💰','🌿','☕','🍫','😢','😅','🤝','👋']
+let pollTimer: any = null
 
-const fmtHora = (v: string) => {
-  const d = new Date(v)
-  return isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const inicial = (s: string) => (s || '?').trim().charAt(0).toUpperCase()
+function corAvatar(tel: string) {
+  const cores = ['#43a047','#1e88e5','#8e24aa','#e53935','#fb8c00','#00897b','#3949ab','#6d4c41']
+  let h = 0; for (const ch of (tel || '')) h = (h * 31 + ch.charCodeAt(0)) % cores.length
+  return cores[h]
 }
+function corTique(status?: string) {
+  return status === 'Lida' ? 'info' : status === 'Falhou' ? 'error' : 'grey'
+}
+const fmtHoraCurta = (v: string) => {
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+function separadorData(v: string) {
+  const d = new Date(v); const hoje = new Date(); const ontem = new Date(); ontem.setDate(hoje.getDate() - 1)
+  if (d.toDateString() === hoje.toDateString()) return 'Hoje'
+  if (d.toDateString() === ontem.toDateString()) return 'Ontem'
+  return d.toLocaleDateString('pt-BR')
+}
+function mostrarData(i: number) {
+  if (i === 0) return true
+  return new Date(mensagens.value[i].dataHora).toDateString() !== new Date(mensagens.value[i - 1].dataHora).toDateString()
+}
+function abrirImagem(url: string) { window.open(url, '_blank') }
 
 async function carregarConversas() {
   try {
-    const { data } = await api.get('/whatsapp/conversas', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/conversas', {
+      params: { empresaId: auth.empresaId, busca: buscaConversa.value || undefined },
+    })
     conversas.value = Array.isArray(data) ? data : []
+    // Mantém sincronizado o dentroDe24h da conversa aberta.
+    if (conversaAtiva.value) {
+      const atual = conversas.value.find(c => c.telefone === conversaAtiva.value.telefone)
+      if (atual) conversaAtiva.value.dentroDe24h = atual.dentroDe24h
+    }
   } catch { conversas.value = [] }
   carregarNaoLidas()
 }
@@ -564,15 +668,18 @@ async function carregarNaoLidas() {
   } catch { /* silencioso */ }
 }
 
-async function abrirConversa(c: any) {
+async function abrirConversa(c: any, manterScroll = false) {
   conversaAtiva.value = c
   try {
     const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId } })
+    const antes = mensagens.value.length
     mensagens.value = Array.isArray(data) ? data : []
     c.naoLidas = 0
     carregarNaoLidas()
-    await nextTick()
-    if (threadEl.value) threadEl.value.scrollTop = threadEl.value.scrollHeight
+    if (!manterScroll || mensagens.value.length !== antes) {
+      await nextTick()
+      if (threadEl.value) threadEl.value.scrollTop = threadEl.value.scrollHeight
+    }
   } catch { mensagens.value = [] }
 }
 
@@ -589,6 +696,106 @@ async function responder() {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar a resposta.')
   } finally { respondendo.value = false }
 }
+
+async function responderTemplate() {
+  if (!templateResposta.value || !conversaAtiva.value) return
+  respondendo.value = true
+  try {
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-template`,
+      { empresaId: auth.empresaId, templateName: templateResposta.value })
+    templateResposta.value = null
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o template.')
+  } finally { respondendo.value = false }
+}
+
+async function enviarAnexo(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !conversaAtiva.value) return
+  respondendo.value = true
+  try {
+    const fd = new FormData()
+    fd.append('empresaId', auth.empresaId as any)
+    fd.append('arquivo', file)
+    if (respostaTexto.value.trim()) fd.append('legenda', respostaTexto.value.trim())
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+    respostaTexto.value = ''
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o anexo.')
+  } finally { respondendo.value = false; if (input) input.value = '' }
+}
+
+// Gravação de áudio (mensagem de voz) via microfone.
+const gravando = ref(false)
+const tempoGravacao = ref(0)
+let mediaRecorder: MediaRecorder | null = null
+let chunks: Blob[] = []
+let gravTimer: any = null
+
+async function iniciarGravacao() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    chunks = []
+    mediaRecorder = new MediaRecorder(stream)
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
+    mediaRecorder.onstop = () => stream.getTracks().forEach(t => t.stop())
+    mediaRecorder.start()
+    gravando.value = true
+    tempoGravacao.value = 0
+    gravTimer = setInterval(() => { tempoGravacao.value++ }, 1000)
+  } catch {
+    notif.erro('Não foi possível acessar o microfone. Permita o acesso no navegador.')
+  }
+}
+
+function encerrarGravacao() {
+  if (gravTimer) { clearInterval(gravTimer); gravTimer = null }
+  gravando.value = false
+}
+
+function cancelarGravacao() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop()
+  mediaRecorder = null; chunks = []
+  encerrarGravacao()
+}
+
+async function pararEnviarGravacao() {
+  if (!mediaRecorder || !conversaAtiva.value) return
+  const rec = mediaRecorder
+  const mime = rec.mimeType || 'audio/ogg'
+  await new Promise<void>(resolve => { rec.onstop = () => resolve(); rec.stop() })
+  encerrarGravacao()
+  const blob = new Blob(chunks, { type: mime })
+  chunks = []; mediaRecorder = null
+  if (blob.size === 0) return
+  respondendo.value = true
+  try {
+    const ext = mime.includes('ogg') ? '.ogg' : mime.includes('webm') ? '.webm' : '.m4a'
+    const fd = new FormData()
+    fd.append('empresaId', auth.empresaId as any)
+    fd.append('arquivo', new File([blob], `audio${ext}`, { type: mime }))
+    await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+    await abrirConversa(conversaAtiva.value)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o áudio.')
+  } finally { respondendo.value = false }
+}
+
+// Auto-atualização: a cada 6s recarrega conversas e, se houver uma aberta, as mensagens.
+function iniciarPolling() {
+  pararPolling()
+  pollTimer = setInterval(async () => {
+    if (tab.value !== 'conversas') return
+    await carregarConversas()
+    if (conversaAtiva.value) await abrirConversa(conversaAtiva.value, true)
+  }, 6000)
+}
+function pararPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 const pedidos = ref<any[]>([])
 const carregandoPedidos = ref(false)
 
@@ -1032,6 +1239,7 @@ async function carregarConfigCatalogo() {
 
 onMounted(() => {
   carregarConversas()
+  iniciarPolling()
   listarPedidos()
   carregarCfgMsg()
   carregarConfigCatalogo()
@@ -1039,6 +1247,7 @@ onMounted(() => {
   carregarHistorico()
   carregarPromocoes()
 })
+onUnmounted(pararPolling)
 </script>
 
 <style scoped>
@@ -1051,6 +1260,8 @@ onMounted(() => {
 .msg-bolha.align-self-end {
   background: rgba(76, 175, 80, 0.18);
 }
+.pulse { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 </style>
 
 

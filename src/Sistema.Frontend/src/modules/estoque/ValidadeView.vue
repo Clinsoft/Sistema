@@ -893,8 +893,8 @@ async function registrar() {
     notif.ok('Validade registrada!')
     limpar()
     carregarPainel()
-  } catch {
-    notif.erro('Erro ao registrar validade.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? 'Erro ao registrar validade.')
   } finally { salvando.value = false }
 }
 
@@ -995,8 +995,9 @@ async function registrarItemNota(it: any) {
     })
     it._salvo = true
     it._destaque = false
-  } catch {
-    notif.erro(`Erro ao registrar validade de ${it.descricao}.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe
+      ?? `Erro ao registrar validade de ${it.descricao}.`)
   } finally {
     it._salvando = false
   }

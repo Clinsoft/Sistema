@@ -239,7 +239,20 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 .FirstOrDefaultAsync(ct);
 
             var numero = req.NumeroLote ?? $"L{DateTime.Today:yyyyMMdd}";
-            var lote   = Lote.Criar(req.EmpresaId, req.ProdutoId, localId, numero,
+
+            // Se já existe um lote com essa chave (ex.: criado na escrituração da NF),
+            // atualiza a validade em vez de duplicar (evita violação do índice único
+            // ProdutoId + LocalEstoqueId + NumeroLote).
+            var existente = await db.Lotes.FirstOrDefaultAsync(l =>
+                l.ProdutoId == req.ProdutoId && l.LocalEstoqueId == localId && l.NumeroLote == numero, ct);
+            if (existente is not null)
+            {
+                existente.AtualizarValidade(req.DataValidade);
+                await uow.SalvarAsync(ct);
+                return Ok(new { existente.Id, mensagem = "Validade atualizada no lote existente." });
+            }
+
+            var lote = Lote.Criar(req.EmpresaId, req.ProdutoId, localId, numero,
                 req.Quantidade ?? 1, produto.CustoUnitario,
                 dataValidade: req.DataValidade);
 

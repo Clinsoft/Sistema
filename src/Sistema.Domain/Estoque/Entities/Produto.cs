@@ -136,6 +136,10 @@ public class Produto : Entity
         DescricaoComplementar = descricaoComplementar;
     }
 
+    /// <summary>Atualiza o código de barras (EAN/GTIN) do produto.</summary>
+    public void AtualizarCodigoBarras(string? codigoBarras)
+        => CodigoBarras = string.IsNullOrWhiteSpace(codigoBarras) ? null : codigoBarras.Trim();
+
     /// <summary>Registra o de-para com o fornecedor: código do produto na nota do fornecedor.</summary>
     public void VincularReferenciaFornecedor(Guid fornecedorId, string? codigoNoFornecedor)
     {

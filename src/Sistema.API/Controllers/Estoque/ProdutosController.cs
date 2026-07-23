@@ -300,6 +300,8 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             req.ControlarLote, req.ControlarValidade, req.ValidadeEmDias,
             req.DescricaoComplementar);
 
+        produto.AtualizarCodigoBarras(req.CodigoBarras);
+
         produto.EditarPrecos(req.PrecoFornecedor, req.CustoUnitario,
             req.MarkupMinimo, req.PrecoMinimo,
             req.PrecoVenda, req.PrecoAtacado, req.MarkupAtacado);
@@ -815,6 +817,7 @@ public record EditarProdutoCompletoRequest(
     // Geral
     string Descricao, string? Referencia, Guid CategoriaId, Guid MarcaId,
     Guid UnidadeMedidaId, Guid? FornecedorPrincipalId,
+    string? CodigoBarras = null,
     string TipoVariacao = "Simples", bool ProdutoBalanca = false,
     int? CodigoPlu = null, bool OcultarNasVendas = false,
     bool RequisitarVendedor = false, bool VendidoFracionado = false,

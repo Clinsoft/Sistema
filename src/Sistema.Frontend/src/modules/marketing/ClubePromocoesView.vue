@@ -380,8 +380,11 @@ async function carregar() {
 
 async function carregarClientes() {
   try {
-    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId } })
-    clientes.value = r.data ?? []
+    // /clientes retorna paginado ({ itens, total }); pede página grande e extrai itens.
+    const r = await api.get('/clientes', {
+      params: { empresaId: auth.empresaId, pagina: 1, tamanhoPagina: 5000 },
+    })
+    clientes.value = r.data?.itens ?? (Array.isArray(r.data) ? r.data : [])
   } catch {}
 }
 

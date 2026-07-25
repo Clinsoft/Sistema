@@ -44,7 +44,8 @@ public class CriarClienteHandler(IClienteRepository repo, IUnitOfWork uow)
         // Aplica endereço, limite de crédito e classificação informados na criação
         cliente.AtualizarDados(cmd.Nome, cmd.Email, cmd.Telefone, cmd.Celular,
             cmd.Logradouro, cmd.Numero, cmd.Complemento, cmd.Bairro,
-            cmd.Cidade, cmd.Uf, cmd.Cep, cmd.LimiteCredito, cmd.Classificacao);
+            cmd.Cidade, cmd.Uf, cmd.Cep, cmd.LimiteCredito, cmd.Classificacao,
+            cmd.DataNascimento, cmd.CpfCnpj);
 
         await repo.AdicionarAsync(cliente, ct);
         await uow.SalvarAsync(ct);

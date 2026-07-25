@@ -94,7 +94,7 @@ public class ClientesController(IMediator mediator, IClienteRepository repo,
         cliente.AtualizarDados(req.Nome, req.Email, req.Telefone, req.Celular,
             req.Logradouro, req.Numero, req.Complemento, req.Bairro,
             req.Cidade, req.Uf, req.Cep, req.LimiteCredito, req.Classificacao,
-            req.DataNascimento);
+            req.DataNascimento, req.CpfCnpj);
         repo.Atualizar(cliente);
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -183,7 +183,8 @@ public record AtualizarClienteRequest(
     string Nome, string? Email = null, string? Telefone = null, string? Celular = null,
     string? Logradouro = null, string? Numero = null, string? Complemento = null,
     string? Bairro = null, string? Cidade = null, string? Uf = null, string? Cep = null,
-    decimal LimiteCredito = 0, string? Classificacao = null, DateTime? DataNascimento = null);
+    decimal LimiteCredito = 0, string? Classificacao = null, DateTime? DataNascimento = null,
+    string? CpfCnpj = null);
 
 public record ResgatarPontosRequest(int Pontos);
 public record GarantirClienteRequest(Guid EmpresaId, string Nome, string? CpfCnpj = null,

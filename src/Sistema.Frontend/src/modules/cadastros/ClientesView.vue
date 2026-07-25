@@ -272,6 +272,7 @@ async function salvar() {
   try {
     const payload = { ...fd.value, empresaId: auth.empresaId,
       cep: (fd.value.cep ?? '').replace(/\D/g,'') || null,
+      cpfCnpj: cnpjRaw(fd.value.cpfCnpj ?? '') || null,
       dataNascimento: fd.value.dataNascimento || null,
       email: (fd.value.email ?? '').trim() || null }
     if (editando.value) { await api.put(`/clientes/${fd.value.id}`, payload); notif.ok('Cliente atualizado!') }

@@ -300,6 +300,17 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             req.ControlarLote, req.ControlarValidade, req.ValidadeEmDias,
             req.DescricaoComplementar);
 
+        // Código interno: só altera se veio preenchido e diferente, barrando duplicidade.
+        var novoCodigo = req.Codigo?.Trim();
+        if (!string.IsNullOrWhiteSpace(novoCodigo) && novoCodigo != produto.Codigo)
+        {
+            var duplicado = await db.Produtos.AsNoTracking().AnyAsync(
+                p => p.EmpresaId == produto.EmpresaId && p.Id != id && p.Codigo == novoCodigo, ct);
+            if (duplicado)
+                return Conflict(new { mensagem = $"Já existe um produto com o código {novoCodigo}." });
+            produto.EditarCodigo(novoCodigo);
+        }
+
         produto.AtualizarCodigoBarras(req.CodigoBarras);
 
         produto.EditarPrecos(req.PrecoFornecedor, req.CustoUnitario,
@@ -817,7 +828,7 @@ public record EditarProdutoCompletoRequest(
     // Geral
     string Descricao, string? Referencia, Guid CategoriaId, Guid MarcaId,
     Guid UnidadeMedidaId, Guid? FornecedorPrincipalId,
-    string? CodigoBarras = null,
+    string? CodigoBarras = null, string? Codigo = null,
     string TipoVariacao = "Simples", bool ProdutoBalanca = false,
     int? CodigoPlu = null, bool OcultarNasVendas = false,
     bool RequisitarVendedor = false, bool VendidoFracionado = false,

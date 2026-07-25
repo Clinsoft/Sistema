@@ -140,6 +140,13 @@ public class Produto : Entity
     public void AtualizarCodigoBarras(string? codigoBarras)
         => CodigoBarras = string.IsNullOrWhiteSpace(codigoBarras) ? null : codigoBarras.Trim();
 
+    /// <summary>Altera o código interno do produto (é o PLU usado na balança quando não há CodigoPlu).</summary>
+    public void EditarCodigo(string codigo)
+    {
+        if (!string.IsNullOrWhiteSpace(codigo))
+            Codigo = codigo.Trim();
+    }
+
     /// <summary>Registra o de-para com o fornecedor: código do produto na nota do fornecedor.</summary>
     public void VincularReferenciaFornecedor(Guid fornecedorId, string? codigoNoFornecedor)
     {

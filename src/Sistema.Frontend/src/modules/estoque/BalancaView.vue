@@ -169,7 +169,7 @@ const modelos = [
 const cfg = reactive({
   modelo: 'FILIZOLA_SMART',
   identificadorPesavel: 2,
-  tamanhoCodigoProduto: 5,
+  tamanhoCodigoProduto: 4,
   tipoInformacao: 'PrecoTotal',
 })
 

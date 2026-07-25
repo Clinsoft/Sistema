@@ -849,7 +849,7 @@ interface Operadora {
 interface OpcaoCartao { label: string; operadoraId: string; cor?: string }
 interface Produto {
   id: string; descricao: string; codigo: string; precoVenda: number
-  unidadeSigla: string; vendidoFracionado?: boolean
+  unidadeSigla: string; vendidoFracionado?: boolean; codigoPlu?: number | null
 }
 interface Cliente { id: string; nome: string }
 interface Colaborador { id: string; nome: string; perfil: string }
@@ -1230,24 +1230,74 @@ function aplicarDescontoItem() {
 }
 
 // ── Busca de produto ──────────────────────────────────────────────
+/**
+ * Configuração da balança — deve espelhar Estoque › Balança.
+ * A balança imprime um EAN-13 = [id pesável][PLU][valor][check].
+ * Padrão da loja: id=2, PLU com 4 dígitos, valor com 7 dígitos = preço total em centavos.
+ */
+const BALANCA = { idPesavel: '2', tamanhoPlu: 4, tipoInformacao: 'PrecoTotal' as 'PrecoTotal' | 'Peso' }
+
+/** Interpreta um código de balança; devolve null se não for de peso variável. */
+function parseCodigoBalanca(codigo: string): { plu: number; valor: number } | null {
+  if (!/^\d{13}$/.test(codigo) || codigo[0] !== BALANCA.idPesavel) return null
+  const iniValor = 1 + BALANCA.tamanhoPlu
+  const plu = parseInt(codigo.slice(1, iniValor), 10)
+  const valor = parseInt(codigo.slice(iniValor, 12), 10)  // centavos (PrecoTotal) ou gramas (Peso)
+  return Number.isFinite(plu) && plu > 0 ? { plu, valor } : null
+}
+
 async function buscarProduto() {
   const codigo = codigoDigitado.value.trim()
   if (!codigo) { inputCodigo.value?.focus(); return }
+  const bal = parseCodigoBalanca(codigo)
   try {
     const res = await api.get<Produto[]>('/produtos/buscar', {
-      params: { q: codigo, empresaId: auth.empresaId }
+      params: { q: bal ? String(bal.plu) : codigo, empresaId: auth.empresaId }
     })
-    const lista = res.data
+    let lista = res.data
+    // Código de balança: casa pelo PLU exato para não confundir com produtos
+    // cujo código/EAN apenas contenha esses dígitos.
+    if (bal) {
+      const exato = lista.filter(p => p.codigoPlu === bal.plu)
+      if (exato.length) lista = exato
+    }
     if (lista.length === 1) {
-      adicionarProduto(lista[0])
+      if (bal) adicionarProdutoBalanca(lista[0], bal)
+      else adicionarProduto(lista[0])
     } else if (lista.length > 1) {
       produtosBusca.value = lista
       dialogProdutos.value = true
     } else {
-      notif.aviso('Produto não encontrado.')
+      notif.aviso(bal
+        ? `Produto da balança (PLU ${bal.plu}) não está cadastrado.`
+        : 'Produto não encontrado.')
     }
   } catch { /* interceptor exibiu */ }
   finally { codigoDigitado.value = '' }
+}
+
+/**
+ * Adiciona um item lido da etiqueta da balança. Em 'PrecoTotal' o valor do
+ * código é o total em R$ (o peso é derivado do preço/kg cadastrado); em 'Peso'
+ * o valor é o peso em gramas e o total é calculado pelo preço/kg.
+ */
+function adicionarProdutoBalanca(p: Produto, bal: { plu: number; valor: number }) {
+  dialogProdutos.value = false
+  let qtdKg: number, total: number
+  if (BALANCA.tipoInformacao === 'Peso') {
+    qtdKg = Math.round(bal.valor) / 1000
+    total = Math.round(qtdKg * p.precoVenda * 100) / 100
+  } else {
+    total = Math.round(bal.valor) / 100                                   // total da etiqueta manda
+    qtdKg = p.precoVenda > 0 ? Math.round(total / p.precoVenda * 1000) / 1000 : 1
+  }
+  itens.value.push({
+    produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
+    precoUnitario: p.precoVenda, quantidade: qtdKg,
+    total, unidade: p.unidadeSigla || 'KG', desconto: 0, porPeso: true,
+  })
+  itemSelecionado.value = itens.value.length - 1
+  nextTick(() => inputCodigo.value?.focus())
 }
 
 /** Produto vendido por peso (preço por KG): a quantidade é informada em gramas. */

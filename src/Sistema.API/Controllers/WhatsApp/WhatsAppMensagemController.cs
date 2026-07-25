@@ -275,6 +275,79 @@ public class WhatsAppMensagemController(
         return Ok(new { nome, status, comImagem = imagem != null });
     }
 
+    /// <summary>
+    /// Cria um template na Meta usando uma ARTE específica como imagem do cabeçalho
+    /// e o vincula a um Tipo de Disparo (Aniversário/Promoção/…). Registra o template
+    /// local com esse tipo e ativo, para o disparo automático das 8h usá-lo.
+    /// </summary>
+    [HttpPost("templates/criar-de-arte")]
+    [Authorize]
+    public async Task<IActionResult> CriarTemplateDeArte(
+        [FromBody] CriarTemplateDeArteRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg?.BusinessAccountId is null || cfg.AccessToken is null)
+            return BadRequest(new { mensagem = "Configure o Business Account ID e o Access Token primeiro." });
+        if (string.IsNullOrWhiteSpace(req.Nome) || string.IsNullOrWhiteSpace(req.Corpo))
+            return BadRequest(new { mensagem = "Informe o nome e o corpo do template." });
+
+        // Imagem do cabeçalho = a arte escolhida.
+        byte[]? imagem = null;
+        var arte = await db.ArtesMarketing.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == req.ArteId && a.EmpresaId == req.EmpresaId, ct);
+        if (arte?.UrlExportada is { } url)
+        {
+            var caminho = Path.Combine("wwwroot", url.TrimStart('/'));
+            if (System.IO.File.Exists(caminho)) imagem = await System.IO.File.ReadAllBytesAsync(caminho, ct);
+        }
+        if (imagem is null)
+            return BadRequest(new { mensagem = "A arte não tem imagem exportada. Gere ou suba a imagem primeiro." });
+
+        var nome = req.Nome.Trim().ToLowerInvariant().Replace(' ', '_');
+        var tipoDisparo = Enum.TryParse<TipoDisparoWhatsApp>(req.TipoDisparo, out var td)
+            ? td : TipoDisparoWhatsApp.Personalizado;
+        // Categoria Meta: Aniversário/Novidade/Promoção são MARKETING; demais UTILITY.
+        var categoria = tipoDisparo is TipoDisparoWhatsApp.Aniversario
+            or TipoDisparoWhatsApp.Promocao or TipoDisparoWhatsApp.Novidade
+            ? "MARKETING" : "UTILITY";
+
+        var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
+            cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
+            nome, req.Corpo, (req.Exemplos ?? []).ToList(), imagem, categoria, ct);
+
+        if (!ok)
+            return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
+
+        // Registra o template local com o tipo escolhido. Para os tipos automáticos
+        // (Aniversário/Promoção/Novidade) só pode haver um ativo por tipo — desativa os demais.
+        var jaExiste = await db.TemplatesWhatsAppMensagem
+            .FirstOrDefaultAsync(t => t.EmpresaId == req.EmpresaId && t.NomeMeta == nome, ct);
+
+        if (tipoDisparo is TipoDisparoWhatsApp.Aniversario
+            or TipoDisparoWhatsApp.Promocao or TipoDisparoWhatsApp.Novidade)
+        {
+            var irmaos = await db.TemplatesWhatsAppMensagem
+                .Where(t => t.EmpresaId == req.EmpresaId && t.TipoDisparo == tipoDisparo && t.Ativo)
+                .ToListAsync(ct);
+            foreach (var s in irmaos.Where(s => s.NomeMeta != nome)) s.Desativar();
+        }
+
+        if (jaExiste is null)
+        {
+            db.TemplatesWhatsAppMensagem.Add(TemplateWhatsAppMensagem.Criar(
+                req.EmpresaId, nome, tipoDisparo, "pt_BR", req.VariaveisJson, req.Corpo));
+        }
+        else
+        {
+            jaExiste.Ativar();
+            jaExiste.Atualizar(nome, "pt_BR", req.VariaveisJson, req.Corpo);
+        }
+        await uow.SalvarAsync(ct);
+
+        return Ok(new { nome, status, tipoDisparo = tipoDisparo.ToString() });
+    }
+
     // ─── Envio manual ─────────────────────────────────────────────────────────
 
     [HttpPost("enviar")]
@@ -785,6 +858,10 @@ public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);
 public record CriarTemplateCustomRequest(
     Guid EmpresaId, string Nome, string Corpo, string? Categoria = "UTILITY",
     IEnumerable<string>? Exemplos = null, bool ComImagem = false);
+
+public record CriarTemplateDeArteRequest(
+    Guid EmpresaId, Guid ArteId, string TipoDisparo, string Nome, string Corpo,
+    IEnumerable<string>? Exemplos = null, string? VariaveisJson = null);
 
 public record ResponderRequest(Guid EmpresaId, string Texto);
 

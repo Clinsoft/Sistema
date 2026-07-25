@@ -147,6 +147,40 @@ public class MarketingController(
             : File(bytes, "image/png");
     }
 
+    /// <summary>Sobe uma arte pronta (imagem) e salva na galeria.</summary>
+    [HttpPost("artes/upload")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> UploadArte(
+        [FromForm] Guid empresaId, [FromForm] IFormFile arquivo,
+        [FromForm] string? titulo, [FromForm] string? tipo, [FromForm] string? formato,
+        CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0)
+            return BadRequest(new { mensagem = "Selecione uma imagem." });
+        if (!arquivo.ContentType.StartsWith("image/"))
+            return BadRequest(new { mensagem = "O arquivo precisa ser uma imagem." });
+
+        var tp = Enum.TryParse<TipoArteMarketing>(tipo, out var t) ? t : TipoArteMarketing.Generico;
+        var fm = Enum.TryParse<FormatoArte>(formato, out var f) ? f : FormatoArte.FeedQuadrado;
+
+        var arte = ArteMarketing.Criar(empresaId,
+            string.IsNullOrWhiteSpace(titulo) ? Path.GetFileNameWithoutExtension(arquivo.FileName) : titulo,
+            tp, fm, System.Text.Json.JsonSerializer.Serialize(new { origem = "upload" }));
+
+        // Normaliza para PNG (o cabeçalho de template do WhatsApp exige PNG/JPG).
+        var dir = Path.Combine("wwwroot", "uploads", "artes");
+        Directory.CreateDirectory(dir);
+        var nomeArquivo = $"{arte.Id}.png";
+        await using (var stream = arquivo.OpenReadStream())
+        using (var img = await Image.LoadAsync(stream, ct))
+            await img.SaveAsPngAsync(Path.Combine(dir, nomeArquivo), ct);
+
+        arte.Finalizar($"/uploads/artes/{nomeArquivo}");
+        db.ArtesMarketing.Add(arte);
+        await uow.SalvarAsync(ct);
+        return Ok(new { id = arte.Id, url = arte.UrlExportada });
+    }
+
     // ─── Geração de imagem com IA (OpenAI gpt-image-1; Gemini como reserva) ────
 
     /// <summary>Gera a imagem da arte usando IA a partir de um prompt.

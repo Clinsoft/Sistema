@@ -9,6 +9,10 @@
         <v-btn color="deep-purple" prepend-icon="mdi-robot-happy-outline" @click="abrirIA">
           Gerar com IA
         </v-btn>
+        <v-btn color="teal" prepend-icon="mdi-upload" :loading="subindoArte" @click="fileArte?.click()">
+          Subir arte pronta
+        </v-btn>
+        <input ref="fileArte" type="file" accept="image/*" class="d-none" @change="uploadArtePronta" />
         <v-btn color="primary" prepend-icon="mdi-image-plus" @click="novaArte">Nova Arte</v-btn>
       </v-col>
     </v-row>
@@ -53,8 +57,9 @@
               <v-card-actions class="pt-0">
                 <v-btn size="small" variant="text" prepend-icon="mdi-pencil" @click="editarArte(arte)">Editar</v-btn>
                 <v-spacer />
+                <v-btn size="small" icon="mdi-whatsapp" variant="text" color="green"
+                  title="Enviar para template do WhatsApp" @click="abrirEnviarWhatsApp(arte)" />
                 <v-btn size="small" icon="mdi-download" variant="text" @click="baixarArte(arte)" />
-                <v-btn size="small" icon="mdi-share-variant" variant="text" @click="compartilhar(arte)" />
                 <v-btn size="small" icon="mdi-delete" variant="text" color="error" @click="excluirArte(arte.id)" />
               </v-card-actions>
             </v-card>
@@ -234,6 +239,57 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: enviar arte para template do WhatsApp -->
+    <v-dialog v-model="dialogWpp" max-width="620" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center gap-2">
+          <v-icon color="green">mdi-whatsapp</v-icon>
+          Enviar arte para template do WhatsApp
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="dialogWpp = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <v-row>
+            <v-col cols="12" sm="5">
+              <img v-if="wppArte" :src="arteThumb(wppArte)" class="wpp-thumb" />
+            </v-col>
+            <v-col cols="12" sm="7">
+              <v-select v-model="wppForm.tipoDisparo" :items="tiposDisparo" item-title="label" item-value="valor"
+                label="Tipo de disparo" variant="outlined" density="compact" class="mb-2"
+                @update:modelValue="aplicarModeloDisparo" />
+              <v-alert :type="wppForm.tipoDisparo === 'Personalizado' ? 'info' : 'success'"
+                variant="tonal" density="compact" class="mb-3 text-caption">
+                {{ descricaoDisparo }}
+              </v-alert>
+              <v-text-field v-model="wppForm.nome" label="Nome do template (sem espaços)"
+                variant="outlined" density="compact" class="mb-2"
+                hint="Ex: aniversario_cliente, promo_granola" persistent-hint />
+            </v-col>
+          </v-row>
+          <v-textarea v-model="wppForm.corpo" label="Mensagem do template" variant="outlined"
+            density="compact" rows="4" auto-grow class="mb-1" />
+          <div class="text-caption text-medium-emphasis mb-2">
+            Variáveis: <span v-for="(v, i) in variaveisDisparo" :key="i">
+              <code>{{ ph(i + 1) }}</code> = {{ v.rotulo }}<span v-if="i < variaveisDisparo.length-1">, </span>
+            </span>
+          </div>
+          <v-alert type="warning" variant="tonal" density="compact" class="text-caption">
+            O template é enviado à <b>Meta para análise</b> (pode levar de minutos a 24h). Após
+            <b>aprovado</b>, o disparo automático das 8h passa a usá-lo para
+            <b>{{ tiposDisparo.find(t => t.valor === wppForm.tipoDisparo)?.label }}</b>.
+          </v-alert>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogWpp = false">Cancelar</v-btn>
+          <v-btn color="green" :loading="enviandoWpp" prepend-icon="mdi-send"
+            @click="enviarParaTemplate">Enviar para análise</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog Agendamento -->
     <v-dialog v-model="dialogAgendamento" max-width="480">
       <v-card>
@@ -313,6 +369,130 @@ async function gerarComIA() {
 
 function baixarGerada() {
   if (arteGeradaId.value) window.open(`/api/marketing/artes/${arteGeradaId.value}/exportar`, '_blank')
+}
+
+// ── Subir arte pronta ──
+const fileArte = ref<HTMLInputElement | null>(null)
+const subindoArte = ref(false)
+async function uploadArtePronta(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  subindoArte.value = true
+  try {
+    const fd = new FormData()
+    fd.append('empresaId', auth.empresaId)
+    fd.append('arquivo', file)
+    fd.append('titulo', file.name.replace(/\.[^.]+$/, ''))
+    fd.append('tipo', 'Generico')
+    fd.append('formato', 'FeedQuadrado')
+    await api.post('/marketing/artes/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    notif.ok('Arte enviada para a galeria!')
+    await listarArtes()
+  } catch (err: any) {
+    notif.erro(err.response?.data?.mensagem ?? 'Erro ao subir a arte.')
+  } finally {
+    subindoArte.value = false
+    if (fileArte.value) fileArte.value.value = ''
+  }
+}
+
+// ── Enviar arte para template do WhatsApp ──
+const dialogWpp = ref(false)
+const enviandoWpp = ref(false)
+const wppArte = ref<any>(null)
+const wppForm = ref({ tipoDisparo: 'Promocao', nome: '', corpo: '' })
+
+const tiposDisparo = [
+  { valor: 'Aniversario', label: 'Aniversário' },
+  { valor: 'Promocao', label: 'Promoção' },
+  { valor: 'Novidade', label: 'Novidade' },
+  { valor: 'Personalizado', label: 'Personalizado (envio manual)' },
+]
+
+// Modelo de corpo, variáveis e exemplos por tipo de disparo.
+const modelosDisparo: Record<string, { corpo: string; vars: { campo: string; rotulo: string; exemplo: string }[] }> = {
+  Aniversario: {
+    corpo: '🎉 Feliz aniversário, {{1}}! A {{2}} deseja um dia incrível. Passe na loja e ganhe um mimo especial! 🌿',
+    vars: [
+      { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'Maria' },
+      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: 'EcoGranel' },
+    ],
+  },
+  Promocao: {
+    corpo: '🌿 Oferta EcoGranel! Olá {{1}}, {{2}} está com preço especial: {{3}}. Aproveite, é por tempo limitado! 🛒',
+    vars: [
+      { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'João' },
+      { campo: 'produto_nome', rotulo: 'produto', exemplo: 'Granola Artesanal' },
+      { campo: 'produto_preco_promo', rotulo: 'preço promocional', exemplo: 'R$ 9,90' },
+    ],
+  },
+  Novidade: {
+    corpo: '🌟 Novidade na {{2}}! Olá {{1}}, chegou coisa boa pra você. Confira nosso catálogo: {{3}}',
+    vars: [
+      { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'Ana' },
+      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: 'EcoGranel' },
+      { campo: 'link_catalogo', rotulo: 'link do catálogo', exemplo: 'https://ecogranel.com.br/produtos' },
+    ],
+  },
+  Personalizado: {
+    corpo: 'Olá {{1}}! Temos uma mensagem especial pra você. 🌿',
+    vars: [{ campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'Cliente' }],
+  },
+}
+
+function ph(n: number) { return `{{${n}}}` }
+const variaveisDisparo = computed(() => modelosDisparo[wppForm.value.tipoDisparo]?.vars ?? [])
+const descricaoDisparo = computed(() => {
+  const t = wppForm.value.tipoDisparo
+  if (t === 'Aniversario') return 'Enviado automaticamente às 8h para clientes que fazem aniversário no dia.'
+  if (t === 'Promocao') return 'Usado no disparo de promoções (produtos com validade próxima) às 8h.'
+  if (t === 'Novidade') return 'Usado no disparo de novidades para todos os clientes.'
+  return 'Não dispara sozinho — fica disponível para envio manual nas conversas.'
+})
+
+function aplicarModeloDisparo() {
+  wppForm.value.corpo = modelosDisparo[wppForm.value.tipoDisparo]?.corpo ?? wppForm.value.corpo
+}
+
+function abrirEnviarWhatsApp(arte: any) {
+  wppArte.value = arte
+  const sugestaoTipo = (arte.tipo === 'Aniversario') ? 'Aniversario'
+    : (arte.tipo === 'Promocao' || arte.tipo === 'ClubPromocoes') ? 'Promocao' : 'Promocao'
+  wppForm.value = {
+    tipoDisparo: sugestaoTipo,
+    nome: (arte.titulo || 'template').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'template_arte',
+    corpo: modelosDisparo[sugestaoTipo].corpo,
+  }
+  dialogWpp.value = true
+}
+
+async function enviarParaTemplate() {
+  const vars = variaveisDisparo.value
+  const maxVar = Math.max(0, ...[...wppForm.value.corpo.matchAll(/\{\{(\d+)\}\}/g)].map(m => Number(m[1])))
+  if (maxVar !== vars.length) {
+    notif.erro(`A mensagem usa ${maxVar} variável(is), mas o tipo tem ${vars.length}. Ajuste o texto.`)
+    return
+  }
+  if (!wppForm.value.nome.trim()) { notif.erro('Informe o nome do template.'); return }
+  enviandoWpp.value = true
+  try {
+    await api.post('/whatsapp/mensagem/templates/criar-de-arte', {
+      empresaId: auth.empresaId,
+      arteId: wppArte.value.id,
+      tipoDisparo: wppForm.value.tipoDisparo,
+      nome: wppForm.value.nome.trim(),
+      corpo: wppForm.value.corpo,
+      exemplos: vars.map(v => v.exemplo),
+      variaveisJson: JSON.stringify(vars.map((v, i) => ({ posicao: i + 1, campo: v.campo }))),
+    })
+    notif.ok('Template enviado à Meta para análise!')
+    dialogWpp.value = false
+  } catch (err: any) {
+    notif.erro(err.response?.data?.mensagem ?? 'Erro ao enviar o template.')
+  } finally {
+    enviandoWpp.value = false
+  }
 }
 
 const tab = ref('galeria')
@@ -568,6 +748,7 @@ onMounted(() => { listarArtes(); listarAgendamentos() })
 .arte-logo { position: absolute; bottom: 12px; display: flex; align-items: center; opacity: 0.8; }
 .ia-preview { min-height: 340px; background: #f3f0fa; border: 1px dashed #b39ddb; border-radius: 12px; overflow: hidden; }
 .ia-img { max-width: 100%; max-height: 460px; border-radius: 8px; display: block; }
+.wpp-thumb { width: 100%; border-radius: 10px; display: block; object-fit: cover; border: 1px solid #e0e0e0; }
 </style>
 
 

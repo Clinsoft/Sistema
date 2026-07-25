@@ -52,6 +52,9 @@ public class TemplateWhatsAppMensagem : Entity
         VariaveisJson = variaveisJson;
         ExemploTexto  = exemploTexto;
     }
+
+    public void Ativar()    => Ativo = true;
+    public void Desativar() => Ativo = false;
 }
 
 public enum TipoDisparoWhatsApp

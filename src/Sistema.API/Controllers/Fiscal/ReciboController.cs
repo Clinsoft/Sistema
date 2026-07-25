@@ -182,6 +182,122 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         _ => f.ToString(),
     };
 
+    /// <summary>Gera o cupom de fechamento de caixa (térmico 80mm, padrão do cupom fiscal).</summary>
+    [HttpGet("sessao/{sessaoId:guid}")]
+    public async Task<IActionResult> ReciboFechamentoSessao(Guid sessaoId, CancellationToken ct)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var sessao = await db.PDVSessoes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sessaoId, ct);
+        if (sessao is null) return NotFound(new { mensagem = "Sessão de caixa não encontrada." });
+
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == sessao.EmpresaId, ct);
+        if (empresa is null) return NotFound(new { mensagem = "Empresa não encontrada." });
+
+        var operador = await db.Usuarios.AsNoTracking()
+            .Where(u => u.Id == sessao.UsuarioId).Select(u => u.Nome).FirstOrDefaultAsync(ct);
+        var local = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.Id == sessao.LocalEstoqueId).Select(l => l.Nome).FirstOrDefaultAsync(ct);
+
+        // Vendas por forma de pagamento no período da sessão.
+        var grupos = await db.PagamentosVenda.AsNoTracking()
+            .Join(db.Vendas, p => p.VendaId, v => v.Id,
+                (p, v) => new { p.Forma, p.Valor, v.Status, v.DataHora, v.EmpresaId })
+            .Where(x => x.EmpresaId == sessao.EmpresaId
+                && x.Status == Sistema.Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.DataHora >= sessao.Abertura
+                && (sessao.Fechamento == null || x.DataHora <= sessao.Fechamento))
+            .GroupBy(x => x.Forma).Select(g => new { forma = g.Key, total = g.Sum(x => x.Valor) })
+            .ToListAsync(ct);
+        decimal Forma(Sistema.Domain.Vendas.Entities.FormaPagamento f) =>
+            grupos.FirstOrDefault(g => g.forma == f)?.total ?? 0m;
+
+        var pdf = GerarFechamentoTermico(sessao, empresa, operador, local,
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Dinheiro),
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Pix),
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoCredito),
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito));
+        return File(pdf, "application/pdf", "fechamento-caixa.pdf");
+    }
+
+    private static byte[] GerarFechamentoTermico(
+        Sistema.Domain.Vendas.Entities.PDVSessao s,
+        Sistema.Domain.Cadastros.Entities.Empresa empresa,
+        string? operador, string? local,
+        decimal dinheiro, decimal pix, decimal credito, decimal debito)
+    {
+        var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+        const int larg = 36;
+        static string Linha(string esq, string dir)
+        {
+            if (esq.Length + dir.Length + 1 > larg)
+                esq = esq[..Math.Max(0, larg - dir.Length - 1)];
+            return esq + new string(' ', Math.Max(1, larg - esq.Length - dir.Length)) + dir;
+        }
+        var traco = new string('-', larg);
+        string M(decimal v) => v.ToString("N2", brl);
+
+        // Saldo esperado em dinheiro na gaveta e diferença do conferido.
+        var esperadoDinheiro = s.SaldoAbertura + dinheiro + s.TotalSuprimentos - s.TotalSangrias;
+        var fechado = s.Fechamento != null;
+        var diferenca = fechado ? s.SaldoFechamento - esperadoDinheiro : 0m;
+
+        RegistrarFonteMono();
+        var fonteMono = _fonteMonoDisponivel ? "DejaVu Sans Mono" : "Courier New";
+
+        var pdf = Document.Create(d =>
+        {
+            d.Page(page =>
+            {
+                page.ContinuousSize(80, Unit.Millimetre);
+                page.Margin(4, Unit.Millimetre);
+                page.DefaultTextStyle(t => t.FontSize(8).FontFamily(fonteMono));
+
+                page.Content().Column(col =>
+                {
+                    col.Item().AlignCenter().Text(empresa.NomeFantasia).Bold().FontSize(9);
+                    col.Item().AlignCenter().Text("FECHAMENTO DE CAIXA").Bold().FontSize(8);
+                    col.Item().Text(traco);
+                    col.Item().Text($"Operador: {operador ?? "-"}").FontSize(7);
+                    col.Item().Text($"Caixa: {local ?? "-"}").FontSize(7);
+                    col.Item().Text($"Abertura: {s.Abertura:dd/MM/yyyy HH:mm}").FontSize(7);
+                    col.Item().Text($"Fechamento: {(s.Fechamento != null ? s.Fechamento.Value.ToString("dd/MM/yyyy HH:mm") : "-")}").FontSize(7);
+                    col.Item().Text(traco);
+
+                    col.Item().Text(Linha("Saldo inicial", M(s.SaldoAbertura)));
+                    col.Item().Text(Linha("Total de vendas", M(s.TotalVendas)));
+                    col.Item().Text(Linha("Suprimentos", M(s.TotalSuprimentos)));
+                    col.Item().Text(Linha("Sangrias", "-" + M(s.TotalSangrias)));
+                    col.Item().Text(traco);
+
+                    col.Item().Text("VENDAS POR FORMA").Bold().FontSize(7);
+                    col.Item().Text(Linha("Dinheiro", M(dinheiro)));
+                    col.Item().Text(Linha("Pix", M(pix)));
+                    col.Item().Text(Linha("Cartao Credito", M(credito)));
+                    col.Item().Text(Linha("Cartao Debito", M(debito)));
+                    col.Item().Text(traco);
+
+                    col.Item().Text(Linha("Esperado em dinheiro", M(esperadoDinheiro)));
+                    if (fechado)
+                    {
+                        col.Item().Text(Linha("Contado (gaveta)", M(s.SaldoFechamento)));
+                        col.Item().Text(Linha("Diferenca", (diferenca >= 0 ? "" : "-") + M(Math.Abs(diferenca)))).Bold();
+                    }
+                    col.Item().Text(traco);
+
+                    if (!string.IsNullOrWhiteSpace(s.ObservacaoFechamento))
+                    {
+                        col.Item().Text($"Obs: {s.ObservacaoFechamento}").FontSize(7);
+                        col.Item().Text(traco);
+                    }
+                    col.Item().PaddingTop(2).AlignCenter().Text("Conferencia de caixa - sem valor fiscal").FontSize(7);
+                });
+            });
+        });
+
+        return pdf.GeneratePdf();
+    }
+
     /// <summary>Gera recibo PDF de pagamento de conta a receber.</summary>
     [HttpGet("lancamento/{id:guid}")]
     public async Task<IActionResult> ReciboPagamento(Guid id, CancellationToken ct)

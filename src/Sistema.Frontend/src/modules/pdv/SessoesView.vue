@@ -173,6 +173,8 @@
         <template #item.acoes="{ item }">
           <v-btn v-if="item.status === 'Aberta'" icon="mdi-lock-outline" size="x-small" variant="text"
             color="error" title="Fechar caixa" @click="sessaoAtiva = item; prepararFechamento()" />
+          <v-btn v-else icon="mdi-printer" size="x-small" variant="text" color="primary"
+            title="Imprimir fechamento" @click="imprimirFechamento(item.id)" />
         </template>
       </v-data-table>
     </v-card>
@@ -471,8 +473,9 @@ async function abrirCaixa() {
 async function fecharCaixa() {
   if (!sessaoAtiva.value || fechamento.value.saldoContado == null) return
   fechando.value = true
+  const sessaoId = sessaoAtiva.value.id
   try {
-    await api.post(`/pdv/sessoes/${sessaoAtiva.value.id}/fechar`, {
+    await api.post(`/pdv/sessoes/${sessaoId}/fechar`, {
       saldoFechamento: fechamento.value.saldoContado,
       diferencaCaixa: diferencaFechamento.value,
       observacao: fechamento.value.observacao || null,
@@ -481,9 +484,35 @@ async function fecharCaixa() {
     dialogFechar.value = false
     fechamento.value = { saldoContado: null, observacao: '' }
     await Promise.all([carregarSessaoAtiva(), listar()])
+    imprimirFechamento(sessaoId)   // imprime o cupom de fechamento ao fechar
   } catch (e: any) {
     notif.erro(e?.response?.data?.title ?? 'Erro ao fechar caixa.')
   } finally { fechando.value = false }
+}
+
+// Imprime o fechamento de caixa (cupom térmico) via impressora padrão.
+async function imprimirFechamento(sessaoId: string) {
+  try {
+    const r = await api.get(`/fiscal/recibo/sessao/${sessaoId}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    let iframe = document.getElementById('sessao-print-frame') as HTMLIFrameElement | null
+    if (!iframe) {
+      iframe = document.createElement('iframe')
+      iframe.id = 'sessao-print-frame'
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+      document.body.appendChild(iframe)
+    }
+    iframe.src = url
+    iframe.onload = () => {
+      setTimeout(() => {
+        try { iframe!.contentWindow?.focus(); iframe!.contentWindow?.print() }
+        catch { window.open(url, '_blank') }
+        setTimeout(() => URL.revokeObjectURL(url), 60000)
+      }, 300)
+    }
+  } catch {
+    notif.erro('Não foi possível gerar o cupom de fechamento.')
+  }
 }
 
 async function salvarOperacao() {

@@ -97,6 +97,10 @@
                         variant="outlined" density="compact" />
                     </v-col>
                     <v-col cols="12" sm="6">
+                      <v-text-field v-model="fd.dataNascimento" label="Data de Nasc."
+                        type="date" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="12" sm="6">
                       <v-text-field v-model="fd.email" label="E-mail"
                         type="email" variant="outlined" density="compact" />
                     </v-col>
@@ -141,10 +145,6 @@
                 </div>
                 <div class="cad-secao-body">
                   <v-row dense>
-                    <v-col cols="12" sm="6">
-                      <v-text-field v-model="fd.dataNascimento" label="Nasc."
-                        type="date" variant="outlined" density="compact" />
-                    </v-col>
                     <v-col cols="12" sm="6">
                       <v-text-field v-model.number="fd.limiteCredito" label="Limite Crediário (R$)"
                         type="number" prefix="R$" variant="outlined" density="compact" />
@@ -265,7 +265,10 @@ async function buscarDoc() {
 async function salvar() {
   const { valid } = await form.value.validate(); if (!valid) return; salvando.value=true
   try {
-    const payload = { ...fd.value, empresaId: auth.empresaId, cep: (fd.value.cep ?? '').replace(/\D/g,'') || null }
+    const payload = { ...fd.value, empresaId: auth.empresaId,
+      cep: (fd.value.cep ?? '').replace(/\D/g,'') || null,
+      dataNascimento: fd.value.dataNascimento || null,
+      email: (fd.value.email ?? '').trim() || null }
     if (editando.value) { await api.put(`/clientes/${fd.value.id}`, payload); notif.ok('Cliente atualizado!') }
     else { await api.post('/clientes', payload); notif.ok('Cliente cadastrado!') }
     dialog.value=false; await carregar()

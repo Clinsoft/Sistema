@@ -214,7 +214,12 @@ async function carregar() {
 const fdPadrao = () => ({ id:'', nome:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
   cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', dataNascimento:'', limiteCredito:0 })
 function abrirNovo() { editando.value=false; fd.value=fdPadrao(); docStatus.value='idle'; dialog.value=true }
-function abrirEdicao(item: any) { editando.value=true; fd.value={...fdPadrao(),...item}; docStatus.value='idle'; dialog.value=true }
+function abrirEdicao(item: any) {
+  editando.value=true
+  fd.value={...fdPadrao(),...item,
+    dataNascimento: item.dataNascimento ? String(item.dataNascimento).slice(0,10) : '' }
+  docStatus.value='idle'; dialog.value=true
+}
 
 function onInputDoc(e: Event) {
   const raw = (e.target as HTMLInputElement).value

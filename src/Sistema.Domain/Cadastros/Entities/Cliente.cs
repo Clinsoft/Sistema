@@ -51,12 +51,14 @@ public class Cliente : Entity
 
     public void AtualizarDados(string nome, string? email, string? telefone, string? celular,
         string? logradouro, string? numero, string? complemento, string? bairro,
-        string? cidade, string? uf, string? cep, decimal limiteCredito, string? classificacao)
+        string? cidade, string? uf, string? cep, decimal limiteCredito, string? classificacao,
+        DateTime? dataNascimento = null)
     {
         Nome = nome; Email = email; Telefone = telefone; Celular = celular;
         Logradouro = logradouro; Numero = numero; Complemento = complemento;
         Bairro = bairro; Cidade = cidade; Uf = uf; Cep = cep;
         LimiteCredito = limiteCredito; Classificacao = classificacao;
+        DataNascimento = dataNascimento;
     }
 
     public void AdicionarPontos(int pontos) => PontosFidelidade += pontos;

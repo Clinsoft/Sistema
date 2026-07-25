@@ -73,24 +73,23 @@
       <!-- ── COLUNA ESQUERDA: Itens ─────────────────────────── -->
       <div class="pdv-col-itens">
 
-        <!-- Faixa de promoções ativas -->
+        <!-- Faixa de promoções ativas (banner rotativo automático) -->
         <transition name="pdv-promo-slide">
           <div v-if="promoAtiva && !promoDismissed" class="pdv-promo-bar">
-            <v-icon size="13" class="pdv-promo-icon">mdi-bullhorn-outline</v-icon>
-            <span class="pdv-promo-texto">
-              <strong>Informe ao cliente:</strong> {{ promoAtiva }}
-            </span>
-            <button
-              v-if="todasPromocoes.length > 1"
-              class="pdv-promo-nav"
-              title="Próxima promoção"
-              @click="proximaPromo"
-            >
-              <v-icon size="11">mdi-chevron-right</v-icon>
-              {{ promoIdx + 1 }}/{{ todasPromocoes.length }}
-            </button>
-            <button class="pdv-promo-dismiss" title="Dispensar" @click="promoDismissed = true">
-              <v-icon size="12">mdi-close</v-icon>
+            <v-icon size="20" class="pdv-promo-icon">mdi-bullhorn-variant</v-icon>
+            <div class="pdv-promo-viewport">
+              <transition name="pdv-promo-fade" mode="out-in">
+                <span class="pdv-promo-texto" :key="promoIdx">
+                  <strong>Informe ao cliente:</strong> {{ promoAtiva }}
+                </span>
+              </transition>
+            </div>
+            <div v-if="todasPromocoes.length > 1" class="pdv-promo-dots">
+              <span v-for="(_, i) in todasPromocoes" :key="i"
+                class="pdv-promo-dot" :class="{ ativo: i === promoIdx }" />
+            </div>
+            <button class="pdv-promo-dismiss" title="Dispensar" @click="fecharPromo">
+              <v-icon size="14">mdi-close</v-icon>
             </button>
           </div>
         </transition>
@@ -168,6 +167,16 @@
 
                 <!-- Total do item -->
                 <div class="pdv-item-total">R$ {{ fmt(item.total) }}</div>
+
+                <!-- Desconto no item -->
+                <button
+                  class="pdv-item-desc"
+                  :class="{ ativo: item.desconto > 0 }"
+                  title="Desconto neste item"
+                  @click.stop="abrirDescontoItem(i)"
+                >
+                  <v-icon size="16">mdi-tag-minus-outline</v-icon>
+                </button>
 
                 <!-- Remover -->
                 <button class="pdv-item-del" title="Remover (Delete)" @click.stop="removerItem(i)">
@@ -659,14 +668,23 @@
     </v-dialog>
 
     <!-- ══ DIALOG DESCONTO POR ITEM ══════════════════════════════ -->
-    <v-dialog v-model="dialogDescontoItem" max-width="360">
+    <v-dialog v-model="dialogDescontoItem" max-width="400">
       <v-card rounded="xl" class="pa-4">
-        <div class="text-subtitle-1 font-weight-bold mb-3">Desconto no Item</div>
-        <div class="text-body-2 text-medium-emphasis mb-3">
+        <div class="text-subtitle-1 font-weight-bold mb-1">Desconto no Item</div>
+        <div class="text-body-2 text-medium-emphasis">
           {{ itemSelecionado !== null ? itens[itemSelecionado]?.descricao : '' }}
         </div>
-        <v-text-field v-model.number="descontoItemTemp" label="Desconto R$" prefix="R$"
-          type="number" variant="outlined" density="compact" autofocus />
+        <div class="text-caption text-medium-emphasis mb-3">
+          Subtotal do item: R$ {{ fmt(baseDescontoItem) }}
+        </div>
+        <div class="d-flex ga-2">
+          <v-text-field v-model.number="descontoItemTemp" label="Desconto R$" prefix="R$"
+            type="number" variant="outlined" density="compact" autofocus
+            @update:model-value="sincrDescontoItem('reais')" />
+          <v-text-field v-model.number="descontoItemPctTemp" label="Desconto %" suffix="%"
+            type="number" variant="outlined" density="compact"
+            @update:model-value="sincrDescontoItem('pct')" />
+        </div>
         <div class="d-flex justify-end ga-2 mt-2">
           <v-btn variant="text" @click="dialogDescontoItem = false">Cancelar</v-btn>
           <v-btn color="primary" @click="aplicarDescontoItem">Aplicar</v-btn>
@@ -880,6 +898,7 @@ const buscandoCliente = ref(false)
 const dialogProdutos = ref(false)
 const dialogDescontoItem = ref(false)
 const descontoItemTemp = ref(0)
+const descontoItemPctTemp = ref(0)
 const produtosBusca = ref<Produto[]>([])
 const dialogComprovante = ref(false)
 const modalAtalhos = ref(false)
@@ -1103,6 +1122,28 @@ const crediarioValorParcela = computed(() => {
 const clienteSelecionadoNome = computed(() =>
   clientes.value.find(c => c.id === clienteId.value)?.nome ?? '')
 
+// Ao selecionar um cliente, preenche automaticamente o CPF/CNPJ na nota
+// com o documento cadastrado do cliente. Busca o detalhe por ID para não
+// depender do item da lista (que o autocomplete pode substituir na seleção).
+watch(clienteId, async (id) => {
+  if (!id) return
+  let doc = String((clientes.value.find(x => x.id === id) as any)?.cpfCnpj ?? '').replace(/\D/g, '')
+  if (!doc) {
+    try {
+      const r = await api.get(`/clientes/${id}`)
+      doc = String(r.data?.cpfCnpj ?? '').replace(/\D/g, '')
+    } catch { /* ignora */ }
+  }
+  if (!doc) return
+  if (doc.length > 11) {
+    tipoDocConsumidor.value = 'cnpj'
+    cpfConsumidor.value = maskCnpj(doc)
+  } else {
+    tipoDocConsumidor.value = 'cpf'
+    cpfConsumidor.value = formatarCpf(doc)
+  }
+})
+
 function confirmarCrediario() {
   if (!(crediarioParcelas.value >= 1)) { notif.aviso('Informe o número de parcelas.'); return }
   if (crediarioEntrada.value >= crediarioValorBase.value) {
@@ -1151,6 +1192,32 @@ function dinheiroExato() {
 function onInputDoc(e: Event) {
   const raw = (e.target as HTMLInputElement).value
   cpfConsumidor.value = tipoDocConsumidor.value === 'cpf' ? formatarCpf(raw) : maskCnpj(raw)
+}
+
+const baseDescontoItem = computed(() => {
+  if (itemSelecionado.value === null) return 0
+  const it = itens.value[itemSelecionado.value]
+  return it ? it.precoUnitario * it.quantidade : 0
+})
+
+function sincrDescontoItem(origem: 'reais' | 'pct') {
+  const base = baseDescontoItem.value
+  if (origem === 'reais') {
+    descontoItemPctTemp.value = base > 0
+      ? parseFloat(((descontoItemTemp.value / base) * 100).toFixed(1)) : 0
+  } else {
+    descontoItemTemp.value = parseFloat(((descontoItemPctTemp.value / 100) * base).toFixed(2))
+  }
+}
+
+function abrirDescontoItem(i: number) {
+  itemSelecionado.value = i
+  const it = itens.value[i]
+  descontoItemTemp.value = it?.desconto || 0
+  const base = it ? it.precoUnitario * it.quantidade : 0
+  descontoItemPctTemp.value = base > 0
+    ? parseFloat(((descontoItemTemp.value / base) * 100).toFixed(1)) : 0
+  dialogDescontoItem.value = true
 }
 
 function aplicarDescontoItem() {
@@ -1511,8 +1578,19 @@ const promoIdx = ref(0)
 const promoDismissed = ref(false)
 const promoAtiva = computed(() => todasPromocoes.value[promoIdx.value] ?? null)
 
-function proximaPromo() {
-  promoIdx.value = (promoIdx.value + 1) % todasPromocoes.value.length
+let promoTimer: any = null
+function iniciarRotacaoPromo() {
+  clearInterval(promoTimer)
+  promoIdx.value = 0
+  if (todasPromocoes.value.length > 1) {
+    promoTimer = setInterval(() => {
+      promoIdx.value = (promoIdx.value + 1) % todasPromocoes.value.length
+    }, 5000)
+  }
+}
+function fecharPromo() {
+  promoDismissed.value = true
+  clearInterval(promoTimer)
 }
 
 async function carregarPromocoes() {
@@ -1537,6 +1615,7 @@ async function carregarPromocoes() {
       })
       .filter(Boolean)
     todasPromocoes.value = nomes
+    iniciarRotacaoPromo()
   } catch { /* silencioso */ }
 }
 
@@ -1650,6 +1729,7 @@ async function carregarOperadoras() {
 }
 onUnmounted(() => {
   clearInterval(clockTimer)
+  clearInterval(promoTimer)
   document.removeEventListener('keydown', onKeydown, true)
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   if (zxingReader) BrowserMultiFormatReader.releaseAllStreams()
@@ -1884,6 +1964,17 @@ onUnmounted(() => {
 }
 .pdv-item-del:hover { background: #fee2e2; color: #dc2626; }
 
+.pdv-item-desc {
+  width: 28px; height: 28px;
+  border: none; background: none;
+  cursor: pointer; border-radius: 6px;
+  color: #cbd5e1;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .12s; flex-shrink: 0;
+}
+.pdv-item-desc:hover { background: #fef3c7; color: #d97706; }
+.pdv-item-desc.ativo { color: #d97706; background: #fef3c7; }
+
 /* ── Totais ── */
 .pdv-totais {
   border-top: 1px solid #e2e8f0;
@@ -1948,10 +2039,10 @@ onUnmounted(() => {
   gap: 5px;
   padding: 14px 6px;
   border-radius: 12px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid color-mix(in srgb, var(--fp-cor) 25%, #e2e8f0);
   border-top: 3px solid var(--fp-cor, #94a3b8);
-  background: #f8fafc;
-  color: #475569;
+  background: color-mix(in srgb, var(--fp-cor) 12%, white);
+  color: color-mix(in srgb, var(--fp-cor) 55%, #334155);
   cursor: pointer;
   font-size: 11px; font-weight: 600;
   transition: all .15s;
@@ -1959,7 +2050,7 @@ onUnmounted(() => {
 }
 .pdv-fp-btn:hover {
   border-color: var(--fp-cor, #3b82f6);
-  background: #ffffff;
+  background: color-mix(in srgb, var(--fp-cor) 22%, white);
 }
 .pdv-fp-btn--ativo {
   border-color: var(--fp-cor, #2563eb);
@@ -2151,68 +2242,90 @@ onUnmounted(() => {
 .pdv-promo-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  height: 30px;
-  background: #fffbeb;
-  border-bottom: 1px solid #fde68a;
+  gap: 12px;
+  padding: 0 18px;
+  height: 46px;
+  background: linear-gradient(90deg, #f59e0b 0%, #f97316 50%, #ea580c 100%);
+  background-size: 200% 100%;
+  animation: pdv-promo-shimmer 6s linear infinite;
+  border-bottom: 2px solid #c2410c;
+  box-shadow: 0 2px 6px rgba(234,88,12,.35);
   flex-shrink: 0;
   overflow: hidden;
 }
+@keyframes pdv-promo-shimmer {
+  0% { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
 .pdv-promo-icon {
-  color: #d97706;
+  color: #fff;
   flex-shrink: 0;
-  animation: pdv-promo-pulse 2.5s ease-in-out infinite;
+  animation: pdv-promo-pulse 1.6s ease-in-out infinite;
 }
 @keyframes pdv-promo-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .45; }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: .6; }
+}
+.pdv-promo-viewport {
+  flex: 1;
+  overflow: hidden;
 }
 .pdv-promo-texto {
-  flex: 1;
-  font-size: 11.5px;
-  color: #92400e;
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.25);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: .2px;
 }
 .pdv-promo-texto strong {
-  color: #b45309;
-  font-weight: 700;
-  margin-right: 3px;
+  color: #fff;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-right: 6px;
 }
-.pdv-promo-nav {
+.pdv-promo-dots {
   display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: 10px;
-  color: #b45309;
-  background: rgba(217,119,6,.1);
-  border: none;
-  border-radius: 4px;
-  padding: 1px 5px;
-  cursor: pointer;
-  white-space: nowrap;
+  gap: 5px;
   flex-shrink: 0;
-  transition: background .12s;
 }
-.pdv-promo-nav:hover { background: rgba(217,119,6,.2); }
+.pdv-promo-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.45);
+  transition: all .3s ease;
+}
+.pdv-promo-dot.ativo {
+  background: #fff;
+  width: 18px;
+  border-radius: 4px;
+}
 .pdv-promo-dismiss {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: none;
-  background: none;
-  color: #d97706;
+  background: rgba(255,255,255,.18);
+  color: #fff;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
   flex-shrink: 0;
-  opacity: .6;
-  transition: opacity .12s;
+  opacity: .85;
+  transition: all .12s;
 }
-.pdv-promo-dismiss:hover { opacity: 1; background: rgba(217,119,6,.1); }
+.pdv-promo-dismiss:hover { opacity: 1; background: rgba(255,255,255,.35); }
+
+/* Fade entre mensagens do banner */
+.pdv-promo-fade-enter-active { transition: opacity .4s ease, transform .4s ease; }
+.pdv-promo-fade-leave-active { transition: opacity .3s ease, transform .3s ease; }
+.pdv-promo-fade-enter-from { opacity: 0; transform: translateY(60%); }
+.pdv-promo-fade-leave-to { opacity: 0; transform: translateY(-60%); }
 
 .pdv-promo-slide-enter-active { transition: all .2s ease; }
 .pdv-promo-slide-leave-active { transition: all .15s ease; }

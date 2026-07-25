@@ -731,8 +731,7 @@
           </div>
 
           <v-alert v-else type="info" variant="tonal" density="compact" class="mb-4" rounded="lg">
-            NFC-e não emitida — certificado A1 não configurado.
-            <router-link to="/configuracoes" class="ml-1">Configurar</router-link>
+            Cupom fiscal (NFC-e) não emitido para esta venda.
           </v-alert>
 
           <v-row dense>
@@ -915,6 +914,7 @@ const ultimaVendaTotal = ref(0)
 const ultimaVendaTroco = ref(0)
 const ultimaVendaQrCode = ref<string | null>(null)
 const ultimaVendaChave = ref<string | null>(null)
+const ultimaVendaAutorizada = ref(false)
 
 // ── Sessão de caixa ──────────────────────────────────────────────
 const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string; localEstoqueId?: string | null } | null>(null)
@@ -1369,6 +1369,7 @@ async function finalizar() {
     const res = await api.post<{
       numero: string; total: number; troco: number
       notaFiscalId?: string; qrCode?: string; chaveAcesso?: string
+      nfceAutorizada?: boolean; imprimirAutomatico?: boolean
     }>(`/vendas/${vendaId}/finalizar`, {
       pagamentos: pagamentos.value.map(p => ({
         forma: mapaFormaPagamento[p.tipo] ?? p.tipo,
@@ -1404,13 +1405,20 @@ async function finalizar() {
     ultimaVendaTroco.value = res.data.troco
     ultimaVendaQrCode.value = res.data.qrCode ?? null
     ultimaVendaChave.value = res.data.chaveAcesso ?? null
+    ultimaVendaAutorizada.value = res.data.nfceAutorizada ?? false
     dialogComprovante.value = true
-    notif.ok('Venda finalizada!')
+    notif.ok(res.data.nfceAutorizada ? 'Venda finalizada! Cupom fiscal autorizado.' : 'Venda finalizada!')
 
     if (res.data.qrCode) {
       await nextTick()
       if (canvasQr.value)
         await QRCode.toCanvas(canvasQr.value, res.data.qrCode, { width: 160, margin: 1 })
+    }
+
+    // Impressão automática do cupom fiscal (DANFE NFC-e) ao finalizar, quando
+    // a NFC-e foi autorizada e a config "Imprimir automaticamente" está ligada.
+    if (res.data.nfceAutorizada && res.data.imprimirAutomatico) {
+      imprimirComprovante()
     }
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao finalizar venda.')
@@ -1441,9 +1449,15 @@ function cancelar() {
 
 async function imprimirComprovante() {
   if (!ultimaVendaId.value) return
-  const res = await api.get(`/fiscal/recibo/venda/${ultimaVendaId.value}`, { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  window.open(url, '_blank')
+  // Prioriza o DANFE NFC-e (cupom fiscal com QR Code). Se a venda não teve NFC-e
+  // autorizada (ex.: crediário ou falha), cai para o cupom simples.
+  try {
+    const res = await api.get(`/fiscal/recibo/venda/${ultimaVendaId.value}/nfce`, { responseType: 'blob' })
+    window.open(URL.createObjectURL(res.data), '_blank')
+  } catch {
+    const res = await api.get(`/fiscal/recibo/venda/${ultimaVendaId.value}`, { responseType: 'blob' })
+    window.open(URL.createObjectURL(res.data), '_blank')
+  }
 }
 
 // ── Scanner de câmera ─────────────────────────────────────────────

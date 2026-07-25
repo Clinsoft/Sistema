@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Vendas.Commands;
 using Sistema.Application.Vendas.Queries;
+using Sistema.Domain.Fiscal.Entities;
 using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers.Vendas;
@@ -39,19 +40,34 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
         var resultado = await mediator.Send(
             new FinalizarVendaCommand(id, req.Pagamentos, req.CpfCnpjConsumidor), ct);
 
-        // Após o MediatR publicar o VendaFinalizadaEvent, o EmitirNFCeHandler já salvou a NFC-e.
-        // Buscamos os dados da nota para retornar ao PDV.
+        // Após o MediatR publicar o VendaFinalizadaEvent, o EmitirNFCeHandler já salvou a NFC-e
+        // (despacho síncrono no SaveChanges). Buscamos os dados da nota para retornar ao PDV.
         string? qrCode = null;
         string? chaveAcesso = null;
+        bool nfceAutorizada = false;
+        bool imprimirAutomatico = false;
         if (resultado.NotaFiscalId.HasValue)
         {
             var nota = await db.NotasFiscais.AsNoTracking()
                 .FirstOrDefaultAsync(n => n.Id == resultado.NotaFiscalId.Value, ct);
-            qrCode = nota?.QrCode;
-            chaveAcesso = nota?.ChaveAcesso;
+            if (nota is not null)
+            {
+                nfceAutorizada = nota.Status == StatusNF.Autorizada;
+                // QR/chave só fazem sentido quando a nota foi autorizada.
+                qrCode = nfceAutorizada ? nota.QrCode : null;
+                chaveAcesso = nfceAutorizada ? nota.ChaveAcesso : null;
+
+                var cfg = await db.ConfiguracoesFiscais.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.EmpresaId == nota.EmpresaId, ct);
+                imprimirAutomatico = cfg?.ImprimirAutomaticamenteNFCe ?? false;
+            }
         }
 
-        return Ok(resultado with { QrCode = qrCode, ChaveAcesso = chaveAcesso });
+        return Ok(new
+        {
+            resultado.Numero, resultado.Total, resultado.Troco, resultado.NotaFiscalId,
+            qrCode, chaveAcesso, nfceAutorizada, imprimirAutomatico,
+        });
     }
 
     /// <summary>Lista vendas por período, com nome do cliente e filtro opcional por status.</summary>

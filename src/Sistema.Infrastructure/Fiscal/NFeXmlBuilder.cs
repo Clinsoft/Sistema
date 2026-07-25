@@ -105,7 +105,7 @@ public static class NFeXmlBuilder
             EscreverEmit(w, empresa, config);
             EscreverDest(w, nota);
             EscreverItens(w, nota, config);
-            EscreverTotal(w, nota);
+            EscreverTotal(w, nota, config);
             EscreverTransp(w);
             EscreverPag(w, pagamentos);
 
@@ -393,13 +393,21 @@ public static class NFeXmlBuilder
         w.WriteEndElement(); // COFINS
     }
 
-    private static void EscreverTotal(XmlWriter w, NotaFiscal nota)
+    private static void EscreverTotal(XmlWriter w, NotaFiscal nota, ConfiguracaoFiscal config)
     {
         w.WriteStartElement("total");
         w.WriteStartElement("ICMSTot");
 
-        w.WriteElementString("vBC",       FormatarDecimal(nota.Itens.Sum(i => i.BaseIcms), 2));
-        w.WriteElementString("vICMS",     FormatarDecimal(nota.TotalIcms, 2));
+        // No Simples Nacional os itens usam CSOSN (ICMSSN102/500) e NÃO declaram
+        // vBC/vICMS, então o total precisa ser 0,00 — senão a SEFAZ rejeita com
+        // cStat 531 (Total da BC ICMS difere do somatório dos itens). No Regime
+        // Normal (grupos CST) o total soma a base/valor declarados nos itens.
+        var simples = config.Regime == RegimeTributario.SimplesNacional;
+        var totalBcIcms = simples ? 0m : nota.Itens.Sum(i => i.BaseIcms);
+        var totalVIcms  = simples ? 0m : nota.Itens.Sum(i => i.ValorIcms);
+
+        w.WriteElementString("vBC",       FormatarDecimal(totalBcIcms, 2));
+        w.WriteElementString("vICMS",     FormatarDecimal(totalVIcms, 2));
         w.WriteElementString("vICMSDeson","0.00");
         w.WriteElementString("vFCP",      "0.00");
         w.WriteElementString("vBCST",     "0.00");
@@ -417,7 +425,7 @@ public static class NFeXmlBuilder
         w.WriteElementString("vCOFINS",   FormatarDecimal(nota.TotalCofins, 2));
         w.WriteElementString("vOutro",    "0.00");
         w.WriteElementString("vNF",       FormatarDecimal(nota.TotalNota, 2));
-        w.WriteElementString("vTotTrib",  FormatarDecimal(nota.TotalIcms + nota.TotalPis + nota.TotalCofins, 2));
+        w.WriteElementString("vTotTrib",  FormatarDecimal(totalVIcms + nota.TotalPis + nota.TotalCofins, 2));
 
         w.WriteEndElement(); // ICMSTot
         w.WriteEndElement(); // total
@@ -446,9 +454,19 @@ public static class NFeXmlBuilder
         {
             foreach (var (tPag, vPag) in pagamentos)
             {
+                var tp = tPag.PadLeft(2, '0');
                 w.WriteStartElement("detPag");
-                w.WriteElementString("tPag", tPag.PadLeft(2, '0'));
+                w.WriteElementString("tPag", tp);
                 w.WriteElementString("vPag", FormatarDecimal(vPag, 2));
+                // Cartão de crédito (03), débito (04) e Pix (17): a SEFAZ exige o grupo
+                // <card> com tpIntegra (cStat 391 se ausente). Sem TEF/PSP integrado
+                // usamos tpIntegra=2 (não integrado).
+                if (tp is "03" or "04" or "17")
+                {
+                    w.WriteStartElement("card");
+                    w.WriteElementString("tpIntegra", "2");
+                    w.WriteEndElement();
+                }
                 w.WriteEndElement();
             }
         }

@@ -145,13 +145,32 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
 
         // QR Code (NT 2013.001) com a chave real e o CSC da NFC-e
         var uf = empresa.Uf.ToUpper();
-        var ambienteId = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
-        var urlBase = (config.Ambiente == AmbienteFiscal.Producao ? UrlConsultaPorUf : UrlHomologacaoPorUf)
-            .GetValueOrDefault(uf, UrlConsultaPorUf.GetValueOrDefault("SP", "https://www.nfce.fazenda.sp.gov.br/NFCeConsultaPublica")!);
+        var producao = config.Ambiente == AmbienteFiscal.Producao;
+        var ambienteId = producao ? 1 : 2;
+
+        // A SEFAZ valida a URL do QR/consulta (cStat 395 se divergir). SP usa
+        // endpoints próprios: /qrcode (URL do QR) e /consulta (urlChave). Demais UFs
+        // caem na URL de consulta pública cadastrada.
+        string urlQr, urlChave;
+        if (uf == "SP")
+        {
+            var host = producao
+                ? "https://www.nfce.fazenda.sp.gov.br"
+                : "https://www.homologacao.nfce.fazenda.sp.gov.br";
+            urlQr    = $"{host}/qrcode";
+            urlChave = $"{host}/consulta";
+        }
+        else
+        {
+            urlChave = (producao ? UrlConsultaPorUf : UrlHomologacaoPorUf)
+                .GetValueOrDefault(uf, UrlConsultaPorUf["SP"]);
+            urlQr = urlChave;
+        }
+
         var qrCodeData = GerarQrCodeData(chave44, ambienteId, config.CscIdNFCe, config.CscTokenNFCe);
         // No XML da NFC-e: <qrCode> é a URL COMPLETA (base?p=params) e <urlChave> é
-        // apenas a URL base de consulta (máx. 85 caracteres). Antes estavam trocados.
-        nfce.RegistrarQrCode($"{urlBase}?p={qrCodeData}", urlBase);
+        // apenas a URL base de consulta (máx. 85 caracteres).
+        nfce.RegistrarQrCode($"{urlQr}?p={qrCodeData}", urlChave);
 
         // Monta, assina e TRANSMITE à SEFAZ. Uma falha de transmissão (SEFAZ fora,
         // rejeição, sem certificado) NÃO pode derrubar a venda — a nota fica salva

@@ -169,10 +169,17 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
                 return new ResultadoTransmissao(false, null, msg, xml);
             }
 
-            // Resposta do lote: retEnviNFe → infRec ou protNFe
-            var cStat  = doc.SelectSingleNode("//nfe:cStat",  ns)?.InnerText ?? "";
-            var xMot   = doc.SelectSingleNode("//nfe:xMotivo",ns)?.InnerText ?? "";
-            var nProt  = doc.SelectSingleNode("//nfe:nProt",  ns)?.InnerText;
+            // O resultado REAL da nota está em protNFe/infProt. O cStat do nível do
+            // lote (retEnviNFe) costuma ser 104 "Lote processado" — que não diz se a
+            // nota foi autorizada ou rejeitada. Então priorizamos o protNFe; só caímos
+            // para o cStat do lote quando não há protNFe (ex.: lote rejeitado no schema).
+            var infProt = doc.SelectSingleNode("//nfe:protNFe/nfe:infProt", ns);
+            var cStat  = infProt?.SelectSingleNode("nfe:cStat",  ns)?.InnerText
+                      ?? doc.SelectSingleNode("//nfe:cStat",  ns)?.InnerText ?? "";
+            var xMot   = infProt?.SelectSingleNode("nfe:xMotivo", ns)?.InnerText
+                      ?? doc.SelectSingleNode("//nfe:xMotivo",ns)?.InnerText ?? "";
+            var nProt  = infProt?.SelectSingleNode("nfe:nProt",  ns)?.InnerText
+                      ?? doc.SelectSingleNode("//nfe:nProt",  ns)?.InnerText;
 
             // cStat 100=autorizada, 150=autorizada fora do prazo, 204=duplicata (já autorizada)
             var autorizada = cStat is "100" or "150" or "204";

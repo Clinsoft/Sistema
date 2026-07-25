@@ -15,7 +15,7 @@ namespace Sistema.API.Controllers.Fiscal;
 [Authorize]
 public class ReciboController(SistemaDbContext db, IDanfeService danfe) : ControllerBase
 {
-    /// <summary>Reimprime o cupom fiscal (DANFE da NFC-e) de uma venda que teve NFC-e autorizada.</summary>
+    /// <summary>Gera/reimprime o cupom fiscal (DANFE NFC-e) térmico 80mm de uma venda autorizada.</summary>
     [HttpGet("venda/{vendaId:guid}/nfce")]
     public async Task<IActionResult> ReciboFiscalVenda(Guid vendaId, CancellationToken ct)
     {
@@ -35,9 +35,152 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         if (empresa is null)
             return NotFound(new { mensagem = "Empresa não encontrada." });
 
-        var pdf = danfe.GerarDanfe(nota, empresa);
+        var venda = await db.Vendas.AsNoTracking()
+            .Include(v => v.Pagamentos)
+            .FirstOrDefaultAsync(v => v.Id == vendaId, ct);
+        var vendedor = venda is not null
+            ? await db.Usuarios.AsNoTracking().Where(u => u.Id == venda.UsuarioId)
+                .Select(u => u.Nome).FirstOrDefaultAsync(ct)
+            : null;
+
+        var pdf = GerarDanfeNFCeTermico(nota, empresa, venda, vendedor);
         return File(pdf, "application/pdf", $"nfce-{nota.Numero:D9}.pdf");
     }
+
+    // Gera o DANFE NFC-e no formato de cupom térmico 80mm (padrão SEFAZ).
+    private static byte[] GerarDanfeNFCeTermico(
+        Sistema.Domain.Fiscal.Entities.NotaFiscal nota,
+        Sistema.Domain.Cadastros.Entities.Empresa empresa,
+        Sistema.Domain.Vendas.Entities.Venda? venda,
+        string? vendedor)
+    {
+        var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+        const int larg = 36;   // caracteres que cabem na bobina 80mm (sem quebra de linha)
+        static string Linha(string esq, string dir)
+        {
+            if (esq.Length + dir.Length + 1 > larg)
+                esq = esq[..Math.Max(0, larg - dir.Length - 1)];
+            return esq + new string(' ', Math.Max(1, larg - esq.Length - dir.Length)) + dir;
+        }
+        var traco = new string('-', larg);
+
+        // QR Code (imagem PNG) a partir da URL do QR da nota.
+        byte[]? qrPng = null;
+        if (!string.IsNullOrEmpty(nota.QrCode))
+        {
+            using var qrGen = new QRCoder.QRCodeGenerator();
+            var qrData = qrGen.CreateQrCode(nota.QrCode, QRCoder.QRCodeGenerator.ECCLevel.M);
+            qrPng = new QRCoder.PngByteQRCode(qrData).GetGraphic(10);
+        }
+
+        var chave = nota.ChaveAcesso ?? "";
+        var chaveFmt = string.Join(" ", Enumerable.Range(0, (chave.Length + 3) / 4)
+            .Select(i => chave.Substring(i * 4, Math.Min(4, chave.Length - i * 4))));
+        var doc = nota.CpfCnpjDestinatario ?? nota.CpfCnpjConsumidor;
+
+        RegistrarFonteMono();
+        var fonteMono = _fonteMonoDisponivel ? "DejaVu Sans Mono" : "Courier New";
+
+        var pdf = Document.Create(d =>
+        {
+            d.Page(page =>
+            {
+                page.ContinuousSize(80, Unit.Millimetre);
+                page.Margin(4, Unit.Millimetre);
+                page.DefaultTextStyle(t => t.FontSize(8).FontFamily(fonteMono));
+
+                page.Content().Column(col =>
+                {
+                    // Cabeçalho do emitente (centralizado)
+                    col.Item().AlignCenter().Text(empresa.RazaoSocial).Bold().FontSize(9);
+                    col.Item().AlignCenter().Text($"CNPJ: {empresa.Cnpj}").FontSize(7);
+                    col.Item().AlignCenter().Text($"IE: {empresa.InscricaoEstadual}").FontSize(7);
+                    col.Item().AlignCenter().Text(
+                        $"{empresa.Logradouro}, {empresa.Numero} - {empresa.Bairro}").FontSize(7);
+                    col.Item().AlignCenter().Text($"{empresa.Cidade} - {empresa.Uf}").FontSize(7);
+                    col.Item().Text(traco);
+                    col.Item().AlignCenter().Text("DANFE NFC-e").Bold().FontSize(8);
+                    col.Item().AlignCenter().Text(
+                        "Documento Auxiliar da Nota Fiscal de Consumidor Eletronica").FontSize(7);
+                    col.Item().Text(traco);
+
+                    // Itens
+                    foreach (var item in nota.Itens)
+                    {
+                        col.Item().Text($"{item.Codigo} {item.Descricao}");
+                        var qtd = item.Pesavel ? item.Quantidade.ToString("N3", brl) : item.Quantidade.ToString("N0", brl);
+                        col.Item().Text(Linha(
+                            $"  {qtd} {item.UnidadeMedida} x {item.ValorUnitario.ToString("N2", brl)}",
+                            item.ValorTotal.ToString("N2", brl)));
+                    }
+                    col.Item().Text(traco);
+
+                    // Totais (rótulo e valor na mesma linha)
+                    col.Item().Text(Linha("Qtde. total de itens", nota.Itens.Count.ToString()));
+                    col.Item().Text(Linha("Valor total R$", nota.TotalNota.ToString("N2", brl)));
+                    col.Item().Text(Linha("Valor a Pagar R$", nota.TotalNota.ToString("N2", brl))).Bold();
+                    col.Item().Text(traco);
+
+                    // Pagamentos
+                    col.Item().Text(Linha("FORMA PAGTO", "VALOR R$"));
+                    if (venda is not null)
+                    {
+                        foreach (var pag in venda.Pagamentos)
+                            col.Item().Text(Linha(FormaPagamentoTexto(pag.Forma), pag.Valor.ToString("N2", brl)));
+                        if (venda.Troco > 0)
+                            col.Item().Text(Linha("Troco", "R$ " + venda.Troco.ToString("N2", brl)));
+                    }
+                    col.Item().Text(traco);
+
+                    // Rodapé fiscal (centralizado)
+                    if (!string.IsNullOrWhiteSpace(vendedor))
+                        col.Item().AlignCenter().Text($"Vendedor: {vendedor}").FontSize(7);
+                    col.Item().AlignCenter().Text(empresa.NomeFantasia).FontSize(7);
+                    col.Item().AlignCenter().Text("Trib aprox: Sem parametros p/ calculo").FontSize(7);
+                    col.Item().AlignCenter().Text($"Numero: {nota.Numero}  Serie: {nota.Serie}").FontSize(7);
+                    col.Item().AlignCenter().Text($"Emissao: {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}").FontSize(7);
+                    col.Item().AlignCenter().Text("Via consumidor").FontSize(7);
+                    col.Item().PaddingTop(2).AlignCenter().Text("Consulte pela chave de acesso em").FontSize(7);
+                    if (!string.IsNullOrEmpty(nota.UrlConsultaQrCode))
+                        col.Item().AlignCenter().Text(nota.UrlConsultaQrCode).FontSize(7);
+                    col.Item().PaddingTop(2).AlignCenter().Text("CHAVE DE ACESSO").Bold().FontSize(7);
+                    col.Item().AlignCenter().Text(chaveFmt).FontSize(7);
+                    col.Item().PaddingTop(2).AlignCenter().Text(
+                        string.IsNullOrWhiteSpace(doc) ? "Consumidor nao identificado" : $"Consumidor: {doc}").FontSize(7);
+                    if (!string.IsNullOrEmpty(nota.Protocolo))
+                    {
+                        col.Item().Text(traco);
+                        col.Item().AlignCenter().Text("Protocolo de Autorizacao").FontSize(7);
+                        col.Item().AlignCenter().Text(
+                            $"{nota.Protocolo}  {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}").FontSize(7);
+                    }
+
+                    // QR Code
+                    if (qrPng is not null)
+                    {
+                        col.Item().Text(traco);
+                        col.Item().AlignCenter().Text("CONSULTA VIA LEITOR DE QRCODE").FontSize(7);
+                        col.Item().PaddingTop(3).AlignCenter().Width(38, Unit.Millimetre).Image(qrPng);
+                    }
+                });
+            });
+        });
+
+        return pdf.GeneratePdf();
+    }
+
+    private static string FormaPagamentoTexto(Sistema.Domain.Vendas.Entities.FormaPagamento f) => f switch
+    {
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Dinheiro      => "Dinheiro",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Pix           => "Pix",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoCredito => "Cartao Credito",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito  => "Cartao Debito",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Crediario     => "Crediario",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Boleto        => "Boleto",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Cheque        => "Cheque",
+        Sistema.Domain.Vendas.Entities.FormaPagamento.Vale          => "Vale",
+        _ => f.ToString(),
+    };
 
     /// <summary>Gera recibo PDF de pagamento de conta a receber.</summary>
     [HttpGet("lancamento/{id:guid}")]

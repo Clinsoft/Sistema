@@ -352,6 +352,9 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.TryGetProperty("error", out var err))
             {
+                // error_user_msg é a mensagem amigável e específica da Meta (quando existe).
+                if (err.TryGetProperty("error_user_msg", out var eum) && eum.GetString() is { Length: > 0 } amigavel)
+                    return amigavel;
                 var msg  = err.TryGetProperty("message", out var m) ? m.GetString() : null;
                 var tipo = err.TryGetProperty("type", out var t) ? t.GetString() : null;
                 return string.IsNullOrWhiteSpace(tipo) ? msg : $"{msg} ({tipo})";
@@ -378,7 +381,7 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
     public async Task<(bool Ok, string? Status, string? Erro)> CriarTemplateAsync(
         string wabaId, string accessToken, string? appId,
         string nome, string corpo, IReadOnlyList<string> exemplos,
-        byte[]? imagemExemploPng, CancellationToken ct = default)
+        byte[]? imagemExemploPng, string categoria = "MARKETING", CancellationToken ct = default)
     {
         try
         {
@@ -413,7 +416,7 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
             {
                 name = nome,
                 language = "pt_BR",
-                category = "MARKETING",
+                category = categoria,
                 components = componentes.ToArray()
             };
 

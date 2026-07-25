@@ -149,6 +149,18 @@ public class WhatsAppMensagemController(
         return NoContent();
     }
 
+    /// <summary>Remove o template cadastrado (só do sistema — não afeta a Meta).</summary>
+    [HttpDelete("templates/{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> ExcluirTemplate(Guid id, CancellationToken ct)
+    {
+        var t = await db.TemplatesWhatsAppMensagem.FindAsync([id], ct);
+        if (t is null) return NotFound();
+        db.TemplatesWhatsAppMensagem.Remove(t);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     /// <summary>Lista templates aprovados diretamente na Meta (requer config válida).</summary>
     [HttpGet("templates/meta")]
     [Authorize]
@@ -205,12 +217,51 @@ public class WhatsAppMensagemController(
 
         var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
             cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
-            nome, corpo, exemplos, imagemExemplo, ct);
+            nome, corpo, exemplos, imagemExemplo, "MARKETING", ct);
 
         if (!ok)
             return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
 
         return Ok(new { nome, status, comImagem = imagemExemplo != null });
+    }
+
+    /// <summary>Cria um template PERSONALIZADO na Meta e envia para análise.</summary>
+    [HttpPost("templates/criar-custom")]
+    [Authorize]
+    public async Task<IActionResult> CriarTemplateCustom(
+        [FromBody] CriarTemplateCustomRequest req, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+        if (cfg?.BusinessAccountId is null || cfg.AccessToken is null)
+            return BadRequest(new { mensagem = "Configure o Business Account ID e o Access Token primeiro." });
+        if (string.IsNullOrWhiteSpace(req.Nome) || string.IsNullOrWhiteSpace(req.Corpo))
+            return BadRequest(new { mensagem = "Informe o nome e o corpo do template." });
+
+        var nome = req.Nome.Trim().ToLowerInvariant().Replace(' ', '_');
+        var categoria = string.IsNullOrWhiteSpace(req.Categoria) ? "UTILITY" : req.Categoria.ToUpperInvariant();
+
+        // Imagem de exemplo (opcional): usa uma arte já gerada, se pedido.
+        byte[]? imagem = null;
+        if (req.ComImagem)
+        {
+            var arte = await db.ArtesMarketing.AsNoTracking()
+                .Where(a => a.EmpresaId == req.EmpresaId && a.UrlExportada != null)
+                .OrderByDescending(a => a.CriadoEm).FirstOrDefaultAsync(ct);
+            if (arte?.UrlExportada is { } url)
+            {
+                var caminho = Path.Combine("wwwroot", url.TrimStart('/'));
+                if (System.IO.File.Exists(caminho)) imagem = await System.IO.File.ReadAllBytesAsync(caminho, ct);
+            }
+        }
+
+        var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
+            cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
+            nome, req.Corpo, (req.Exemplos ?? []).ToList(), imagem, categoria, ct);
+
+        if (!ok)
+            return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
+        return Ok(new { nome, status, comImagem = imagem != null });
     }
 
     // ─── Envio manual ─────────────────────────────────────────────────────────
@@ -467,7 +518,7 @@ public class WhatsAppMensagemController(
         if (!sucesso)
             return StatusCode(502, new { mensagem = $"Falha ao enviar template: {erro}" });
 
-        var nome = await db.MensagensWhatsApp
+        var nome = req.Nome ?? await db.MensagensWhatsApp
             .Where(m => m.Telefone == telefone && m.NomeContato != null)
             .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
         db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(
@@ -720,7 +771,12 @@ public record EnviarMensagemRequest(
 
 public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);
 
+public record CriarTemplateCustomRequest(
+    Guid EmpresaId, string Nome, string Corpo, string? Categoria = "UTILITY",
+    IEnumerable<string>? Exemplos = null, bool ComImagem = false);
+
 public record ResponderRequest(Guid EmpresaId, string Texto);
 
 public record ResponderTemplateRequest(
-    Guid EmpresaId, string TemplateName, string? Idioma = "pt_BR", IEnumerable<string>? Variaveis = null);
+    Guid EmpresaId, string TemplateName, string? Idioma = "pt_BR",
+    IEnumerable<string>? Variaveis = null, string? Nome = null);

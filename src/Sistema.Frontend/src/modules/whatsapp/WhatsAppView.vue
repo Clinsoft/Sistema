@@ -30,10 +30,12 @@
         <v-row no-gutters style="height:70vh" class="border rounded-lg overflow-hidden">
           <!-- Lista de conversas -->
           <v-col cols="12" md="4" class="d-flex flex-column border-e" style="height:100%">
-            <div class="pa-2">
+            <div class="pa-2 d-flex ga-2">
               <v-text-field v-model="buscaConversa" placeholder="Buscar conversa…" density="compact"
                 hide-details variant="solo-filled" flat prepend-inner-icon="mdi-magnify" clearable
                 @update:model-value="carregarConversas" />
+              <v-btn icon="mdi-message-plus-outline" color="success" variant="tonal"
+                title="Nova conversa (do cadastro de clientes)" @click="abrirNovaConversa" />
             </div>
             <v-divider />
             <div style="flex:1;overflow:auto">
@@ -338,9 +340,12 @@
             </div>
           </v-col>
           <v-col cols="auto">
-            <v-btn color="success" prepend-icon="mdi-send-check" @click="criarTemplatePromocao"
-              :loading="criandoTemplate">
-              Criar template de promoção (p/ análise)
+            <v-btn color="success" prepend-icon="mdi-send-check" @click="abrirCustom">
+              Criar template (p/ análise)
+            </v-btn>
+            <v-btn color="success" variant="tonal" class="ml-2" prepend-icon="mdi-tag-plus"
+              @click="criarTemplatePromocao" :loading="criandoTemplate">
+              Promoção rápida
             </v-btn>
             <v-btn color="primary" class="ml-2" prepend-icon="mdi-plus" @click="abrirDialogTemplate(null)">
               Novo Template
@@ -363,6 +368,8 @@
                 <v-card-subtitle>{{ t.tipoDisparo }} · {{ t.idioma }}</v-card-subtitle>
                 <template #append>
                   <v-btn icon="mdi-pencil" size="small" variant="text" @click="abrirDialogTemplate(t)" />
+                  <v-btn icon="mdi-delete-outline" size="small" variant="text" color="error"
+                    @click="excluirTemplate(t)" />
                 </template>
               </v-card-item>
               <v-card-text v-if="t.exemploTexto" class="pt-0">
@@ -549,8 +556,10 @@
             rows="3" hint='Ex: [{"posicao":1,"campo":"primeiro_nome"},{"posicao":2,"campo":"desconto"}]'
             persistent-hint />
           <div class="text-caption mt-2 text-medium-emphasis">
-            Campos disponíveis: nome_cliente, primeiro_nome, telefone, data_aniversario, desconto,
-            produto_nome, produto_preco, produto_preco_promo, data_validade, link_catalogo, nome_empresa
+            <b>Campos disponíveis</b> (no <code>campo</code> do JSON):<br>
+            <b>Cliente:</b> nome_cliente, primeiro_nome, telefone, data_aniversario<br>
+            <b>Empresa:</b> nome_empresa, link_catalogo<br>
+            <b>Promoção:</b> produto_nome, produto_preco, produto_preco_promo, desconto, data_validade
           </div>
         </v-card-text>
         <v-card-actions>
@@ -605,6 +614,74 @@
       </v-card>
     </v-dialog>
 
+    <!-- Criar template personalizado e enviar para análise da Meta -->
+    <v-dialog v-model="dialogCustom" max-width="600">
+      <v-card rounded="xl">
+        <v-card-title>Criar template (enviar para análise)</v-card-title>
+        <v-card-subtitle>A Meta analisa e aprova; depois é só importar e usar.</v-card-subtitle>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12" sm="7">
+              <v-text-field v-model="custom.nome" label="Nome do template" density="compact"
+                hint="minúsculas e _ (ex.: comecar_conversa)" persistent-hint />
+            </v-col>
+            <v-col cols="12" sm="5">
+              <v-select v-model="custom.categoria" :items="['UTILITY','MARKETING']" label="Categoria"
+                density="compact" hint="Saudação/atendimento = UTILITY" persistent-hint />
+            </v-col>
+          </v-row>
+          <v-textarea v-model="custom.corpo" label="Corpo da mensagem" rows="4" class="mt-2"
+            hint="Use {{1}}, {{2}}… para variáveis. Ex.: Olá {{1}}, aqui é a EcoGranel!" persistent-hint />
+          <v-textarea v-model="custom.exemplos" label="Exemplos das variáveis (um por linha)" rows="2"
+            class="mt-3" hint="Um valor por {{n}}, na ordem. Ex.: João" persistent-hint />
+          <v-switch v-model="custom.comImagem" color="success" density="compact" hide-details
+            label="Incluir cabeçalho de imagem (usa uma arte já gerada)" class="mt-2" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="dialogCustom = false">Cancelar</v-btn>
+          <v-btn color="success" :loading="criandoCustom"
+            :disabled="!custom.nome || !custom.corpo" @click="enviarCustom">Enviar para análise</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Nova conversa a partir do cadastro de clientes -->
+    <v-dialog v-model="dialogNovaConversa" max-width="520">
+      <v-card rounded="xl">
+        <v-card-title>Nova conversa</v-card-title>
+        <v-card-subtitle>Escolha um cliente cadastrado (ou digite o número).</v-card-subtitle>
+        <v-card-text>
+          <v-autocomplete v-model="novaConv.cliente" :items="clientesBusca" return-object
+            :item-title="c => `${c.nome} — ${c.celular || c.telefone || 's/ telefone'}`" item-value="id"
+            label="Cliente" density="compact" clearable no-filter
+            :loading="buscandoCliente" @update:search="buscarClientes"
+            @update:model-value="onClienteSelecionado" />
+          <v-row dense class="mt-1">
+            <v-col cols="7">
+              <v-text-field v-model="novaConv.telefone" label="Telefone (com DDD)" density="compact"
+                placeholder="5518999998888" prepend-inner-icon="mdi-phone" />
+            </v-col>
+            <v-col cols="5">
+              <v-text-field v-model="novaConv.nome" label="Nome" density="compact" />
+            </v-col>
+          </v-row>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-2">
+            Conversas iniciadas pela empresa exigem um <b>template aprovado</b> (regra do WhatsApp).
+            O cliente respondendo, abre a janela de 24h para texto livre.
+          </v-alert>
+          <v-select v-model="novaConv.template" :items="templates" item-title="nomeMeta" item-value="nomeMeta"
+            label="Template para iniciar" density="compact" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="dialogNovaConversa = false">Cancelar</v-btn>
+          <v-btn color="success" :loading="iniciandoConversa"
+            :disabled="!novaConv.telefone || !novaConv.template" @click="iniciarConversa">Iniciar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -644,19 +721,26 @@ function corAvatar(tel: string) {
 function corTique(status?: string) {
   return status === 'Lida' ? 'info' : status === 'Falhou' ? 'error' : 'grey'
 }
+// As datas vêm do backend em UTC (sem o sufixo 'Z'); trata como UTC para exibir no
+// fuso local correto (o navegador converte na hora de formatar).
+function paraData(v: string): Date {
+  if (!v) return new Date(NaN)
+  const s = /[zZ]|[+-]\d\d:?\d\d$/.test(v) ? v : v + 'Z'
+  return new Date(s)
+}
 const fmtHoraCurta = (v: string) => {
-  const d = new Date(v)
+  const d = paraData(v)
   return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 function separadorData(v: string) {
-  const d = new Date(v); const hoje = new Date(); const ontem = new Date(); ontem.setDate(hoje.getDate() - 1)
+  const d = paraData(v); const hoje = new Date(); const ontem = new Date(); ontem.setDate(hoje.getDate() - 1)
   if (d.toDateString() === hoje.toDateString()) return 'Hoje'
   if (d.toDateString() === ontem.toDateString()) return 'Ontem'
   return d.toLocaleDateString('pt-BR')
 }
 function mostrarData(i: number) {
   if (i === 0) return true
-  return new Date(mensagens.value[i].dataHora).toDateString() !== new Date(mensagens.value[i - 1].dataHora).toDateString()
+  return paraData(mensagens.value[i].dataHora).toDateString() !== paraData(mensagens.value[i - 1].dataHora).toDateString()
 }
 function abrirImagem(url: string) { window.open(url, '_blank') }
 
@@ -723,6 +807,69 @@ async function enviarCatalogoNativo() {
   } finally { respondendo.value = false }
 }
 
+// ── Nova conversa (agenda telefônica dos clientes) ──────────────
+const dialogNovaConversa = ref(false)
+const clientesBusca = ref<any[]>([])
+const buscandoCliente = ref(false)
+const iniciandoConversa = ref(false)
+const novaConv = ref<{ cliente: any; telefone: string; nome: string; template: string | null }>(
+  { cliente: null, telefone: '', nome: '', template: null })
+
+function abrirNovaConversa() {
+  novaConv.value = { cliente: null, telefone: '', nome: '', template: templates.value[0]?.nomeMeta ?? null }
+  dialogNovaConversa.value = true
+  carregarClientes()   // pré-carrega a lista (agenda) ao abrir
+}
+
+async function carregarClientes(termo?: string) {
+  buscandoCliente.value = true
+  try {
+    const { data } = await api.get('/clientes', {
+      params: { empresaId: auth.empresaId, termo: termo || undefined, tamanhoPagina: 100 },
+    })
+    const lista = Array.isArray(data) ? data : (data?.itens ?? [])
+    // Prioriza quem tem telefone/celular; mantém os demais no fim (dá pra digitar o número).
+    clientesBusca.value = [...lista].sort((a: any, b: any) =>
+      (b.celular || b.telefone ? 1 : 0) - (a.celular || a.telefone ? 1 : 0))
+  } catch { clientesBusca.value = [] }
+  finally { buscandoCliente.value = false }
+}
+
+let clienteTimer: any
+function buscarClientes(termo: string) {
+  clearTimeout(clienteTimer)
+  clienteTimer = setTimeout(() => carregarClientes(termo), 300)
+}
+
+function onClienteSelecionado(c: any) {
+  if (!c) return
+  novaConv.value.nome = c.nome
+  novaConv.value.telefone = (c.celular || c.telefone || '').replace(/\D/g, '')
+}
+
+async function iniciarConversa() {
+  const tel = (novaConv.value.telefone || '').replace(/\D/g, '')
+  if (!tel || !novaConv.value.template) return
+  iniciandoConversa.value = true
+  try {
+    const tpl = templates.value.find(t => t.nomeMeta === novaConv.value.template)
+    await api.post(`/whatsapp/conversas/${tel}/responder-template`, {
+      empresaId: auth.empresaId,
+      templateName: novaConv.value.template,
+      idioma: tpl?.idioma || 'pt_BR',
+      nome: novaConv.value.nome || null,
+    })
+    dialogNovaConversa.value = false
+    await carregarConversas()
+    const c = conversas.value.find(x => x.telefone === tel)
+      ?? { telefone: tel, nome: novaConv.value.nome, dentroDe24h: false }
+    await abrirConversa(c)
+    tab.value = 'conversas'
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao iniciar a conversa.')
+  } finally { iniciandoConversa.value = false }
+}
+
 async function enviarLinkCatalogo() {
   if (!conversaAtiva.value) return
   const texto = '🌿 Confira nosso catálogo de produtos naturais EcoGranel:\n'
@@ -741,8 +888,9 @@ async function responderTemplate() {
   if (!templateResposta.value || !conversaAtiva.value) return
   respondendo.value = true
   try {
+    const tpl = templates.value.find(t => t.nomeMeta === templateResposta.value)
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-template`,
-      { empresaId: auth.empresaId, templateName: templateResposta.value })
+      { empresaId: auth.empresaId, templateName: templateResposta.value, idioma: tpl?.idioma || 'pt_BR' })
     templateResposta.value = null
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
@@ -1036,6 +1184,54 @@ async function criarTemplatePromocao() {
     notif.erro(e?.response?.data?.mensagem ?? 'Erro ao criar o template na Meta.')
   } finally {
     criandoTemplate.value = false
+  }
+}
+
+// Criar template personalizado e enviar para análise.
+const dialogCustom = ref(false)
+const criandoCustom = ref(false)
+const custom = ref({ nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false })
+
+function abrirCustom() {
+  custom.value = { nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false }
+  dialogCustom.value = true
+}
+
+async function enviarCustom() {
+  const exemplos = custom.value.exemplos.split('\n').map(v => v.trim()).filter(Boolean)
+  // Nº de variáveis {{n}} no corpo precisa bater com o nº de exemplos (a Meta exige).
+  const nVars = new Set((custom.value.corpo.match(/\{\{\s*\d+\s*\}\}/g) || [])).size
+  if (nVars > exemplos.length) {
+    notif.erro(`O corpo tem ${nVars} variável(is) {{n}}, mas você deu ${exemplos.length} exemplo(s). `
+      + 'Informe um exemplo por variável (uma por linha) — senão a Meta recusa por INVALID_FORMAT.')
+    return
+  }
+  criandoCustom.value = true
+  try {
+    const { data } = await api.post('/whatsapp/mensagem/templates/criar-custom', {
+      empresaId: auth.empresaId,
+      nome: custom.value.nome,
+      corpo: custom.value.corpo,
+      categoria: custom.value.categoria,
+      exemplos,
+      comImagem: custom.value.comImagem,
+    })
+    dialogCustom.value = false
+    notif.ok(`Template "${data?.nome}" enviado para análise (${data?.status ?? 'PENDING'}). Acompanhe o status pelo selo no card.`)
+    carregarTemplates()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao enviar o template para análise.')
+  } finally { criandoCustom.value = false }
+}
+
+async function excluirTemplate(t: any) {
+  if (!confirm(`Excluir o template "${t.nomeMeta}" da lista? (não afeta a Meta)`)) return
+  try {
+    await api.delete(`/whatsapp/mensagem/templates/${t.id}`)
+    notif.ok('Template removido da lista.')
+    await carregarTemplates()
+  } catch {
+    notif.erro('Erro ao excluir o template.')
   }
 }
 

@@ -48,6 +48,19 @@ public class WhatsAppDisparoJob(
         }
     }
 
+    // Variáveis comuns disponíveis em qualquer template.
+    private const string LinkCatalogo = "https://ecogranel.com.br/produtos";
+    private static Dictionary<string, string> VariaveisComuns(ClienteInfo c, string nomeEmpresa)
+        => new()
+        {
+            ["nome_cliente"]     = c.Nome,
+            ["primeiro_nome"]    = c.Nome.Split(' ')[0],
+            ["nome_empresa"]     = nomeEmpresa,
+            ["telefone"]         = c.Telefone,
+            ["data_aniversario"] = c.DataNascimento?.ToString("dd/MM/yyyy") ?? "",
+            ["link_catalogo"]    = LinkCatalogo,
+        };
+
     // ─── Aniversariantes ─────────────────────────────────────────────────────
 
     private async Task DispararAniversariantes(Guid empresaId, string nomeEmpresa,
@@ -68,7 +81,7 @@ public class WhatsAppDisparoJob(
                      && c.DataNascimento.Value.Month == hoje.Month
                      && c.DataNascimento.Value.Day   == hoje.Day
                      && !string.IsNullOrEmpty(c.Telefone))
-            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!))
+            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
         var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Aniversario);
@@ -76,12 +89,7 @@ public class WhatsAppDisparoJob(
         int enviados = 0, falhas = 0;
         foreach (var c in destinatarios.Where(c => !jaEnviados.Contains(c.Id)))
         {
-            var ctx = new Dictionary<string, string>
-            {
-                ["nome_cliente"]   = c.Nome,
-                ["primeiro_nome"]  = c.Nome.Split(' ')[0],
-                ["nome_empresa"]   = nomeEmpresa,
-            };
+            var ctx = VariaveisComuns(c, nomeEmpresa);
             var (ok, wamId, erro) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Aniversario, template, ctx, cfg);
             if (ok) enviados++; else falhas++;
         }
@@ -130,7 +138,7 @@ public class WhatsAppDisparoJob(
                      && c.Ativo
                      && !string.IsNullOrEmpty(c.Telefone)
                      && !jaEnviados.Contains(c.Id))
-            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!))
+            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
         if (clientes.Count == 0) return;
@@ -142,17 +150,12 @@ public class WhatsAppDisparoJob(
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
-            var ctx = new Dictionary<string, string>
-            {
-                ["nome_cliente"]       = c.Nome,
-                ["primeiro_nome"]      = c.Nome.Split(' ')[0],
-                ["nome_empresa"]       = nomeEmpresa,
-                ["produto_nome"]       = layout.GetValueOrDefault("produto_nome", ""),
-                ["produto_preco"]      = layout.GetValueOrDefault("produto_preco", ""),
-                ["produto_preco_promo"]= layout.GetValueOrDefault("produto_preco_promo", ""),
-                ["data_validade"]      = layout.GetValueOrDefault("data_validade", ""),
-                ["desconto"]           = layout.GetValueOrDefault("desconto", ""),
-            };
+            var ctx = VariaveisComuns(c, nomeEmpresa);
+            ctx["produto_nome"]        = layout.GetValueOrDefault("produto_nome", "");
+            ctx["produto_preco"]       = layout.GetValueOrDefault("produto_preco", "");
+            ctx["produto_preco_promo"] = layout.GetValueOrDefault("produto_preco_promo", "");
+            ctx["data_validade"]       = layout.GetValueOrDefault("data_validade", "");
+            ctx["desconto"]            = layout.GetValueOrDefault("desconto", "");
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg);
             if (ok) enviados++; else falhas++;
         }
@@ -197,18 +200,13 @@ public class WhatsAppDisparoJob(
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
                      && !string.IsNullOrEmpty(c.Telefone))
-            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!))
+            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
-            var ctx = new Dictionary<string, string>
-            {
-                ["nome_cliente"]  = c.Nome,
-                ["primeiro_nome"] = c.Nome.Split(' ')[0],
-                ["nome_empresa"]  = nomeEmpresa,
-            };
+            var ctx = VariaveisComuns(c, nomeEmpresa);
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Novidade, template, ctx, cfg);
             if (ok) enviados++; else falhas++;
         }
@@ -232,18 +230,13 @@ public class WhatsAppDisparoJob(
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
                      && !string.IsNullOrEmpty(c.Telefone))
-            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!))
+            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
-            var ctx = new Dictionary<string, string>
-            {
-                ["nome_cliente"]  = c.Nome,
-                ["primeiro_nome"] = c.Nome.Split(' ')[0],
-                ["nome_empresa"]  = nomeEmpresa,
-            };
+            var ctx = VariaveisComuns(c, nomeEmpresa);
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Novidade, template, ctx, cfg);
             if (ok) enviados++; else falhas++;
         }
@@ -369,5 +362,5 @@ public class WhatsAppDisparoJob(
     }
 }
 
-internal record ClienteInfo(Guid Id, string Nome, string Telefone);
+internal record ClienteInfo(Guid Id, string Nome, string Telefone, DateTime? DataNascimento = null);
 internal record VariavelMap(int Posicao, string Campo);

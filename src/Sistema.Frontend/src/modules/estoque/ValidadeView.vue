@@ -8,6 +8,8 @@
         </div>
       </div>
       <v-spacer />
+      <v-btn color="orange-darken-2" prepend-icon="mdi-tag-multiple" class="mr-2"
+        :loading="gerandoPromos" @click="gerarPromocoesAgora">Gerar promoções agora</v-btn>
       <v-btn variant="text" color="primary" prepend-icon="mdi-cog-outline"
         to="/estoque/validade/config">Configurações</v-btn>
     </div>
@@ -828,6 +830,20 @@ async function carregarPainel() {
     resumo.value = r.data.resumo
     if (r.data.resumo.configuracao) Object.assign(cfg.value, r.data.resumo.configuracao)
   } catch { /* silencioso */ } finally { carregando.value = false }
+}
+
+const gerandoPromos = ref(false)
+async function gerarPromocoesAgora() {
+  gerandoPromos.value = true
+  try {
+    await api.post('/validade/gerar-promocoes')
+    notif.ok('Promoções geradas! Confira em Promoções e no PDV.')
+    await carregarPainel()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar promoções.')
+  } finally {
+    gerandoPromos.value = false
+  }
 }
 
 // ─── Scanner / registrar ─────────────────────────────────────────────────────

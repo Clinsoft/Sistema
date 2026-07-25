@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Shared.Interfaces;
@@ -260,6 +261,20 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             await uow.SalvarAsync(ct);
             return Ok(new { lote.Id, mensagem = "Lote registrado com validade." });
         }
+    }
+
+    // ─── Executar o monitoramento agora (gera promoções) ───────────────────
+
+    /// <summary>Roda o monitoramento de validade na hora (mesma lógica das 8h):
+    /// classifica lotes e gera promoções automáticas para os que estão no vermelho.</summary>
+    [HttpPost("gerar-promocoes")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> GerarPromocoesAgora(CancellationToken ct)
+    {
+        var job = ActivatorUtilities.CreateInstance<Sistema.Infrastructure.Jobs.ValidadeJob>(
+            HttpContext.RequestServices);
+        await job.ExecutarAsync();
+        return Ok(new { mensagem = "Monitoramento executado. Promoções atualizadas." });
     }
 
     // ─── Configurações ─────────────────────────────────────────────────────

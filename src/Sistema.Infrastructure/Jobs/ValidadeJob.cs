@@ -14,6 +14,11 @@ namespace Sistema.Infrastructure.Jobs;
 /// </summary>
 public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
 {
+    // Janela de geração de promoção automática (dias até o vencimento).
+    private const int PromoDiasMin = 2;
+    private const int PromoDiasMax = 45;
+
+
     [AutomaticRetry(Attempts = 2)]
     public async Task ExecutarAsync()
     {
@@ -57,12 +62,44 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
 
         int totalAmarelo = 0, totalVermelho = 0, totalUrgente = 0, totalVencido = 0;
         int totalPromos = 0;
+        var promoPorProduto = new Dictionary<Guid, Guid>();
 
         foreach (var lote in lotes)
         {
             if (lote.DataValidade is null) continue;
 
             var dias = (lote.DataValidade.Value.Date - hoje).Days;
+
+            // ── Promoção automática: produtos de 2 a 45 dias do vencimento ──
+            // Cria uma PROMOÇÃO (módulo Promoções) — não gera arte. A arte fica
+            // a critério do administrador.
+            if (dias >= PromoDiasMin && dias <= PromoDiasMax
+                && cfg.PromoAutomatica && !cfg.ExigeAprovacao
+                && !promoPorProduto.ContainsKey(lote.ProdutoId))
+            {
+                // Evita duplicar: só cria se ainda não há promoção ativa vigente.
+                var jaTemPromo = await db.Promocoes.AnyAsync(pr =>
+                    pr.EmpresaId == empresaId && pr.Ativa
+                    && pr.ReferenciaId == lote.ProdutoId
+                    && (pr.DataFim == null || pr.DataFim >= hoje));
+
+                if (!jaTemPromo)
+                {
+                    var promo = Promocao.Criar(
+                        empresaId,
+                        $"OFERTA — {lote.Produto.Descricao}",
+                        "Desconto", "Percentual", cfg.DescontoAutoPercent,
+                        hoje, lote.DataValidade.Value.Date,
+                        "Produto", lote.ProdutoId,
+                        0, 0, 0, 0, apenasClube: false, cumulativo: false);
+
+                    db.Promocoes.Add(promo);
+                    promoPorProduto[lote.ProdutoId] = promo.Id;
+                    totalPromos++;
+                }
+            }
+
+            // ── Classificação de cor para o painel/alertas ──
             var nivel = ClassificarNivel(dias, cfg);
             if (nivel is null) continue;
 
@@ -75,6 +112,8 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
             // Registra o alerta
             var alerta = AlertaValidade.Criar(empresaId, lote.ProdutoId, lote.Id,
                 lote.DataValidade.Value, nivel);
+            if (promoPorProduto.TryGetValue(lote.ProdutoId, out var promoId))
+                alerta.MarcarPromoGerada(promoId);
             db.AlertasValidade.Add(alerta);
 
             switch (nivel)
@@ -83,64 +122,6 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
                 case "Vermelho": totalVermelho++; break;
                 case "Urgente":  totalUrgente++;  break;
                 case "Vencido":  totalVencido++;  break;
-            }
-
-            // Promoção automática ao atingir nível vermelho
-            if (nivel == "Vermelho" && cfg.PromoAutomatica && !cfg.ExigeAprovacao)
-            {
-                var precoOriginal = lote.Produto.PrecoVenda;
-                var precoPromo    = Math.Round(precoOriginal * (1 - cfg.DescontoAutoPercent / 100), 2);
-
-                var baseLayout = new
-                {
-                    gerador       = "ValidadeAutomatica",
-                    nomePromocao  = $"OFERTA — {lote.Produto.Descricao}",
-                    desconto      = cfg.DescontoAutoPercent,
-                    tipoDesconto  = "Percentual",
-                    tipoPromocao  = "Desconto",
-                    aplicaEm      = "ProdutoEspecifico",
-                    produtoId     = lote.ProdutoId,
-                    produtoNome   = lote.Produto.Descricao,
-                    precoOriginal,
-                    precoPromo,
-                    dataValidade  = lote.DataValidade.Value.ToString("dd/MM/yyyy"),
-                    diasRestantes = dias,
-                    dataInicio    = hoje.ToString("yyyy-MM-dd"),
-                    dataFim       = lote.DataValidade.Value.ToString("yyyy-MM-dd"),
-                    apenasClube   = false,
-                };
-
-                // Gera artes para Feed, Story e Banner
-                Guid primeiraArteId = Guid.Empty;
-                foreach (var (formato, label) in new[] {
-                    (FormatoArte.FeedQuadrado,    "Feed"),
-                    (FormatoArte.StoryVertical,   "Story"),
-                    (FormatoArte.BannerHorizontal,"Banner"),
-                })
-                {
-                    var layoutJson = JsonSerializer.Serialize(
-                        new { baseLayout.gerador, formato = formato.ToString(),
-                              baseLayout.nomePromocao, baseLayout.desconto, baseLayout.tipoDesconto,
-                              baseLayout.tipoPromocao, baseLayout.aplicaEm, baseLayout.produtoId,
-                              baseLayout.produtoNome, baseLayout.precoOriginal, baseLayout.precoPromo,
-                              baseLayout.dataValidade, baseLayout.diasRestantes,
-                              baseLayout.dataInicio, baseLayout.dataFim, baseLayout.apenasClube });
-
-                    var arte = ArteMarketing.Criar(
-                        empresaId,
-                        $"⚠️ {lote.Produto.Descricao} — {label} ({dias}d)",
-                        TipoArteMarketing.Promocao,
-                        formato,
-                        layoutJson);
-
-                    db.ArtesMarketing.Add(arte);
-                    if (label == "Feed") primeiraArteId = arte.Id;
-                }
-
-                if (primeiraArteId != Guid.Empty)
-                    alerta.MarcarPromoGerada(primeiraArteId);
-
-                totalPromos++;
             }
         }
 

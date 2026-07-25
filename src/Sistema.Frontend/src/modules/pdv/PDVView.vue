@@ -1595,25 +1595,18 @@ function fecharPromo() {
 
 async function carregarPromocoes() {
   try {
-    const hoje = new Date().toISOString().slice(0, 10)
-    const r = await api.get('/marketing/artes', {
-      params: { empresaId: auth.empresaId, data: hoje }
+    // Lê as promoções ATIVAS do módulo Promoções (inclui as geradas pela regra
+    // de validade). Não usa mais as artes da galeria de Marketing.
+    const r = await api.get('/promocoes', {
+      params: { empresaId: auth.empresaId, status: 'Ativa' }
     })
-    const artes: any[] = r.data ?? []
-    const nomes = artes
-      .filter((a: any) => a.layoutJson)
-      .map((a: any) => {
-        try {
-          const l = JSON.parse(a.layoutJson)
-          const nome = l.produto_nome ?? a.titulo ?? ''
-          const preco = l.produto_preco_promo ?? l.produto_preco ?? ''
-          const desc = l.desconto ?? ''
-          if (nome && desc) return `${nome} — ${desc}% OFF`
-          if (nome && preco) return `${nome} por R$ ${preco}`
-          return nome || a.titulo
-        } catch { return a.titulo ?? '' }
-      })
-      .filter(Boolean)
+    const promos: any[] = r.data ?? []
+    const nomes = promos.map((p: any) => {
+      const desc = p.tipoDesconto === 'ValorFixo'
+        ? `R$ ${Number(p.desconto).toFixed(2)} OFF`
+        : `${Number(p.desconto).toFixed(0)}% OFF`
+      return `${p.nome} — ${desc}`
+    }).filter(Boolean)
     todasPromocoes.value = nomes
     iniciarRotacaoPromo()
   } catch { /* silencioso */ }

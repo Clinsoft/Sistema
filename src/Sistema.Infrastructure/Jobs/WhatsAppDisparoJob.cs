@@ -116,20 +116,41 @@ public class WhatsAppDisparoJob(
             return;
         }
 
-        // Busca artes de promoção geradas hoje pelo ValidadeJob
+        // Busca a promoção ativa vigente (módulo Promoções) — fonte única de verdade.
         var hoje = DateTime.Today;
-        var artesHoje = await db.ArtesMarketing.AsNoTracking()
-            .Where(a => a.EmpresaId == empresaId
-                     && a.CriadoEm.Date == hoje
-                     && a.Formato == FormatoArte.FeedQuadrado
-                     && a.LayoutJson != null)
-            .ToListAsync();
+        var promo = await db.Promocoes.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativa
+                     && p.DataInicio <= hoje
+                     && (p.DataFim == null || p.DataFim >= hoje))
+            .OrderByDescending(p => p.CriadoEm)
+            .FirstOrDefaultAsync();
 
-        if (artesHoje.Count == 0)
+        if (promo is null)
         {
-            logger.LogInformation("[WhatsApp] {Empresa}: nenhuma promoção gerada hoje.", nomeEmpresa);
+            logger.LogInformation("[WhatsApp] {Empresa}: nenhuma promoção ativa hoje.", nomeEmpresa);
             return;
         }
+
+        // Produto e preços da promoção (quando aplica a um produto específico)
+        var ptBR = new System.Globalization.CultureInfo("pt-BR");
+        string produtoNome = "", precoDeTxt = "", precoPromoTxt = "";
+        if (promo.AplicaEm == "Produto" && promo.ReferenciaId is { } pid)
+        {
+            var prod = await db.Produtos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pid);
+            if (prod is not null)
+            {
+                produtoNome = prod.Descricao;
+                var precoDe = prod.PrecoVenda;
+                var precoPromo = promo.TipoDesconto == "Percentual"
+                    ? Math.Round(precoDe * (1 - promo.Desconto / 100m), 2)
+                    : precoDe - promo.Desconto;
+                precoDeTxt    = $"R$ {precoDe.ToString("0.00", ptBR)}";
+                precoPromoTxt = $"R$ {precoPromo.ToString("0.00", ptBR)}";
+            }
+        }
+        var descontoTxt = promo.TipoDesconto == "Percentual"
+            ? $"{promo.Desconto:0}% de desconto"
+            : $"R$ {promo.Desconto.ToString("0.00", ptBR)} de desconto";
 
         // Clientes que ainda não receberam promoção hoje
         var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
@@ -143,19 +164,16 @@ public class WhatsAppDisparoJob(
 
         if (clientes.Count == 0) return;
 
-        // Extrai dados da primeira arte (produto principal em promoção)
-        var arte   = artesHoje[0];
-        var layout = ParseLayout(arte.LayoutJson);
-
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
             var ctx = VariaveisComuns(c, nomeEmpresa);
-            ctx["produto_nome"]        = layout.GetValueOrDefault("produto_nome", "");
-            ctx["produto_preco"]       = layout.GetValueOrDefault("produto_preco", "");
-            ctx["produto_preco_promo"] = layout.GetValueOrDefault("produto_preco_promo", "");
-            ctx["data_validade"]       = layout.GetValueOrDefault("data_validade", "");
-            ctx["desconto"]            = layout.GetValueOrDefault("desconto", "");
+            ctx["produto_nome"]        = produtoNome;
+            ctx["produto_preco"]       = precoDeTxt;
+            ctx["produto_preco_promo"] = precoPromoTxt;
+            ctx["data_validade"]       = promo.DataFim?.ToString("dd/MM/yyyy") ?? "";
+            ctx["desconto"]            = descontoTxt;
+            ctx["nome_promocao"]       = promo.Nome;
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg);
             if (ok) enviados++; else falhas++;
         }

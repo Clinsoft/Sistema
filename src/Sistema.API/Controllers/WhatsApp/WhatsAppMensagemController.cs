@@ -261,6 +261,17 @@ public class WhatsAppMensagemController(
 
         if (!ok)
             return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
+
+        // Cadastra localmente (aparece na aba Templates com o selo de status "Em análise").
+        var jaExiste = await db.TemplatesWhatsAppMensagem
+            .AnyAsync(t => t.EmpresaId == req.EmpresaId && t.NomeMeta == nome, ct);
+        if (!jaExiste)
+        {
+            db.TemplatesWhatsAppMensagem.Add(TemplateWhatsAppMensagem.Criar(
+                req.EmpresaId, nome, TipoDisparoWhatsApp.Personalizado, "pt_BR", null, req.Corpo));
+            await uow.SalvarAsync(ct);
+        }
+
         return Ok(new { nome, status, comImagem = imagem != null });
     }
 

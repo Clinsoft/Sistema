@@ -347,9 +347,6 @@
               @click="criarTemplatePromocao" :loading="criandoTemplate">
               Promoção rápida
             </v-btn>
-            <v-btn color="primary" class="ml-2" prepend-icon="mdi-plus" @click="abrirDialogTemplate(null)">
-              Novo Template
-            </v-btn>
             <v-btn variant="outlined" class="ml-2" prepend-icon="mdi-cloud-download"
               @click="importarTemplatesMeta" :loading="importandoTemplates">
               Importar da Meta

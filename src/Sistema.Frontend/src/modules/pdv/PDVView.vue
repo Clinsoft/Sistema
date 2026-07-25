@@ -1451,12 +1451,35 @@ async function imprimirComprovante() {
   if (!ultimaVendaId.value) return
   // Prioriza o DANFE NFC-e (cupom fiscal com QR Code). Se a venda não teve NFC-e
   // autorizada (ex.: crediário ou falha), cai para o cupom simples.
+  let blob: Blob
   try {
     const res = await api.get(`/fiscal/recibo/venda/${ultimaVendaId.value}/nfce`, { responseType: 'blob' })
-    window.open(URL.createObjectURL(res.data), '_blank')
+    blob = res.data
   } catch {
     const res = await api.get(`/fiscal/recibo/venda/${ultimaVendaId.value}`, { responseType: 'blob' })
-    window.open(URL.createObjectURL(res.data), '_blank')
+    blob = res.data
+  }
+  imprimirPdfBlob(blob)
+}
+
+// Envia o PDF direto para a impressão (impressora padrão do Windows) via iframe
+// oculto — abre o diálogo de impressão já na impressora padrão, sem nova aba.
+function imprimirPdfBlob(blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  let iframe = document.getElementById('pdv-print-frame') as HTMLIFrameElement | null
+  if (!iframe) {
+    iframe = document.createElement('iframe')
+    iframe.id = 'pdv-print-frame'
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+    document.body.appendChild(iframe)
+  }
+  iframe.src = url
+  iframe.onload = () => {
+    setTimeout(() => {
+      try { iframe!.contentWindow?.focus(); iframe!.contentWindow?.print() }
+      catch { window.open(url, '_blank') }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    }, 300)
   }
 }
 

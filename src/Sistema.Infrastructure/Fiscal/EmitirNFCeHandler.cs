@@ -89,6 +89,13 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
             .Where(p => produtoIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, ct);
 
+        // Unidades de medida dos produtos (para sigla e se é pesável — evita
+        // arredondar a quantidade de itens por kg para inteiro, zerando o total).
+        var unidadeIds = produtos.Values.Select(p => p.UnidadeMedidaId).Distinct().ToList();
+        var unidades = await db.UnidadesMedida.AsNoTracking()
+            .Where(u => unidadeIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => new { u.Sigla, u.Pesavel }, ct);
+
         // Criar NFC-e
         var numero = config.AvancarNumeracaoNFCe();
         var nfce = NotaFiscal.Criar(
@@ -113,18 +120,26 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
             produtos.TryGetValue(itemVenda.ProdutoId, out var produto);
 
             var cfop = empresa.Uf == "SP" ? "5102" : "5102"; // venda dentro do estado
+
+            // Unidade e se é pesável (kg/fracionado) → mantém as casas decimais da qtd.
+            var un = produto != null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
+            var pesavel = (produto?.ProdutoBalanca ?? false) || (produto?.VendidoFracionado ?? false)
+                          || (un?.Pesavel ?? false) || (un?.Sigla == "KG");
+            var unidadeSigla = string.IsNullOrWhiteSpace(un?.Sigla) ? "UN" : un!.Sigla;
+
             var item = ItemNotaFiscal.Criar(
                 nfce.Id, numItem,
                 codigo: produto?.CodigoBarras ?? produto?.Codigo ?? numItem.ToString(),
                 descricao: itemVenda.Descricao,
                 cfop: cfop,
-                unidade: "UN",
+                unidade: unidadeSigla,
                 quantidade: itemVenda.Quantidade,
                 valorUnitario: itemVenda.PrecoUnitario,
                 valorDesconto: itemVenda.TotalDesconto,
                 ncm: produto?.Ncm,
                 cest: produto?.Cest,
-                produtoId: itemVenda.ProdutoId);
+                produtoId: itemVenda.ProdutoId,
+                pesavel: pesavel);
 
             if (produto is not null)
             {

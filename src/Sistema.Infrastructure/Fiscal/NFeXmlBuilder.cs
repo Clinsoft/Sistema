@@ -107,7 +107,7 @@ public static class NFeXmlBuilder
             EscreverItens(w, nota, config);
             EscreverTotal(w, nota, config);
             EscreverTransp(w);
-            EscreverPag(w, pagamentos);
+            EscreverPag(w, pagamentos, nota.TotalNota);
 
             if (!string.IsNullOrWhiteSpace(informacoesAdicionais))
             {
@@ -438,7 +438,7 @@ public static class NFeXmlBuilder
         w.WriteEndElement();
     }
 
-    private static void EscreverPag(XmlWriter w, IReadOnlyList<(string TPag, decimal VPag)> pagamentos)
+    private static void EscreverPag(XmlWriter w, IReadOnlyList<(string TPag, decimal VPag)> pagamentos, decimal totalNota)
     {
         w.WriteStartElement("pag");
 
@@ -470,6 +470,13 @@ public static class NFeXmlBuilder
                 w.WriteEndElement();
             }
         }
+
+        // Troco: quando o total pago excede o valor da nota (ex.: dinheiro), a SEFAZ
+        // exige <vTroco> (cStat 866 se ausente).
+        var totalPago = pagamentos.Sum(p => p.VPag);
+        var troco = totalPago - totalNota;
+        if (troco > 0)
+            w.WriteElementString("vTroco", FormatarDecimal(troco, 2));
 
         w.WriteEndElement(); // pag
     }

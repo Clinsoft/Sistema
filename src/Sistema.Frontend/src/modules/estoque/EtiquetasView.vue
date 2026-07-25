@@ -826,7 +826,7 @@ async function adicionarTodosKg() {
     const kg = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.produtoBalanca)
     let novos = 0
     kg.forEach((p: any) => {
-      if (!produtosSel.value.find(x => x.id === p.id)) { produtosSel.value.push(p); novos++ }
+      if (!produtosSel.value.find(x => x.id === p.id)) { produtosSel.value.push(p); enriquecerValidadeRegistrada(p); novos++ }
     })
     if (!kg.length) notif.aviso('Nenhum produto por kg (balança) encontrado.')
     else notif.ok(`${novos} produto(s) por kg adicionado(s)` +
@@ -879,9 +879,27 @@ async function buscarPorCodigoBarras() {
   } finally { buscando.value = false }
 }
 
-// Validade da etiqueta para um produto: usa a validade do próprio produto
-// (hoje + validadeEmDias) quando configurada; senão, a data global do formulário.
+// Busca a validade REGISTRADA (Controle de Validade) do produto e guarda no objeto.
+// Escolhe o lote a vencer mais próximo (FEFO); se todos vencidos, o mais recente.
+async function enriquecerValidadeRegistrada(p: any) {
+  if (!p?.id) return
+  try {
+    const { data } = await api.get(`/lotes/produto/${p.id}`, { params: { empresaId: auth.empresaId } })
+    const datas = (Array.isArray(data) ? data : [])
+      .map((l: any) => (l.dataValidade ?? l.DataValidade))
+      .filter(Boolean)
+      .map((d: string) => String(d).slice(0, 10))
+      .sort()
+    if (!datas.length) return
+    const hoje = new Date().toISOString().slice(0, 10)
+    p._validadeRegistrada = datas.find((d: string) => d >= hoje) ?? datas[datas.length - 1]
+  } catch { /* sem lote registrado: usa o padrão */ }
+}
+
+// Validade da etiqueta para um produto: prioriza a validade REGISTRADA no Controle
+// de Validade; senão, hoje + validadeEmDias; por fim, a data global do formulário.
 function validadeProduto(p: any): string {
+  if (p?._validadeRegistrada) return p._validadeRegistrada
   if (p?.validadeEmDias && Number(p.validadeEmDias) > 0) {
     const d = new Date(); d.setDate(d.getDate() + Number(p.validadeEmDias))
     return d.toISOString().slice(0, 10)
@@ -890,8 +908,10 @@ function validadeProduto(p: any): string {
 }
 
 function adicionarProdutoObj(p: any) {
-  if (!produtosSel.value.find(x => x.id === p.id))
+  if (!produtosSel.value.find(x => x.id === p.id)) {
     produtosSel.value.push(p)
+    enriquecerValidadeRegistrada(p)
+  }
   sugestoes.value = []
   buscaProdutoTexto.value = ''
 }

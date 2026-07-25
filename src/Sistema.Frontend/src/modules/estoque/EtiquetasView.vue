@@ -4,9 +4,13 @@
       <v-col><h2 class="text-h5 font-weight-bold">Editor de Etiquetas</h2></v-col>
       <v-col cols="auto" class="d-flex gap-2">
         <template v-if="isGondola">
-          <v-btn color="success" prepend-icon="mdi-download" @click="baixarZpl"
+          <v-btn color="primary" prepend-icon="mdi-printer" @click="imprimirGondola"
             :disabled="!produtosSel.length">
-            Gerar ZPL ({{ produtosSel.length }})
+            Imprimir ({{ produtosSel.length }})
+          </v-btn>
+          <v-btn color="success" variant="outlined" prepend-icon="mdi-download" @click="baixarZpl"
+            :disabled="!produtosSel.length">
+            Gerar ZPL
           </v-btn>
           <v-btn color="secondary" variant="outlined" prepend-icon="mdi-usb"
             @click="enviarZebraDialog = true" :disabled="!produtosSel.length">
@@ -47,8 +51,11 @@
               <v-btn v-for="s in gondolaTamanhos" :key="s.id" :value="s.id" size="small">{{ s.nome }}</v-btn>
             </v-btn-toggle>
 
-            <div class="text-body-2 font-weight-bold mb-2">Impressora Zebra</div>
-            <v-text-field v-model.number="zebraDpi" label="DPI da impressora"
+            <div class="text-body-2 font-weight-bold mb-2">Impressão</div>
+            <v-text-field v-model.number="gondolaColunas" label="Produtos por linha"
+              type="number" min="1" max="4" variant="outlined" density="compact" class="mb-2"
+              hint="Padrão 2 (etiqueta de gôndola com 2 colunas)" persistent-hint />
+            <v-text-field v-model.number="zebraDpi" label="DPI da impressora (ZPL)"
               type="number" variant="outlined" density="compact" class="mb-1"
               hint="203 = padrão, 300 = alta resolução" persistent-hint />
 
@@ -461,6 +468,7 @@ const enviarZebraDialog = ref(false)
 const zebraIp = ref('192.168.1.100')
 const zebraPorta = ref(9100)
 const zebraDpi = ref(203)
+const gondolaColunas = ref(2)
 const gondolaTamanho = ref('70x40')
 const marcaDaguaUrl = ref('/logo-ecogranel.png')  // semente EcoGranel de fundo (padrão)
 const inputMarcaDagua = ref<HTMLInputElement | null>(null)
@@ -801,6 +809,61 @@ function zplSanitize(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\x20-\x7E]/g, '').substring(0, 50)
 }
 
+function escHtml(s: string): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Imprime as etiquetas de gôndola via diálogo do navegador (o usuário escolhe a
+// impressora). Layout em grade: por padrão 2 produtos por linha (gondolaColunas).
+function imprimirGondola() {
+  const cols = Math.min(4, Math.max(1, Number(gondolaColunas.value) || 2))
+  const { w, h } = gondolaTamanhoAtual.value
+  const cfg = gondolaCfg.value
+  const c = camposGondola.value
+  const barras = Array.from({ length: 50 }, (_, i) =>
+    `<span style="width:${i % 3 === 0 ? 2 : 1}px;height:100%;display:inline-block;background:${i % 7 === 0 ? '#fff' : '#111'}"></span>`).join('')
+
+  const labels = etiquetasExpandidas.value.map((p: any) => {
+    const val = validadeProduto(p)
+    const partes: string[] = []
+    if (c.nome) partes.push(`<div class="g-nome" style="font-size:${cfg.nomeFontPx}px">${escHtml(p.descricao)}</div>`)
+    if (c.preco) partes.push(`<div class="g-preco" style="font-size:${cfg.precoFontPx}px"><span class="g-rs">R$</span>${fmtPreco(p.precoVenda)}</div>`)
+    if (c.precoKg) partes.push(`<div class="g-kg">${escHtml(fmtPrecoKg(p))}</div>`)
+    if (c.validade && val) partes.push(`<div class="g-val">Val: ${fmtData(val)}</div>`)
+    if (c.codigoPlu && p.codigoPlu) partes.push(`<div class="g-plu">PLU: ${String(p.codigoPlu).padStart(6, '0')}</div>`)
+    const barcode = (c.codBarras && p.codigoBarras)
+      ? `<div class="g-bc"><div class="g-bars">${barras}</div><div class="g-bcnum">${escHtml(p.codigoBarras)}</div></div>` : ''
+    return `<div class="g-etq">${barcode}${partes.join('')}</div>`
+  }).join('')
+
+  const win = window.open('', '_blank')
+  if (!win) { notif.erro('Permita pop-ups para imprimir.'); return }
+  win.document.write(`
+    <html><head><title>Etiquetas Gôndola</title><style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;background:#fff}
+      .grid{display:grid;grid-template-columns:repeat(${cols}, ${w}mm)}
+      .g-etq{width:${w}mm;height:${h}mm;border:1px solid #999;border-left:4px solid #1565C0;
+        padding:2mm 3mm;position:relative;overflow:hidden;display:flex;flex-direction:column;
+        justify-content:space-between;page-break-inside:avoid}
+      .g-nome{font-weight:bold;color:#1a1a1a;line-height:1.15;word-break:break-word}
+      .g-preco{font-weight:900;color:#1565C0;line-height:1}
+      .g-rs{font-size:.45em;font-weight:bold;margin-right:2px}
+      .g-kg{font-size:9px;color:#555}
+      .g-val{font-size:9px;color:#666}
+      .g-plu{font-size:9px;color:#666;font-family:monospace}
+      .g-bc{position:absolute;right:3px;top:3px;bottom:3px;width:58px;display:flex;
+        flex-direction:column;align-items:center;justify-content:center}
+      .g-bars{display:flex;align-items:stretch;height:60%}
+      .g-bcnum{font-family:monospace;font-size:6px;color:#333;margin-top:1px;text-align:center}
+      @page{margin:5mm}
+    </style></head>
+    <body><div class="grid">${labels}</div>
+    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close()}}<\/script>
+    </body></html>`)
+  win.document.close()
+}
+
 function baixarZpl() {
   const zpl = gerarZpl()
   const blob = new Blob([zpl], { type: 'text/plain' })
@@ -824,10 +887,12 @@ async function adicionarTodosKg() {
       params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
     })
     const kg = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.produtoBalanca)
-    let novos = 0
-    kg.forEach((p: any) => {
-      if (!produtosSel.value.find(x => x.id === p.id)) { produtosSel.value.push(p); enriquecerValidadeRegistrada(p); novos++ }
-    })
+    const novosItens = kg.filter((p: any) => !produtosSel.value.find(x => x.id === p.id))
+    // Busca a validade registrada ANTES de empurrar para a lista reativa —
+    // se setar depois, a escrita cai no objeto cru e o Vue não re-renderiza.
+    await Promise.all(novosItens.map((p: any) => enriquecerValidadeRegistrada(p)))
+    novosItens.forEach((p: any) => produtosSel.value.push(p))
+    const novos = novosItens.length
     if (!kg.length) notif.aviso('Nenhum produto por kg (balança) encontrado.')
     else notif.ok(`${novos} produto(s) por kg adicionado(s)` +
       (novos < kg.length ? ` (${kg.length - novos} já estavam na lista).` : '.'))
@@ -865,7 +930,7 @@ async function buscarPorCodigoBarras() {
                 ?? (achados.length === 1 ? achados[0] : null)
     if (exato) {
       const jaTinha = produtosSel.value.some(p => p.id === exato.id)
-      adicionarProdutoObj(exato)
+      await adicionarProdutoObj(exato)
       notif.ok(jaTinha ? `${exato.descricao} já estava na lista.` : `${exato.descricao} adicionado.`)
       buscaProdutoTexto.value = ''
       sugestoes.value = []
@@ -880,12 +945,15 @@ async function buscarPorCodigoBarras() {
 }
 
 // Busca a validade REGISTRADA (Controle de Validade) do produto e guarda no objeto.
+// Considera SÓ lotes com estoque (Quantidade > 0) — mesma regra do painel de
+// Controle de Validade — para não pegar a validade de lote antigo/zerado.
 // Escolhe o lote a vencer mais próximo (FEFO); se todos vencidos, o mais recente.
 async function enriquecerValidadeRegistrada(p: any) {
   if (!p?.id) return
   try {
     const { data } = await api.get(`/lotes/produto/${p.id}`, { params: { empresaId: auth.empresaId } })
     const datas = (Array.isArray(data) ? data : [])
+      .filter((l: any) => Number(l.quantidade ?? l.Quantidade ?? 0) > 0)
       .map((l: any) => (l.dataValidade ?? l.DataValidade))
       .filter(Boolean)
       .map((d: string) => String(d).slice(0, 10))
@@ -900,6 +968,12 @@ async function enriquecerValidadeRegistrada(p: any) {
 // de Validade; senão, hoje + validadeEmDias; por fim, a data global do formulário.
 function validadeProduto(p: any): string {
   if (p?._validadeRegistrada) return p._validadeRegistrada
+  // Produto por kg (balança) sem validade registrada no Controle de Validade:
+  // usa hoje + 1 ano.
+  if (p?.produtoBalanca) {
+    const d = new Date(); d.setFullYear(d.getFullYear() + 1)
+    return d.toISOString().slice(0, 10)
+  }
   if (p?.validadeEmDias && Number(p.validadeEmDias) > 0) {
     const d = new Date(); d.setDate(d.getDate() + Number(p.validadeEmDias))
     return d.toISOString().slice(0, 10)
@@ -907,10 +981,11 @@ function validadeProduto(p: any): string {
   return validade.value || ''
 }
 
-function adicionarProdutoObj(p: any) {
+async function adicionarProdutoObj(p: any) {
   if (!produtosSel.value.find(x => x.id === p.id)) {
+    // Enriquecer ANTES do push: setar depois cai no objeto cru e o Vue não re-renderiza.
+    await enriquecerValidadeRegistrada(p)
     produtosSel.value.push(p)
-    enriquecerValidadeRegistrada(p)
   }
   sugestoes.value = []
   buscaProdutoTexto.value = ''

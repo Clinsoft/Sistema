@@ -15,7 +15,7 @@
 
     <!-- Cards com dados reais -->
     <v-row>
-      <v-col v-for="c in cards" :key="c.label" cols="6" sm="3">
+      <v-col v-for="c in cards" :key="c.label" cols="6" sm="4" lg="2">
         <v-card rounded="xl" elevation="1" :to="c.to" hover>
           <v-card-text class="d-flex align-center pa-4">
             <v-avatar :color="c.cor" size="44" class="mr-3">
@@ -83,7 +83,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const carregando = ref(false)
-const posicao = ref<any>({ totais: { qtdProdutos: 0, qtdAbaixoMinimo: 0, custoTotalEstoque: 0 } })
+const posicao = ref<any>({ totais: { qtdProdutos: 0, qtdAbaixoMinimo: 0, custoTotalEstoque: 0, valorVendaTotalEstoque: 0 } })
 const vencimentos = ref<any[]>([])
 
 const cards = computed(() => [
@@ -95,6 +95,8 @@ const cards = computed(() => [
     icon: 'mdi-calendar-alert', cor: 'error', to: '/estoque/lotes' },
   { label: 'Custo total estoque', valor: fmtVal(posicao.value.totais?.custoTotalEstoque ?? 0),
     icon: 'mdi-currency-brl', cor: 'success', to: '/estoque/posicao' },
+  { label: 'Valor de venda estoque', valor: fmtVal(posicao.value.totais?.valorVendaTotalEstoque ?? 0),
+    icon: 'mdi-cash-multiple', cor: 'teal', to: '/estoque/posicao' },
 ])
 
 const atalhos = [
@@ -111,13 +113,14 @@ const atalhos = [
 ]
 
 function fmtVal(v: number) {
-  if (v >= 1_000_000) return 'R$ ' + (v / 1_000_000).toFixed(1).replace('.', ',') + 'M'
-  if (v >= 1000) return 'R$ ' + (v / 1000).toFixed(1).replace('.', ',') + 'K'
-  return 'R$ ' + v.toFixed(0)
+  return (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function fmtData(d: string) {
-  return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : ''
+  // O backend envia datetime (ex.: 2026-08-04T00:00:00); pega só a parte da data.
+  if (!d) return ''
+  const data = new Date(String(d).slice(0, 10) + 'T12:00:00')
+  return isNaN(data.getTime()) ? '' : data.toLocaleDateString('pt-BR')
 }
 
 async function carregar() {

@@ -23,7 +23,7 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId, CancellationToken ct)
         => Ok(await db.Usuarios.AsNoTracking()
-            .Where(u => u.EmpresaId == empresaId)
+            .Where(u => u.EmpresaId == empresaId && u.Perfil != "Contador")   // contadores têm tela própria
             .Select(u => new
             {
                 u.Id, u.Nome, u.Cpf, u.Telefone, u.Cargo, u.Salario, u.DataAdmissao, u.Observacao,

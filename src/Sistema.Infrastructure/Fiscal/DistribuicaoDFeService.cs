@@ -22,6 +22,12 @@ public class DistribuicaoDFeService(
     private const string UrlHomologacao = "https://hom1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx";
     private const string SoapAction     = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse";
 
+    // Distribuição DFe de CT-e (webservice próprio, separado do de NF-e).
+    private const string CteUrlProducao    = "https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx";
+    private const string CteUrlHomologacao = "https://hom1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx";
+    private const string CteWsdlNs         = "http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe";
+    private const string CteSoapAction     = "http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse";
+
     // NFeRecepcaoEvento4 — manifestação do destinatário: processada pelo
     // Ambiente Nacional (AN), não pela SEFAZ estadual. cOrgao do evento = 91.
     private const string EventoUrlProducao    = "https://www1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx";
@@ -148,12 +154,59 @@ public class DistribuicaoDFeService(
                 """;
 
             var responseXml = await EnviarAsync(url, distXml, cert, ct);
+            logger.LogInformation("consChNFe {Chave} → resposta SEFAZ: {Xml}", chaveAcesso, responseXml);
             return ExtrairXmlNota(responseXml);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erro ao baixar XML da NF-e {Chave}", chaveAcesso);
             return null;
+        }
+    }
+
+    public async Task<DFeDocumento?> ConsultarPorChaveAsync(
+        string cnpj, string uf, string chaveAcesso, CancellationToken ct)
+    {
+        // Consulta por chave só existe para NF-e (consChNFe). CT-e é recebido pelo
+        // pull sequencial (ConsultarCTeAsync).
+        var xml = await BaixarXmlAsync(cnpj, uf, chaveAcesso, ct);
+        if (string.IsNullOrEmpty(xml)) return null;
+        var doc = ParsearDocumento(xml, "0");
+        // Se a chave não veio no XML (ex.: procCTe sem Id), usa a chave consultada.
+        if (doc != null && string.IsNullOrWhiteSpace(doc.ChaveAcesso))
+            doc = doc with { ChaveAcesso = chaveAcesso };
+        return doc;
+    }
+
+    public async Task<ResultadoConsultaDFe> ConsultarCTeAsync(
+        string cnpj, string uf, string ultimoNSU, CancellationToken ct)
+    {
+        try
+        {
+            var (cert, config) = await CarregarAsync(cnpj, ct);
+            if (cert is null || config is null)
+                return Falha("Certificado digital A1 não configurado.", ultimoNSU);
+
+            var url = config.Ambiente == AmbienteFiscal.Producao ? CteUrlProducao : CteUrlHomologacao;
+            var amb = config.Ambiente == AmbienteFiscal.Producao ? 1 : 2;
+            var cUF = UfParaCodigo(uf);
+            var nsuFmt = (ultimoNSU == "0" || ultimoNSU == "") ? "000000000000000" : ultimoNSU.PadLeft(15, '0');
+
+            // Distribuição sequencial de CT-e (distNSU) — sem espaços entre as tags.
+            var distXml =
+                $"<distDFeInt versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/cte\">" +
+                $"<tpAmb>{amb}</tpAmb><cUFAutor>{cUF}</cUFAutor><CNPJ>{cnpj}</CNPJ>" +
+                $"<distNSU><ultNSU>{nsuFmt}</ultNSU></distNSU></distDFeInt>";
+
+            var responseXml = await EnviarAsync(url, distXml, cert, ct,
+                "cteDistDFeInteresse", "cteDadosMsg", CteWsdlNs, CteSoapAction);
+            logger.LogInformation("SEFAZ CT-e DFe response: {Response}", responseXml[..Math.Min(500, responseXml.Length)]);
+            return ParsearResposta(responseXml, ultimoNSU);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao consultar CT-e recebidos na SEFAZ para CNPJ {Cnpj}", cnpj);
+            return Falha($"Erro ao consultar CT-e na SEFAZ: {ex.Message}", ultimoNSU);
         }
     }
 
@@ -263,21 +316,22 @@ public class DistribuicaoDFeService(
     // ── Envio SOAP — NFeDistribuicaoDFe ───────────────────────────────────
 
     private static async Task<string> EnviarAsync(
-        string url, string corpoXml, X509Certificate2 cert, CancellationToken ct)
+        string url, string corpoXml, X509Certificate2 cert, CancellationToken ct,
+        string operacao = "nfeDistDFeInteresse", string dadosMsg = "nfeDadosMsg",
+        string wsdlNs = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe",
+        string soapAction = SoapAction)
     {
-        // NFeDistribuicaoDFe exige o elemento de operação nfeDistDFeInteresse
-        // envolvendo o nfeDadosMsg. Sem esse wrapper, o ASMX não consegue vincular
-        // o parâmetro e retorna HTTP 500 "Object reference not set to an instance of an object".
-        // Este serviço (1.01) NÃO usa o cabeçalho nfeCabecMsg.
+        // O serviço de distribuição exige o elemento de operação (nfe/cteDistDFeInteresse)
+        // envolvendo o *DadosMsg. Sem esse wrapper, o ASMX retorna HTTP 500 genérico.
         var envelope = $"""
             <?xml version="1.0" encoding="utf-8"?>
             <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
               <soap12:Body>
-                <nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">
-                  <nfeDadosMsg>
+                <{operacao} xmlns="{wsdlNs}">
+                  <{dadosMsg}>
                     {corpoXml}
-                  </nfeDadosMsg>
-                </nfeDistDFeInteresse>
+                  </{dadosMsg}>
+                </{operacao}>
               </soap12:Body>
             </soap12:Envelope>
             """;
@@ -300,7 +354,7 @@ public class DistribuicaoDFeService(
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType =
             System.Net.Http.Headers.MediaTypeHeaderValue.Parse(
-                $"application/soap+xml;charset=utf-8;action=\"{SoapAction}\"");
+                $"application/soap+xml;charset=utf-8;action=\"{soapAction}\"");
 
         var response = await client.PostAsync(url, content, ct);
         var body     = await response.Content.ReadAsStringAsync(ct);
@@ -339,16 +393,17 @@ public class DistribuicaoDFeService(
             return Falha(msg, ultimoNSU);
         }
 
-        var cStat  = doc.SelectSingleNode("//nfe:cStat", ns)?.InnerText ?? "";
-        var xMot   = doc.SelectSingleNode("//nfe:xMotivo", ns)?.InnerText ?? "";
-        var ultNSU = doc.SelectSingleNode("//nfe:ultNSU", ns)?.InnerText ?? ultimoNSU;
-        var maxNSU = doc.SelectSingleNode("//nfe:maxNSU", ns)?.InnerText ?? ultNSU;
+        // local-name() → funciona tanto para a resposta de NF-e quanto de CT-e.
+        var cStat  = doc.SelectSingleNode("//*[local-name()='cStat']")?.InnerText ?? "";
+        var xMot   = doc.SelectSingleNode("//*[local-name()='xMotivo']")?.InnerText ?? "";
+        var ultNSU = doc.SelectSingleNode("//*[local-name()='ultNSU']")?.InnerText ?? ultimoNSU;
+        var maxNSU = doc.SelectSingleNode("//*[local-name()='maxNSU']")?.InnerText ?? ultNSU;
 
         if (cStat != "137" && cStat != "138")
             return Falha($"SEFAZ {cStat}: {xMot}", ultimoNSU);
 
         var docs  = new List<DFeDocumento>();
-        var nodes = doc.SelectNodes("//nfe:docZip", ns);
+        var nodes = doc.SelectNodes("//*[local-name()='docZip']");
         if (nodes != null)
         {
             foreach (XmlNode node in nodes)
@@ -518,9 +573,8 @@ public class DistribuicaoDFeService(
         {
             var doc = new XmlDocument();
             doc.LoadXml(responseXml);
-            var ns = new XmlNamespaceManager(doc.NameTable);
-            ns.AddNamespace("nfe", "http://www.portalfiscal.inf.br/nfe");
-            var node = doc.SelectSingleNode("//nfe:docZip", ns);
+            // docZip pode vir no namespace de NF-e ou de CT-e — usa local-name().
+            var node = doc.SelectSingleNode("//*[local-name()='docZip']");
             if (node?.InnerText is { Length: > 0 } b64)
             {
                 var bytes = Convert.FromBase64String(b64);

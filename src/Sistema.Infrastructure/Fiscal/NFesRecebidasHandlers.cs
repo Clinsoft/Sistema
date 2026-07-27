@@ -84,6 +84,45 @@ public class ConsultarNFesRecebidasHandler(
             nsuAtual = resultado.UltimoNSU;
         }
 
+        // ── Distribuição de CT-e (frete) — webservice e NSU próprios ──
+        var nsuCte = config.UltimoNsuCteDFe;
+        for (int iter = 0; iter < maxIteracoes; iter++)
+        {
+            var resultado = await dfe.ConsultarCTeAsync(cnpjLimpo, empresa.Uf, nsuCte, ct);
+            if (!resultado.Sucesso) break;
+
+            config.AvancarNsuCteDFe(resultado.UltimoNSU);
+
+            if (resultado.Documentos.Count > 0)
+            {
+                var unicos = resultado.Documentos
+                    .GroupBy(d => d.ChaveAcesso)
+                    .Select(g => g.OrderByDescending(d => d.NSU).First())
+                    .ToList();
+
+                var existentes = await db.NotasFiscaisRecebidas
+                    .Where(n => n.EmpresaId == cmd.EmpresaId &&
+                                unicos.Select(d => d.ChaveAcesso).Contains(n.ChaveAcesso))
+                    .Select(n => n.ChaveAcesso)
+                    .ToListAsync(ct);
+
+                var novas = unicos
+                    .Where(d => !existentes.Contains(d.ChaveAcesso))
+                    .Select(d => NotaFiscalRecebida.Criar(
+                        cmd.EmpresaId, d.ChaveAcesso, d.NSU, d.Modelo, d.Serie, d.Numero,
+                        d.DataEmissao, d.EmitenteCnpj, d.EmitenteNome, d.EmitenteUF,
+                        d.ValorTotal, d.Situacao))
+                    .ToList();
+
+                if (novas.Count > 0) db.NotasFiscaisRecebidas.AddRange(novas);
+                totalNovas += novas.Count;
+            }
+            await db.SaveChangesAsync(ct);
+
+            if (!resultado.TemMais) break;
+            nsuCte = resultado.UltimoNSU;
+        }
+
         var total = await db.NotasFiscaisRecebidas.CountAsync(n => n.EmpresaId == cmd.EmpresaId, ct);
         return new ResultadoConsulta(true, null, totalNovas, total);
     }

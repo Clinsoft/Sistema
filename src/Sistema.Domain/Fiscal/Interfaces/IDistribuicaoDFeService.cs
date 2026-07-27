@@ -16,6 +16,13 @@ public interface IDistribuicaoDFeService
         string cnpj, string uf, string ultimoNSU, CancellationToken ct);
 
     /// <summary>
+    /// Consulta CT-e recebidos (frete) no webservice CTeDistribuicaoDFe, a partir do
+    /// último NSU de CT-e. Contador de NSU independente do de NF-e.
+    /// </summary>
+    Task<ResultadoConsultaDFe> ConsultarCTeAsync(
+        string cnpj, string uf, string ultimoNSU, CancellationToken ct);
+
+    /// <summary>
     /// Realiza manifestação do destinatário para uma NF-e.
     /// </summary>
     Task<bool> ManifestarAsync(
@@ -26,6 +33,13 @@ public interface IDistribuicaoDFeService
     /// Baixa o XML completo de uma NF-e autorizada.
     /// </summary>
     Task<string?> BaixarXmlAsync(
+        string cnpj, string uf, string chaveAcesso, CancellationToken ct);
+
+    /// <summary>
+    /// Consulta um documento específico (NF-e/CT-e) pela chave de acesso, sem depender
+    /// do NSU. Útil para importar um CT-e que já passou na distribuição sequencial.
+    /// </summary>
+    Task<DFeDocumento?> ConsultarPorChaveAsync(
         string cnpj, string uf, string chaveAcesso, CancellationToken ct);
 }
 

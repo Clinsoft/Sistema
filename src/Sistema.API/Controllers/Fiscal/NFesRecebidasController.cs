@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Fiscal.Commands;
 using Sistema.Domain.Fiscal.Entities;
+using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Infrastructure.Data;
 
@@ -12,8 +13,37 @@ namespace Sistema.API.Controllers.Fiscal;
 [ApiController]
 [Route("api/fiscal/nfes-recebidas")]
 [Authorize]
-public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : ControllerBase
+public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, IDistribuicaoDFeService dfe) : ControllerBase
 {
+    /// <summary>Importa um documento (CT-e/NF-e) pela chave de acesso, direto na SEFAZ (consChNFe).</summary>
+    [HttpPost("buscar-por-chave")]
+    public async Task<IActionResult> BuscarPorChave(
+        [FromQuery] Guid empresaId, [FromBody] BuscarPorChaveRequest req, CancellationToken ct)
+    {
+        var chave = new string((req.Chave ?? "").Where(char.IsDigit).ToArray());
+        if (chave.Length != 44)
+            return BadRequest(new { mensagem = "Chave inválida — precisa ter 44 dígitos." });
+
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empresaId, ct);
+        if (empresa is null) return NotFound(new { mensagem = "Empresa não encontrada." });
+
+        if (await db.NotasFiscaisRecebidas.AnyAsync(n => n.EmpresaId == empresaId && n.ChaveAcesso == chave, ct))
+            return Ok(new { mensagem = "Este documento já estava na lista.", jaExistia = true });
+
+        var doc = await dfe.ConsultarPorChaveAsync(empresa.Cnpj, empresa.Uf, chave, ct);
+        if (doc is null)
+            return BadRequest(new { mensagem = "A SEFAZ não retornou o documento. Verifique se a empresa é o tomador/destinatário do frete, ou tente novamente mais tarde." });
+
+        var nova = NotaFiscalRecebida.Criar(
+            empresaId, doc.ChaveAcesso, doc.NSU, doc.Modelo, doc.Serie, doc.Numero,
+            doc.DataEmissao, doc.EmitenteCnpj, doc.EmitenteNome, doc.EmitenteUF,
+            doc.ValorTotal, doc.Situacao);
+        db.NotasFiscaisRecebidas.Add(nova);
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { mensagem = doc.Modelo == "57" ? "CT-e importado!" : "Documento importado!", modelo = doc.Modelo, id = nova.Id });
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId,
@@ -232,6 +262,7 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator) : 
 }
 
 public record ManifestarRequest(string Tipo, string? Justificativa);
+public record BuscarPorChaveRequest(string Chave);
 
 public record LancarFreteRequest(
     Guid EmpresaId, Guid? CategoriaId = null, DateTime? DataVencimento = null, int? DiasVencimento = null);

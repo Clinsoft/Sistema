@@ -150,6 +150,7 @@ function baixarXml(item: any) {
   window.open(`/api/fiscal/nfes-recebidas/${item.id}/xml?empresaId=${auth.empresaId}`, '_blank')
 }
 
+
 // Lançar no financeiro
 const dialogLancar = ref(false)
 const cteSel = ref<any>(null)

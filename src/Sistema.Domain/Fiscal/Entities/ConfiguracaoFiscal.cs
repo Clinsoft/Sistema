@@ -22,6 +22,7 @@ public class ConfiguracaoFiscal : Entity
 
     // Controle de paginação DFe — salvo após cada consulta bem-sucedida ao SEFAZ
     public string UltimoNsuDFe { get; private set; } = "0";
+    public string UltimoNsuCteDFe { get; private set; } = "0";
 
     // ── Parâmetros gerais de documentos ──────────────────────────────────
     public string? NaturezaOperacaoPadrao { get; private set; }
@@ -172,6 +173,14 @@ public class ConfiguracaoFiscal : Entity
             long.TryParse(UltimoNsuDFe, out var atual) &&
             novo > atual)
             UltimoNsuDFe = nsuSefaz;
+    }
+
+    public void AvancarNsuCteDFe(string nsuSefaz)
+    {
+        if (long.TryParse(nsuSefaz, out var novo) &&
+            long.TryParse(UltimoNsuCteDFe, out var atual) &&
+            novo > atual)
+            UltimoNsuCteDFe = nsuSefaz;
     }
 }
 

@@ -58,6 +58,46 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Blindagem do perfil "Contador": acesso total só às áreas fiscal/contábil;
+// leitura (GET) no restante; escrita e módulos sensíveis (folha, financeiro,
+// vendas, usuários) bloqueados. Reforça as travas de tela/rota do frontend.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (context.User.Identity?.IsAuthenticated == true
+        && context.User.IsInRole("Contador")
+        && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+    {
+        static bool Comeca(string p, string prefixo) => p.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase);
+
+        // Área do contador (acesso total) e autenticação (sempre liberada).
+        var areaContador = Comeca(path, "/api/contabilidade") || Comeca(path, "/api/fiscal") || Comeca(path, "/api/auth");
+
+        var metodo = context.Request.Method;
+        var escrita = HttpMethods.IsPost(metodo) || HttpMethods.IsPut(metodo)
+                   || HttpMethods.IsPatch(metodo) || HttpMethods.IsDelete(metodo);
+
+        // Módulos sensíveis: bloqueados até para leitura.
+        string[] sensiveis =
+        [
+            "/api/usuarios", "/api/folha", "/api/das", "/api/despesas-fixas",
+            "/api/financeiro", "/api/contas-pagar", "/api/contas-receber", "/api/crediario",
+            "/api/relatorios", "/api/vendas", "/api/caixa", "/api/sessoes",
+            "/api/marketing", "/api/whatsapp"
+        ];
+        var sensivel = sensiveis.Any(s => Comeca(path, s));
+
+        if (!areaContador && (sensivel || escrita))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new { mensagem = "Acesso restrito para o perfil Contador." });
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseHangfireDashboard("/jobs");
 
 // Registrar jobs recorrentes

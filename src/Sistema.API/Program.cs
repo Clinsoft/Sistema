@@ -91,6 +91,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
     job => job.ExecutarAsync(),
     "0 8 * * *");   // 08:00 todo dia — aniversariantes, promoções, novidades
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
+    "limpar-vendas-abertas",
+    job => job.ExecutarAsync(),
+    "0 * * * *");   // de hora em hora — descarta vendas em aberto há +6h
+
 app.MapControllers();
 
 app.Run();

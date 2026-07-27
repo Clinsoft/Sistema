@@ -97,7 +97,10 @@ public class Venda : Entity
 
     private void RecalcularTotais()
     {
-        SubTotal = _itens.Sum(i => i.Quantidade * i.PrecoUnitario);
+        // Soma os itens JÁ ARREDONDADOS por linha (2 casas) — mesmo critério da NFC-e,
+        // pra o total da venda bater com o total do cupom fiscal (evita 1 centavo de
+        // diferença em vendas por kg com vários itens).
+        SubTotal = _itens.Sum(i => Math.Round(i.Quantidade * i.PrecoUnitario, 2, MidpointRounding.AwayFromZero));
         TotalDesconto = _itens.Sum(i => i.TotalDesconto);
         Total = SubTotal - TotalDesconto + TotalAcrescimo;
     }

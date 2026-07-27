@@ -128,7 +128,9 @@ public class NotaFiscal : Entity
 
     private void RecalcularTotais()
     {
-        TotalProdutos = _itens.Sum(i => i.Quantidade * i.ValorUnitario);
+        // Soma os produtos JÁ ARREDONDADOS por item (2 casas) — no XML cada <vProd>
+        // vai arredondado, então o total precisa bater com a soma deles (senão cStat 564).
+        TotalProdutos = _itens.Sum(i => Math.Round(i.Quantidade * i.ValorUnitario, 2, MidpointRounding.AwayFromZero));
         TotalDesconto = _itens.Sum(i => i.ValorDesconto);
         TotalIcms = _itens.Sum(i => i.ValorIcms);
         TotalPis = _itens.Sum(i => i.ValorPis);

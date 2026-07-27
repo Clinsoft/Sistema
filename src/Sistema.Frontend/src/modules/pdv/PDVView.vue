@@ -1048,7 +1048,8 @@ function recalcular(i: number) {
   // Por peso: quantidade em KG (aceita decimais). Unidade: mínimo 1.
   const min = item.porPeso ? 0.001 : 1
   item.quantidade = Math.max(min, Number(item.quantidade) || min)
-  item.total = Math.max(0, item.quantidade * item.precoUnitario - item.desconto)
+  // Arredonda a linha para 2 casas (igual ao backend/NFC-e) para a soma bater.
+  item.total = Math.max(0, Math.round((item.quantidade * item.precoUnitario - item.desconto) * 100) / 100)
 }
 
 function ajustarQtd(idx: number, delta: number) {
@@ -1313,7 +1314,7 @@ function adicionarProduto(p: Produto) {
   const existe = itens.value.find(i => i.produtoId === p.id)
   if (existe) {
     existe.quantidade++
-    existe.total = existe.quantidade * existe.precoUnitario - existe.desconto
+    existe.total = Math.round((existe.quantidade * existe.precoUnitario - existe.desconto) * 100) / 100
   } else {
     itens.value.push({
       produtoId: p.id, descricao: p.descricao, codigo: p.codigo,

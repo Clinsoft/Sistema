@@ -361,13 +361,19 @@ public static class NFeXmlBuilder
         }
         else
         {
+            // PISNT só aceita CST 04–09; qualquer outro (00, 49, 99, inválido) é
+            // normalizado para 07 (isenta) — senão a SEFAZ recusa o schema (cStat 225).
             w.WriteStartElement("PISNT");
-            w.WriteElementString("CST", cst.PadLeft(2, '0'));
+            w.WriteElementString("CST", CstPisNaoTributado(cst));
             w.WriteEndElement();
         }
 
         w.WriteEndElement(); // PIS
     }
+
+    // Garante um CST válido para o grupo "não tributado" (PISNT/COFINSNT = 04 a 09).
+    private static string CstPisNaoTributado(string? cst)
+        => cst is "04" or "05" or "06" or "07" or "08" or "09" ? cst : "07";
 
     private static void EscreverCOFINS(XmlWriter w, ItemNotaFiscal item)
     {
@@ -386,7 +392,7 @@ public static class NFeXmlBuilder
         else
         {
             w.WriteStartElement("COFINSNT");
-            w.WriteElementString("CST", cst.PadLeft(2, '0'));
+            w.WriteElementString("CST", CstPisNaoTributado(cst));
             w.WriteEndElement();
         }
 

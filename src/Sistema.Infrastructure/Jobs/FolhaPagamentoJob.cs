@@ -51,11 +51,6 @@ public class FolhaPagamentoJob(SistemaDbContext db, ILogger<FolhaPagamentoJob> l
 
         foreach (var empresaId in empresas)
         {
-            // Idempotência: se a competência já foi gerada, não duplica.
-            var jaGerado = await db.LancamentosFinanceiros
-                .AnyAsync(l => l.EmpresaId == empresaId && l.DocumentoOrigem == docOrigem);
-            if (jaGerado) continue;
-
             var colaboradores = await db.Usuarios.AsNoTracking()
                 .Where(u => u.EmpresaId == empresaId && u.Ativo
                     && u.Salario != null && u.Salario > 0)
@@ -63,6 +58,14 @@ public class FolhaPagamentoJob(SistemaDbContext db, ILogger<FolhaPagamentoJob> l
                 .ToListAsync();
 
             if (colaboradores.Count == 0) continue;
+
+            // Idempotência por descrição: só insere as contas que ainda não existem
+            // nesta competência (permite re-rodar para acrescentar itens novos —
+            // ex.: provisões — sem duplicar o que já foi gerado).
+            var existentes = await db.LancamentosFinanceiros
+                .Where(l => l.EmpresaId == empresaId && l.DocumentoOrigem == docOrigem)
+                .Select(l => l.Descricao)
+                .ToListAsync();
 
             var novos = new List<LancamentoFinanceiro>();
             decimal baseFgts = 0m, inssRetido = 0m, inssIndividual = 0m;
@@ -112,13 +115,50 @@ public class FolhaPagamentoJob(SistemaDbContext db, ILogger<FolhaPagamentoJob> l
                 novos.Add(lancInss);
             }
 
-            db.LancamentosFinanceiros.AddRange(novos);
-            await db.SaveChangesAsync();
-            totalContas += novos.Count;
+            // Provisões mensais (1/12) de 13º e férias sobre a folha CLT — só CLT tem
+            // direito (sócio/pró-labore não). São reservas do mês, não pagamento real:
+            // vencem no último dia da competência.
+            if (baseFgts > 0)
+            {
+                var ultimoDia = new DateTime(competencia.Year, competencia.Month,
+                    DateTime.DaysInMonth(competencia.Year, competencia.Month));
 
-            logger.LogInformation("[FOLHA] Empresa {Id}: {Qtd} conta(s) geradas p/ competência {Comp}. " +
+                var prov13 = Math.Round(baseFgts / 12m, 2, MidpointRounding.AwayFromZero);
+                var provFerias = Math.Round(baseFgts * 4m / 3m / 12m, 2, MidpointRounding.AwayFromZero);
+
+                var lanc13 = LancamentoFinanceiro.Criar(empresaId, TipoLancamento.ContaPagar,
+                    $"Provisão 13º salário {competencia:MM/yyyy}", prov13, ultimoDia, documentoOrigem: docOrigem);
+                lanc13.DefinirClassificacao("Pessoas", "Provisão",
+                    $"1/12 da folha CLT de R$ {baseFgts:N2} (reserva de 13º)");
+                novos.Add(lanc13);
+
+                var lancFerias = LancamentoFinanceiro.Criar(empresaId, TipoLancamento.ContaPagar,
+                    $"Provisão férias + 1/3 {competencia:MM/yyyy}", provFerias, ultimoDia, documentoOrigem: docOrigem);
+                lancFerias.DefinirClassificacao("Pessoas", "Provisão",
+                    $"(salário + 1/3)/12 da folha CLT de R$ {baseFgts:N2} (reserva de férias)");
+                novos.Add(lancFerias);
+
+                // FGTS 8% sobre as provisões de 13º e férias (categoria Impostos, dia 20).
+                var fgtsProv = Math.Round((prov13 + provFerias) * AliqFgts, 2, MidpointRounding.AwayFromZero);
+                var lancFgtsProv = LancamentoFinanceiro.Criar(empresaId, TipoLancamento.ContaPagar,
+                    $"FGTS s/ provisão 13º+férias {competencia:MM/yyyy}", fgtsProv, vencImpostos,
+                    documentoOrigem: docOrigem);
+                lancFgtsProv.DefinirClassificacao("Impostos", "FGTS Digital",
+                    $"8% sobre provisões de 13º (R$ {prov13:N2}) + férias (R$ {provFerias:N2})");
+                novos.Add(lancFgtsProv);
+            }
+
+            // Filtra o que já existe (idempotência por descrição) e insere só o novo.
+            var aInserir = novos.Where(n => !existentes.Contains(n.Descricao)).ToList();
+            if (aInserir.Count == 0) continue;
+
+            db.LancamentosFinanceiros.AddRange(aInserir);
+            await db.SaveChangesAsync();
+            totalContas += aInserir.Count;
+
+            logger.LogInformation("[FOLHA] Empresa {Id}: {Qtd} conta(s) inserida(s) p/ competência {Comp}. " +
                 "FGTS base R${Fgts:F2}, INSS retido R${Ret:F2}, INSS 1099 R${Ind:F2}.",
-                empresaId, novos.Count, competencia.ToString("yyyy-MM"), baseFgts, inssRetido, inssIndividual);
+                empresaId, aInserir.Count, competencia.ToString("yyyy-MM"), baseFgts, inssRetido, inssIndividual);
         }
 
         return totalContas;

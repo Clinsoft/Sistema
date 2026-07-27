@@ -159,6 +159,35 @@
                   </v-row>
                 </div>
               </div>
+              <!-- Seção: Mensalidade fixa (recorrente) -->
+              <div class="cad-secao">
+                <div class="cad-secao-header">
+                  <v-icon size="14">mdi-calendar-sync-outline</v-icon>
+                  Mensalidade fixa (recorrente)
+                </div>
+                <div class="cad-secao-body">
+                  <div class="text-caption text-medium-emphasis mb-2">
+                    Para prestadores com valor mensal (ex.: contador, aluguel). Todo mês o sistema
+                    lança sozinho uma conta a pagar no dia de vencimento informado.
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" md="4">
+                      <v-text-field v-model.number="form.mensalidadeValor" label="Valor mensal (R$)"
+                        type="number" prefix="R$" variant="outlined" density="compact"
+                        hint="Deixe vazio se não tem mensalidade" persistent-hint />
+                    </v-col>
+                    <v-col cols="6" md="3">
+                      <v-text-field v-model.number="form.mensalidadeDiaVencimento" label="Dia do vencimento"
+                        type="number" min="1" max="31" variant="outlined" density="compact" />
+                    </v-col>
+                    <v-col cols="12" md="5">
+                      <v-select v-model="form.mensalidadeCategoria" label="Categoria" clearable
+                        :items="['Despesas Administrativas','Despesas Operacionais','Despesas Variáveis','Impostos','Pessoas']"
+                        variant="outlined" density="compact" />
+                    </v-col>
+                  </v-row>
+                </div>
+              </div>
               <!-- Seção: Endereço -->
               <div class="cad-secao">
                 <div class="cad-secao-header">
@@ -325,10 +354,18 @@ async function salvar() {
       telefone: (form.value.telefone ?? '').slice(0, 20) || null,
       celular: (form.value.celular ?? '').slice(0, 20) || null,
     }
+    const temMensalidade = !!form.value.mensalidadeValor && !!form.value.mensalidadeDiaVencimento
     if (editando.value) {
       await api.put(`/fornecedores/${editando.value}`, payload)
     } else {
-      await api.post('/fornecedores', { ...payload, empresaId: auth.empresaId })
+      const { data } = await api.post('/fornecedores', { ...payload, empresaId: auth.empresaId })
+      // O comando de criação não trata mensalidade → grava via PUT quando houver.
+      if (data?.id && temMensalidade) await api.put(`/fornecedores/${data.id}`, payload)
+    }
+    // Já lança a conta a pagar da mensalidade do mês corrente (idempotente).
+    if (temMensalidade) {
+      const r = await api.post('/despesas-fixas/gerar').catch(() => null)
+      if (r?.data?.contasGeradas > 0) notif.ok(`Mensalidade lançada no Contas a Pagar (${r.data.contasGeradas}).`)
     }
     // Também é cliente → garante o cadastro na carteira (idempotente por CPF/CNPJ).
     if (form.value.ehCliente && !editandoTinhaCliente.value) {

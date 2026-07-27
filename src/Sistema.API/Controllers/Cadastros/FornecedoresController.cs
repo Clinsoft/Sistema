@@ -55,7 +55,8 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
             f.InscricaoEstadual, f.Email, f.Telefone, f.Celular, f.Contato,
             tipos = string.IsNullOrEmpty(f.Tipos) ? new[] { "Fornecedor" } : f.Tipos.Split(','),
             f.Logradouro, f.Numero, f.Complemento, f.Bairro, f.Cidade, f.Uf, f.Cep,
-            f.PrazoPagamentoDias, f.Observacao, f.Ativo
+            f.PrazoPagamentoDias, f.Observacao, f.Ativo,
+            f.MensalidadeValor, f.MensalidadeDiaVencimento, f.MensalidadeCategoria
         });
     }
 
@@ -76,6 +77,7 @@ public class FornecedoresController(IMediator mediator, IFornecedorRepository re
             req.PrazoPagamentoDias, req.Logradouro, req.Numero, req.Complemento,
             req.Bairro, req.Cidade, req.Uf, req.Cep, req.InscricaoEstadual, req.Observacao,
             req.Celular, req.Tipos);
+        f.DefinirMensalidade(req.MensalidadeValor, req.MensalidadeDiaVencimento, req.MensalidadeCategoria);
 
         db.Fornecedores.Update(f);
         await uow.SalvarAsync(ct);
@@ -111,4 +113,6 @@ public record EditarFornecedorRequest(
     string? Logradouro = null, string? Numero = null, string? Complemento = null,
     string? Bairro = null, string? Cidade = null, string? Uf = null,
     string? Cep = null, string? InscricaoEstadual = null, string? Observacao = null,
-    string? Celular = null, string? Tipos = null);
+    string? Celular = null, string? Tipos = null,
+    decimal? MensalidadeValor = null, int? MensalidadeDiaVencimento = null,
+    string? MensalidadeCategoria = null);

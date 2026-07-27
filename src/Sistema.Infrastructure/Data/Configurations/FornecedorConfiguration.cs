@@ -28,5 +28,7 @@ public class FornecedorConfiguration : IEntityTypeConfiguration<Fornecedor>
         b.Property(f => f.Uf).HasMaxLength(2);
         b.Property(f => f.Cep).HasMaxLength(8);
         b.Property(f => f.Observacao).HasMaxLength(500);
+        b.Property(f => f.MensalidadeValor).HasColumnType("decimal(18,2)");
+        b.Property(f => f.MensalidadeCategoria).HasMaxLength(60);
     }
 }

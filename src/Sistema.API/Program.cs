@@ -101,6 +101,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FolhaPagamentoJob>(
     job => job.ExecutarAsync(),
     "0 6 1 * *");   // 06:00 do dia 1º — previsão de salários + FGTS/INSS da folha
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.DespesasFixasJob>(
+    "despesas-fixas-mensais",
+    job => job.ExecutarAsync(),
+    "10 6 1 * *");  // 06:10 do dia 1º — mensalidades fixas (contador, aluguel, etc.)
+
 app.MapControllers();
 
 app.Run();

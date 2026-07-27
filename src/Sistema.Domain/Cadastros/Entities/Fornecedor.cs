@@ -25,6 +25,12 @@ public class Fornecedor : Entity
     public string? Observacao { get; private set; }
     public bool Ativo { get; private set; } = true;
 
+    // Mensalidade fixa (ex.: honorários do contador, aluguel) — gera conta a pagar
+    // recorrente todo mês no dia de vencimento informado.
+    public decimal? MensalidadeValor { get; private set; }
+    public int? MensalidadeDiaVencimento { get; private set; }
+    public string? MensalidadeCategoria { get; private set; }
+
     private Fornecedor() { }
 
     public static Fornecedor Criar(Guid empresaId, string razaoSocial, string? cnpj = null,
@@ -63,6 +69,14 @@ public class Fornecedor : Entity
         Cep = cep;
         InscricaoEstadual = inscricaoEstadual;
         Observacao = observacao;
+    }
+
+    /// <summary>Configura a mensalidade fixa deste fornecedor (valor + dia de vencimento + categoria).</summary>
+    public void DefinirMensalidade(decimal? valor, int? diaVencimento, string? categoria)
+    {
+        MensalidadeValor = valor is > 0 ? valor : null;
+        MensalidadeDiaVencimento = diaVencimento is >= 1 and <= 31 ? diaVencimento : null;
+        MensalidadeCategoria = string.IsNullOrWhiteSpace(categoria) ? null : categoria;
     }
 
     public void Desativar() => Ativo = false;

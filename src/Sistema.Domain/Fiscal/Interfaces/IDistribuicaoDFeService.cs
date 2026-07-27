@@ -71,4 +71,6 @@ public record DFeDocumento(
     string EmitenteNome,
     string? EmitenteUF,
     decimal ValorTotal,
-    SituacaoNFeRecebida Situacao);
+    SituacaoNFeRecebida Situacao,
+    /// <summary>Chaves das NF-e transportadas (só no CT-e completo).</summary>
+    IReadOnlyList<string>? ChavesReferenciadas = null);

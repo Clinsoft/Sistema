@@ -95,27 +95,42 @@ public class ConsultarNFesRecebidasHandler(
 
             if (resultado.Documentos.Count > 0)
             {
+                // Prefere o CT-e COMPLETO (que tem as chaves das NF-e) sobre o resumo.
                 var unicos = resultado.Documentos
                     .GroupBy(d => d.ChaveAcesso)
-                    .Select(g => g.OrderByDescending(d => d.NSU).First())
+                    .Select(g => g.OrderByDescending(d => d.ChavesReferenciadas != null)
+                                  .ThenByDescending(d => d.NSU).First())
                     .ToList();
 
                 var existentes = await db.NotasFiscaisRecebidas
                     .Where(n => n.EmpresaId == cmd.EmpresaId &&
                                 unicos.Select(d => d.ChaveAcesso).Contains(n.ChaveAcesso))
-                    .Select(n => n.ChaveAcesso)
                     .ToListAsync(ct);
+                var existentesChaves = existentes.Select(n => n.ChaveAcesso).ToHashSet();
 
-                var novas = unicos
-                    .Where(d => !existentes.Contains(d.ChaveAcesso))
-                    .Select(d => NotaFiscalRecebida.Criar(
+                foreach (var d in unicos)
+                {
+                    // Se já existe mas agora veio o completo com as NF-e, atualiza as chaves.
+                    if (existentesChaves.Contains(d.ChaveAcesso))
+                    {
+                        if (d.ChavesReferenciadas is { Count: > 0 })
+                        {
+                            var ja = existentes.First(n => n.ChaveAcesso == d.ChaveAcesso);
+                            if (string.IsNullOrEmpty(ja.ChavesReferenciadas))
+                                ja.DefinirChavesReferenciadas(d.ChavesReferenciadas);
+                        }
+                        continue;
+                    }
+                    var nova = NotaFiscalRecebida.Criar(
                         cmd.EmpresaId, d.ChaveAcesso, d.NSU, d.Modelo, d.Serie, d.Numero,
                         d.DataEmissao, d.EmitenteCnpj, d.EmitenteNome, d.EmitenteUF,
-                        d.ValorTotal, d.Situacao))
-                    .ToList();
-
-                if (novas.Count > 0) db.NotasFiscaisRecebidas.AddRange(novas);
-                totalNovas += novas.Count;
+                        d.ValorTotal, d.Situacao);
+                    if (d.ChavesReferenciadas is { Count: > 0 })
+                        nova.DefinirChavesReferenciadas(d.ChavesReferenciadas);
+                    db.NotasFiscaisRecebidas.Add(nova);
+                    existentesChaves.Add(d.ChaveAcesso);
+                    totalNovas++;
+                }
             }
             await db.SaveChangesAsync(ct);
 

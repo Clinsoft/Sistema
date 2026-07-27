@@ -37,6 +37,9 @@ public class NotaFiscalRecebida : Entity
     // XML completo (baixado após ciência/confirmação)
     public string? XmlNota { get; private set; }
 
+    /// <summary>CT-e: chaves das NF-e transportadas, separadas por vírgula.</summary>
+    public string? ChavesReferenciadas { get; private set; }
+
     public DateTime DataConsulta { get; private set; }
 
     private NotaFiscalRecebida() { }
@@ -72,6 +75,8 @@ public class NotaFiscalRecebida : Entity
     public void AtualizarSituacao(SituacaoNFeRecebida situacao) => Situacao = situacao;
 
     public void SalvarXml(string xml) => XmlNota = xml;
+    public void DefinirChavesReferenciadas(IEnumerable<string> chaves)
+        => ChavesReferenciadas = string.Join(",", chaves);
 
     public void AtualizarDadosConsulta(SituacaoNFeRecebida situacao)
     {

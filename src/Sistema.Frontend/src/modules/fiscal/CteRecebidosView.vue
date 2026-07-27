@@ -41,6 +41,16 @@
         hover items-per-page="25">
         <template #item.dataEmissao="{ item }">{{ fmtData(item.dataEmissao) }}</template>
         <template #item.valorTotal="{ item }">R$ {{ fmt(item.valorTotal) }}</template>
+        <template #item.nfesAssociadas="{ item }">
+          <template v-if="item.nfesAssociadas && item.nfesAssociadas.length">
+            <v-chip v-for="(nf, i) in item.nfesAssociadas" :key="i" size="x-small" class="mr-1 mb-1"
+              :color="nf.recebida ? 'primary' : 'grey'" variant="tonal"
+              :title="nf.recebida ? 'NF-e recebida no sistema' : 'NF-e ainda não recebida — chave ' + nf.chave">
+              {{ nf.numero ? 'NF ' + nf.numero : (nf.chave.slice(25, 34)).replace(/^0+/, '') }}
+            </v-chip>
+          </template>
+          <span v-else class="text-medium-emphasis text-caption">—</span>
+        </template>
         <template #item.situacao="{ item }">
           <v-chip size="x-small" :color="item.situacao === 'Cancelada' ? 'error' : 'success'">
             {{ item.situacao === 'Cancelada' ? 'Cancelado' : 'Autorizado' }}
@@ -108,6 +118,7 @@ const headers = [
   { title: 'Série', key: 'serie', width: 70 },
   { title: 'Emissão', key: 'dataEmissao', width: 110 },
   { title: 'Valor frete', key: 'valorTotal', width: 120, align: 'end' as const },
+  { title: 'NF-e transportada', key: 'nfesAssociadas', sortable: false, width: 180 },
   { title: 'Situação', key: 'situacao', width: 110 },
   { title: 'Financeiro', key: 'financeiro', width: 110 },
   { title: '', key: 'actions', sortable: false, width: 160 },

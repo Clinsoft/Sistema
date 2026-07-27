@@ -110,10 +110,42 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
                 // CT-e: se o frete já foi lançado como conta a pagar.
                 Lancado = db.LancamentosFinanceiros
                     .Any(l => l.EmpresaId == empresaId && l.DocumentoOrigem == "CT-e " + n.ChaveAcesso),
+                n.ChavesReferenciadas,
             })
             .ToListAsync(ct);
 
-        return Ok(notas);
+        // CT-e: casa as chaves das NF-e transportadas com as NF-e já recebidas
+        // (mostra o número de cada NF-e associada ao frete).
+        var chavesRef = notas
+            .Where(n => !string.IsNullOrEmpty(n.ChavesReferenciadas))
+            .SelectMany(n => n.ChavesReferenciadas!.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Distinct().ToList();
+
+        var nfePorChave = chavesRef.Count == 0
+            ? new Dictionary<string, long>()
+            : await db.NotasFiscaisRecebidas.AsNoTracking()
+                .Where(n => n.EmpresaId == empresaId && n.Modelo == "55" && chavesRef.Contains(n.ChaveAcesso))
+                .ToDictionaryAsync(n => n.ChaveAcesso, n => n.Numero, ct);
+
+        var resultado = notas.Select(n => new
+        {
+            n.Id, n.ChaveAcesso, n.NSU, n.Modelo, n.Serie, n.Numero, n.DataEmissao,
+            n.EmitenteCnpj, n.EmitenteNome, n.EmitenteUF, n.ValorTotal, n.Situacao,
+            n.Manifestacao, n.DataManifestacao, n.JustificativaManifestacao, n.TemXml,
+            n.DataConsulta, n.EntradaId, n.EntradaStatus, n.Lancado,
+            // NF-e transportadas por este CT-e (número quando já recebida; chave se não).
+            NfesAssociadas = string.IsNullOrEmpty(n.ChavesReferenciadas)
+                ? new List<object>()
+                : n.ChavesReferenciadas.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(ch => new
+                    {
+                        chave = ch,
+                        numero = nfePorChave.TryGetValue(ch, out var num) ? (long?)num : null,
+                        recebida = nfePorChave.ContainsKey(ch),
+                    }).ToList<object>(),
+        });
+
+        return Ok(resultado);
     }
 
     [HttpGet("{id:guid}/xml")]

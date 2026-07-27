@@ -538,8 +538,16 @@ public class DistribuicaoDFeService(
             System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
 
+        // Chaves das NF-e transportadas por este CT-e (grupo infNFe do infDoc).
+        var chavesNFe = new List<string>();
+        var nfeNodes = doc.SelectNodes("//c:infNFe/c:chave", ns);
+        if (nfeNodes != null)
+            foreach (XmlNode ch in nfeNodes)
+                if (ch.InnerText is { Length: 44 } k) chavesNFe.Add(k);
+
         return new DFeDocumento(chave, nsu, modelo, serie, numero, dtEmissao,
-            emitCnpj, emitNome, emitUF, valor, SituacaoNFeRecebida.Autorizada);
+            emitCnpj, emitNome, emitUF, valor, SituacaoNFeRecebida.Autorizada,
+            chavesNFe.Count > 0 ? chavesNFe : null);
     }
 
     /// <summary>Parseia a NF-e completa (procNFe / nfeProc).</summary>

@@ -158,7 +158,7 @@ const ROTAS_ATENDENTE = [
 ]
 
 // Prefixos que o perfil "Contador" pode acessar (só fiscal e contábil).
-const PREFIXOS_CONTADOR = ['/contabilidade', '/contador', '/fiscal']
+const PREFIXOS_CONTADOR = ['/contabilidade', '/contador']
 
 router.beforeEach((to) => {
   const auth = useAuthStore()

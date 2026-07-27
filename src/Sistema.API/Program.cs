@@ -72,7 +72,7 @@ app.Use(async (context, next) =>
         static bool Comeca(string p, string prefixo) => p.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase);
 
         // Área do contador (acesso total) e autenticação (sempre liberada).
-        var areaContador = Comeca(path, "/api/contabilidade") || Comeca(path, "/api/fiscal") || Comeca(path, "/api/auth");
+        var areaContador = Comeca(path, "/api/contabilidade") || Comeca(path, "/api/auth");
 
         var metodo = context.Request.Method;
         var escrita = HttpMethods.IsPost(metodo) || HttpMethods.IsPut(metodo)
@@ -84,7 +84,7 @@ app.Use(async (context, next) =>
             "/api/usuarios", "/api/folha", "/api/das", "/api/despesas-fixas",
             "/api/financeiro", "/api/contas-pagar", "/api/contas-receber", "/api/crediario",
             "/api/relatorios", "/api/vendas", "/api/caixa", "/api/sessoes",
-            "/api/marketing", "/api/whatsapp"
+            "/api/marketing", "/api/whatsapp", "/api/fiscal"
         ];
         var sensivel = sensiveis.Any(s => Comeca(path, s));
 

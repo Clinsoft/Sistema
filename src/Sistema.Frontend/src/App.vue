@@ -137,9 +137,9 @@
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
+          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
             to="/fiscal" value="/fiscal" color="primary" rounded="lg" />
-          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-outline" title="CT-e recebidos"
+          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-truck-outline" title="CT-e recebidos"
             to="/fiscal/cte-recebidos" value="/fiscal/cte-recebidos" color="primary" rounded="lg" />
 
           <v-list-group v-if="!ehContador" value="marketing">

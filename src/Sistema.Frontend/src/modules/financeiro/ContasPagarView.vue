@@ -4,6 +4,8 @@
       <div class="text-h6 font-weight-bold flex-grow-1">Contas a Pagar</div>
       <v-btn color="teal" variant="tonal" rounded="lg" prepend-icon="mdi-account-cash-outline"
         class="mr-2" :loading="gerandoFolha" @click="gerarFolha">Prever folha</v-btn>
+      <v-btn color="deep-purple" variant="tonal" rounded="lg" prepend-icon="mdi-bank-outline"
+        class="mr-2" @click="abrirDas">Gerar DAS</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Nova</v-btn>
     </div>
 
@@ -466,6 +468,41 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog: Gerar DAS (Simples Nacional) -->
+    <v-dialog v-model="dlgDas" max-width="460">
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center">
+          <v-icon start color="deep-purple">mdi-bank-outline</v-icon>Gerar DAS — Simples Nacional
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="6">
+              <v-select v-model="das.mes" :items="mesesOpcoes" item-title="label" item-value="value"
+                label="Mês competência" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="6">
+              <v-text-field v-model.number="das.ano" label="Ano" type="number"
+                variant="outlined" density="compact" />
+            </v-col>
+          </v-row>
+          <v-text-field v-model.number="das.faturamento" label="Faturamento do mês (R$) *"
+            type="number" prefix="R$" variant="outlined" density="compact" class="mt-1" autofocus />
+          <v-text-field v-model.number="das.aliquota" label="Alíquota efetiva (%)"
+            type="number" suffix="%" variant="outlined" density="compact"
+            hint="Anexo I — atualize quando mudar de faixa (RBT12)" persistent-hint />
+          <v-alert type="info" variant="tonal" density="compact" class="mt-3">
+            DAS previsto: <b>R$ {{ dasValor.toFixed(2) }}</b> · vence dia 20/{{ String(das.mes % 12 + 1).padStart(2,'0') }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgDas = false">Cancelar</v-btn>
+          <v-btn color="deep-purple" rounded="lg" :loading="gerandoDas"
+            :disabled="!das.faturamento || !das.aliquota" @click="gerarDas">Lançar DAS</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -484,6 +521,16 @@ const { mobile } = useDisplay()
 const carregando = ref(false)
 const salvando = ref(false)
 const gerandoFolha = ref(false)
+const dlgDas = ref(false)
+const gerandoDas = ref(false)
+const das = ref({ ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, faturamento: null as number | null, aliquota: 8.45 })
+const mesesOpcoes = [
+  { label: 'Janeiro', value: 1 }, { label: 'Fevereiro', value: 2 }, { label: 'Março', value: 3 },
+  { label: 'Abril', value: 4 }, { label: 'Maio', value: 5 }, { label: 'Junho', value: 6 },
+  { label: 'Julho', value: 7 }, { label: 'Agosto', value: 8 }, { label: 'Setembro', value: 9 },
+  { label: 'Outubro', value: 10 }, { label: 'Novembro', value: 11 }, { label: 'Dezembro', value: 12 },
+]
+const dasValor = computed(() => ((das.value.faturamento || 0) * (das.value.aliquota || 0)) / 100)
 const lancamentos = ref<any[]>([])
 const dialogPagamento = ref(false)
 const dialogNovo = ref(false)
@@ -659,6 +706,28 @@ async function gerarFolha() {
     await carregar()
   } catch { notif.erro('Erro ao gerar previsão de folha.') }
   finally { gerandoFolha.value = false }
+}
+
+function abrirDas() {
+  const h = new Date()
+  das.value = { ano: h.getFullYear(), mes: h.getMonth() + 1, faturamento: null, aliquota: das.value.aliquota || 8.45 }
+  dlgDas.value = true
+}
+
+// Lança o DAS: faturamento informado × alíquota efetiva → conta a pagar (Impostos, dia 20 do mês seguinte).
+async function gerarDas() {
+  gerandoDas.value = true
+  try {
+    const r = await api.post('/das/gerar', {
+      empresaId: auth.empresaId, ano: das.value.ano, mes: das.value.mes,
+      faturamento: das.value.faturamento, aliquota: das.value.aliquota,
+    })
+    notif.ok(`DAS de ${r.data.competencia} lançado: R$ ${Number(r.data.valor).toFixed(2)} (vence ${fmtData(r.data.vencimento)}).`)
+    dlgDas.value = false
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.erro || 'Erro ao gerar DAS.')
+  } finally { gerandoDas.value = false }
 }
 
 // Filtro rápido "Hoje": mostra todas as contas que vencem hoje (sem esconder por status/categoria).

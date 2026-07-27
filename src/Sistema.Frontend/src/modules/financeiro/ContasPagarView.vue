@@ -2,6 +2,8 @@
   <div>
     <div class="d-flex align-center mb-4">
       <div class="text-h6 font-weight-bold flex-grow-1">Contas a Pagar</div>
+      <v-btn color="teal" variant="tonal" rounded="lg" prepend-icon="mdi-account-cash-outline"
+        class="mr-2" :loading="gerandoFolha" @click="gerarFolha">Prever folha</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Nova</v-btn>
     </div>
 
@@ -481,6 +483,7 @@ const notif = useNotifStore()
 const { mobile } = useDisplay()
 const carregando = ref(false)
 const salvando = ref(false)
+const gerandoFolha = ref(false)
 const lancamentos = ref<any[]>([])
 const dialogPagamento = ref(false)
 const dialogNovo = ref(false)
@@ -642,6 +645,20 @@ async function carregar() {
     const r = await api.get('/contas-pagar', { params })
     lancamentos.value = r.data
   } finally { carregando.value = false }
+}
+
+// Gera a previsão da folha do mês atual: salários (5º dia útil, Pessoas) + FGTS/INSS (dia 20, Impostos).
+// Idempotente no backend — se o mês já foi gerado, não duplica.
+async function gerarFolha() {
+  gerandoFolha.value = true
+  try {
+    const r = await api.post('/folha/gerar-previsao')
+    const qtd = r.data?.contasGeradas ?? 0
+    if (qtd > 0) notif.ok(`Previsão de folha gerada: ${qtd} conta(s) para ${r.data.competencia}.`)
+    else notif.aviso('A folha desta competência já havia sido gerada (nada duplicado).')
+    await carregar()
+  } catch { notif.erro('Erro ao gerar previsão de folha.') }
+  finally { gerandoFolha.value = false }
 }
 
 // Filtro rápido "Hoje": mostra todas as contas que vencem hoje (sem esconder por status/categoria).

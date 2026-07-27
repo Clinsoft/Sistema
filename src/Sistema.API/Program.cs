@@ -96,6 +96,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
     job => job.ExecutarAsync(),
     "0 * * * *");   // de hora em hora — descarta vendas em aberto há +6h
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FolhaPagamentoJob>(
+    "folha-previsao-mensal",
+    job => job.ExecutarAsync(),
+    "0 6 1 * *");   // 06:00 do dia 1º — previsão de salários + FGTS/INSS da folha
+
 app.MapControllers();
 
 app.Run();

@@ -49,7 +49,7 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
             x.l.Id, x.l.ProdutoId, x.l.LocalEstoqueId,
             descricao = x.Descricao, codigo = x.Codigo,
             x.l.NumeroLote, x.l.Quantidade, x.l.CustoUnitario,
-            x.l.DataValidade, x.l.DataFabricacao,
+            x.l.DataValidade, x.l.DataFabricacao, x.l.ImagemUrl,
             Vencido = x.l.EstaVencido(),
             VenceEm30 = x.l.VenceEm(30),
         }));

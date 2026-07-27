@@ -98,6 +98,11 @@
                   @update:model-value="toggleSelEtiqueta(item.loteId)" class="mr-1" />
                 <div class="validade-status-bar" :class="`bg-${corStatus(item.status)}`" />
                 <v-icon :icon="iconeStatus(item.status)" :color="corStatus(item.status)" class="mr-2" />
+                <v-avatar v-if="item.loteImagemUrl" size="40" rounded class="mr-2"
+                  style="cursor:pointer" title="Foto da etiqueta (clique para ampliar)"
+                  @click.stop="ampliarFoto(item.loteImagemUrl)">
+                  <v-img :src="item.loteImagemUrl" cover />
+                </v-avatar>
               </template>
               <template #default>
                 <div class="text-body-2 font-weight-medium">{{ item.descricao }}</div>
@@ -228,6 +233,11 @@
                       <input type="file" accept="image/*" capture="environment"
                         class="d-none" :ref="(el: any) => setFotoRef(it.itemId, el)"
                         @change="onFoto(it, $event)" />
+                    </v-col>
+                    <v-col v-if="it._fotoBase64" cols="auto">
+                      <v-avatar size="40" rounded>
+                        <v-img :src="it._fotoBase64" cover />
+                      </v-avatar>
                     </v-col>
                     <v-col cols="auto">
                       <v-btn size="small" color="primary" :loading="it._salvando"
@@ -432,6 +442,17 @@
     <!-- Scanner de câmera (modo por código de barras) -->
     <BarcodeScanner v-model="scannerAberto" @detected="onScanBarcode" />
 
+    <!-- Foto da etiqueta ampliada -->
+    <v-dialog v-model="dlgFoto" max-width="600">
+      <v-card rounded="xl">
+        <v-img :src="fotoAmpliada" max-height="80vh" contain />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="dlgFoto = false">Fechar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ═══════════════════ ABA: LOTES ═══════════════════ -->
     <div v-if="aba === 'lotes'">
       <v-row align="center" class="mb-3">
@@ -476,6 +497,13 @@
       <v-card v-if="abaLotes === 'todos'" rounded="xl" elevation="1">
         <v-data-table :headers="headersLotes" :items="lotesLista" :loading="carregandoLotes"
           density="compact" hover items-per-page="25">
+          <template #item.imagemUrl="{ item }">
+            <v-avatar v-if="item.imagemUrl" size="36" rounded style="cursor:pointer"
+              title="Foto da etiqueta (clique para ampliar)" @click="ampliarFoto(item.imagemUrl)">
+              <v-img :src="item.imagemUrl" cover />
+            </v-avatar>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
           <template #item.dataValidade="{ item }">
             <v-chip v-if="item.dataValidade"
               :color="item.vencido ? 'error' : item.venceEm30 ? 'warning' : 'success'"
@@ -854,6 +882,12 @@ const marca = ref('')
 const lotes = ref<any[]>([])
 const barcodeInput = ref<any>(null)
 const scannerAberto = ref(false)
+const dlgFoto = ref(false)
+const fotoAmpliada = ref('')
+function ampliarFoto(url: string) {
+  fotoAmpliada.value = url
+  dlgFoto.value = true
+}
 const salvando = ref(false)
 
 function onScanBarcode(codigo: string) {
@@ -979,12 +1013,34 @@ function dispararFoto(it: any) {
   fotoRefs.get(it.itemId)?.click()
 }
 
+// Comprime a foto (máx. 900px, JPEG 0.7) e devolve dataURL base64 — leve para enviar/guardar.
+function comprimirImagem(file: File, maxDim = 900, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const escala = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * escala)
+      canvas.height = Math.round(img.height * escala)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('canvas'))
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = reject
+    img.src = URL.createObjectURL(file)
+  })
+}
+
 async function onFoto(it: any, ev: Event) {
   const file = (ev.target as HTMLInputElement).files?.[0]
   ;(ev.target as HTMLInputElement).value = ''   // permite re-selecionar a mesma foto
   if (!file) return
   it._ocr = true; it._ocrLido = false
   try {
+    // Guarda a foto (comprimida) para salvar junto com a validade/lote.
+    try { it._fotoBase64 = await comprimirImagem(file) } catch { /* sem preview */ }
     const res = await lerDataValidadeDaImagem(file)
     it._ocrCandidatas = res.candidatas
     if (res.dataIso) it._validade = res.dataIso
@@ -1001,14 +1057,16 @@ async function registrarItemNota(it: any) {
   if (!it._validade) return
   it._salvando = true
   try {
-    await api.post('/validade/registrar', {
+    const { data } = await api.post('/validade/registrar', {
       empresaId: auth.empresaId,
       produtoId: it.produtoId,
       dataValidade: it._validade,
       loteId: it.loteId ?? undefined,
       numeroLote: it._lote || undefined,
       quantidade: it.quantidadeEstoque,
+      imagemBase64: it._fotoBase64 || undefined,
     })
+    it._loteImagemUrl = data?.imagemUrl ?? it._fotoBase64
     it._salvo = true
     it._destaque = false
   } catch (e: any) {
@@ -1064,6 +1122,7 @@ const vencidos = computed(() => alertasVenc.value.filter(l => l.vencido).length)
 const proximos = computed(() => alertasVenc.value.filter(l => !l.vencido).length)
 
 const headersLotes = [
+  { title: 'Foto',     key: 'imagemUrl', width: 60, sortable: false },
   { title: 'Produto',  key: 'descricao', sortable: true },
   { title: 'Nº Lote', key: 'numeroLote' },
   { title: 'Qtd.',    key: 'quantidade', width: 80 },

@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace Sistema.API.Controllers.Estoque;
 
@@ -50,6 +52,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
                 l.NumeroLote,
                 l.DataValidade,
                 l.Quantidade,
+                LoteImagemUrl = l.ImagemUrl,
                 ValorEstoque = l.Quantidade * p.PrecoVenda,
                 p.PrecoVenda,
                 VendidoPorPeso = p.ProdutoBalanca || p.VendidoFracionado
@@ -72,6 +75,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             {
                 i.LoteId, i.ProdutoId, i.Descricao, i.DescricaoComplementar,
                 i.Codigo, i.CodigoBarras, i.CodigoPlu, i.ImagemUrl,
+                i.LoteImagemUrl,
                 i.Marca, i.Categoria, i.NumeroLote,
                 DataValidade    = i.DataValidade?.ToString("dd/MM/yyyy"),
                 DataValidadeIso = i.DataValidade?.ToString("yyyy-MM-dd"),
@@ -219,18 +223,18 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
     [HttpPost("registrar")]
     public async Task<IActionResult> Registrar([FromBody] RegistrarValidadeRequest req, CancellationToken ct)
     {
+        Domain.Estoque.Entities.Lote lote;
+        string mensagem;
+
         if (req.LoteId.HasValue)
         {
-            // Atualiza lote existente
-            var lote = await db.Lotes.FindAsync([req.LoteId.Value], ct);
-            if (lote is null) return NotFound("Lote não encontrado.");
+            lote = await db.Lotes.FindAsync([req.LoteId.Value], ct)
+                ?? throw new KeyNotFoundException("Lote não encontrado.");
             lote.AtualizarValidade(req.DataValidade);
-            await uow.SalvarAsync(ct);
-            return Ok(new { lote.Id, mensagem = "Validade atualizada." });
+            mensagem = "Validade atualizada.";
         }
         else
         {
-            // Cria novo lote
             var produto = await db.Produtos.FindAsync([req.ProdutoId], ct);
             if (produto is null) return NotFound("Produto não encontrado.");
 
@@ -242,25 +246,62 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             var numero = req.NumeroLote ?? $"L{DateTime.Today:yyyyMMdd}";
 
             // Se já existe um lote com essa chave (ex.: criado na escrituração da NF),
-            // atualiza a validade em vez de duplicar (evita violação do índice único
-            // ProdutoId + LocalEstoqueId + NumeroLote).
+            // atualiza em vez de duplicar (evita violação do índice único).
             var existente = await db.Lotes.FirstOrDefaultAsync(l =>
                 l.ProdutoId == req.ProdutoId && l.LocalEstoqueId == localId && l.NumeroLote == numero, ct);
             if (existente is not null)
             {
                 existente.AtualizarValidade(req.DataValidade);
-                await uow.SalvarAsync(ct);
-                return Ok(new { existente.Id, mensagem = "Validade atualizada no lote existente." });
+                lote = existente;
+                mensagem = "Validade atualizada no lote existente.";
             }
-
-            var lote = Lote.Criar(req.EmpresaId, req.ProdutoId, localId, numero,
-                req.Quantidade ?? 1, produto.CustoUnitario,
-                dataValidade: req.DataValidade);
-
-            db.Lotes.Add(lote);
-            await uow.SalvarAsync(ct);
-            return Ok(new { lote.Id, mensagem = "Lote registrado com validade." });
+            else
+            {
+                lote = Lote.Criar(req.EmpresaId, req.ProdutoId, localId, numero,
+                    req.Quantidade ?? 1, produto.CustoUnitario, dataValidade: req.DataValidade);
+                db.Lotes.Add(lote);
+                mensagem = "Lote registrado com validade.";
+            }
         }
+
+        // Salva a foto da etiqueta (conferência) e vincula ao lote.
+        var url = await SalvarImagemLoteAsync(lote.Id, req.ImagemBase64, ct);
+        if (url is not null) lote.DefinirImagem(url);
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { lote.Id, mensagem, imagemUrl = lote.ImagemUrl });
+    }
+
+    /// <summary>
+    /// Decodifica a foto (dataURL/base64), redimensiona (máx. 1024px, JPEG q60) para
+    /// não ocupar muito espaço no servidor mantendo a legibilidade, salva em
+    /// wwwroot/uploads/lotes e retorna a URL.
+    /// </summary>
+    private static async Task<string?> SalvarImagemLoteAsync(Guid loteId, string? base64, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return null;
+        try
+        {
+            var dados = base64.Contains(',') ? base64[(base64.IndexOf(',') + 1)..] : base64;
+            var bytes = Convert.FromBase64String(dados);
+
+            var dir = Path.Combine("wwwroot", "uploads", "lotes");
+            Directory.CreateDirectory(dir);
+            var nome = $"{loteId}.jpg";
+
+            using var image = SixLabors.ImageSharp.Image.Load(bytes);
+            image.Mutate(x => x.Resize(new SixLabors.ImageSharp.Processing.ResizeOptions
+            {
+                Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,   // mantém proporção
+                Size = new SixLabors.ImageSharp.Size(1024, 1024),        // maior lado ≤ 1024px
+            }));
+            await image.SaveAsJpegAsync(
+                Path.Combine(dir, nome),
+                new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 60 }, ct);
+
+            return $"/uploads/lotes/{nome}";
+        }
+        catch { return null; }
     }
 
     // ─── Executar o monitoramento agora (gera promoções) ───────────────────
@@ -331,7 +372,8 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
 
 public record RegistrarValidadeRequest(
     Guid EmpresaId, Guid ProdutoId, DateTime DataValidade,
-    Guid? LoteId = null, string? NumeroLote = null, decimal? Quantidade = null);
+    Guid? LoteId = null, string? NumeroLote = null, decimal? Quantidade = null,
+    string? ImagemBase64 = null);
 
 public record SalvarConfigRequest(
     int DiasAlertaAmarelo, int DiasAlertaVermelho, int DiasAlertaUrgente,

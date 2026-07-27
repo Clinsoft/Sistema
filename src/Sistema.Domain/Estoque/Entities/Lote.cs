@@ -12,6 +12,8 @@ public class Lote : Entity
     public DateTime? DataValidade { get; private set; }
     public decimal Quantidade { get; private set; }
     public decimal CustoUnitario { get; private set; }
+    /// <summary>Foto da etiqueta (validade/lote) tirada no registro, para conferência.</summary>
+    public string? ImagemUrl { get; private set; }
 
     private Lote() { }
 
@@ -35,6 +37,7 @@ public class Lote : Entity
     public void Baixar(decimal quantidade) => Quantidade = Math.Max(0, Quantidade - quantidade);
     public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
     public void AtualizarValidade(DateTime dataValidade) => DataValidade = dataValidade;
+    public void DefinirImagem(string url) => ImagemUrl = url;
 
     public void Editar(string numeroLote, decimal quantidade, decimal custoUnitario,
         DateTime? dataFabricacao, DateTime? dataValidade)

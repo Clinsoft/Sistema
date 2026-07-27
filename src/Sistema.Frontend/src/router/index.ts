@@ -128,8 +128,6 @@ const router = createRouter({
       meta: { titulo: 'Locais de Estoque' } },
     { path: '/cadastros/colaboradores', component: () => import('@/modules/cadastros/ColaboradoresView.vue'),
       meta: { titulo: 'Colaboradores' } },
-    { path: '/cadastros/contadores', component: () => import('@/modules/cadastros/ContadoresView.vue'),
-      meta: { titulo: 'Contadores' } },
 
     // Relatórios
     { path: '/relatorios', component: () => import('@/modules/relatorios/RelatoriosView.vue'),

@@ -63,8 +63,6 @@
               to="/cadastros/colaboradores" value="/cadastros/colaboradores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"
               to="/cadastros/fornecedores" value="/cadastros/fornecedores" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-calculator-variant-outline" title="Contadores"
-              to="/cadastros/contadores" value="/cadastros/contadores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-warehouse" title="Locais de Estoque"
               to="/cadastros/locais-estoque" value="/cadastros/locais-estoque" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-package-variant-closed" title="Produtos"

@@ -10,6 +10,7 @@ public class Contador : Entity
     public string Email { get; private set; } = null!;
     public string? Telefone { get; private set; }
     public string? CRC { get; private set; }                // Registro CRC
+    public Guid? FornecedorId { get; private set; }          // fornecedor de honorários vinculado (ex.: INOVA)
     public bool Ativo { get; private set; } = true;
     // CriadoEm é herdado de Entity (já com default UtcNow) — não redeclarar aqui,
     // pois a duplicação causa "Ambiguous match found" por reflexão ao salvar.
@@ -17,7 +18,7 @@ public class Contador : Entity
     private Contador() { }
 
     public static Contador Criar(Guid empresaId, string nome, string cpfCnpj, string email,
-        string? telefone = null, string? crc = null)
+        string? telefone = null, string? crc = null, Guid? fornecedorId = null)
         => new()
         {
             EmpresaId = empresaId,
@@ -26,14 +27,16 @@ public class Contador : Entity
             Email = email,
             Telefone = telefone,
             CRC = crc,
+            FornecedorId = fornecedorId,
         };
 
-    public void Editar(string nome, string email, string? telefone, string? crc)
+    public void Editar(string nome, string email, string? telefone, string? crc, Guid? fornecedorId = null)
     {
         Nome = nome;
         Email = email;
         Telefone = telefone;
         CRC = crc;
+        FornecedorId = fornecedorId;
     }
 
     public void Desativar() => Ativo = false;

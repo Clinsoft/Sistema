@@ -311,10 +311,24 @@
               <v-text-field v-model="formContador.telefone" label="Telefone"
                 variant="outlined" density="compact" />
             </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field v-model="formContador.senha"
+                :label="contadorEditandoId ? 'Nova senha (vazio = manter)' : 'Senha de acesso'"
+                :type="mostrarSenhaContador ? 'text' : 'password'"
+                :append-inner-icon="mostrarSenhaContador ? 'mdi-eye-off' : 'mdi-eye'"
+                @click:append-inner="mostrarSenhaContador = !mostrarSenhaContador"
+                variant="outlined" density="compact" hint="Mín. 6 caracteres — libera o login" persistent-hint />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select v-model="formContador.fornecedorId" label="Fornecedor de honorários"
+                :items="fornecedoresContador" item-title="razaoSocial" item-value="id" clearable
+                variant="outlined" density="compact" hint="Vincula à INOVA (mensalidade)" persistent-hint />
+            </v-col>
           </v-row>
           <v-alert type="info" variant="tonal" density="compact" class="mt-2 text-caption">
-            O contador acessa o sistema pelo login padrão usando o e-mail cadastrado acima.
-            O perfil <strong>Contador</strong> limita o acesso somente às telas fiscais e contábeis.
+            Preencha a <strong>senha</strong> para liberar o acesso: o contador entra com o
+            <strong>e-mail</strong> e essa senha. O perfil <strong>Contador</strong> limita o acesso
+            somente às telas fiscais e contábeis. Deixe a senha vazia se ainda não quer dar acesso.
           </v-alert>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
@@ -500,7 +514,16 @@ const carregandoContadores = ref(false)
 const salvandoContador = ref(false)
 const dialogContador = ref(false)
 const contadorEditandoId = ref<string | null>(null)
-const formContador = ref({ nome:'', cpfCnpj:'', email:'', telefone:'', crc:'' })
+const mostrarSenhaContador = ref(false)
+const fornecedoresContador = ref<any[]>([])
+const formContador = ref<any>({ nome:'', cpfCnpj:'', email:'', telefone:'', crc:'', senha:'', fornecedorId: null })
+
+async function carregarFornecedoresContador() {
+  try {
+    const r = await api.get('/fornecedores', { params: { empresaId: auth.empresaId } })
+    fornecedoresContador.value = Array.isArray(r.data) ? r.data : (r.data.itens ?? [])
+  } catch { fornecedoresContador.value = [] }
+}
 
 const headersContador = [
   { title: 'Nome', key: 'nome' },
@@ -522,13 +545,18 @@ async function carregarContadores() {
 
 function abrirNovoContador() {
   contadorEditandoId.value = null
-  formContador.value = { nome:'', cpfCnpj:'', email:'', telefone:'', crc:'' }
+  mostrarSenhaContador.value = false
+  formContador.value = { nome:'', cpfCnpj:'', email:'', telefone:'', crc:'', senha:'', fornecedorId: null }
+  carregarFornecedoresContador()
   dialogContador.value = true
 }
 
 function abrirEdicaoContador(item: any) {
   contadorEditandoId.value = item.id
-  formContador.value = { nome: item.nome, cpfCnpj: item.cpfCnpj, email: item.email, telefone: item.telefone ?? '', crc: item.crc ?? '' }
+  mostrarSenhaContador.value = false
+  formContador.value = { nome: item.nome, cpfCnpj: item.cpfCnpj, email: item.email,
+    telefone: item.telefone ?? '', crc: item.crc ?? '', senha: '', fornecedorId: item.fornecedorId ?? null }
+  carregarFornecedoresContador()
   dialogContador.value = true
 }
 
@@ -541,6 +569,8 @@ async function salvarContador() {
         email: formContador.value.email,
         telefone: formContador.value.telefone || null,
         crc: formContador.value.crc || null,
+        fornecedorId: formContador.value.fornecedorId || null,
+        senha: formContador.value.senha || null,
       })
     } else {
       await api.post('/contabilidade/contadores', {
@@ -548,6 +578,8 @@ async function salvarContador() {
         ...formContador.value,
         telefone: formContador.value.telefone || null,
         crc: formContador.value.crc || null,
+        fornecedorId: formContador.value.fornecedorId || null,
+        senha: formContador.value.senha || null,
       })
     }
     notif.ok('Contador salvo!')

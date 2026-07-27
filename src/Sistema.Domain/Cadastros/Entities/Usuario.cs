@@ -30,11 +30,6 @@ public class Usuario : Entity
     public bool Ativo { get; private set; } = true;
     public DateTime? UltimoAcesso { get; private set; }
 
-    // Vínculo do contador com o fornecedor de honorários (ex.: INOVA). Só usado
-    // para usuários com Perfil "Contador"; nos demais fica nulo.
-    public Guid? FornecedorId { get; private set; }
-    public void VincularFornecedor(Guid? fornecedorId) => FornecedorId = fornecedorId;
-
     private Usuario() { }
 
     /// <summary>Cria um colaborador COM acesso ao sistema (fluxo antigo de usuário).</summary>

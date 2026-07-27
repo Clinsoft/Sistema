@@ -164,7 +164,12 @@
         <v-col cols="12" md="5">
           <v-text-field v-model="busca" placeholder="Buscar por nome, código ou EAN…"
             prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details
-            clearable @update:model-value="listar" />
+            clearable @update:model-value="listar">
+            <template #append-inner>
+              <v-btn icon="mdi-barcode-scan" size="small" variant="text" color="primary"
+                title="Ler código de barras com a câmera" @click="scannerAberto = true" />
+            </template>
+          </v-text-field>
         </v-col>
         <v-col cols="12" md="3">
           <v-select v-model="filtroCategoria" :items="categorias" item-title="nome" item-value="id"
@@ -870,6 +875,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <BarcodeScanner v-model="scannerAberto" @detected="onScanBarcode" />
   </div>
 </template>
 
@@ -880,6 +887,7 @@ import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import GuiaPassos from '@/components/GuiaPassos.vue'
+import BarcodeScanner from '@/components/BarcodeScanner.vue'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
@@ -928,6 +936,12 @@ const salvandoLote = ref(false)
 const loteForm = ref<any>({})
 
 const busca = ref('')
+const scannerAberto = ref(false)
+// Lê o código de barras pela câmera e joga na busca.
+function onScanBarcode(codigo: string) {
+  busca.value = codigo
+  listar()
+}
 const filtroCategoria = ref<string | null>(null)
 const filtroFornecedor = ref<string[]>([])
 const filtroAtivo = ref<boolean | null>(true)

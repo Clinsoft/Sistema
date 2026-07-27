@@ -157,13 +157,22 @@ const ROTAS_ATENDENTE = [
   '/marketing', '/marketing/clube',
 ]
 
+// Prefixos que o perfil "Contador" pode acessar (só fiscal e contábil).
+const PREFIXOS_CONTADOR = ['/contabilidade', '/contador', '/fiscal']
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (!to.meta.publica && !auth.logado) return '/login'
+  const role = auth.usuario?.role
   // Atendente: se tentar abrir uma tela fora do permitido, manda para o PDV.
-  if (auth.logado && auth.usuario?.role === 'Atendente'
+  if (auth.logado && role === 'Atendente'
       && !to.meta.publica && !ROTAS_ATENDENTE.includes(to.path)) {
     return '/pdv'
+  }
+  // Contador: só telas fiscais/contábeis; o resto redireciona para a Contabilidade.
+  if (auth.logado && role === 'Contador' && !to.meta.publica
+      && !PREFIXOS_CONTADOR.some(p => to.path === p || to.path.startsWith(p + '/'))) {
+    return '/contabilidade'
   }
 })
 

@@ -31,6 +31,24 @@ public class Empresa : Entity
     public Guid? MatrizId { get; private set; }
     public string TipoUnidade { get; private set; } = "Matriz"; // Matriz | Filial
 
+    // Encargos de venda (% sobre o preço de venda) — usados na formação de preço
+    // para calcular a MARGEM LÍQUIDA (margem bruta menos estes encargos).
+    public decimal TaxaImpostoVenda { get; private set; }   // DAS Simples efetivo (ex.: 8,45)
+    public decimal TaxaCartao { get; private set; }         // taxa média de cartão
+    public decimal TaxaComissao { get; private set; }       // comissão de venda
+    public decimal TaxaCustoFixo { get; private set; }      // rateio de custo fixo (% do faturamento)
+
+    /// <summary>Soma dos encargos de venda (% sobre o preço).</summary>
+    public decimal EncargosVendaTotal => TaxaImpostoVenda + TaxaCartao + TaxaComissao + TaxaCustoFixo;
+
+    public void DefinirEncargosVenda(decimal imposto, decimal cartao, decimal comissao, decimal custoFixo)
+    {
+        TaxaImpostoVenda = imposto;
+        TaxaCartao = cartao;
+        TaxaComissao = comissao;
+        TaxaCustoFixo = custoFixo;
+    }
+
     private Empresa() { }
 
     public void Atualizar(string razaoSocial, string nomeFantasia,

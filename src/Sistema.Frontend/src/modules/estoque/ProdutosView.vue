@@ -459,7 +459,47 @@
                       <span class="label">Margem</span>
                       <span class="val">{{ margemExibir }}%</span>
                     </div>
+                    <div class="prod-preco-item badge" :style="{ color: margemLiquidaCor }">
+                      <span class="label">Margem líq.</span>
+                      <span class="val">{{ margemLiquidaExibir }}%</span>
+                    </div>
                   </div>
+
+                  <v-expansion-panels class="mb-3" variant="accordion">
+                    <v-expansion-panel>
+                      <v-expansion-panel-title class="text-caption">
+                        <v-icon start size="16">mdi-percent-outline</v-icon>
+                        Encargos de venda (formação de preço) — total {{ fmtN(encargos.total) }}%
+                      </v-expansion-panel-title>
+                      <v-expansion-panel-text>
+                        <div class="text-caption text-medium-emphasis mb-2">
+                          % sobre o preço de venda. A <b>margem líquida</b> = margem − estes encargos.
+                        </div>
+                        <v-row dense>
+                          <v-col cols="6" md="3">
+                            <v-text-field v-model.number="encargos.imposto" label="DAS/Imposto %"
+                              type="number" suffix="%" variant="outlined" density="compact" />
+                          </v-col>
+                          <v-col cols="6" md="3">
+                            <v-text-field v-model.number="encargos.cartao" label="Cartão %"
+                              type="number" suffix="%" variant="outlined" density="compact" />
+                          </v-col>
+                          <v-col cols="6" md="3">
+                            <v-text-field v-model.number="encargos.comissao" label="Comissão %"
+                              type="number" suffix="%" variant="outlined" density="compact" />
+                          </v-col>
+                          <v-col cols="6" md="3">
+                            <v-text-field v-model.number="encargos.custoFixo" label="Custo fixo %"
+                              type="number" suffix="%" variant="outlined" density="compact" />
+                          </v-col>
+                        </v-row>
+                        <div class="d-flex justify-end">
+                          <v-btn size="small" color="primary" variant="tonal" rounded="lg"
+                            :loading="salvandoEncargos" @click="salvarEncargos">Salvar encargos</v-btn>
+                        </div>
+                      </v-expansion-panel-text>
+                    </v-expansion-panel>
+                  </v-expansion-panels>
 
                   <v-row dense>
                     <v-col cols="6" md="3">
@@ -1023,6 +1063,48 @@ function recalcularPrecos() {
   if (f.markupMinimo > 0 && f.custoUnitario > 0)
     f.precoMinimo = parseFloat((f.custoUnitario * f.markupMinimo).toFixed(2))
 }
+
+// ─── Encargos de venda / margem líquida ──────────────────────────
+const encargos = ref({ imposto: 0, cartao: 0, comissao: 0, custoFixo: 0, total: 0 })
+const salvandoEncargos = ref(false)
+
+async function carregarEncargos() {
+  try {
+    const { data } = await api.get(`/empresas/${auth.empresaId}`)
+    encargos.value = {
+      imposto: data.taxaImpostoVenda ?? 0, cartao: data.taxaCartao ?? 0,
+      comissao: data.taxaComissao ?? 0, custoFixo: data.taxaCustoFixo ?? 0,
+      total: data.encargosVendaTotal ?? 0,
+    }
+  } catch { /* mantém zeros */ }
+}
+
+async function salvarEncargos() {
+  salvandoEncargos.value = true
+  try {
+    await api.put(`/empresas/${auth.empresaId}/encargos-venda`, {
+      imposto: encargos.value.imposto || 0, cartao: encargos.value.cartao || 0,
+      comissao: encargos.value.comissao || 0, custoFixo: encargos.value.custoFixo || 0,
+    })
+    encargos.value.total = (encargos.value.imposto || 0) + (encargos.value.cartao || 0)
+      + (encargos.value.comissao || 0) + (encargos.value.custoFixo || 0)
+    notif.ok('Encargos de venda salvos! A margem líquida usa esses percentuais.')
+  } catch { notif.erro('Erro ao salvar encargos.') }
+  finally { salvandoEncargos.value = false }
+}
+
+// Margem líquida = margem bruta − encargos de venda (% sobre o preço).
+const margemLiquidaExibir = computed(() => {
+  const f = form.value
+  if (!(f.precoVenda > 0)) return '—'
+  const bruta = ((f.precoVenda - f.custoUnitario) / f.precoVenda) * 100
+  return (bruta - encargos.value.total).toFixed(1)
+})
+const margemLiquidaCor = computed(() => {
+  const v = parseFloat(margemLiquidaExibir.value)
+  if (isNaN(v)) return 'inherit'
+  return v < 0 ? '#c62828' : v < 10 ? '#ef6c00' : '#2e7d32'
+})
 
 // ─── upload imagem ───────────────────────────────────────────────
 const arquivoImagem = ref<File | null>(null)
@@ -1808,6 +1890,7 @@ async function salvar() {
 onMounted(() => {
   listar().catch(() => {})
   carregarCatalogo()
+  carregarEncargos()
 })
 </script>
 

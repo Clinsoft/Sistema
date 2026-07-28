@@ -75,15 +75,30 @@ public class EmpresasController(SistemaDbContext db, IUnitOfWork uow) : Controll
         return NoContent();
     }
 
+    /// <summary>Atualiza os encargos de venda (%) usados na formação de preço / margem líquida.</summary>
+    [HttpPut("{id:guid}/encargos-venda")]
+    public async Task<IActionResult> AtualizarEncargos(Guid id, [FromBody] EncargosVendaRequest req, CancellationToken ct)
+    {
+        var e = await db.Empresas.FindAsync([id], ct);
+        if (e is null) return NotFound();
+        e.DefinirEncargosVenda(req.Imposto, req.Cartao, req.Comissao, req.CustoFixo);
+        db.Empresas.Update(e);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     private static object MapearEmpresa(Empresa e) => new
     {
         e.Id, e.RazaoSocial, e.NomeFantasia, e.Cnpj,
         e.InscricaoEstadual, e.InscricaoMunicipal, e.RegimeTributario,
         e.Logradouro, e.Numero, e.Complemento, e.Bairro,
         e.Cidade, e.Uf, e.Cep, e.Telefone, e.Email,
-        e.Ativo, e.MatrizId, e.TipoUnidade
+        e.Ativo, e.MatrizId, e.TipoUnidade,
+        e.TaxaImpostoVenda, e.TaxaCartao, e.TaxaComissao, e.TaxaCustoFixo, e.EncargosVendaTotal
     };
 }
+
+public record EncargosVendaRequest(decimal Imposto, decimal Cartao, decimal Comissao, decimal CustoFixo);
 
 public record AtualizarEmpresaRequest(
     string RazaoSocial, string NomeFantasia, string RegimeTributario,

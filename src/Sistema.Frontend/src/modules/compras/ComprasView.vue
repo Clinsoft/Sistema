@@ -95,7 +95,7 @@
                   label="Estoque" variant="outlined" density="compact" hide-details />
               </v-col>
               <v-col cols="12" sm="4">
-                <v-select v-model="pickerUnidade" :items="unidades" item-title="nome" item-value="id"
+                <v-select v-model="pickerUnidade" :items="unidades" :item-title="uniTitle" item-value="id"
                   label="Unidade de medida" variant="outlined" density="compact" hide-details clearable />
               </v-col>
               <v-col cols="12" sm="4">
@@ -263,6 +263,7 @@ const headers = [
   { title:'Status', key:'status' }, { title:'Ações', key:'actions', sortable:false },
 ]
 const corStatus = (s: string) => ({ Rascunho:'default', Enviado:'info', Recebido:'success', Cancelado:'error' })[s] ?? 'default'
+const uniTitle = (u: any) => u?.descricao ? `${u.sigla} — ${u.descricao}` : (u?.sigla ?? '')
 const fmt = (v: number) => (v??0).toLocaleString('pt-BR', { minimumFractionDigits:2 })
 async function carregar() {
   carregando.value=true

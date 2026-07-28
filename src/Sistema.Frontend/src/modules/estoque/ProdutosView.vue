@@ -492,8 +492,17 @@
                             <v-text-field v-model.number="encargos.custoFixo" label="Custo fixo %"
                               type="number" suffix="%" variant="outlined" density="compact" />
                           </v-col>
+                          <v-col cols="12" md="6">
+                            <v-text-field v-model.number="encargos.faturamentoMedio" label="Faturamento médio mensal (R$)"
+                              type="number" prefix="R$" variant="outlined" density="compact"
+                              hint="Base para ratear o custo fixo em %" persistent-hint />
+                          </v-col>
                         </v-row>
-                        <div class="d-flex justify-end">
+                        <div class="d-flex justify-space-between align-center flex-wrap ga-2">
+                          <v-btn size="small" color="indigo" variant="text" rounded="lg"
+                            prepend-icon="mdi-auto-fix" :loading="calculandoEncargos" @click="calcularEncargos">
+                            Trazer dos cadastros
+                          </v-btn>
                           <v-btn size="small" color="primary" variant="tonal" rounded="lg"
                             :loading="salvandoEncargos" @click="salvarEncargos">Salvar encargos</v-btn>
                         </div>
@@ -1065,8 +1074,9 @@ function recalcularPrecos() {
 }
 
 // ─── Encargos de venda / margem líquida ──────────────────────────
-const encargos = ref({ imposto: 0, cartao: 0, comissao: 0, custoFixo: 0, total: 0 })
+const encargos = ref({ imposto: 0, cartao: 0, comissao: 0, custoFixo: 0, faturamentoMedio: 0, total: 0 })
 const salvandoEncargos = ref(false)
+const calculandoEncargos = ref(false)
 
 async function carregarEncargos() {
   try {
@@ -1074,9 +1084,22 @@ async function carregarEncargos() {
     encargos.value = {
       imposto: data.taxaImpostoVenda ?? 0, cartao: data.taxaCartao ?? 0,
       comissao: data.taxaComissao ?? 0, custoFixo: data.taxaCustoFixo ?? 0,
+      faturamentoMedio: data.faturamentoMedioMensal ?? 0,
       total: data.encargosVendaTotal ?? 0,
     }
   } catch { /* mantém zeros */ }
+}
+
+// Traz cartão (maior taxa das operadoras) e custo fixo % (Despesas Operacionais + Pessoas ÷ faturamento).
+async function calcularEncargos() {
+  calculandoEncargos.value = true
+  try {
+    const { data } = await api.get(`/empresas/${auth.empresaId}/encargos-sugestao`)
+    encargos.value.cartao = data.cartao ?? encargos.value.cartao
+    encargos.value.custoFixo = data.custoFixo ?? encargos.value.custoFixo
+    notif.ok(`Cartão ${Number(data.cartao).toFixed(2)}% · Custo fixo ${Number(data.custoFixo).toFixed(2)}% (R$ ${Number(data.despesas).toFixed(2)} ÷ R$ ${Number(data.faturamentoMedio).toFixed(2)}). Revise e salve.`)
+  } catch { notif.erro('Erro ao calcular encargos dos cadastros.') }
+  finally { calculandoEncargos.value = false }
 }
 
 async function salvarEncargos() {
@@ -1085,6 +1108,7 @@ async function salvarEncargos() {
     await api.put(`/empresas/${auth.empresaId}/encargos-venda`, {
       imposto: encargos.value.imposto || 0, cartao: encargos.value.cartao || 0,
       comissao: encargos.value.comissao || 0, custoFixo: encargos.value.custoFixo || 0,
+      faturamentoMedio: encargos.value.faturamentoMedio || 0,
     })
     encargos.value.total = (encargos.value.imposto || 0) + (encargos.value.cartao || 0)
       + (encargos.value.comissao || 0) + (encargos.value.custoFixo || 0)

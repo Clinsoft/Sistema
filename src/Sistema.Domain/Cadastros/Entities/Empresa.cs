@@ -37,16 +37,19 @@ public class Empresa : Entity
     public decimal TaxaCartao { get; private set; }         // taxa média de cartão
     public decimal TaxaComissao { get; private set; }       // comissão de venda
     public decimal TaxaCustoFixo { get; private set; }      // rateio de custo fixo (% do faturamento)
+    public decimal FaturamentoMedioMensal { get; private set; } // base p/ ratear o custo fixo em %
 
     /// <summary>Soma dos encargos de venda (% sobre o preço).</summary>
     public decimal EncargosVendaTotal => TaxaImpostoVenda + TaxaCartao + TaxaComissao + TaxaCustoFixo;
 
-    public void DefinirEncargosVenda(decimal imposto, decimal cartao, decimal comissao, decimal custoFixo)
+    public void DefinirEncargosVenda(decimal imposto, decimal cartao, decimal comissao,
+        decimal custoFixo, decimal faturamentoMedio)
     {
         TaxaImpostoVenda = imposto;
         TaxaCartao = cartao;
         TaxaComissao = comissao;
         TaxaCustoFixo = custoFixo;
+        FaturamentoMedioMensal = faturamentoMedio;
     }
 
     private Empresa() { }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Cadastros.Entities;
+using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
 
@@ -81,10 +82,43 @@ public class EmpresasController(SistemaDbContext db, IUnitOfWork uow) : Controll
     {
         var e = await db.Empresas.FindAsync([id], ct);
         if (e is null) return NotFound();
-        e.DefinirEncargosVenda(req.Imposto, req.Cartao, req.Comissao, req.CustoFixo);
+        e.DefinirEncargosVenda(req.Imposto, req.Cartao, req.Comissao, req.CustoFixo, req.FaturamentoMedio);
         db.Empresas.Update(e);
         await uow.SalvarAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Sugere encargos a partir dos cadastros: cartão = maior taxa das operadoras;
+    /// custo fixo % = (Despesas Operacionais + Pessoas do mês) ÷ faturamento médio.
+    /// </summary>
+    [HttpGet("{id:guid}/encargos-sugestao")]
+    public async Task<IActionResult> SugerirEncargos(Guid id, CancellationToken ct)
+    {
+        var e = await db.Empresas.FindAsync([id], ct);
+        if (e is null) return NotFound();
+
+        var operadoras = await db.OperadorasCartao.AsNoTracking()
+            .Where(o => o.EmpresaId == id)
+            .Select(o => new { o.TaxaDebito, o.TaxaCreditoVista, o.TaxaCreditoParcelado, o.TaxaPix, o.TaxaAntecipacao })
+            .ToListAsync(ct);
+        decimal cartao = 0;
+        foreach (var o in operadoras)
+            cartao = Math.Max(cartao, Math.Max(o.TaxaDebito,
+                Math.Max(o.TaxaCreditoVista, Math.Max(o.TaxaCreditoParcelado, Math.Max(o.TaxaPix, o.TaxaAntecipacao)))));
+
+        var hoje = DateTime.Today;
+        string[] cats = ["Despesas Operacionais", "Pessoas"];
+        var despesas = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == id && l.Tipo == TipoLancamento.ContaPagar
+                && l.Categoria != null && cats.Contains(l.Categoria)
+                && l.DataVencimento.Month == hoje.Month && l.DataVencimento.Year == hoje.Year)
+            .SumAsync(l => (decimal?)l.ValorOriginal, ct) ?? 0m;
+
+        var faturamento = e.FaturamentoMedioMensal;
+        var custoFixo = faturamento > 0 ? Math.Round(despesas / faturamento * 100, 2) : 0m;
+
+        return Ok(new { cartao, custoFixo, despesas, faturamentoMedio = faturamento });
     }
 
     private static object MapearEmpresa(Empresa e) => new
@@ -94,11 +128,13 @@ public class EmpresasController(SistemaDbContext db, IUnitOfWork uow) : Controll
         e.Logradouro, e.Numero, e.Complemento, e.Bairro,
         e.Cidade, e.Uf, e.Cep, e.Telefone, e.Email,
         e.Ativo, e.MatrizId, e.TipoUnidade,
-        e.TaxaImpostoVenda, e.TaxaCartao, e.TaxaComissao, e.TaxaCustoFixo, e.EncargosVendaTotal
+        e.TaxaImpostoVenda, e.TaxaCartao, e.TaxaComissao, e.TaxaCustoFixo,
+        e.FaturamentoMedioMensal, e.EncargosVendaTotal
     };
 }
 
-public record EncargosVendaRequest(decimal Imposto, decimal Cartao, decimal Comissao, decimal CustoFixo);
+public record EncargosVendaRequest(decimal Imposto, decimal Cartao, decimal Comissao,
+    decimal CustoFixo, decimal FaturamentoMedio);
 
 public record AtualizarEmpresaRequest(
     string RazaoSocial, string NomeFantasia, string RegimeTributario,

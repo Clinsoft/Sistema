@@ -182,7 +182,7 @@
                     </v-col>
                     <v-col cols="12" md="5">
                       <v-select v-model="form.mensalidadeCategoria" label="Categoria" clearable
-                        :items="['Despesas Administrativas','Despesas Operacionais','Despesas Variáveis','Impostos','Pessoas']"
+                        :items="['Custo (CMV)','Despesas Administrativas','Despesas Operacionais','Despesas Variáveis','Impostos','Pessoas']"
                         variant="outlined" density="compact" />
                     </v-col>
                   </v-row>

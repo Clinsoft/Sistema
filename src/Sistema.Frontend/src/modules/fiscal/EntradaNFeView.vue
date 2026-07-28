@@ -1479,7 +1479,7 @@ const totalFaturas = computed(() => faturas.value.reduce((s, f) => s + (f.valor 
 const lancarFinanceiro = ref(true)
 
 // Classificação dos lançamentos de contas a pagar gerados pela entrada
-const categoriasFinanceiras = ['Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
+const categoriasFinanceiras = ['Custo (CMV)', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
 const formasPagamento = ['Boleto', 'PIX', 'Transferência', 'Dinheiro', 'Cartão', 'Cheque']
 const categoriaFinanceira = ref('Despesas Variáveis')  // compra de mercadoria
 const formaPagamento = ref<string | null>('Boleto')

@@ -545,7 +545,7 @@ const edicao = ref({
 })
 const reneg = ref({ id: '', saldo: 0, novoValor: 0, novoVencimento: '', motivo: '' })
 
-const categorias = ['Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
+const categorias = ['Custo (CMV)', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
 
 const periodos = [
   { label: 'Diário',      value: 'diario' },

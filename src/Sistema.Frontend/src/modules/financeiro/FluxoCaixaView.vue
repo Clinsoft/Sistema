@@ -35,7 +35,7 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.categoria" label="Categoria"
-            :items="['Todas', 'Recebimentos', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']"
+            :items="['Todas', 'Recebimentos', 'Custo (CMV)', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="auto">

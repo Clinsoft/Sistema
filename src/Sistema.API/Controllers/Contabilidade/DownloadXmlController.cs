@@ -19,7 +19,7 @@ public class DownloadXmlController(SistemaDbContext db) : ControllerBase
     {
         var competencias = await db.NotasFiscais.AsNoTracking()
             .Where(n => n.EmpresaId == empresaId
-                && n.Status != Domain.Fiscal.Entities.StatusNF.Cancelada)
+                && n.Status == Domain.Fiscal.Entities.StatusNF.Autorizada)
             .GroupBy(n => new { n.DataEmissao.Year, n.DataEmissao.Month })
             .Select(g => new
             {
@@ -48,7 +48,7 @@ public class DownloadXmlController(SistemaDbContext db) : ControllerBase
             .Where(n => n.EmpresaId == empresaId
                 && n.DataEmissao.Year == ano
                 && n.DataEmissao.Month == mes
-                && n.Status != Domain.Fiscal.Entities.StatusNF.Cancelada
+                && n.Status == Domain.Fiscal.Entities.StatusNF.Autorizada
                 && n.ChaveAcesso != null);
 
         if (modelo == "NFe")

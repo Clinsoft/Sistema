@@ -38,6 +38,11 @@
             :items="['Todas', 'Recebimentos', 'Custo (CMV)', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
+        <v-col cols="12" sm="3">
+          <v-autocomplete v-model="filtros.beneficiario" label="Fornecedor / Cliente"
+            :items="beneficiariosLista" variant="outlined" density="compact" hide-details clearable
+            no-data-text="Sem movimentos no período" />
+        </v-col>
         <v-col cols="auto">
           <v-btn color="primary" variant="tonal" icon="mdi-magnify"
             :loading="carregando" @click="carregar" />
@@ -165,11 +170,13 @@ const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: null as string | null,
+  beneficiario: null as string | null,
 })
 
 const headers = [
   { title: 'Data / Período', key: 'data',       width: 130 },
   { title: 'Descrição',      key: 'descricao'  },
+  { title: 'Fornecedor / Cliente', key: 'beneficiario', width: 180 },
   { title: 'Categoria',      key: 'categoria',  width: 180 },
   { title: 'Entradas',       key: 'entradas',   width: 130 },
   { title: 'Saídas',         key: 'saidas',     width: 130 },
@@ -179,9 +186,17 @@ const headers = [
 
 const linhas = computed(() => dados.value?.linhas ?? [])
 
+const beneficiariosLista = computed(() =>
+  [...new Set(linhas.value.map((l: any) => l.beneficiario).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b))
+)
+
 const linhasFiltradas = computed(() => {
-  if (!filtros.value.categoria || filtros.value.categoria === 'Todas') return linhas.value
-  return linhas.value.filter((l: any) => l.categoria === filtros.value.categoria)
+  let l = linhas.value
+  if (filtros.value.categoria && filtros.value.categoria !== 'Todas')
+    l = l.filter((x: any) => x.categoria === filtros.value.categoria)
+  if (filtros.value.beneficiario)
+    l = l.filter((x: any) => x.beneficiario === filtros.value.beneficiario)
+  return l
 })
 
 const totaisFluxo = computed(() => ({

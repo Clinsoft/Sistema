@@ -18,37 +18,38 @@ public class FluxoCaixaController(SistemaDbContext db) : ControllerBase
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
     {
         var fimExcl = fim.AddDays(1);
-        var movs = new List<(DateTime data, string descricao, string? categoria, decimal entradas, decimal saidas)>();
+        var (forn, colab, cli) = await CarregarNomesAsync(empresaId, ct);
+        var movs = new List<(DateTime data, string descricao, string? categoria, string? beneficiario, decimal entradas, decimal saidas)>();
 
         // Entradas: vendas finalizadas
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
                 && v.DataHora >= inicio && v.DataHora < fimExcl)
-            .Select(v => new { v.DataHora, v.Numero, v.Total })
+            .Select(v => new { v.DataHora, v.Numero, v.Total, v.ClienteId })
             .ToListAsync(ct);
         foreach (var v in vendas)
-            movs.Add((v.DataHora.Date, $"Venda {v.Numero}", "Recebimentos", v.Total, 0));
+            movs.Add((v.DataHora.Date, $"Venda {v.Numero}", "Recebimentos", NomeDe(v.ClienteId, cli) ?? "Consumidor", v.Total, 0));
 
         // Entradas: contas a receber baixadas (crediário/faturado)
         var recebidos = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaReceber
                 && l.DataPagamento != null && l.DataPagamento >= inicio && l.DataPagamento < fimExcl
                 && l.ValorPago > 0)
-            .Select(l => new { l.DataPagamento, l.Descricao, l.Categoria, l.ValorPago })
+            .Select(l => new { l.DataPagamento, l.Descricao, l.Categoria, l.ValorPago, l.ClienteId, l.ClienteNome })
             .ToListAsync(ct);
         foreach (var l in recebidos)
-            movs.Add((l.DataPagamento!.Value.Date, l.Descricao, l.Categoria ?? "Recebimentos", l.ValorPago, 0));
+            movs.Add((l.DataPagamento!.Value.Date, l.Descricao, l.Categoria ?? "Recebimentos", l.ClienteNome ?? NomeDe(l.ClienteId, cli), l.ValorPago, 0));
 
         // Saídas: contas a pagar baixadas
         var pagos = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
                 && l.DataPagamento != null && l.DataPagamento >= inicio && l.DataPagamento < fimExcl
                 && l.ValorPago > 0)
-            .Select(l => new { l.DataPagamento, l.Descricao, l.Categoria, l.ValorPago })
+            .Select(l => new { l.DataPagamento, l.Descricao, l.Categoria, l.ValorPago, l.FornecedorId, l.ColaboradorId, l.ClienteNome })
             .ToListAsync(ct);
         foreach (var l in pagos)
-            movs.Add((l.DataPagamento!.Value.Date, l.Descricao, l.Categoria ?? "Despesas Variáveis", 0, l.ValorPago));
+            movs.Add((l.DataPagamento!.Value.Date, l.Descricao, l.Categoria ?? "Despesas Variáveis", NomeDe(l.FornecedorId, forn) ?? l.ClienteNome ?? NomeDe(l.ColaboradorId, colab), 0, l.ValorPago));
 
         var saldoInicial = await db.ContasBancarias.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId && c.Ativo)
@@ -65,25 +66,26 @@ public class FluxoCaixaController(SistemaDbContext db) : ControllerBase
         var de = inicio ?? DateTime.Today;
         var limite = fim ?? ate ?? DateTime.Today.AddDays(30);
         var fimExcl = limite.AddDays(1);
-        var movs = new List<(DateTime data, string descricao, string? categoria, decimal entradas, decimal saidas)>();
+        var (forn, colab, cli) = await CarregarNomesAsync(empresaId, ct);
+        var movs = new List<(DateTime data, string descricao, string? categoria, string? beneficiario, decimal entradas, decimal saidas)>();
 
         var receber = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaReceber
                 && l.Status == StatusLancamento.EmAberto
                 && l.DataVencimento >= de && l.DataVencimento < fimExcl)
-            .Select(l => new { l.DataVencimento, l.Descricao, l.Categoria, saldo = l.ValorOriginal - l.ValorPago })
+            .Select(l => new { l.DataVencimento, l.Descricao, l.Categoria, l.ClienteId, l.ClienteNome, saldo = l.ValorOriginal - l.ValorPago })
             .ToListAsync(ct);
         foreach (var l in receber)
-            movs.Add((l.DataVencimento.Date, l.Descricao, l.Categoria ?? "Recebimentos", l.saldo, 0));
+            movs.Add((l.DataVencimento.Date, l.Descricao, l.Categoria ?? "Recebimentos", l.ClienteNome ?? NomeDe(l.ClienteId, cli), l.saldo, 0));
 
         var pagar = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
                 && l.Status == StatusLancamento.EmAberto
                 && l.DataVencimento >= de && l.DataVencimento < fimExcl)
-            .Select(l => new { l.DataVencimento, l.Descricao, l.Categoria, saldo = l.ValorOriginal - l.ValorPago })
+            .Select(l => new { l.DataVencimento, l.Descricao, l.Categoria, l.FornecedorId, l.ColaboradorId, l.ClienteNome, saldo = l.ValorOriginal - l.ValorPago })
             .ToListAsync(ct);
         foreach (var l in pagar)
-            movs.Add((l.DataVencimento.Date, l.Descricao, l.Categoria ?? "Despesas Variáveis", 0, l.saldo));
+            movs.Add((l.DataVencimento.Date, l.Descricao, l.Categoria ?? "Despesas Variáveis", NomeDe(l.FornecedorId, forn) ?? l.ClienteNome ?? NomeDe(l.ColaboradorId, colab), 0, l.saldo));
 
         var saldoInicial = await db.ContasBancarias.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId && c.Ativo)
@@ -93,8 +95,23 @@ public class FluxoCaixaController(SistemaDbContext db) : ControllerBase
     }
 
     /// <summary>Ordena as movimentações por data e calcula saldo e acumulado.</summary>
+    private async Task<(Dictionary<Guid, string> forn, Dictionary<Guid, string> colab, Dictionary<Guid, string> cli)>
+        CarregarNomesAsync(Guid empresaId, CancellationToken ct)
+    {
+        var forn = await db.Fornecedores.AsNoTracking().Where(f => f.EmpresaId == empresaId)
+            .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct);
+        var colab = await db.Usuarios.AsNoTracking().Where(u => u.EmpresaId == empresaId)
+            .ToDictionaryAsync(u => u.Id, u => u.Nome, ct);
+        var cli = await db.Clientes.AsNoTracking().Where(c => c.EmpresaId == empresaId)
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+        return (forn, colab, cli);
+    }
+
+    private static string? NomeDe(Guid? id, Dictionary<Guid, string> dict)
+        => id.HasValue && dict.TryGetValue(id.Value, out var n) ? n : null;
+
     private static object MontarLinhas(
-        List<(DateTime data, string descricao, string? categoria, decimal entradas, decimal saidas)> movs,
+        List<(DateTime data, string descricao, string? categoria, string? beneficiario, decimal entradas, decimal saidas)> movs,
         decimal saldoInicial)
     {
         decimal acumulado = saldoInicial;
@@ -105,7 +122,7 @@ public class FluxoCaixaController(SistemaDbContext db) : ControllerBase
             return new
             {
                 data = m.data.ToString("yyyy-MM-dd"),
-                m.descricao, m.categoria,
+                m.descricao, m.categoria, m.beneficiario,
                 m.entradas, m.saidas, saldo, acumulado
             };
         }).ToList();

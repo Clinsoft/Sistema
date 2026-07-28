@@ -13,7 +13,7 @@ public class PedidoCompraRepository(SistemaDbContext db) : BaseRepository<Pedido
     public async Task<IReadOnlyList<PedidoCompra>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
         => await _set.AsNoTracking()
             .Include(p => p.Itens)
-            .Where(p => p.EmpresaId == empresaId && p.DataPedido >= inicio && p.DataPedido <= fim)
+            .Where(p => p.EmpresaId == empresaId && p.DataPedido.Date >= inicio.Date && p.DataPedido.Date <= fim.Date)
             .OrderByDescending(p => p.DataPedido)
             .ToListAsync(ct);
 

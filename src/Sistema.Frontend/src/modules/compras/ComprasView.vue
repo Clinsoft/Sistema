@@ -71,79 +71,90 @@
         <v-card-text class="pa-4">
           <v-row dense class="mb-3">
             <v-col cols="12" sm="8">
-              <v-autocomplete v-model="np.fornecedorId" v-model:search="buscaForn"
-                :items="forns" item-title="razaoSocial" item-value="id"
+              <v-autocomplete v-model="np.fornecedorId" :items="forns"
+                item-title="razaoSocial" item-value="id" auto-select-first clearable
                 label="Fornecedor *" variant="outlined" density="compact"
-                @update:search="buscarForns" />
+                no-data-text="Nenhum fornecedor cadastrado" />
             </v-col>
             <v-col cols="12" sm="4">
               <v-text-field v-model="np.previsaoEntrega" label="Previsão Entrega"
                 type="date" variant="outlined" density="compact" />
             </v-col>
           </v-row>
-          <!-- Sugestões: produtos abaixo do estoque mínimo -->
-          <v-expand-transition>
-            <div v-if="produtosBaixoEstoque.length">
-              <div class="d-flex align-center mb-1">
-                <v-icon icon="mdi-alert-outline" color="warning" size="16" class="mr-1" />
-                <span class="text-caption font-weight-bold text-warning">
-                  {{ produtosBaixoEstoque.length }} produto(s) abaixo do mínimo — clique para adicionar ao pedido
-                </span>
-                <v-spacer />
-                <v-btn size="x-small" variant="text" @click="mostrarSugestoes = !mostrarSugestoes">
-                  {{ mostrarSugestoes ? 'Ocultar' : 'Mostrar' }}
-                </v-btn>
-              </div>
-              <v-expand-transition>
-                <v-sheet v-if="mostrarSugestoes" border rounded="lg" class="mb-3">
-                  <v-table density="compact">
-                    <thead>
-                      <tr>
-                        <th>Produto</th>
-                        <th class="text-center" style="width:80px">Estoque</th>
-                        <th class="text-center" style="width:80px">Mínimo</th>
-                        <th class="text-center" style="width:80px">Comprar</th>
-                        <th style="width:40px"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="p in produtosBaixoEstoque" :key="p.produtoId"
-                        :class="jaAdicionado(p.produtoId) ? 'bg-success-lighten-5' : ''">
-                        <td class="text-body-2">{{ p.descricao }}</td>
-                        <td class="text-center text-error font-weight-bold">{{ p.quantidadeAtual }}</td>
-                        <td class="text-center text-medium-emphasis">{{ p.estoqueMinimo }}</td>
-                        <td class="text-center">
-                          <v-text-field
-                            v-model.number="qtdSugestao[p.produtoId]"
-                            type="number" variant="outlined" density="compact"
-                            hide-details style="width:70px" />
-                        </td>
-                        <td>
-                          <v-btn v-if="!jaAdicionado(p.produtoId)"
-                            icon="mdi-plus" size="x-small" color="primary" variant="tonal"
-                            @click="addSugestao(p)" />
-                          <v-icon v-else icon="mdi-check-circle" color="success" size="18" />
-                        </td>
-                      </tr>
-                    </tbody>
-                  </v-table>
-                  <div class="pa-2 d-flex justify-end">
-                    <v-btn size="small" color="warning" variant="tonal"
-                      prepend-icon="mdi-playlist-plus" @click="addTodasSugestoes">
-                      Adicionar todos
-                    </v-btn>
-                  </div>
-                </v-sheet>
-              </v-expand-transition>
+          <!-- Seletor de produtos (estoque zero/abaixo, unidade, selecionar todos) -->
+          <v-sheet border rounded="lg" class="mb-3 pa-2">
+            <div class="d-flex align-center flex-wrap ga-1 mb-2">
+              <v-icon icon="mdi-cart-plus" size="18" color="primary" class="mr-1" />
+              <span class="text-caption font-weight-bold">Adicionar produtos ao pedido</span>
+              <v-spacer />
+              <span class="text-caption text-medium-emphasis">{{ pickerFiltrados.length }} produto(s)</span>
             </div>
-          </v-expand-transition>
+            <v-row dense>
+              <v-col cols="12" sm="4">
+                <v-select v-model="pickerEstoque" :items="['Abaixo do mínimo','Zerados','Todos']"
+                  label="Estoque" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-select v-model="pickerUnidade" :items="unidades" item-title="nome" item-value="id"
+                  label="Unidade de medida" variant="outlined" density="compact" hide-details clearable />
+              </v-col>
+              <v-col cols="12" sm="4">
+                <v-text-field v-model="pickerBusca" label="Buscar produto" prepend-inner-icon="mdi-magnify"
+                  variant="outlined" density="compact" hide-details clearable />
+              </v-col>
+            </v-row>
+            <div class="picker-scroll mt-2">
+              <v-table density="compact">
+                <thead>
+                  <tr>
+                    <th style="width:40px">
+                      <v-checkbox-btn :model-value="todosSelecionados" :indeterminate="algunsSelecionados"
+                        density="compact" @update:model-value="toggleTodos" />
+                    </th>
+                    <th>Produto</th>
+                    <th class="text-center" style="width:64px">Estoque</th>
+                    <th class="text-center" style="width:64px">Mínimo</th>
+                    <th class="text-center" style="width:56px">Un.</th>
+                    <th class="text-center" style="width:88px">Comprar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in pickerFiltrados" :key="p.produtoId"
+                    :class="jaAdicionado(p.produtoId) ? 'bg-success-lighten-5' : ''">
+                    <td>
+                      <v-checkbox-btn v-model="selecionados[p.produtoId]"
+                        :disabled="jaAdicionado(p.produtoId)" density="compact" />
+                    </td>
+                    <td class="text-body-2">{{ p.descricao }}</td>
+                    <td class="text-center font-weight-bold"
+                      :class="p.estoqueAtual <= 0 ? 'text-error' : (p.abaixoMinimo ? 'text-warning' : 'text-medium-emphasis')">
+                      {{ p.estoqueAtual }}
+                    </td>
+                    <td class="text-center text-medium-emphasis">{{ p.estoqueMinimo }}</td>
+                    <td class="text-center text-caption text-medium-emphasis">{{ p.unidadeNome }}</td>
+                    <td class="text-center">
+                      <v-text-field v-model.number="qtdSugestao[p.produtoId]" type="number"
+                        variant="outlined" density="compact" hide-details style="width:80px" />
+                    </td>
+                  </tr>
+                  <tr v-if="!pickerFiltrados.length">
+                    <td colspan="6" class="text-center pa-3 text-medium-emphasis">Nenhum produto no filtro</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+            <div class="pa-2 d-flex justify-end align-center ga-2">
+              <span class="text-caption text-medium-emphasis">{{ qtdSelecionados }} selecionado(s)</span>
+              <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-playlist-plus"
+                :disabled="!qtdSelecionados" @click="addSelecionados">Adicionar selecionados</v-btn>
+            </div>
+          </v-sheet>
 
           <div class="d-flex ga-2 mb-3">
-            <v-autocomplete v-model="it.produtoId" v-model:search="buscaProd"
-              :items="prods" item-title="descricao" item-value="id"
-              label="Produto" variant="outlined" density="compact" class="flex-grow-1"
-              @update:model-value="selecionarProd"
-              @update:search="buscarProds" />
+            <v-autocomplete v-model="it.produtoId" :items="prods"
+              item-title="descricao" item-value="id" auto-select-first clearable
+              label="Adicionar produto avulso" variant="outlined" density="compact" class="flex-grow-1"
+              @update:model-value="selecionarProd" />
             <v-text-field v-model.number="it.quantidade" label="Qtd" type="number"
               variant="outlined" density="compact" style="width:80px" />
             <v-text-field v-model.number="it.precoUnitario" label="R$ Un." type="number"
@@ -233,10 +244,14 @@ const carregando = ref(false); const salvando = ref(false)
 const pedidos = ref<any[]>([]); const forns = ref<any[]>([]); const prods = ref<any[]>([])
 const locaisEstoque = ref<any[]>([])
 const dialog = ref(false); const dialogRec = ref(false)
-const buscaForn = ref(''); const buscaProd = ref('')
-const produtosBaixoEstoque = ref<any[]>([])
-const mostrarSugestoes = ref(true)
+const unidades = ref<any[]>([])
 const qtdSugestao = ref<Record<string, number>>({})
+// Seletor de produtos do pedido
+const pickerProdutos = ref<any[]>([])
+const pickerEstoque = ref('Abaixo do mínimo')
+const pickerUnidade = ref<string | null>(null)
+const pickerBusca = ref('')
+const selecionados = ref<Record<string, boolean>>({})
 const filtros = ref({ status:'Todos', inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10), fim: new Date().toISOString().slice(0,10) })
 const np = ref<any>({ fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' })
 const it = ref({ produtoId:'', descricao:'', quantidade:1, precoUnitario:0 })
@@ -254,30 +269,68 @@ async function carregar() {
   try { const r = await api.get('/pedidos-compra', { params:{ empresaId:auth.empresaId, ...filtros.value } }); pedidos.value=r.data }
   finally { carregando.value=false }
 }
-async function buscarForns(q: string) { if (!q||q.length<2) return; const r=await api.get('/fornecedores', { params:{ empresaId:auth.empresaId, q } }); forns.value=r.data }
-async function buscarProds(q: string) { if (!q||q.length<2) return; const r=await api.get('/produtos', { params:{ empresaId:auth.empresaId, q } }); prods.value=r.data }
+// Carrega, uma vez, os cadastros usados no dialog (fornecedores, produtos, unidades).
+async function carregarCatalogo() {
+  try {
+    const [f, p, u] = await Promise.all([
+      api.get('/fornecedores',    { params: { empresaId: auth.empresaId } }),
+      api.get('/produtos',        { params: { empresaId: auth.empresaId, pagina: 1, tamanhoPagina: 5000 } }),
+      api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }),
+    ])
+    forns.value = Array.isArray(f.data) ? f.data : (f.data.itens ?? [])
+    prods.value = p.data?.itens ?? p.data ?? []
+    unidades.value = Array.isArray(u.data) ? u.data : (u.data.itens ?? [])
+  } catch { /* silencioso */ }
+}
 function selecionarProd(id: string) { const p=prods.value.find((x: any)=>x.id===id); if (p) { it.value.descricao=p.descricao; it.value.precoUnitario=p.custoUnitario??0 } }
 function addItem() { if (!it.value.produtoId) return; np.value.itens.push({...it.value}); it.value={produtoId:'', descricao:'', quantidade:1, precoUnitario:0} }
 async function abrirNovo() {
   np.value = { fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' }
-  mostrarSugestoes.value = true
   qtdSugestao.value = {}
+  selecionados.value = {}
+  pickerEstoque.value = 'Abaixo do mínimo'; pickerUnidade.value = null; pickerBusca.value = ''
   dialog.value = true
+  if (!forns.value.length || !prods.value.length) await carregarCatalogo()
   try {
-    const r = await api.get('/estoque/posicao', { params: { empresaId: auth.empresaId, apenasAbaixoMinimo: true } })
-    const lista: any[] = r.data?.produtos ?? r.data ?? []
-    // A posição retorna id/estoqueAtual/estoqueMinimo — normaliza para o formato usado aqui
-    produtosBaixoEstoque.value = lista.map((p: any) => ({
-      produtoId: p.id ?? p.produtoId,
-      descricao: p.descricao,
-      quantidadeAtual: p.estoqueAtual ?? p.quantidadeAtual ?? 0,
-      estoqueMinimo: p.estoqueMinimo ?? 0,
-      custoUnitario: p.custoUnitario ?? 0,
-    }))
-    produtosBaixoEstoque.value.forEach((p: any) => {
-      qtdSugestao.value[p.produtoId] = Math.max(1, (p.estoqueMinimo ?? 0) - (p.quantidadeAtual ?? 0))
+    // Posição de TODOS os produtos (sem filtro) — filtramos no cliente.
+    const r = await api.get('/estoque/posicao', { params: { empresaId: auth.empresaId } })
+    const lista: any[] = r.data?.produtos ?? r.data?.itens ?? r.data ?? []
+    const custoMap = new Map(prods.value.map((x: any) => [x.id, x.custoUnitario ?? 0]))
+    const uniMap = new Map(unidades.value.map((x: any) => [x.id, x.sigla ?? x.nome ?? '']))
+    pickerProdutos.value = lista.map((p: any) => {
+      const atual = p.estoqueAtual ?? p.quantidadeAtual ?? 0
+      const min = p.estoqueMinimo ?? 0
+      const pid = p.id ?? p.produtoId
+      qtdSugestao.value[pid] = Math.max(1, min - atual)
+      return {
+        produtoId: pid, descricao: p.descricao,
+        estoqueAtual: atual, estoqueMinimo: min,
+        abaixoMinimo: p.abaixoMinimo ?? (atual <= min),
+        unidadeId: p.unidadeMedidaId, unidadeNome: uniMap.get(p.unidadeMedidaId) ?? '',
+        custoUnitario: custoMap.get(pid) ?? p.custoUnitario ?? 0,
+      }
     })
-  } catch { produtosBaixoEstoque.value = [] }
+  } catch { pickerProdutos.value = [] }
+}
+
+// ── Filtros e seleção do picker ──────────────────────────────────
+const pickerFiltrados = computed(() => {
+  let l = pickerProdutos.value
+  if (pickerEstoque.value === 'Abaixo do mínimo') l = l.filter((p: any) => p.abaixoMinimo)
+  else if (pickerEstoque.value === 'Zerados') l = l.filter((p: any) => p.estoqueAtual <= 0)
+  if (pickerUnidade.value) l = l.filter((p: any) => p.unidadeId === pickerUnidade.value)
+  const q = pickerBusca.value?.trim().toLowerCase()
+  if (q) l = l.filter((p: any) => (p.descricao ?? '').toLowerCase().includes(q))
+  return l
+})
+const selecionaveis = computed(() => pickerFiltrados.value.filter((p: any) => !jaAdicionado(p.produtoId)))
+const qtdSelecionados = computed(() => selecionaveis.value.filter((p: any) => selecionados.value[p.produtoId]).length)
+const todosSelecionados = computed(() => selecionaveis.value.length > 0 && qtdSelecionados.value === selecionaveis.value.length)
+const algunsSelecionados = computed(() => qtdSelecionados.value > 0 && !todosSelecionados.value)
+function toggleTodos(val: boolean | null) { selecionaveis.value.forEach((p: any) => { selecionados.value[p.produtoId] = !!val }) }
+function addSelecionados() {
+  selecionaveis.value.forEach((p: any) => { if (selecionados.value[p.produtoId]) addSugestao(p) })
+  selecionados.value = {}
 }
 function jaAdicionado(produtoId: string) {
   return np.value.itens.some((i: any) => i.produtoId === produtoId)
@@ -290,9 +343,6 @@ function addSugestao(p: any) {
     quantidade: qtdSugestao.value[p.produtoId] ?? 1,
     precoUnitario: p.custoUnitario ?? 0,
   })
-}
-function addTodasSugestoes() {
-  produtosBaixoEstoque.value.forEach((p: any) => addSugestao(p))
 }
 async function salvar() {
   salvando.value = true
@@ -357,5 +407,14 @@ async function carregarLocais() {
     locaisEstoque.value = r.data ?? []
   } catch { locaisEstoque.value = [] }
 }
-onMounted(() => { carregar(); carregarLocais() })
+onMounted(() => { carregar(); carregarLocais(); carregarCatalogo() })
 </script>
+
+<style scoped>
+.picker-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+}
+</style>

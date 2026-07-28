@@ -14,7 +14,7 @@
       titulo="Como usar os Pedidos de Compra"
       :passos="[
         'Clique em <b>Novo Pedido</b>, escolha o <b>fornecedor</b> e adicione itens. Os produtos <b>abaixo do estoque mínimo</b> são sugeridos automaticamente — clique para incluí-los.',
-        'Salve como <b>Rascunho</b>. Depois use <b>➤ Enviar</b> para marcar como enviado ao fornecedor.',
+        'Salve como <b>Rascunho</b>. Depois use o botão <b>WhatsApp</b> 🟢 para gerar um link com o pedido e enviar ao fornecedor (marca o pedido como Enviado).',
         'Quando a mercadoria chegar, use <b>📦 Receber</b>, escolha o <b>local de estoque</b> e confirme — o estoque é atualizado automaticamente.',
         'Use <b>🚫 Cancelar</b> em pedidos ainda não recebidos. Filtre por status e período para consultar o histórico.',
       ]"
@@ -50,8 +50,11 @@
         <template #item.totalPedido="{ item }">R$ {{ fmt(item.totalPedido) }}</template>
         <template #item.criadoEm="{ item }">{{ new Date(item.criadoEm).toLocaleDateString('pt-BR') }}</template>
         <template #item.actions="{ item }">
-          <v-btn v-if="item.status==='Rascunho'" icon="mdi-send-outline" size="x-small" variant="text"
-            color="primary" @click="enviar(item)" title="Enviar" />
+          <v-btn v-if="item.status==='Rascunho'" icon="mdi-whatsapp" size="x-small" variant="text"
+            color="green" :loading="enviandoId===item.id" @click="enviar(item)"
+            title="Enviar por WhatsApp (gera o link)" />
+          <v-btn v-if="item.status==='Enviado'" icon="mdi-whatsapp" size="x-small" variant="text"
+            color="green" @click="abrirWhatsApp(item, false)" title="Reabrir link do WhatsApp" />
           <v-btn v-if="item.status==='Enviado'" icon="mdi-package-check" size="x-small" variant="text"
             color="success" @click="abrirRecebimento(item)" title="Receber" />
           <v-btn v-if="item.status==='Rascunho' || item.status==='Enviado'" icon="mdi-cancel"
@@ -365,10 +368,41 @@ async function salvar() {
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao criar pedido.') }
   finally { salvando.value = false }
 }
-async function enviar(item: any) {
-  await api.post(`/pedidos-compra/${item.id}/enviar`, null, { params: { empresaId: auth.empresaId } })
-  notif.ok('Pedido enviado!'); await carregar()
+const enviandoId = ref<string | null>(null)
+
+// Monta a mensagem do pedido e abre o link wa.me (WhatsApp) do fornecedor.
+// marcarEnviado = true também muda o status para "Enviado".
+async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
+  enviandoId.value = item.id
+  try {
+    const r = await api.get(`/pedidos-compra/${item.id}`)
+    const d = r.data
+    const forn = forns.value.find((f: any) => f.id === item.fornecedorId)
+    const foneDig = String(forn?.celular || forn?.telefone || '').replace(/\D/g, '')
+    const intl = foneDig ? (foneDig.length >= 12 && foneDig.startsWith('55') ? foneDig : '55' + foneDig) : ''
+
+    const itens = d.itens ?? []
+    const linhas = itens.map((i: any) => `• ${i.quantidade}x ${i.descricao}`).join('\n')
+    const total = itens.reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0)
+    let msg = `*Pedido de Compra Nº ${d.numero}*\n\nOlá${forn?.razaoSocial ? ' ' + forn.razaoSocial : ''}! Segue nosso pedido:\n\n${linhas}\n\n*Total: R$ ${fmt(total)}*`
+    if (item.dataPrevisaoEntrega || item.previsaoEntrega) {
+      const dt = new Date((item.dataPrevisaoEntrega || item.previsaoEntrega))
+      if (!isNaN(dt.getTime())) msg += `\nPrevisão de entrega: ${dt.toLocaleDateString('pt-BR')}`
+    }
+
+    if (marcarEnviado && item.status === 'Rascunho') {
+      await api.post(`/pedidos-compra/${item.id}/enviar`, null, { params: { empresaId: auth.empresaId } })
+      await carregar()
+    }
+
+    const url = `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+    if (!foneDig) notif.aviso('Fornecedor sem telefone cadastrado — abri o WhatsApp para você escolher o contato.')
+    else notif.ok('Link do WhatsApp aberto com o pedido.')
+  } catch { notif.erro('Erro ao gerar o link do WhatsApp.') }
+  finally { enviandoId.value = null }
 }
+function enviar(item: any) { return abrirWhatsApp(item, true) }
 async function cancelar(item: any) {
   if (!confirm(`Cancelar o pedido ${item.numero}?`)) return
   try {

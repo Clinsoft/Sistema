@@ -57,7 +57,7 @@ public class DownloadXmlController(SistemaDbContext db) : ControllerBase
             query = query.Where(n => n.Modelo == Domain.Fiscal.Entities.ModeloNF.NFCe);
 
         var notas = await query
-            .Select(n => new { n.ChaveAcesso, n.Numero, n.Modelo, n.DataEmissao })
+            .Select(n => new { n.ChaveAcesso, n.Numero, n.Modelo, n.DataEmissao, n.XmlEnvio, n.XmlRetorno })
             .ToListAsync(ct);
 
         if (!notas.Any())
@@ -84,15 +84,15 @@ public class DownloadXmlController(SistemaDbContext db) : ControllerBase
                 string conteudo;
                 if (System.IO.File.Exists(xmlPath))
                 {
+                    // Arquivo em disco tem prioridade (se algum dia for salvo lá).
                     conteudo = await System.IO.File.ReadAllTextAsync(xmlPath, ct);
                 }
                 else
                 {
-                    // XML placeholder para quando não houver arquivo armazenado
-                    var tipoTag = nota.Modelo == Domain.Fiscal.Entities.ModeloNF.NFCe ? "nfce" : "nfe";
-                    conteudo = $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
-                               $"<!-- XML da {tipoTag.ToUpper()} {nota.Numero} emitida em {nota.DataEmissao:dd/MM/yyyy} -->" +
-                               $"<!-- Chave de acesso: {chave} -->";
+                    // Monta o XML autorizado a partir do banco (NFe assinada + protocolo).
+                    conteudo = MontarXmlAutorizado(nota.XmlEnvio, nota.XmlRetorno)
+                        ?? $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                           $"<!-- XML indisponível para a nota {nota.Numero} ({chave}) -->";
                 }
 
                 var modelo65 = nota.Modelo == Domain.Fiscal.Entities.ModeloNF.NFCe ? "NFCe" : "NFe";
@@ -109,6 +109,41 @@ public class DownloadXmlController(SistemaDbContext db) : ControllerBase
         var nomeZip = $"XMLs_{mesFormatado}_{ano}.zip";
 
         return File(ms.ToArray(), "application/zip", nomeZip);
+    }
+
+    /// <summary>
+    /// Monta o XML autorizado (nfeProc = NFe assinada + protNFe) a partir dos
+    /// campos guardados no banco. Retorna null se não houver conteúdo utilizável.
+    /// </summary>
+    private static string? MontarXmlAutorizado(string? xmlEnvio, string? xmlRetorno)
+    {
+        var nfe = ExtrairBloco(xmlEnvio, "NFe") ?? ExtrairBloco(xmlRetorno, "NFe");
+        var prot = ExtrairBloco(xmlRetorno, "protNFe") ?? ExtrairBloco(xmlEnvio, "protNFe");
+        const string decl = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+
+        if (nfe is not null && prot is not null)
+            return $"{decl}<nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">{nfe}{prot}</nfeProc>";
+        if (nfe is not null)
+            return $"{decl}{nfe}";
+
+        // Sem NFe extraível, mas há algum XML bruto → devolve o que existir.
+        var bruto = xmlRetorno ?? xmlEnvio;
+        if (!string.IsNullOrWhiteSpace(bruto))
+            return bruto.TrimStart().StartsWith("<?xml") ? bruto : decl + bruto;
+        return null;
+    }
+
+    /// <summary>Extrai o primeiro bloco &lt;tag ...&gt;...&lt;/tag&gt; de um XML.</summary>
+    private static string? ExtrairBloco(string? xml, string tag)
+    {
+        if (string.IsNullOrEmpty(xml)) return null;
+        var ini = xml.IndexOf("<" + tag, StringComparison.Ordinal);
+        if (ini < 0) return null;
+        var fecha = "</" + tag + ">";
+        var fim = xml.IndexOf(fecha, ini, StringComparison.Ordinal);
+        if (fim < 0) return null;
+        fim += fecha.Length;
+        return xml[ini..fim];
     }
 
     /// <summary>Resumo de entradas e saídas do período para o painel do contador.</summary>

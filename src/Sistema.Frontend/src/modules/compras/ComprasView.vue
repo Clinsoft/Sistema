@@ -43,13 +43,16 @@
       </div>
     </v-card>
     <v-card rounded="xl" elevation="1">
-      <v-data-table :headers="headers" :items="pedidos" :loading="carregando" density="compact" hover>
+      <v-data-table :headers="headers" :items="pedidos" :loading="carregando" density="compact" hover
+        @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
         <template #item.status="{ item }">
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
         </template>
         <template #item.totalPedido="{ item }">R$ {{ fmt(item.totalPedido) }}</template>
         <template #item.criadoEm="{ item }">{{ new Date(item.criadoEm).toLocaleDateString('pt-BR') }}</template>
         <template #item.actions="{ item }">
+          <v-btn icon="mdi-eye-outline" size="x-small" variant="text" color="primary"
+            @click="verPedido(item)" title="Ver o que foi pedido" />
           <v-btn v-if="item.status==='Rascunho'" icon="mdi-whatsapp" size="x-small" variant="text"
             color="green" :loading="enviandoId===item.id" @click="enviar(item)"
             title="Enviar por WhatsApp (gera o link)" />
@@ -232,6 +235,49 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog: ver detalhe do pedido -->
+    <v-dialog v-model="dialogDet" max-width="640">
+      <v-card rounded="xl" v-if="det">
+        <v-card-title class="pa-4 d-flex align-center">
+          <div>
+            Pedido Nº {{ det.numero }}
+            <v-chip size="x-small" :color="corStatus(det.status)" class="ml-2">{{ det.status }}</v-chip>
+          </div>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="dialogDet = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="d-flex flex-wrap ga-4 mb-3 text-body-2">
+            <div><span class="text-medium-emphasis">Fornecedor:</span> <b>{{ det.fornecedorNome }}</b></div>
+            <div v-if="det.dataPrevisaoEntrega"><span class="text-medium-emphasis">Previsão:</span> {{ new Date(det.dataPrevisaoEntrega).toLocaleDateString('pt-BR') }}</div>
+          </div>
+          <v-table density="compact">
+            <thead><tr><th>Produto</th><th class="text-center" style="width:70px">Qtd</th><th class="text-right" style="width:90px">R$ Un.</th><th class="text-right" style="width:100px">Total</th></tr></thead>
+            <tbody>
+              <tr v-for="(i, idx) in (det.itens ?? [])" :key="idx">
+                <td class="text-body-2">{{ i.descricao }}</td>
+                <td class="text-center">{{ i.quantidade }}</td>
+                <td class="text-right">{{ fmt(i.precoUnitario) }}</td>
+                <td class="text-right">{{ fmt(i.total ?? i.quantidade * i.precoUnitario) }}</td>
+              </tr>
+              <tr v-if="!(det.itens ?? []).length"><td colspan="4" class="text-center pa-3 text-medium-emphasis">Sem itens</td></tr>
+            </tbody>
+            <tfoot><tr>
+              <td colspan="3" class="text-right font-weight-bold">Total do pedido:</td>
+              <td class="text-right font-weight-bold text-primary">R$ {{ fmt(totalDet) }}</td>
+            </tr></tfoot>
+          </v-table>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn v-if="det.status==='Rascunho' || det.status==='Enviado'" color="green" variant="tonal"
+            prepend-icon="mdi-whatsapp" @click="abrirWhatsApp(det, det.status==='Rascunho')">WhatsApp</v-btn>
+          <v-btn variant="text" @click="dialogDet = false">Fechar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -247,6 +293,8 @@ const carregando = ref(false); const salvando = ref(false)
 const pedidos = ref<any[]>([]); const forns = ref<any[]>([]); const prods = ref<any[]>([])
 const locaisEstoque = ref<any[]>([])
 const dialog = ref(false); const dialogRec = ref(false)
+const dialogDet = ref(false); const det = ref<any>(null)
+const totalDet = computed(() => (det.value?.itens ?? []).reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0))
 const unidades = ref<any[]>([])
 const qtdSugestao = ref<Record<string, number>>({})
 // Seletor de produtos do pedido
@@ -369,6 +417,20 @@ async function salvar() {
   finally { salvando.value = false }
 }
 const enviandoId = ref<string | null>(null)
+
+async function verPedido(item: any) {
+  try {
+    const r = await api.get(`/pedidos-compra/${item.id}`)
+    det.value = {
+      ...r.data, id: item.id,
+      fornecedorId: item.fornecedorId,
+      fornecedorNome: item.fornecedorNome,
+      status: r.data.status ?? item.status,
+      dataPrevisaoEntrega: r.data.dataPrevisaoEntrega ?? item.dataPrevisaoEntrega ?? item.previsaoEntrega ?? null,
+    }
+    dialogDet.value = true
+  } catch { notif.erro('Erro ao carregar o pedido.') }
+}
 
 // Monta a mensagem do pedido e abre o link wa.me (WhatsApp) do fornecedor.
 // marcarEnviado = true também muda o status para "Enviado".

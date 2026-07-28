@@ -274,7 +274,7 @@ async function carregar() {
 async function carregarCatalogo() {
   try {
     const [f, p, u] = await Promise.all([
-      api.get('/fornecedores',    { params: { empresaId: auth.empresaId } }),
+      api.get('/fornecedores',    { params: { empresaId: auth.empresaId, ativo: true } }),
       api.get('/produtos',        { params: { empresaId: auth.empresaId, pagina: 1, tamanhoPagina: 5000 } }),
       api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }),
     ])

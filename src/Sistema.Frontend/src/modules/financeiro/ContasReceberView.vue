@@ -40,6 +40,11 @@
             :items="['Todos', 'EmAberto', 'Pago', 'Vencido']"
             variant="outlined" density="compact" hide-details />
         </v-col>
+        <v-col cols="12" sm="3">
+          <v-autocomplete v-model="filtros.cliente" label="Cliente"
+            :items="clientesLista" variant="outlined" density="compact" hide-details clearable
+            no-data-text="Sem contas no período" />
+        </v-col>
       </v-row>
       <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
         <v-btn color="warning" variant="tonal" rounded="lg" prepend-icon="mdi-calendar-today"
@@ -369,6 +374,7 @@ const filtros = ref({
   fim: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
   categoria: 'Todas',
   status: 'Todos',
+  cliente: null as string | null,
   tudo: false,
 })
 
@@ -385,12 +391,18 @@ const headers = [
 
 const hoje = () => new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00')
 
+const clientesLista = computed(() =>
+  [...new Set(lancamentos.value.map((l: any) => l.clienteNome).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b))
+)
+
 const lancamentosFiltrados = computed(() => {
   let lista = lancamentos.value
   if (filtros.value.categoria !== 'Todas')
     lista = lista.filter(l => (l.categoria ?? 'Vendas') === filtros.value.categoria)
   if (filtros.value.status !== 'Todos')
     lista = lista.filter(l => l.status === filtros.value.status)
+  if (filtros.value.cliente)
+    lista = lista.filter(l => l.clienteNome === filtros.value.cliente)
   return lista
 })
 

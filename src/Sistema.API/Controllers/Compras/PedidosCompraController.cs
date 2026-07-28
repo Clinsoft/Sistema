@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +10,7 @@ using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Compras.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
+using UglyToad.PdfPig;
 
 namespace Sistema.API.Controllers.Compras;
 
@@ -122,7 +126,51 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         pedido.DefinirAnexo(url);
         repo.Atualizar(pedido);
         await uow.SalvarAsync(ct);
-        return Ok(new { url });
+
+        // Extrai o texto do PDF e compara por semelhança com os itens do pedido:
+        // marca quais o fornecedor TEM (encontrado) e quais FALTAM.
+        var comparacao = CompararItensComPdf(caminho, pedido.Itens);
+        return Ok(new { url, comparacao });
+    }
+
+    private static List<object> CompararItensComPdf(string caminho, IReadOnlyList<ItemPedidoCompra> itens)
+    {
+        var pdfTokens = new HashSet<string>();
+        try
+        {
+            using var pdf = PdfDocument.Open(caminho);
+            var sb = new StringBuilder();
+            foreach (var page in pdf.GetPages()) sb.Append(' ').Append(page.Text);
+            foreach (var t in Tokens(sb.ToString())) pdfTokens.Add(t);
+        }
+        catch { /* PDF ilegível (imagem/escaneado) → retorna tudo como não encontrado */ }
+
+        var resultado = new List<object>();
+        foreach (var i in itens)
+        {
+            var tokens = Tokens(i.Descricao).Distinct().ToList();
+            var achados = tokens.Count(t => pdfTokens.Contains(t));
+            var cobertura = tokens.Count > 0 ? (double)achados / tokens.Count : 0;
+            resultado.Add(new
+            {
+                itemId = i.Id,
+                encontrado = pdfTokens.Count > 0 && cobertura >= 0.6,   // fornecedor TEM o item
+                cobertura = Math.Round(cobertura * 100, 0)
+            });
+        }
+        return resultado;
+    }
+
+    private static readonly HashSet<string> Stop = ["DE", "DA", "DO", "EM", "COM", "SEM", "PARA", "PO", "KG", "UN", "G", "ML"];
+    private static IEnumerable<string> Tokens(string s)
+    {
+        var formD = (s ?? "").ToUpperInvariant().Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var ch in formD)
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) sb.Append(ch);
+        var limpo = Regex.Replace(sb.ToString(), "[^A-Z0-9]+", " ");
+        return limpo.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2 && !Stop.Contains(w));
     }
 
     /// <summary>Remove itens do pedido (ex.: faltantes que foram para outro fornecedor).</summary>

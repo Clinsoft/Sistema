@@ -477,7 +477,14 @@ async function enviarAnexo(e: Event) {
     const fd = new FormData(); fd.append('arquivo', file)
     const r = await api.post(`/pedidos-compra/${det.value.id}/anexo`, fd)
     det.value.anexoUrl = r.data.url
-    notif.ok('PDF do fornecedor anexado.')
+    // Compara por semelhança e marca automaticamente os itens que o fornecedor NÃO tem.
+    const comp = r.data.comparacao ?? []
+    const novos: Record<string, boolean> = {}
+    let faltam = 0
+    comp.forEach((c: any) => { const falta = !c.encontrado; novos[c.itemId] = falta; if (falta) faltam++ })
+    faltantes.value = novos
+    if (comp.length) notif.ok(`PDF lido: ${comp.length - faltam} item(ns) o fornecedor tem, ${faltam} faltando (marcados). Confira e ajuste se precisar.`)
+    else notif.ok('PDF anexado.')
   } catch { notif.erro('Erro ao anexar o PDF (apenas PDF, até 20MB).') }
   finally { anexando.value = false; if (inputAnexo.value) inputAnexo.value.value = '' }
 }

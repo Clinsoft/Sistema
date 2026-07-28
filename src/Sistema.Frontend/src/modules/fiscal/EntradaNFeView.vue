@@ -1481,7 +1481,7 @@ const lancarFinanceiro = ref(true)
 // Classificação dos lançamentos de contas a pagar gerados pela entrada
 const categoriasFinanceiras = ['Custo (CMV)', 'Despesas Administrativas', 'Despesas Operacionais', 'Despesas Variáveis', 'Pessoas', 'Impostos']
 const formasPagamento = ['Boleto', 'PIX', 'Transferência', 'Dinheiro', 'Cartão', 'Cheque']
-const categoriaFinanceira = ref('Despesas Variáveis')  // compra de mercadoria
+const categoriaFinanceira = ref('Custo (CMV)')  // compra de mercadoria = CMV
 const formaPagamento = ref<string | null>('Boleto')
 
 // Dialogs

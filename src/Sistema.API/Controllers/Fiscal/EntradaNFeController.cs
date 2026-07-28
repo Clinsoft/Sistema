@@ -919,10 +919,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                 parcela: parcela, totalParcelas: req.Faturas.Count,
                 grupoParcelamento: grupo);
 
-            // Categoria do contas a pagar + forma de pagamento (observação)
+            // Categoria do contas a pagar + forma de pagamento (observação).
+            // Compra de mercadoria por NF-e entra como "Custo (CMV)" por padrão.
             var obs = string.IsNullOrWhiteSpace(req.FormaPagamento)
                 ? null : $"Forma de pagamento: {req.FormaPagamento}";
-            lanc.DefinirClassificacao(req.Categoria, null, obs);
+            var categoria = string.IsNullOrWhiteSpace(req.Categoria) ? "Custo (CMV)" : req.Categoria;
+            lanc.DefinirClassificacao(categoria, null, obs);
 
             db.LancamentosFinanceiros.Add(lanc);
         }

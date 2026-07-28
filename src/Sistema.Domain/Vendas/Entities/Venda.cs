@@ -68,7 +68,8 @@ public class Venda : Entity
     public void AdicionarPagamento(FormaPagamento forma, decimal valor, int parcelas = 1,
         string? descricao = null, Guid? operadoraCartaoId = null)
     {
-        _pagamentos.Add(PagamentoVenda.Criar(Id, forma, valor, parcelas, descricao, operadoraCartaoId));
+        _pagamentos.Add(PagamentoVenda.Criar(Id, forma, Math.Round(valor, 2, MidpointRounding.AwayFromZero),
+            parcelas, descricao, operadoraCartaoId));
         TotalPago = _pagamentos.Sum(p => p.Valor);
         Troco = Math.Max(0, TotalPago - Total);
     }
@@ -80,7 +81,9 @@ public class Venda : Entity
     public void Finalizar()
     {
         if (!_itens.Any()) throw new InvalidOperationException("Venda sem itens.");
-        if (TotalPago < Total) throw new InvalidOperationException("Pagamento insuficiente.");
+        // Tolerância de meio centavo: o front soma valores em ponto flutuante
+        // (ex.: 9,03 + 3,62 = 12,6499…) e o total do backend é decimal exato.
+        if (TotalPago < Total - 0.005m) throw new InvalidOperationException("Pagamento insuficiente.");
 
         Status = StatusVenda.Finalizada;
         DataHoraFechamento = DateTime.Now;

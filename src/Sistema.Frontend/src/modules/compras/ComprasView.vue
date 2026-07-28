@@ -249,29 +249,50 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
-          <div class="d-flex flex-wrap ga-4 mb-3 text-body-2">
+          <div class="d-flex flex-wrap ga-4 mb-3 text-body-2 align-center">
             <div><span class="text-medium-emphasis">Fornecedor:</span> <b>{{ det.fornecedorNome }}</b></div>
             <div v-if="det.dataPrevisaoEntrega"><span class="text-medium-emphasis">Previsão:</span> {{ new Date(det.dataPrevisaoEntrega).toLocaleDateString('pt-BR') }}</div>
+            <v-spacer />
+            <v-btn v-if="det.anexoUrl" size="small" variant="tonal" color="red-darken-1"
+              prepend-icon="mdi-file-pdf-box" :href="det.anexoUrl" target="_blank">Ver PDF do fornecedor</v-btn>
+            <v-btn size="small" variant="text" color="primary" prepend-icon="mdi-paperclip"
+              :loading="anexando" @click="selecionarAnexo">{{ det.anexoUrl ? 'Trocar PDF' : 'Anexar PDF do fornecedor' }}</v-btn>
+            <input ref="inputAnexo" type="file" accept="application/pdf" class="d-none" @change="enviarAnexo" />
+          </div>
+
+          <div class="text-caption text-medium-emphasis mb-1">
+            Marque <b>Falta</b> nos itens que o fornecedor NÃO tem (confira pelo PDF). Depois gere o pedido dos faltantes para outro fornecedor.
           </div>
           <v-table density="compact">
-            <thead><tr><th>Produto</th><th class="text-center" style="width:70px">Qtd</th><th class="text-right" style="width:90px">R$ Un.</th><th class="text-right" style="width:100px">Total</th></tr></thead>
+            <thead><tr>
+              <th class="text-center" style="width:56px">Falta?</th>
+              <th>Produto</th><th class="text-center" style="width:64px">Qtd</th>
+              <th class="text-right" style="width:88px">R$ Un.</th><th class="text-right" style="width:96px">Total</th>
+            </tr></thead>
             <tbody>
-              <tr v-for="(i, idx) in (det.itens ?? [])" :key="idx">
-                <td class="text-body-2">{{ i.descricao }}</td>
+              <tr v-for="(i, idx) in (det.itens ?? [])" :key="idx"
+                :class="faltantes[i.id] ? 'bg-red-lighten-5' : ''">
+                <td class="text-center"><v-checkbox-btn v-model="faltantes[i.id]" density="compact" color="error" /></td>
+                <td class="text-body-2" :class="faltantes[i.id] ? 'text-decoration-line-through text-medium-emphasis' : ''">{{ i.descricao }}</td>
                 <td class="text-center">{{ i.quantidade }}</td>
                 <td class="text-right">{{ fmt(i.precoUnitario) }}</td>
                 <td class="text-right">{{ fmt(i.total ?? i.quantidade * i.precoUnitario) }}</td>
               </tr>
-              <tr v-if="!(det.itens ?? []).length"><td colspan="4" class="text-center pa-3 text-medium-emphasis">Sem itens</td></tr>
+              <tr v-if="!(det.itens ?? []).length"><td colspan="5" class="text-center pa-3 text-medium-emphasis">Sem itens</td></tr>
             </tbody>
             <tfoot><tr>
-              <td colspan="3" class="text-right font-weight-bold">Total do pedido:</td>
+              <td colspan="4" class="text-right font-weight-bold">Total do pedido:</td>
               <td class="text-right font-weight-bold text-primary">R$ {{ fmt(totalDet) }}</td>
             </tr></tfoot>
           </v-table>
+          <div v-if="qtdFaltantes" class="text-caption text-error mt-2">
+            {{ qtdFaltantes }} item(ns) marcado(s) como faltante — serão removidos deste pedido e irão para um novo pedido.
+          </div>
         </v-card-text>
         <v-divider />
-        <v-card-actions class="pa-3 justify-end">
+        <v-card-actions class="pa-3 justify-end flex-wrap ga-1">
+          <v-btn v-if="qtdFaltantes" color="orange-darken-2" variant="tonal" prepend-icon="mdi-call-split"
+            :loading="separando" @click="pedirFaltantes">Pedir faltantes a outro fornecedor</v-btn>
           <v-btn v-if="det.status==='Rascunho' || det.status==='Enviado'" color="green" variant="tonal"
             prepend-icon="mdi-whatsapp" @click="abrirWhatsApp(det, det.status==='Rascunho')">WhatsApp</v-btn>
           <v-btn variant="text" @click="dialogDet = false">Fechar</v-btn>
@@ -295,6 +316,11 @@ const locaisEstoque = ref<any[]>([])
 const dialog = ref(false); const dialogRec = ref(false)
 const dialogDet = ref(false); const det = ref<any>(null)
 const totalDet = computed(() => (det.value?.itens ?? []).reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0))
+const faltantes = ref<Record<string, boolean>>({})
+const qtdFaltantes = computed(() => Object.values(faltantes.value).filter(Boolean).length)
+const inputAnexo = ref<HTMLInputElement | null>(null)
+const anexando = ref(false); const separando = ref(false)
+const origemFaltantes = ref<{ pedidoId: string; itemIds: string[] } | null>(null)
 const unidades = ref<any[]>([])
 const qtdSugestao = ref<Record<string, number>>({})
 // Seletor de produtos do pedido
@@ -338,6 +364,7 @@ function selecionarProd(id: string) { const p=prods.value.find((x: any)=>x.id===
 function addItem() { if (!it.value.produtoId) return; np.value.itens.push({...it.value}); it.value={produtoId:'', descricao:'', quantidade:1, precoUnitario:0} }
 async function abrirNovo() {
   np.value = { fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' }
+  origemFaltantes.value = null
   qtdSugestao.value = {}
   selecionados.value = {}
   pickerEstoque.value = 'Abaixo do mínimo'; pickerUnidade.value = null; pickerBusca.value = ''
@@ -410,7 +437,15 @@ async function salvar() {
         quantidade: i.quantidade, precoUnitario: i.precoUnitario,
       })),
     })
-    notif.ok('Pedido criado!')
+    // Se este pedido veio de "faltantes", remove esses itens do pedido de origem.
+    if (origemFaltantes.value) {
+      await api.post(`/pedidos-compra/${origemFaltantes.value.pedidoId}/remover-itens`,
+        { itemIds: origemFaltantes.value.itemIds }).catch(() => null)
+      origemFaltantes.value = null
+      notif.ok('Novo pedido criado e faltantes removidos do pedido original!')
+    } else {
+      notif.ok('Pedido criado!')
+    }
     dialog.value = false
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao criar pedido.') }
@@ -428,8 +463,42 @@ async function verPedido(item: any) {
       status: r.data.status ?? item.status,
       dataPrevisaoEntrega: r.data.dataPrevisaoEntrega ?? item.dataPrevisaoEntrega ?? item.previsaoEntrega ?? null,
     }
+    faltantes.value = {}
     dialogDet.value = true
   } catch { notif.erro('Erro ao carregar o pedido.') }
+}
+
+function selecionarAnexo() { inputAnexo.value?.click() }
+async function enviarAnexo(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  anexando.value = true
+  try {
+    const fd = new FormData(); fd.append('arquivo', file)
+    const r = await api.post(`/pedidos-compra/${det.value.id}/anexo`, fd)
+    det.value.anexoUrl = r.data.url
+    notif.ok('PDF do fornecedor anexado.')
+  } catch { notif.erro('Erro ao anexar o PDF (apenas PDF, até 20MB).') }
+  finally { anexando.value = false; if (inputAnexo.value) inputAnexo.value.value = '' }
+}
+
+// Abre o Novo Pedido já com os itens faltantes; ao salvar, remove esses itens do pedido original.
+function pedirFaltantes() {
+  const faltamIds = Object.keys(faltantes.value).filter(k => faltantes.value[k])
+  const itensFalt = (det.value.itens ?? []).filter((i: any) => faltantes.value[i.id])
+  if (!itensFalt.length) return
+  np.value = {
+    fornecedorId: null, previsaoEntrega: '', observacoes: '',
+    itens: itensFalt.map((i: any) => ({
+      produtoId: i.produtoId, descricao: i.descricao,
+      quantidade: i.quantidade, precoUnitario: i.precoUnitario,
+    })),
+  }
+  origemFaltantes.value = { pedidoId: det.value.id, itemIds: faltamIds }
+  selecionados.value = {}; pickerEstoque.value = 'Todos'; pickerUnidade.value = null; pickerBusca.value = ''
+  dialogDet.value = false
+  dialog.value = true
+  notif.aviso(`${itensFalt.length} item(ns) faltante(s) — escolha o outro fornecedor e salve.`)
 }
 
 // Monta a mensagem do pedido e abre o link wa.me (WhatsApp) do fornecedor.

@@ -14,6 +14,7 @@ public class PedidoCompra : Entity
     public DateTime? DataRecebimento { get; private set; }
     public decimal Total { get; private set; }
     public string? Observacao { get; private set; }
+    public string? AnexoUrl { get; private set; }   // PDF do fornecedor (resposta/disponibilidade)
 
     private readonly List<ItemPedidoCompra> _itens = [];
     public IReadOnlyList<ItemPedidoCompra> Itens => _itens.AsReadOnly();
@@ -38,6 +39,16 @@ public class PedidoCompra : Entity
         _itens.Add(ItemPedidoCompra.Criar(Id, produtoId, descricao, quantidade, precoUnitario));
         Total = _itens.Sum(i => i.Total);
     }
+
+    /// <summary>Remove os itens informados (ex.: faltantes que foram para outro fornecedor) e recalcula o total.</summary>
+    public void RemoverItens(IEnumerable<Guid> itemIds)
+    {
+        var set = itemIds.ToHashSet();
+        _itens.RemoveAll(i => set.Contains(i.Id));
+        Total = _itens.Sum(i => i.Total);
+    }
+
+    public void DefinirAnexo(string? url) => AnexoUrl = url;
 
     public void Enviar() => Status = StatusPedidoCompra.Enviado;
 

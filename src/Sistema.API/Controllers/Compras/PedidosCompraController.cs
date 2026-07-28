@@ -90,7 +90,7 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         return Ok(new
         {
             pedido.Id, pedido.Numero, pedido.FornecedorId, pedido.Status,
-            pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.Total,
+            pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.Total, pedido.AnexoUrl,
             Itens = pedido.Itens.Select(i => new
             {
                 i.Id, i.ProdutoId, i.Descricao,
@@ -98,6 +98,45 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
             })
         });
     }
+
+    /// <summary>Anexa o PDF do fornecedor (resposta/disponibilidade) ao pedido.</summary>
+    [HttpPost("{id:guid}/anexo")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> Anexo(Guid id, IFormFile arquivo, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0) return BadRequest("Nenhum arquivo enviado.");
+        if (!arquivo.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)
+            && !arquivo.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Apenas arquivos PDF são aceitos.");
+
+        var pedido = await repo.ObterComItensAsync(id, ct);
+        if (pedido is null) return NotFound();
+
+        var dir = Path.Combine("wwwroot", "uploads", "pedidos-compra");
+        Directory.CreateDirectory(dir);
+        var caminho = Path.Combine(dir, $"{id}.pdf");
+        using (var stream = System.IO.File.Create(caminho))
+            await arquivo.CopyToAsync(stream, ct);
+
+        var url = $"/uploads/pedidos-compra/{id}.pdf";
+        pedido.DefinirAnexo(url);
+        repo.Atualizar(pedido);
+        await uow.SalvarAsync(ct);
+        return Ok(new { url });
+    }
+
+    /// <summary>Remove itens do pedido (ex.: faltantes que foram para outro fornecedor).</summary>
+    [HttpPost("{id:guid}/remover-itens")]
+    public async Task<IActionResult> RemoverItens(Guid id, [FromBody] RemoverItensRequest req, CancellationToken ct)
+    {
+        var pedido = await repo.ObterComItensAsync(id, ct);
+        if (pedido is null) return NotFound();
+        pedido.RemoverItens(req.ItemIds ?? []);
+        repo.Atualizar(pedido);
+        await uow.SalvarAsync(ct);
+        return Ok(new { total = pedido.Total, itensRestantes = pedido.Itens.Count });
+    }
 }
 
 public record ReceberRequest(Guid LocalEstoqueId, Guid UsuarioId);
+public record RemoverItensRequest(List<Guid> ItemIds);

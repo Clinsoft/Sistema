@@ -72,6 +72,7 @@ public class Produto : Entity
 
     /// <summary>Marca que a etiqueta foi (re)impressa e está atualizada.</summary>
     public void MarcarEtiquetaImpressa() => EtiquetaDesatualizada = false;
+    public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
 
     // Imagem e informações adicionais
     public string? ImagemUrl { get; private set; }
@@ -159,7 +160,7 @@ public class Produto : Entity
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)
     {
-        if (VendidoPorPeso && precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
         PrecoFornecedor = precoFornecedor;
         CustoUnitario = custoUnitario;
         MarkupMinimo = markupMinimo;
@@ -214,7 +215,7 @@ public class Produto : Entity
 
     public void AtualizarPreco(decimal novoCusto, decimal novoPreco)
     {
-        if (VendidoPorPeso && novoPreco != PrecoVenda) EtiquetaDesatualizada = true;
+        if (novoPreco != PrecoVenda) EtiquetaDesatualizada = true;
         CustoUnitario = novoCusto;
         PrecoVenda = novoPreco;
         Markup = novoCusto > 0 ? Math.Round(novoPreco / novoCusto, 4) : 0;
@@ -223,7 +224,7 @@ public class Produto : Entity
 
     public void AtualizarPrecoEMarkup(decimal precoVenda, decimal markup)
     {
-        if (VendidoPorPeso && precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
         PrecoVenda = precoVenda;
         Markup = markup;
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;

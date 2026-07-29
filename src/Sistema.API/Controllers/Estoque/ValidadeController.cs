@@ -268,6 +268,10 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
         var url = await SalvarImagemLoteAsync(lote.Id, req.ImagemBase64, ct);
         if (url is not null) lote.DefinirImagem(url);
 
+        // Mudou a validade → a etiqueta do produto precisa ser reimpressa.
+        var prodEtiq = await db.Produtos.FindAsync([lote.ProdutoId], ct);
+        prodEtiq?.MarcarEtiquetaDesatualizada();
+
         await uow.SalvarAsync(ct);
         return Ok(new { lote.Id, mensagem, imagemUrl = lote.ImagemUrl });
     }

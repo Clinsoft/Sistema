@@ -193,6 +193,17 @@
       </v-row>
     </v-card>
 
+    <!-- Alerta: etiquetas desatualizadas (preço/validade mudou) -->
+    <v-alert v-if="qtdEtiquetaDesatualizada > 0" type="warning" variant="tonal" density="compact"
+      rounded="lg" class="mb-3" icon="mdi-tag-remove-outline">
+      <div class="d-flex align-center flex-wrap ga-2">
+        <span><b>{{ qtdEtiquetaDesatualizada }}</b> produto(s) com <b>etiqueta desatualizada</b> — o preço/validade mudou, reimprima a etiqueta.</span>
+        <v-spacer />
+        <v-btn size="small" variant="tonal" color="warning"
+          @click="filtroEtiqueta = !filtroEtiqueta">{{ filtroEtiqueta ? 'Ver todos' : 'Ver só esses' }}</v-btn>
+      </div>
+    </v-alert>
+
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="produtosFiltrados" :loading="carregando" density="compact"
@@ -203,6 +214,15 @@
           { title: '100', value: 100 },
           { title: 'Todos', value: -1 },
         ]">
+        <template #item.descricao="{ item }">
+          {{ item.descricao }}
+          <v-tooltip text="Preço/validade mudou — reimprima a etiqueta" location="top">
+            <template #activator="{ props }">
+              <v-icon v-if="item.etiquetaDesatualizada" v-bind="props" color="warning" size="16" class="ml-1"
+                @click.stop="marcarEtiquetaImpressa(item)">mdi-tag-remove-outline</v-icon>
+            </template>
+          </v-tooltip>
+        </template>
         <template #item.unidadeSigla="{ item }">{{ item.unidadeSigla || '—' }}</template>
         <template #item.precoVenda="{ item }">R$ {{ fmtN(item.precoVenda) }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmtN(item.custoUnitario) }}</template>
@@ -1006,12 +1026,27 @@ const fornecedoresComProduto = computed(() => {
     .sort((a: any, b: any) => a.razaoSocial.localeCompare(b.razaoSocial))
 })
 
-// Filtro por fornecedor (múltipla seleção) aplicado no cliente (a lista já traz todos os produtos)
-const produtosFiltrados = computed(() =>
-  filtroFornecedor.value?.length
-    ? produtos.value.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
-    : produtos.value
-)
+// Filtros aplicados no cliente (a lista já traz todos os produtos)
+const filtroEtiqueta = ref(false)
+const qtdEtiquetaDesatualizada = computed(() =>
+  produtos.value.filter((p: any) => p.etiquetaDesatualizada).length)
+const produtosFiltrados = computed(() => {
+  let l = produtos.value
+  if (filtroFornecedor.value?.length)
+    l = l.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
+  if (filtroEtiqueta.value)
+    l = l.filter((p: any) => p.etiquetaDesatualizada)
+  return l
+})
+
+// Marca a etiqueta como impressa/atualizada (limpa o alerta).
+async function marcarEtiquetaImpressa(item: any) {
+  try {
+    await api.post('/produtos/etiquetas-impressas', { ids: [item.id] })
+    item.etiquetaDesatualizada = false
+    notif.ok('Etiqueta marcada como impressa.')
+  } catch { notif.erro('Erro ao atualizar a etiqueta.') }
+}
 
 // ─── formulário produto ──────────────────────────────────────────
 const formPadrao = () => ({

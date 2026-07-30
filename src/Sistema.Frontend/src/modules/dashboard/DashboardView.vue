@@ -33,7 +33,7 @@
               <v-icon icon="mdi-percent-outline" color="white" size="26" />
             </v-avatar>
             <div class="flex-grow-1">
-              <div class="text-caption text-medium-emphasis">Índice de Margem de Contribuição — {{ mesAtual }}</div>
+              <div class="text-caption text-medium-emphasis">Índice de Margem de Contribuição — {{ calMesLabel }}</div>
               <div class="text-h5 font-weight-bold text-deep-purple">
                 {{ pe ? pe.percentualMargemContribuicao + '%' : '--' }}
               </div>
@@ -56,7 +56,7 @@
               <v-icon icon="mdi-cart-arrow-down" color="white" size="26" />
             </v-avatar>
             <div class="flex-grow-1">
-              <div class="text-caption text-medium-emphasis">Custo da Mercadoria Vendida (CMV) — {{ mesAtual }}</div>
+              <div class="text-caption text-medium-emphasis">Custo da Mercadoria Vendida (CMV) — {{ calMesLabel }}</div>
               <div class="text-h5 font-weight-bold text-orange-darken-2">
                 {{ dre ? fmt(dre.cmv) : 'R$ --' }}
               </div>
@@ -311,15 +311,15 @@
           </v-card-actions>
         </v-card>
       </v-col>
-    </v-row>
 
-    <!-- Ponto de Equilíbrio -->
-    <v-row class="mt-2">
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
+      <!-- Ponto de Equilíbrio (ao lado do Contas a Receber) -->
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
-            Ponto de Equilíbrio — {{ mesAtual }}
+            Ponto de Equilíbrio — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-chip v-if="pe" :color="pe.peAtingido ? 'success' : 'warning'" size="small" label>
               {{ pe.peAtingido ? 'Atingido ✓' : pe.percentualAtingido + '% do PE' }}
@@ -437,7 +437,9 @@
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-account-group-outline" class="mr-2" color="teal" />
-            Vendas por Colaborador — {{ mesAtual }}
+            Vendas por Colaborador — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-btn icon size="x-small" variant="text" @click="periodoColaborador = periodoColaborador === 'mes' ? 'hoje' : 'mes'">
               <v-icon>{{ periodoColaborador === 'mes' ? 'mdi-calendar-month' : 'mdi-calendar-today' }}</v-icon>
@@ -501,7 +503,9 @@
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
-            DRE — {{ mesAtual }}
+            DRE — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-chip
               v-if="dre"
@@ -706,9 +710,8 @@ const carregandoPe = ref(true)
 async function carregarPe() {
   if (!auth.empresaId) { carregandoPe.value = false; return }
   try {
-    const hoje = new Date()
     const res = await api.get<PeData>('/financeiro/ponto-equilibrio', {
-      params: { empresaId: auth.empresaId, ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
     })
     pe.value = res.data
     await nextTick()
@@ -764,7 +767,10 @@ const calMesLabel = computed(() =>
   _refDate.value.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
 async function mudarMes(delta: number) {
   mesOffset.value += delta
-  await Promise.all([carregarVendasMes(), carregarContasMes(), carregarReceberMes()])
+  await Promise.all([
+    carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
+    carregarPe(), carregarDre(), carregarVendasColaborador(),
+  ])
 }
 const diaSelecionado = ref(diaHoje)
 const dataSelecionadaISO = computed(() =>
@@ -897,11 +903,15 @@ async function carregarVendasColaborador() {
   if (!auth.empresaId) { carregandoColab.value = false; return }
   carregandoColab.value = true
   try {
-    const hoje = new Date()
-    const inicio = periodoColaborador.value === 'hoje'
-      ? hoje.toISOString().slice(0, 10)
-      : new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
-    const fim = hoje.toISOString().slice(0, 10)
+    const hojeStr = new Date().toISOString().slice(0, 10)
+    // "Hoje" só faz sentido no mês corrente; navegando para outro mês, usa o mês todo.
+    const usarDia = periodoColaborador.value === 'hoje' && mesOffset.value === 0
+    const inicio = usarDia
+      ? hojeStr
+      : new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = mesOffset.value === 0
+      ? hojeStr
+      : new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
 
     const [rankingRes, usuariosRes] = await Promise.all([
       api.get<{ usuarioId: string; qtdVendas: number; totalVendido: number; ticketMedio: number }[]>(
@@ -948,9 +958,8 @@ const linhasDre = computed(() => {
 async function carregarDre() {
   if (!auth.empresaId) { carregandoDre.value = false; return }
   try {
-    const hoje = new Date()
     const res = await api.get<DreData>('/financeiro/dre', {
-      params: { empresaId: auth.empresaId, ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
     })
     dre.value = res.data
     await nextTick()

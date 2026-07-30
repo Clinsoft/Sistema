@@ -105,7 +105,9 @@
         <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
-            Vendas — {{ mesAtual }}
+            Vendas — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-chip v-if="totalMesVendas > 0" color="success" size="small" label>{{ fmt(totalMesVendas) }}</v-chip>
           </v-card-title>
@@ -121,7 +123,7 @@
                 <div v-for="(cel, i) in celasVendas" :key="i" class="dash-cal-cell"
                   :class="{
                     'dash-cal-empty': !cel.dia,
-                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-hoje': cel.dia === diaHoje && mesOffset === 0,
                     'dash-cal-vend': cel.total > 0,
                     'dash-cal-sel-v': cel.dia === diaSelecionadoV && cel.total > 0,
                   }"
@@ -157,7 +159,9 @@
         <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="error" />
-            Contas a Pagar — {{ mesAtual }}
+            Contas a Pagar — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-chip v-if="totalMesPagar > 0" color="error" size="small" label>{{ fmt(totalMesPagar) }}</v-chip>
           </v-card-title>
@@ -174,7 +178,7 @@
                 <div v-for="(cel, i) in celasCalendario" :key="i" class="dash-cal-cell"
                   :class="{
                     'dash-cal-empty': !cel.dia,
-                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-hoje': cel.dia === diaHoje && mesOffset === 0,
                     'dash-cal-tem': cel.total > 0,
                     'dash-cal-venc': cel.vencido,
                     'dash-cal-sel': cel.dia === diaSelecionado && cel.total > 0,
@@ -229,7 +233,9 @@
         <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
-            Contas a Receber — {{ mesAtual }}
+            Contas a Receber — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
             <v-chip v-if="totalMesReceber > 0" color="success" size="small" label>{{ fmt(totalMesReceber) }}</v-chip>
           </v-card-title>
@@ -246,7 +252,7 @@
                 <div v-for="(cel, i) in celasReceber" :key="i" class="dash-cal-cell"
                   :class="{
                     'dash-cal-empty': !cel.dia,
-                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-hoje': cel.dia === diaHoje && mesOffset === 0,
                     'dash-cal-vend': cel.total > 0,
                     'dash-cal-sel-v': cel.dia === diaSelecionadoR && cel.total > 0,
                   }"
@@ -734,13 +740,24 @@ interface ContaPagar {
 const contasMes = ref<ContaPagar[]>([])
 const carregandoCP = ref(true)
 
-const anoRef = new Date().getFullYear()
-const mesRef = new Date().getMonth()          // 0-based
-const mesNum = mesRef + 1
-const diaHoje = new Date().getDate()
+// Mês exibido nos calendários (navegável com as setas). Os demais cards do
+// dashboard continuam no mês atual fixo (mesAtual).
+const _hoje = new Date()
+const diaHoje = _hoje.getDate()
+const mesOffset = ref(0)
+const _refDate = computed(() => new Date(_hoje.getFullYear(), _hoje.getMonth() + mesOffset.value, 1))
+const anoRef = computed(() => _refDate.value.getFullYear())
+const mesRef = computed(() => _refDate.value.getMonth())
+const mesNum = computed(() => mesRef.value + 1)
+const calMesLabel = computed(() =>
+  _refDate.value.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+async function mudarMes(delta: number) {
+  mesOffset.value += delta
+  await Promise.all([carregarVendasMes(), carregarContasMes(), carregarReceberMes()])
+}
 const diaSelecionado = ref(diaHoje)
 const dataSelecionadaISO = computed(() =>
-  `${anoRef}-${String(mesNum).padStart(2, '0')}-${String(diaSelecionado.value).padStart(2, '0')}`)
+  `${anoRef.value}-${String(mesNum.value).padStart(2, '0')}-${String(diaSelecionado.value).padStart(2, '0')}`)
 
 const fmtMil = (v: number) =>
   v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(v).toString()
@@ -756,7 +773,7 @@ const contasPorDia = computed(() => {
   const map: Record<number, { total: number; vencido: boolean; itens: ContaPagar[] }> = {}
   for (const c of contasMes.value) {
     const d = new Date(String(c.dataVencimento).slice(0, 10) + 'T12:00:00')
-    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    if (d.getMonth() !== mesRef.value || d.getFullYear() !== anoRef.value) continue
     const dia = d.getDate()
     if (!map[dia]) map[dia] = { total: 0, vencido: false, itens: [] }
     map[dia].total += c.saldo
@@ -768,8 +785,8 @@ const contasPorDia = computed(() => {
 
 // Células do calendário (com espaços em branco antes do 1º dia)
 const celasCalendario = computed(() => {
-  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()   // 0=Dom
-  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const primeiroDiaSemana = new Date(anoRef.value, mesRef.value, 1).getDay()   // 0=Dom
+  const diasNoMes = new Date(anoRef.value, mesRef.value + 1, 0).getDate()
   const cells: { dia: number | null; total: number; vencido: boolean }[] = []
   for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0, vencido: false })
   for (let d = 1; d <= diasNoMes; d++) {
@@ -785,8 +802,8 @@ async function carregarContasMes() {
   if (!auth.empresaId) { carregandoCP.value = false; return }
   carregandoCP.value = true
   try {
-    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
-    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
+    const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<ContaPagar[]>('/contas-pagar', {
       params: { empresaId: auth.empresaId, inicio, fim }
     })
@@ -803,7 +820,7 @@ const receberMes = ref<ContaReceber[]>([])
 const carregandoCR = ref(true)
 const diaSelecionadoR = ref(diaHoje)
 const dataSelecionadaISOR = computed(() =>
-  `${anoRef}-${String(mesNum).padStart(2, '0')}-${String(diaSelecionadoR.value).padStart(2, '0')}`)
+  `${anoRef.value}-${String(mesNum.value).padStart(2, '0')}-${String(diaSelecionadoR.value).padStart(2, '0')}`)
 
 const totalMesReceber = computed(() => receberMes.value.reduce((s, c) => s + c.saldo, 0))
 
@@ -812,7 +829,7 @@ const receberPorDia = computed(() => {
   const map: Record<number, { total: number; vencido: boolean; itens: (ContaReceber & { vencido: boolean })[] }> = {}
   for (const c of receberMes.value) {
     const d = new Date(String(c.dataVencimento).slice(0, 10) + 'T12:00:00')
-    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    if (d.getMonth() !== mesRef.value || d.getFullYear() !== anoRef.value) continue
     const dia = d.getDate()
     const vencido = String(c.dataVencimento).slice(0, 10) < hojeStr && c.status !== 'Pago'
     if (!map[dia]) map[dia] = { total: 0, vencido: false, itens: [] }
@@ -824,8 +841,8 @@ const receberPorDia = computed(() => {
 })
 
 const celasReceber = computed(() => {
-  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()
-  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const primeiroDiaSemana = new Date(anoRef.value, mesRef.value, 1).getDay()
+  const diasNoMes = new Date(anoRef.value, mesRef.value + 1, 0).getDate()
   const cells: { dia: number | null; total: number; vencido: boolean }[] = []
   for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0, vencido: false })
   for (let d = 1; d <= diasNoMes; d++) {
@@ -841,8 +858,8 @@ async function carregarReceberMes() {
   if (!auth.empresaId) { carregandoCR.value = false; return }
   carregandoCR.value = true
   try {
-    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
-    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
+    const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<ContaReceber[]>('/contas-receber', {
       params: { empresaId: auth.empresaId, inicio, fim }
     })
@@ -995,15 +1012,15 @@ const vendasPorDia = computed(() => {
   const map: Record<number, number> = {}
   for (const v of vendasMes.value) {
     const d = new Date(String(v.data).slice(0, 10) + 'T12:00:00')
-    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    if (d.getMonth() !== mesRef.value || d.getFullYear() !== anoRef.value) continue
     map[d.getDate()] = (map[d.getDate()] ?? 0) + v.totalVendido
   }
   return map
 })
 
 const celasVendas = computed(() => {
-  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()
-  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const primeiroDiaSemana = new Date(anoRef.value, mesRef.value, 1).getDay()
+  const diasNoMes = new Date(anoRef.value, mesRef.value + 1, 0).getDate()
   const cells: { dia: number | null; total: number }[] = []
   for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0 })
   for (let d = 1; d <= diasNoMes; d++) cells.push({ dia: d, total: vendasPorDia.value[d] ?? 0 })
@@ -1014,7 +1031,7 @@ const diaSelecionadoV = ref(diaHoje)
 const vendasDoDia = computed(() => {
   const entry = vendasMes.value.find(v => {
     const d = new Date(String(v.data).slice(0, 10) + 'T12:00:00')
-    return d.getDate() === diaSelecionadoV.value && d.getMonth() === mesRef && d.getFullYear() === anoRef
+    return d.getDate() === diaSelecionadoV.value && d.getMonth() === mesRef.value && d.getFullYear() === anoRef.value
   })
   return entry ? { qtd: entry.qtdVendas, total: entry.totalVendido, ticket: entry.ticketMedio } : null
 })
@@ -1023,8 +1040,8 @@ async function carregarVendasMes() {
   carregando.value = true
   if (!auth.empresaId) { carregando.value = false; return }
   try {
-    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
-    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
+    const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
       params: { empresaId: auth.empresaId, inicio, fim }
     })

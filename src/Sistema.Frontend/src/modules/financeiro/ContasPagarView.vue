@@ -570,9 +570,16 @@
                   v-model="r.escolhaId" :items="opcoesConta(r)" item-title="titulo" item-value="lancamentoId"
                   label="Dar baixa na conta" variant="outlined" density="compact" hide-details
                   clearable @update:model-value="r.selecionado = !!r.escolhaId" />
-                <v-text-field v-if="r.escolhaId === '__nova__'" v-model="r.novaDescricao"
-                  label="Descrição da nova conta" variant="outlined" density="compact" hide-details
-                  class="mt-2" prepend-inner-icon="mdi-tag-plus-outline" />
+                <v-row v-if="r.escolhaId === '__nova__'" dense class="mt-1">
+                  <v-col cols="12" sm="7">
+                    <v-text-field v-model="r.novaDescricao" label="Descrição da nova conta"
+                      variant="outlined" density="compact" hide-details prepend-inner-icon="mdi-tag-plus-outline" />
+                  </v-col>
+                  <v-col cols="12" sm="5">
+                    <v-select v-model="r.novaCategoria" :items="categorias" label="Categoria *"
+                      variant="outlined" density="compact" hide-details />
+                  </v-col>
+                </v-row>
               </v-card-text>
             </v-card>
 
@@ -619,7 +626,7 @@ interface ResultadoComp {
   valorLido: number | null; dataLida: string | null; vencimentoLido: string | null
   beneficiarioLido: string | null; documentoLido: string | null
   sugestao: CandidatoConta | null; candidatos: CandidatoConta[]
-  escolhaId: string | null; selecionado: boolean; novaDescricao: string
+  escolhaId: string | null; selecionado: boolean; novaDescricao: string; novaCategoria: string
 }
 const NOVA = '__nova__'
 const dlgComp = ref(false)
@@ -660,6 +667,7 @@ async function analisarComprovantes() {
       escolhaId: x.sugestao?.lancamentoId ?? NOVA,
       selecionado: true,
       novaDescricao: x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)',
+      novaCategoria: 'Despesas Variáveis',
     }))
     const semMatch = resultadosComp.value.filter(x => x.escolhaId === NOVA).length
     if (semMatch) notif.aviso(`${semMatch} comprovante(s) sem conta cadastrada — marcados para "criar conta e dar baixa".`)
@@ -673,6 +681,7 @@ async function confirmarComprovantes() {
     ? {
       criar: true,
       descricao: (r.novaDescricao || r.beneficiarioLido || 'Pagamento (comprovante)').trim(),
+      categoria: r.novaCategoria,
       valorPago: r.valorLido ?? 0,
       dataPagamento: r.dataLida ?? null,
       vencimento: r.vencimentoLido ?? r.dataLida ?? null,

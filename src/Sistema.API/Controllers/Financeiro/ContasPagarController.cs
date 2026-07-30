@@ -325,7 +325,8 @@ public class ContasPagarController(
                 var venc = it.Vencimento ?? dataPg;
                 var desc = string.IsNullOrWhiteSpace(it.Descricao) ? "Pagamento (comprovante)" : it.Descricao!;
                 l = LancamentoFinanceiro.Criar(req.EmpresaId, TipoLancamento.ContaPagar, desc, it.ValorPago, venc);
-                l.DefinirClassificacao("Despesas Variáveis", null, "Criada pela importação de comprovante.");
+                var categoria = string.IsNullOrWhiteSpace(it.Categoria) ? "Despesas Variáveis" : it.Categoria!;
+                l.DefinirClassificacao(categoria, null, "Criada pela importação de comprovante.");
                 await repo.AdicionarAsync(l, ct);
                 criados++;
             }
@@ -463,7 +464,7 @@ public record RenegociarPagarRequest(decimal NovoValor, DateTime NovoVencimento,
 public record ConfirmarComprovantesRequest(Guid EmpresaId, List<ConfirmarComprovanteItem> Itens);
 public record ConfirmarComprovanteItem(Guid LancamentoId, decimal ValorPago, DateTime? DataPagamento,
     string? ComprovanteUrl, Guid? ContaBancariaId = null,
-    bool Criar = false, string? Descricao = null, DateTime? Vencimento = null);
+    bool Criar = false, string? Descricao = null, DateTime? Vencimento = null, string? Categoria = null);
 public record CriarColaboradorRapidoRequest(Guid EmpresaId, string Nome, string? Cpf = null, string? Telefone = null);
 
 public record CriarContaPagarRequest(

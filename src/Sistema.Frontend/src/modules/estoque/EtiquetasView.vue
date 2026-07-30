@@ -242,6 +242,10 @@
               :loading="adicionandoKg" @click="adicionarTodosKg">
               Adicionar todos por kg (balança)
             </v-btn>
+            <v-btn size="small" color="warning" variant="tonal" prepend-icon="mdi-tag-remove-outline"
+              :loading="carregandoDesat" @click="carregarDesatualizadas">
+              Adicionar etiquetas desatualizadas
+            </v-btn>
             <v-btn v-if="produtosSel.length" size="small" variant="text" color="error"
               prepend-icon="mdi-close" @click="produtosSel = []">
               Limpar ({{ produtosSel.length }})
@@ -437,7 +441,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import QRCode from 'qrcode'
 import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import GuiaPassos from '@/components/GuiaPassos.vue'
@@ -447,6 +452,10 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+const route = useRoute()
+
+// Atalho vindo da tela de Produtos: já carrega as etiquetas desatualizadas.
+onMounted(() => { if (route.query.desatualizadas) carregarDesatualizadas() })
 // Atendente pode imprimir etiquetas de produto, mas não editar/salvar o template.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const buscaProdutoTexto = ref('')
@@ -898,6 +907,24 @@ async function adicionarTodosKg() {
       (novos < kg.length ? ` (${kg.length - novos} já estavam na lista).` : '.'))
   } catch { notif.erro('Erro ao carregar os produtos por kg.') }
   finally { adicionandoKg.value = false }
+}
+
+// Adiciona à seleção todos os produtos com etiqueta desatualizada (preço/validade mudou).
+const carregandoDesat = ref(false)
+async function carregarDesatualizadas() {
+  carregandoDesat.value = true
+  try {
+    const r = await api.get('/produtos', {
+      params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
+    })
+    const desat = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.etiquetaDesatualizada)
+    const novos = desat.filter((p: any) => !produtosSel.value.find(x => x.id === p.id))
+    await Promise.all(novos.map((p: any) => enriquecerValidadeRegistrada(p)))
+    novos.forEach((p: any) => produtosSel.value.push(p))
+    if (!desat.length) notif.aviso('Nenhuma etiqueta desatualizada no momento.')
+    else notif.ok(`${novos.length} produto(s) com etiqueta desatualizada adicionado(s).`)
+  } catch { notif.erro('Erro ao carregar as etiquetas desatualizadas.') }
+  finally { carregandoDesat.value = false }
 }
 
 let timer: any

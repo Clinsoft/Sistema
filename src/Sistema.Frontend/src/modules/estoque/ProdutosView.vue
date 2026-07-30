@@ -201,6 +201,8 @@
         <v-spacer />
         <v-btn size="small" variant="tonal" color="warning"
           @click="filtroEtiqueta = !filtroEtiqueta">{{ filtroEtiqueta ? 'Ver todos' : 'Ver só esses' }}</v-btn>
+        <v-btn size="small" variant="flat" color="warning" prepend-icon="mdi-printer"
+          @click="router.push('/estoque/etiquetas?desatualizadas=1')">Imprimir etiquetas</v-btn>
       </div>
     </v-alert>
 
@@ -953,12 +955,14 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
 
 const auth = useAuthStore()
+const router = useRouter()
 const notif = useNotifStore()
 const { mobile } = useDisplay()
 

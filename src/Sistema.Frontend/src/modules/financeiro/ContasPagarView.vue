@@ -570,6 +570,9 @@
                   v-model="r.escolhaId" :items="opcoesConta(r)" item-title="titulo" item-value="lancamentoId"
                   label="Dar baixa na conta" variant="outlined" density="compact" hide-details
                   clearable @update:model-value="r.selecionado = !!r.escolhaId" />
+                <v-text-field v-if="r.escolhaId === '__nova__'" v-model="r.novaDescricao"
+                  label="Descrição da nova conta" variant="outlined" density="compact" hide-details
+                  class="mt-2" prepend-inner-icon="mdi-tag-plus-outline" />
               </v-card-text>
             </v-card>
 
@@ -613,11 +616,12 @@ interface CandidatoConta {
 }
 interface ResultadoComp {
   arquivo: string; comprovanteUrl: string
-  valorLido: number | null; dataLida: string | null
+  valorLido: number | null; dataLida: string | null; vencimentoLido: string | null
   beneficiarioLido: string | null; documentoLido: string | null
   sugestao: CandidatoConta | null; candidatos: CandidatoConta[]
-  escolhaId: string | null; selecionado: boolean
+  escolhaId: string | null; selecionado: boolean; novaDescricao: string
 }
+const NOVA = '__nova__'
 const dlgComp = ref(false)
 const arquivosComp = ref<File[]>([])
 const analisando = ref(false)
@@ -632,10 +636,13 @@ function abrirComprovantes() {
 }
 
 function opcoesConta(r: ResultadoComp) {
-  return (r.candidatos ?? []).map(c => ({
+  const lista = (r.candidatos ?? []).map(c => ({
     lancamentoId: c.lancamentoId,
     titulo: `${c.descricao} — ${c.beneficiario || 's/ beneficiário'} · R$ ${fmt(c.saldo || c.valorOriginal)} (venc ${fmtData(c.vencimento)})`
   }))
+  // Sempre permite criar uma nova conta (ex.: comprovante de conta não cadastrada).
+  lista.push({ lancamentoId: NOVA, titulo: '➕ Criar nova conta a pagar (não cadastrada) e dar baixa' })
+  return lista
 }
 
 async function analisarComprovantes() {
@@ -649,28 +656,40 @@ async function analisarComprovantes() {
       { headers: { 'Content-Type': 'multipart/form-data' } })
     resultadosComp.value = (r.data ?? []).map((x: any) => ({
       ...x,
-      escolhaId: x.sugestao?.lancamentoId ?? null,
-      selecionado: !!x.sugestao?.lancamentoId,
+      // Sem sugestão → já deixa marcado para CRIAR a conta (usuário revisa/desmarca).
+      escolhaId: x.sugestao?.lancamentoId ?? NOVA,
+      selecionado: true,
+      novaDescricao: x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)',
     }))
-    const semMatch = resultadosComp.value.filter(x => !x.escolhaId).length
-    if (semMatch) notif.aviso(`${semMatch} comprovante(s) sem conta sugerida — selecione manualmente.`)
+    const semMatch = resultadosComp.value.filter(x => x.escolhaId === NOVA).length
+    if (semMatch) notif.aviso(`${semMatch} comprovante(s) sem conta cadastrada — marcados para "criar conta e dar baixa".`)
   } catch (e: any) {
     notif.erro(e?.response?.data ?? 'Falha ao ler os comprovantes.')
   } finally { analisando.value = false }
 }
 
 async function confirmarComprovantes() {
-  const itens = selecionadosComp.value.map(r => ({
-    lancamentoId: r.escolhaId,
-    valorPago: r.valorLido ?? 0,
-    dataPagamento: r.dataLida ?? null,
-    comprovanteUrl: r.comprovanteUrl,
-  }))
+  const itens = selecionadosComp.value.map(r => r.escolhaId === NOVA
+    ? {
+      criar: true,
+      descricao: (r.novaDescricao || r.beneficiarioLido || 'Pagamento (comprovante)').trim(),
+      valorPago: r.valorLido ?? 0,
+      dataPagamento: r.dataLida ?? null,
+      vencimento: r.vencimentoLido ?? r.dataLida ?? null,
+      comprovanteUrl: r.comprovanteUrl,
+    }
+    : {
+      lancamentoId: r.escolhaId,
+      valorPago: r.valorLido ?? 0,
+      dataPagamento: r.dataLida ?? null,
+      comprovanteUrl: r.comprovanteUrl,
+    })
   if (!itens.length) return
   confirmandoComp.value = true
   try {
-    const r = await api.post('/contas-pagar/comprovantes/confirmar', { itens })
-    notif.ok(`${r.data.baixados} conta(s) baixada(s) com comprovante.`)
+    const r = await api.post('/contas-pagar/comprovantes/confirmar', { empresaId: auth.empresaId, itens })
+    const { baixados, criados } = r.data
+    notif.ok(`${baixados} conta(s) baixada(s)${criados ? ` (${criados} criada(s) do comprovante)` : ''}.`)
     dlgComp.value = false
     await carregar()
   } catch (e: any) {

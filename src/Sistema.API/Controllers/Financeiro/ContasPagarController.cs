@@ -286,6 +286,7 @@ public class ContasPagarController(
                     comprovanteUrl = urlPg,
                     valorLido = valor,
                     dataLida = data,
+                    vencimentoLido = venc,
                     beneficiarioLido = nomes.FirstOrDefault(),
                     documentoLido = docs.FirstOrDefault(),
                     sugestao = melhor is null ? null : (object)new
@@ -312,12 +313,30 @@ public class ContasPagarController(
     {
         if (req?.Itens is null || req.Itens.Count == 0) return BadRequest("Nada a confirmar.");
         var baixados = 0;
+        var criados = 0;
         foreach (var it in req.Itens)
         {
-            var l = await repo.ObterPorIdAsync(it.LancamentoId, ct);
-            if (l is null || l.Status == StatusLancamento.Pago) continue;
+            var dataPg = it.DataPagamento ?? DateTime.Today;
+            LancamentoFinanceiro? l;
+
+            if (it.Criar)
+            {
+                // Comprovante de uma conta ainda NÃO cadastrada: cria já paga.
+                var venc = it.Vencimento ?? dataPg;
+                var desc = string.IsNullOrWhiteSpace(it.Descricao) ? "Pagamento (comprovante)" : it.Descricao!;
+                l = LancamentoFinanceiro.Criar(req.EmpresaId, TipoLancamento.ContaPagar, desc, it.ValorPago, venc);
+                l.DefinirClassificacao("Despesas Variáveis", null, "Criada pela importação de comprovante.");
+                await repo.AdicionarAsync(l, ct);
+                criados++;
+            }
+            else
+            {
+                l = await repo.ObterPorIdAsync(it.LancamentoId, ct);
+                if (l is null || l.Status == StatusLancamento.Pago) continue;
+            }
+
             var valor = it.ValorPago > 0 ? it.ValorPago : l.Saldo;
-            l.Baixar(valor, it.DataPagamento ?? DateTime.Today, it.ContaBancariaId);
+            l.Baixar(valor, dataPg, it.ContaBancariaId);
             if (!string.IsNullOrWhiteSpace(it.ComprovanteUrl)) l.AnexarComprovante(it.ComprovanteUrl);
             if (it.ContaBancariaId.HasValue)
             {
@@ -328,7 +347,7 @@ public class ContasPagarController(
             baixados++;
         }
         await uow.SalvarAsync(ct);
-        return Ok(new { baixados });
+        return Ok(new { baixados, criados });
     }
 
     // ─── Leitura/parse de comprovantes ──────────────────────────────────────
@@ -441,9 +460,10 @@ public class ContasPagarController(
 
 public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null, Guid? ColaboradorId = null);
 public record RenegociarPagarRequest(decimal NovoValor, DateTime NovoVencimento, string? Motivo = null);
-public record ConfirmarComprovantesRequest(List<ConfirmarComprovanteItem> Itens);
+public record ConfirmarComprovantesRequest(Guid EmpresaId, List<ConfirmarComprovanteItem> Itens);
 public record ConfirmarComprovanteItem(Guid LancamentoId, decimal ValorPago, DateTime? DataPagamento,
-    string? ComprovanteUrl, Guid? ContaBancariaId = null);
+    string? ComprovanteUrl, Guid? ContaBancariaId = null,
+    bool Criar = false, string? Descricao = null, DateTime? Vencimento = null);
 public record CriarColaboradorRapidoRequest(Guid EmpresaId, string Nome, string? Cpf = null, string? Telefone = null);
 
 public record CriarContaPagarRequest(

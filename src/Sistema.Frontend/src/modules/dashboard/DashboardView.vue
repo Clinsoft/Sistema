@@ -572,7 +572,44 @@
           </div>
         </v-card>
       </v-col>
+    </v-row>
 
+    <!-- Vendas por Loja -->
+    <v-row class="mt-2">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-store-outline" class="mr-2" color="deep-orange" />
+            Vendas por Loja — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
+          </v-card-title>
+
+          <v-card-text v-if="carregandoLoja" class="d-flex justify-center pa-8">
+            <v-progress-circular indeterminate color="deep-orange" />
+          </v-card-text>
+          <div v-else-if="vendasLoja.length === 0" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-store-off-outline" size="36" class="mb-2" />
+            <div class="text-body-2">Nenhuma venda registrada no período.</div>
+          </div>
+          <div v-else class="pa-3 pt-0">
+            <div v-for="(v, i) in vendasLoja" :key="v.localEstoqueId" class="mb-3">
+              <div class="d-flex align-center mb-1">
+                <v-icon icon="mdi-storefront-outline" :color="coresLoja[i % coresLoja.length]" size="20" class="mr-2" />
+                <span class="text-body-2 font-weight-medium flex-grow-1">{{ v.loja }}</span>
+                <span class="text-body-2 font-weight-bold ml-2">{{ fmt(v.totalVendido) }}</span>
+              </div>
+              <div class="d-flex align-center gap-2">
+                <v-progress-linear :model-value="(v.totalVendido / vendasLoja[0].totalVendido) * 100"
+                  :color="coresLoja[i % coresLoja.length]" height="6" rounded class="flex-grow-1" />
+                <span class="text-caption text-medium-emphasis" style="min-width:80px;text-align:right">
+                  {{ v.qtdVendas }} vda{{ v.qtdVendas !== 1 ? 's' : '' }} · TM {{ fmt(v.ticketMedio) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
     </v-row>
 
     <!-- Alertas -->
@@ -636,6 +673,24 @@ const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 const iniciais = (nome: string) => nome.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 
 const coresColab = ['teal', 'indigo', 'deep-purple', 'blue', 'cyan', 'green', 'orange']
+const coresLoja = ['deep-orange', 'teal', 'indigo', 'blue', 'green', 'purple']
+
+// ── Vendas por Loja (unidade do caixa) ───────────────────────────────────────
+interface VendaLoja { localEstoqueId: string; loja: string; qtdVendas: number; totalVendido: number; ticketMedio: number }
+const vendasLoja = ref<VendaLoja[]>([])
+const carregandoLoja = ref(true)
+async function carregarVendasLoja() {
+  if (!auth.empresaId) { carregandoLoja.value = false; return }
+  carregandoLoja.value = true
+  try {
+    const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
+    const r = await api.get<VendaLoja[]>('/relatorios/vendas/por-loja', {
+      params: { empresaId: auth.empresaId, inicio, fim },
+    })
+    vendasLoja.value = r.data ?? []
+  } catch { vendasLoja.value = [] } finally { carregandoLoja.value = false }
+}
 
 interface ResumoData {
   vendasHoje: number
@@ -770,7 +825,7 @@ async function mudarMes(delta: number) {
   mesOffset.value += delta
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
-    carregarPe(), carregarDre(), carregarVendasColaborador(),
+    carregarPe(), carregarDre(), carregarVendasColaborador(), carregarVendasLoja(),
   ])
 }
 const diaSelecionado = ref(diaHoje)
@@ -1172,6 +1227,7 @@ onMounted(async () => {
     carregarContasMes(),
     carregarReceberMes(),
     carregarVendasColaborador(),
+    carregarVendasLoja(),
     carregarDre(),
     carregarPlanejamento(),
     carregarCurvaAbc(),

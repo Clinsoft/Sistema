@@ -134,6 +134,38 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
         return Ok(ranking);
     }
 
+    /// <summary>Ranking de vendas por LOJA/unidade (local de estoque do caixa).</summary>
+    [HttpGet("por-loja")]
+    public async Task<IActionResult> PorLoja(
+        [FromQuery] Guid empresaId, [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+    {
+        var ranking = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId
+                && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1))
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new
+            {
+                localEstoqueId = g.Key,
+                qtdVendas = g.Count(),
+                totalVendido = g.Sum(v => v.Total),
+                ticketMedio = g.Average(v => v.Total)
+            })
+            .OrderByDescending(x => x.totalVendido)
+            .ToListAsync(ct);
+
+        var ids = ranking.Select(r => r.localEstoqueId).ToList();
+        var nomes = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => ids.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        return Ok(ranking.Select(r => new
+        {
+            r.localEstoqueId,
+            loja = nomes.GetValueOrDefault(r.localEstoqueId, "—"),
+            r.qtdVendas, r.totalVendido, r.ticketMedio
+        }));
+    }
+
     /// <summary>Devoluções por período.</summary>
     [HttpGet("devolucoes")]
     public async Task<IActionResult> Devolucoes(

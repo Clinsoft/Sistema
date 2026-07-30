@@ -57,12 +57,23 @@
           <v-select v-model="filtroCategoria" :items="categorias" item-title="nome" item-value="id"
             label="Categoria" variant="outlined" density="compact" hide-details clearable />
         </v-col>
+        <v-col cols="12" md="2">
+          <v-select v-model="filtroLoja" :items="locaisEstoque" item-title="nome" item-value="id"
+            label="Loja" variant="outlined" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-store-outline"
+            placeholder="Todas" @update:model-value="carregar" />
+        </v-col>
         <v-col cols="auto">
           <v-switch v-model="apenasAbaixoMinimo" label="Apenas abaixo do mínimo"
             color="warning" density="compact" hide-details inset />
         </v-col>
       </v-row>
     </v-card>
+
+    <v-alert v-if="filtroLoja" type="info" variant="tonal" density="compact" rounded="lg" class="mb-3">
+      Mostrando o estoque da loja <b>{{ locaisEstoque.find(l => l.id === filtroLoja)?.nome }}</b> —
+      a coluna "Estoque Atual" é o saldo <b>nesta loja</b> (reconstruído do histórico). Limpe o filtro para ver o total de todas as lojas.
+    </v-alert>
 
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
@@ -137,6 +148,7 @@ const locaisEstoque = ref<any[]>([])
 const totais = ref<any>({ qtdProdutos: 0, qtdAbaixoMinimo: 0, custoTotalEstoque: 0, valorVendaTotalEstoque: 0 })
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
+const filtroLoja = ref<string | null>(null)
 const apenasAbaixoMinimo = ref(false)
 
 const dlgAjuste = ref(false)
@@ -170,12 +182,19 @@ function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFract
 async function carregar() {
   carregando.value = true
   try {
+    // Com loja selecionada → posição daquela loja (saldo reconstruído do histórico).
+    // Sem loja → posição global (soma de todas as lojas), como antes.
+    const posReq = filtroLoja.value
+      ? api.get('/estoque/posicao-por-loja', { params: { empresaId: auth.empresaId, localEstoqueId: filtroLoja.value } })
+      : api.get('/estoque/posicao', { params: { empresaId: auth.empresaId } })
     const [pos, cat, loc] = await Promise.all([
-      api.get('/estoque/posicao', { params: { empresaId: auth.empresaId } }),
+      posReq,
       api.get('/categorias', { params: { empresaId: auth.empresaId } }),
       api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }),
     ])
-    produtos.value = pos.data.produtos ?? []
+    // Na visão por loja, o campo "estoqueAtual" da tabela passa a ser o saldo NA loja.
+    produtos.value = (pos.data.produtos ?? []).map((p: any) =>
+      filtroLoja.value ? { ...p, estoqueAtual: p.saldoLoja } : p)
     totais.value = pos.data.totais ?? totais.value
     categorias.value = cat.data
     locaisEstoque.value = loc.data ?? []

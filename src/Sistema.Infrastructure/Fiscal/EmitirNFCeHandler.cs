@@ -79,6 +79,9 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
             .FirstOrDefaultAsync(c => c.EmpresaId == evt.EmpresaId, ct);
         if (config is null) return;
 
+        // Emissão desligada para esta empresa (ex.: filial sem CNPJ válido ainda).
+        if (!config.EmissaoNFCeAtiva) return;
+
         var empresa = await db.Empresas
             .FirstOrDefaultAsync(e => e.Id == evt.EmpresaId, ct);
         if (empresa is null) return;

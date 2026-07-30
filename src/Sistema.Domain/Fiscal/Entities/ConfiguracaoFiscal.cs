@@ -30,6 +30,11 @@ public class ConfiguracaoFiscal : Entity
     public string? FormatoDanfe { get; private set; }              // Retrato | Paisagem
     public string? TipoImpressaoNFCe { get; private set; }         // Termica80 | Termica58 | A4
     public bool ImprimirAutomaticamenteNFCe { get; private set; }
+    // Emissão automática de NFC-e na venda. Desligue quando o CNPJ ainda não é
+    // válido (ex.: filial em processo de abertura) para vender sem tentar emitir.
+    public bool EmissaoNFCeAtiva { get; private set; } = true;
+
+    public void DefinirEmissaoNFCe(bool ativa) => EmissaoNFCeAtiva = ativa;
 
     // ── Tributação padrão de produtos ────────────────────────────────────
     public string? CsosnPadrao { get; private set; }

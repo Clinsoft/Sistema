@@ -44,6 +44,7 @@ public class ConfiguracaoFiscalController(
             // Parâmetros gerais
             config.NaturezaOperacaoPadrao, config.ContingenciaPadrao,
             config.FormatoDanfe, config.TipoImpressaoNFCe, config.ImprimirAutomaticamenteNFCe,
+            config.EmissaoNFCeAtiva,
             // Tributação padrão
             config.CsosnPadrao, config.CstIcmsPadrao, config.AliquotaIcmsPadrao,
             config.AliquotaIcmsInterestadual, config.OrigemPadrao,
@@ -151,6 +152,10 @@ public class ConfiguracaoFiscalController(
             Str(body, "naturezaOperacaoPadrao"), Str(body, "contingenciaPadrao"),
             Str(body, "formatoDanfe"), Str(body, "tipoImpressaoNFCe"),
             Bool(body, "imprimirAutomaticamenteNFCe") ?? config.ImprimirAutomaticamenteNFCe);
+
+        // Interruptor de emissão de NFC-e (desligar p/ filial sem CNPJ válido)
+        var emissao = Bool(body, "emissaoNFCeAtiva");
+        if (emissao.HasValue) config.DefinirEmissaoNFCe(emissao.Value);
 
         // Tributação padrão de produtos
         config.DefinirTributacaoPadrao(

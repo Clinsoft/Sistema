@@ -5,21 +5,21 @@
       <v-col cols="auto" class="d-flex gap-2">
         <template v-if="isGondola">
           <v-btn color="primary" prepend-icon="mdi-printer" @click="imprimirGondola"
-            :disabled="!produtosSel.length">
-            Imprimir ({{ produtosSel.length }})
+            :disabled="!produtosParaImprimir.length">
+            Imprimir ({{ produtosParaImprimir.length }})
           </v-btn>
           <v-btn color="success" variant="outlined" prepend-icon="mdi-download" @click="baixarZpl"
-            :disabled="!produtosSel.length">
+            :disabled="!produtosParaImprimir.length">
             Gerar ZPL
           </v-btn>
           <v-btn color="secondary" variant="outlined" prepend-icon="mdi-usb"
-            @click="enviarZebraDialog = true" :disabled="!produtosSel.length">
+            @click="enviarZebraDialog = true" :disabled="!produtosParaImprimir.length">
             Enviar para Zebra
           </v-btn>
         </template>
         <v-btn v-else color="primary" prepend-icon="mdi-printer" @click="imprimir"
-          :disabled="!produtosSel.length">
-          Imprimir ({{ produtosSel.length }})
+          :disabled="!produtosParaImprimir.length">
+          Imprimir ({{ produtosParaImprimir.length }})
         </v-btn>
       </v-col>
     </v-row>
@@ -263,10 +263,36 @@
           <div v-if="!produtosSel.length" class="text-caption text-medium-emphasis mt-2">
             Nenhum produto adicionado.
           </div>
-          <v-chip v-for="p in produtosSel" :key="p.id" closable class="ma-1" size="small"
-            @click:close="removerProduto(p.id)">
-            {{ p.descricao }}
-          </v-chip>
+          <template v-else>
+            <div class="d-flex align-center mb-1">
+              <span class="text-caption text-medium-emphasis">
+                {{ produtosParaImprimir.length }} de {{ produtosSel.length }} marcados p/ imprimir
+              </span>
+              <v-spacer />
+              <v-btn size="x-small" variant="text" @click="marcarTodos(true)">Marcar todos</v-btn>
+              <v-btn size="x-small" variant="text" @click="marcarTodos(false)">Desmarcar</v-btn>
+            </div>
+            <v-list density="compact" max-height="320" class="overflow-y-auto border rounded-lg">
+              <v-list-item v-for="p in produtosSel" :key="p.id" density="compact">
+                <template #prepend>
+                  <v-checkbox-btn :model-value="vaiImprimir(p)" :disabled="!elegivel(p)"
+                    density="compact" @update:model-value="v => marcados[p.id] = !!v" />
+                </template>
+                <v-list-item-title class="text-body-2">{{ p.descricao }}</v-list-item-title>
+                <template #append>
+                  <v-chip size="x-small" :color="ehKg(p) ? 'green' : 'grey'" variant="tonal" class="mr-1">
+                    {{ p.unidadeSigla || 'UN' }}
+                  </v-chip>
+                  <v-btn icon="mdi-close" size="x-small" variant="text" color="error"
+                    @click="removerProduto(p.id)" />
+                </template>
+              </v-list-item>
+            </v-list>
+            <div v-if="template === 'ecogranel' && produtosSel.some(p => !ehKg(p))"
+              class="text-caption text-warning mt-1">
+              O template <b>EcoGranel</b> é só para produtos por kg — os UN ficam desmarcados. Use Gôndola/40×25 para eles.
+            </div>
+          </template>
         </v-card>
       </v-col>
 
@@ -464,6 +490,14 @@ const sugestoes = ref<any[]>([])
 const produtosSel = ref<any[]>([])
 const template = ref('ecogranel')
 const qtdEtiquetas = ref(1)
+
+// Seleção por produto (checkbox) + regra: EcoGranel só imprime produtos por kg.
+const marcados = ref<Record<string, boolean>>({})
+function ehKg(p: any) { return !!p?.produtoBalanca || String(p?.unidadeSigla || '').toUpperCase() === 'KG' }
+function elegivel(p: any) { return template.value !== 'ecogranel' || ehKg(p) }
+function vaiImprimir(p: any) { return marcados.value[p.id] !== false && elegivel(p) }
+const produtosParaImprimir = computed(() => produtosSel.value.filter(vaiImprimir))
+function marcarTodos(v: boolean) { produtosSel.value.forEach((p: any) => { if (elegivel(p)) marcados.value[p.id] = v }) }
 // Validade padrão: hoje + 60 dias (produtos por peso). Pré-preenchida para o
 // template EcoGranel sempre imprimir com validade; o usuário pode ajustar.
 function validadePadrao(): string {
@@ -658,7 +692,7 @@ const tplAtual = computed(() => tplConfig[template.value] ?? tplConfig['40x25'])
 
 const etiquetasExpandidas = computed(() => {
   const lista: any[] = []
-  produtosSel.value.forEach(p => {
+  produtosParaImprimir.value.forEach(p => {
     for (let i = 0; i < qtdEtiquetas.value; i++)
       lista.push({ ...p, _key: `${p.id}_${i}` })
   })
@@ -768,7 +802,7 @@ function gerarZpl(): string {
 
   // Um bloco por produto selecionado; a quantidade é feita pela própria Zebra
   // via ^PQ (não duplicar aqui, senão a tiragem sai multiplicada).
-  for (const p of produtosSel.value) {
+  for (const p of produtosParaImprimir.value) {
     const nome    = zplSanitize(p.descricao ?? '')
     const precoStr = 'R$ ' + fmt(p.precoVenda)
     const porKg   = fmtPrecoKg(p)

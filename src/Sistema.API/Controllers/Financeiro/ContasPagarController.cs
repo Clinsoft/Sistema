@@ -328,7 +328,8 @@ public class ContasPagarController(
             {
                 // Comprovante de uma conta ainda NÃO cadastrada: cria já paga.
                 var venc = it.Vencimento ?? dataPg;
-                var desc = string.IsNullOrWhiteSpace(it.Descricao) ? "Pagamento (comprovante)" : it.Descricao!;
+                var desc = string.IsNullOrWhiteSpace(it.Descricao) ? "Pagamento (comprovante)" : it.Descricao!.Trim();
+                if (desc.Length > 200) desc = desc[..200];   // coluna Descricao = 200 chars
                 l = LancamentoFinanceiro.Criar(req.EmpresaId, TipoLancamento.ContaPagar, desc, it.ValorPago, venc);
                 var categoria = string.IsNullOrWhiteSpace(it.Categoria) ? "Despesas Variáveis" : it.Categoria!;
                 l.DefinirClassificacao(categoria, null, "Criada pela importação de comprovante.");
@@ -408,11 +409,14 @@ public class ContasPagarController(
                           ?? Campo(t, @"Data da Transa[cç][aã]o\s*:?\s*(\d{2}/\d{2}/\d{4})"));
         var venc = ParseData(Campo(t, @"Data de Vencimento\s*:?\s*(\d{2}/\d{2}/\d{4})"));
 
+        // Fronteira do valor: o próximo rótulo pode vir SEM espaço (o PdfPig concatena
+        // "...SACPF/CNPJ..."), então não exigimos \s. Limite de 80 chars por segurança.
+        const string fim = @"(?=CPF/CNPJ|Nome Fantasia|Nome do|N[uú]mero|Raz[aã]o|Linha|Data|Valor|Institui|Hora|$)";
         var nomes = new List<string>();
         void AddNome(string? n) { if (!string.IsNullOrWhiteSpace(n)) nomes.Add(n!); }
-        AddNome(Campo(t, @"Nome do Benefici[aá]rio Final\s*:?\s*(.+?)(?=\s+CPF/CNPJ|\s+Nome do Pagador|\s+N[uú]mero|$)"));
-        AddNome(Campo(t, @"Raz[aã]o Social do Benefici[aá]rio\s*:?\s*(.+?)(?=\s+Nome Fantasia|\s+CPF/CNPJ|\s+Nome do|\s+N[uú]mero|$)"));
-        AddNome(Campo(t, @"Nome Fantasia do Benefici[aá]rio\s*:?\s*(.+?)(?=\s+CPF/CNPJ|\s+Nome do|\s+N[uú]mero|$)"));
+        AddNome(Campo(t, @"Nome do Benefici[aá]rio Final\s*:?\s*(.{3,80}?)" + fim));
+        AddNome(Campo(t, @"Raz[aã]o Social do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
+        AddNome(Campo(t, @"Nome Fantasia do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
 
         var docs = new List<string>();
         void AddDoc(string? d) { var dd = SomenteDigitos(d); if (dd.Length is 11 or 14) docs.Add(dd); }

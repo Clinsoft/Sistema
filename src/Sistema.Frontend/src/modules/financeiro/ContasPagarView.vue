@@ -666,7 +666,7 @@ async function analisarComprovantes() {
       ...x,
       escolhaId: null,
       selecionado: true,
-      novaDescricao: x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)',
+      novaDescricao: String(x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)').slice(0, 120),
       novaCategoria: 'Despesas Variáveis',
     }))
     // Atribuição EXCLUSIVA: cada conta candidata é usada no máx. 1 vez (maior score

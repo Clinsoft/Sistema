@@ -122,6 +122,55 @@
     <v-alert v-else-if="!carregando" type="warning" variant="tonal" rounded="xl" class="mb-4"
       text="Nenhum caixa aberto. Clique em 'Abrir Caixa' para começar." />
 
+    <!-- Painel de supervisão: caixas abertos de todos os operadores -->
+    <v-card v-if="podeSupervisionar && caixasAbertos.length" rounded="xl" elevation="1" class="mb-4">
+      <v-card-text class="pa-4">
+        <div class="d-flex align-center mb-3">
+          <v-icon icon="mdi-cash-multiple" color="success" class="mr-2" />
+          <span class="text-subtitle-1 font-weight-bold">Caixas abertos agora</span>
+          <v-chip size="small" color="success" variant="tonal" class="ml-2">{{ caixasAbertos.length }}</v-chip>
+          <v-spacer />
+          <v-btn size="small" variant="text" icon="mdi-refresh" @click="carregarCaixasAbertos" />
+        </div>
+        <v-row dense>
+          <v-col v-for="c in caixasAbertos" :key="c.id" cols="12" md="6">
+            <v-card variant="tonal" color="success" rounded="lg">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-2">
+                  <v-avatar color="success" size="32" class="mr-2">
+                    <v-icon icon="mdi-account" color="white" size="18" />
+                  </v-avatar>
+                  <div class="flex-grow-1">
+                    <div class="text-body-2 font-weight-bold">{{ c.operador ?? '—' }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      {{ c.localEstoque ?? '—' }} · desde {{ fmtHora(c.abertura) }}
+                    </div>
+                  </div>
+                  <v-btn size="small" variant="text" icon="mdi-printer-outline"
+                    @click="imprimirFechamento(c.id)" />
+                </div>
+                <v-row dense>
+                  <v-col cols="6"><span class="text-caption text-medium-emphasis">Vendas:</span>
+                    <span class="text-body-2 font-weight-bold ml-1">R$ {{ fmt(c.totalVendas) }}</span></v-col>
+                  <v-col cols="6"><span class="text-caption text-medium-emphasis">Esperado gaveta:</span>
+                    <span class="text-body-2 font-weight-bold ml-1">R$ {{ fmt(c.saldoEsperado) }}</span></v-col>
+                  <v-col cols="6"><span class="text-caption text-medium-emphasis">Dinheiro:</span>
+                    <span class="text-caption ml-1">R$ {{ fmt(c.totalDinheiro) }}</span></v-col>
+                  <v-col cols="6"><span class="text-caption text-medium-emphasis">Pix:</span>
+                    <span class="text-caption ml-1">R$ {{ fmt(c.totalPix) }}</span></v-col>
+                  <v-col cols="6"><span class="text-caption text-medium-emphasis">Cartões:</span>
+                    <span class="text-caption ml-1">R$ {{ fmt((c.totalCartaoCredito ?? 0) + (c.totalCartaoDebito ?? 0)) }}</span></v-col>
+                  <v-col cols="6" v-if="(c.totalCrediario ?? 0) > 0">
+                    <span class="text-caption text-medium-emphasis">Crediário:</span>
+                    <span class="text-caption ml-1">R$ {{ fmt(c.totalCrediario) }}</span></v-col>
+                </v-row>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
     <!-- Filtros histórico -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -355,6 +404,11 @@ const operacao = ref({ valor: 0, descricao: '' })
 const sessoes = ref<any[]>([])
 const sessaoAtiva = ref<any>(null)
 const locais = ref<any[]>([])
+const caixasAbertos = ref<any[]>([])
+
+// Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
+const podeSupervisionar = computed(() =>
+  ['Administrador', 'Gerente'].includes(auth.usuario?.role ?? ''))
 
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
@@ -449,6 +503,14 @@ async function carregarSessaoAtiva() {
   } catch { sessaoAtiva.value = null }
 }
 
+async function carregarCaixasAbertos() {
+  if (!podeSupervisionar.value) return
+  try {
+    const r = await api.get('/pdv/sessoes/abertas', { params: { empresaId: auth.empresaId } })
+    caixasAbertos.value = r.data ?? []
+  } catch { caixasAbertos.value = [] }
+}
+
 async function listar() {
   carregando.value = true
   try {
@@ -471,7 +533,7 @@ async function abrirCaixa() {
     })
     notif.ok('Caixa aberto com sucesso!')
     dialogAbrir.value = false
-    await Promise.all([carregarSessaoAtiva(), listar()])
+    await Promise.all([carregarSessaoAtiva(), listar(), carregarCaixasAbertos()])
   } catch (e: any) {
     notif.erro(e?.response?.data?.title ?? 'Erro ao abrir caixa.')
   } finally { abrindo.value = false }
@@ -490,7 +552,7 @@ async function fecharCaixa() {
     notif.ok('Caixa fechado com sucesso!')
     dialogFechar.value = false
     fechamento.value = { saldoContado: null, observacao: '' }
-    await Promise.all([carregarSessaoAtiva(), listar()])
+    await Promise.all([carregarSessaoAtiva(), listar(), carregarCaixasAbertos()])
     imprimirFechamento(sessaoId)   // imprime o cupom de fechamento ao fechar
   } catch (e: any) {
     notif.erro(e?.response?.data?.title ?? 'Erro ao fechar caixa.')
@@ -543,7 +605,7 @@ async function salvarOperacao() {
 
 onMounted(async () => {
   const [, loc] = await Promise.all([
-    Promise.all([carregarSessaoAtiva(), listar()]),
+    Promise.all([carregarSessaoAtiva(), listar(), carregarCaixasAbertos()]),
     api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
   ])
   locais.value = loc.data ?? []

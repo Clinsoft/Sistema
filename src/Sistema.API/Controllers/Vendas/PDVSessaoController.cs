@@ -120,6 +120,46 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         return Ok(lista);
     }
 
+    /// <summary>Lista os caixas ABERTOS no momento (todos os operadores) — visão de supervisão.</summary>
+    [HttpGet("abertas")]
+    public async Task<IActionResult> Abertas([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var sessoes = await db.PDVSessoes.AsNoTracking()
+            .Where(s => s.EmpresaId == empresaId && s.Status == StatusSessao.Aberta)
+            .OrderBy(s => s.Abertura)
+            .ToListAsync(ct);
+
+        var numeros = await NumerosPorSessaoAsync(empresaId, ct);
+        var usuarioIds = sessoes.Select(s => s.UsuarioId).Distinct().ToList();
+        var localIds = sessoes.Select(s => s.LocalEstoqueId).Distinct().ToList();
+        var operadores = await db.Usuarios.AsNoTracking()
+            .Where(u => usuarioIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Nome, ct);
+        var locais = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => localIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        var lista = new List<object>();
+        foreach (var s in sessoes)
+        {
+            var b = await BreakdownFormasAsync(s, ct);
+            lista.Add(new
+            {
+                s.Id,
+                numero = numeros.GetValueOrDefault(s.Id, 0),
+                s.UsuarioId,
+                operador = operadores.GetValueOrDefault(s.UsuarioId),
+                localEstoque = locais.GetValueOrDefault(s.LocalEstoqueId),
+                s.Abertura,
+                s.SaldoAbertura,
+                totalVendas = b.Dinheiro + b.Pix + b.Credito + b.Debito + b.Crediario,
+                s.TotalSuprimentos, s.TotalSangrias,
+                totalDinheiro = b.Dinheiro, totalPix = b.Pix,
+                totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito, totalCrediario = b.Crediario,
+                saldoEsperado = s.SaldoAbertura + b.Dinheiro + s.TotalSuprimentos - s.TotalSangrias
+            });
+        }
+        return Ok(lista);
+    }
+
     /// <summary>Número sequencial da sessão por empresa (ordem de abertura), já que não há coluna Numero.</summary>
     private async Task<Dictionary<Guid, int>> NumerosPorSessaoAsync(Guid empresaId, CancellationToken ct)
     {

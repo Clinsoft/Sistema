@@ -151,6 +151,17 @@
               </div>
             </template>
           </v-card-text>
+
+          <v-card-actions class="pa-2 pt-0">
+            <v-btn variant="text" size="small" color="success" append-icon="mdi-arrow-right"
+              :to="vendasDoDia
+                ? { path: '/pdv/vendas', query: { data: dataSelecionadaISOV } }
+                : '/pdv/vendas'">
+              {{ vendasDoDia
+                ? `Ver dia ${String(diaSelecionadoV).padStart(2,'0')}/${String(mesNum).padStart(2,'0')}`
+                : 'Ver todas' }}
+            </v-btn>
+          </v-card-actions>
         </v-card>
       </v-col>
 
@@ -1028,6 +1039,8 @@ const celasVendas = computed(() => {
 })
 
 const diaSelecionadoV = ref(diaHoje)
+const dataSelecionadaISOV = computed(() =>
+  `${anoRef.value}-${String(mesNum.value).padStart(2, '0')}-${String(diaSelecionadoV.value).padStart(2, '0')}`)
 const vendasDoDia = computed(() => {
   const entry = vendasMes.value.find(v => {
     const d = new Date(String(v.data).slice(0, 10) + 'T12:00:00')

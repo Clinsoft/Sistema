@@ -8,7 +8,8 @@ public class Venda : Entity
     public Guid EmpresaId { get; private set; }
     public string Numero { get; private set; } = null!;
     public Guid? ClienteId { get; private set; }
-    public Guid UsuarioId { get; private set; }
+    public Guid UsuarioId { get; private set; }        // Operador do caixa (dono da sessão)
+    public Guid? VendedorId { get; private set; }       // Colaborador que efetuou a venda (comissão/relatórios)
     public Guid LocalEstoqueId { get; private set; }
     public StatusVenda Status { get; private set; }
     public DateTime DataHora { get; private set; }
@@ -37,12 +38,14 @@ public class Venda : Entity
 
     private Venda() { }
 
-    public static Venda Iniciar(Guid empresaId, Guid usuarioId, Guid localEstoqueId, string numero, Guid? clienteId = null)
+    public static Venda Iniciar(Guid empresaId, Guid usuarioId, Guid localEstoqueId, string numero,
+        Guid? clienteId = null, Guid? vendedorId = null)
         => new()
         {
             EmpresaId = empresaId,
             Numero = numero,
             UsuarioId = usuarioId,
+            VendedorId = vendedorId,
             LocalEstoqueId = localEstoqueId,
             ClienteId = clienteId,
             Status = StatusVenda.EmAberto,

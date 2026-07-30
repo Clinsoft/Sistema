@@ -1397,7 +1397,10 @@ async function finalizar() {
     }
     const inicioRes = await api.post<{ id: string }>('/vendas/iniciar', {
       empresaId: auth.empresaId,
-      usuarioId: colaboradorId.value || auth.usuario?.id,
+      // A venda pertence ao OPERADOR do caixa (mantém o fechamento correto);
+      // o colaborador selecionado é o VENDEDOR (comissão/relatórios), livre.
+      usuarioId: auth.usuario?.id,
+      vendedorId: colaboradorId.value || auth.usuario?.id,
       localEstoqueId,
       clienteId: clienteId.value ?? null,
     })

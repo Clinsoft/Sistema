@@ -239,10 +239,6 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         var codsBarras = parsed.Itens.Where(i => i.CodigoBarras != null)
             .Select(i => i.CodigoBarras!).ToList();
 
-        var produtosPorCodForn = await db.Produtos.AsNoTracking()
-            .Where(p => p.EmpresaId == empresaId && codsFornecedor.Contains(p.Codigo))
-            .ToDictionaryAsync(p => p.Codigo, ct);
-
         // De-para: produtos que já memorizaram o código deste emitente em entradas anteriores.
         var cnpjEmitente = CnpjRaw(parsed.EmitenteCnpj);
         var fornecedorEntrada = await db.Fornecedores.AsNoTracking()
@@ -266,12 +262,13 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         foreach (var item in itens)
         {
             Domain.Estoque.Entities.Produto? prod = null;
+            // Só vincula automaticamente por EAN (cEAN) ou pelo de-para do PRÓPRIO
+            // emitente. NÃO casa o código do fornecedor com o código interno de um
+            // produto qualquer — isso causava colisão e vínculo errado.
             if (item.CodigoBarras != null && produtosPorBarras.TryGetValue(item.CodigoBarras, out var pBarras))
                 prod = pBarras;
             else if (item.CodigoFornecedor != null && produtosPorDePara.TryGetValue(item.CodigoFornecedor, out var pDePara))
                 prod = pDePara;
-            else if (item.CodigoFornecedor != null && produtosPorCodForn.TryGetValue(item.CodigoFornecedor, out var pCod))
-                prod = pCod;
 
             if (prod is not null)
             {

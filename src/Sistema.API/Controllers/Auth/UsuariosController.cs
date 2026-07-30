@@ -30,6 +30,8 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
                 u.Email, u.Perfil, temAcesso = u.Email != null && u.SenhaHash != null,
                 ehCliente = u.Cpf != null && db.Clientes.Any(c => c.EmpresaId == u.EmpresaId && c.CpfCnpj == u.Cpf),
                 u.Ativo, u.UltimoAcesso,
+                u.LocalEstoqueId,
+                unidade = db.LocaisEstoque.Where(l => l.Id == u.LocalEstoqueId).Select(l => l.Nome).FirstOrDefault(),
             })
             .OrderBy(u => u.Nome)
             .ToListAsync(ct));
@@ -39,6 +41,7 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
     {
         var colaborador = Usuario.CriarColaborador(req.EmpresaId, req.Nome,
             req.Cpf, req.Telefone, req.Cargo, req.Salario, req.DataAdmissao, req.Observacao);
+        colaborador.DefinirUnidade(req.LocalEstoqueId);
 
         // Acesso opcional já na criação.
         if (req.Acesso is not null)
@@ -58,6 +61,7 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
         var c = await repo.ObterPorIdAsync(id, ct)
             ?? throw new KeyNotFoundException("Colaborador não encontrado.");
         c.EditarDadosColaborador(req.Nome, req.Cpf, req.Telefone, req.Cargo, req.Salario, req.DataAdmissao, req.Observacao);
+        c.DefinirUnidade(req.LocalEstoqueId);
         repo.Atualizar(c);
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -163,7 +167,7 @@ public record SalvarColaboradorRequest(
     Guid EmpresaId, string Nome,
     string? Cpf = null, string? Telefone = null, string? Cargo = null,
     decimal? Salario = null, DateTime? DataAdmissao = null, string? Observacao = null,
-    AcessoDto? Acesso = null);
+    AcessoDto? Acesso = null, Guid? LocalEstoqueId = null);
 public record ConcederAcessoRequest(string Email, string Senha, string Perfil);
 public record AlterarPerfilRequest(string Perfil);
 public record AlterarSenhaRequest(string NovaSenha);

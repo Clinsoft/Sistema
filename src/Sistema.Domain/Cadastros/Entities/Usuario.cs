@@ -29,6 +29,9 @@ public class Usuario : Entity
 
     public bool Ativo { get; private set; } = true;
     public DateTime? UltimoAcesso { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }   // Unidade/loja do colaborador
+
+    public void DefinirUnidade(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
 
     private Usuario() { }
 

@@ -309,18 +309,23 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(n => n.Id == notaId && n.EmpresaId == req.EmpresaId, ct)
             ?? throw new KeyNotFoundException("NF-e não encontrada.");
 
+        // A nota fica na empresa que a recebeu (ex.: matriz), mas os PRODUTOS,
+        // estoque e financeiro podem ir para OUTRA loja do grupo (ex.: filial),
+        // quando DestinoEmpresaId é informado. Sem destino, entra na própria empresa.
+        var destino = req.DestinoEmpresaId ?? req.EmpresaId;
+
         // Verificar se já existe entrada para esta nota
         if (await db.EntradasNFe.AnyAsync(e => e.NotaFiscalRecebidaId == notaId, ct))
             return Conflict(new { mensagem = "Já existe uma escrituração para esta NF-e." });
 
-        // Verificar local de estoque
+        // Verificar local de estoque (da loja de DESTINO)
         var local = await db.LocaisEstoque
-            .FirstOrDefaultAsync(l => l.Id == req.LocalEstoqueId && l.EmpresaId == req.EmpresaId, ct)
+            .FirstOrDefaultAsync(l => l.Id == req.LocalEstoqueId && l.EmpresaId == destino, ct)
             ?? throw new KeyNotFoundException("Local de estoque não encontrado.");
 
         // Criar entrada com dados da nota recebida
         var entrada = EntradaNFe.Criar(
-            req.EmpresaId, notaId, nota.ChaveAcesso,
+            destino, notaId, nota.ChaveAcesso,
             nota.EmitenteNome, nota.EmitenteCnpj, nota.DataEmissao,
             req.LocalEstoqueId,
             valProdutos: nota.ValorTotal, valFrete: 0, valSeguro: 0,
@@ -350,7 +355,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         // Vincular ou criar o fornecedor pelo CNPJ do emitente. Com XML, usa os
         // dados completos (fantasia/endereço/IE); sem XML, os da nota recebida.
         var fornecedor = await VincularOuCriarFornecedorAsync(
-            req.EmpresaId,
+            destino,
             parsed?.EmitenteCnpj ?? nota.EmitenteCnpj,
             parsed?.EmitenteNome ?? nota.EmitenteNome,
             parsed?.EmitenteNomeFantasia, parsed?.EmitenteEndereco, parsed?.EmitenteIE, ct);
@@ -1572,7 +1577,7 @@ public record EnderecoXml(string? Logradouro, string? Numero, string? Complement
     string? Bairro, string? Municipio, string? UF, string? Cep);
 
 // ── Requests ──────────────────────────────────────────────────────────
-public record IniciarEntradaRequest(Guid EmpresaId, Guid LocalEstoqueId);
+public record IniciarEntradaRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid? DestinoEmpresaId = null);
 
 public record EditarItemRequest(
     string? CfopUtilizado,

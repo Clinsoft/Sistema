@@ -966,8 +966,23 @@
               Valor: R$ {{ fmt(notaParaEscriturar?.valorTotal) }}
             </span>
           </div>
+          <v-select v-if="lojasDestino.length > 1" v-model="destinoEmpresaId"
+            label="Loja de destino (produtos/estoque) *"
+            :items="lojasDestino" item-title="nomeFantasia" item-value="id"
+            variant="outlined" density="compact" class="mb-1"
+            prepend-inner-icon="mdi-store-outline"
+            @update:model-value="carregarLocaisDestino">
+            <template #item="{ props, item }">
+              <v-list-item v-bind="props" :title="item.raw.nomeFantasia"
+                :subtitle="`${item.raw.tipoUnidade} · ${item.raw.cnpj}`" />
+            </template>
+          </v-select>
+          <div v-if="destinoEmpresaId !== auth.empresaId" class="text-caption text-warning mb-2">
+            A nota permanece na empresa que a recebeu; só os <b>produtos, estoque e financeiro</b>
+            vão para a loja escolhida.
+          </div>
           <v-select v-model="localEscrituracaoId" label="Local de estoque de destino *"
-            :items="locaisEstoque" item-title="nome" item-value="id"
+            :items="locaisDestino" item-title="nome" item-value="id"
             variant="outlined" density="compact"
             :rules="[r => !!r || 'Selecione o local de estoque']" />
         </v-card-text>
@@ -1271,10 +1286,26 @@ async function carregarLocaisEstoque() {
   } catch {}
 }
 
+// Loja de DESTINO da entrada (produtos/estoque/financeiro). A nota fica na
+// empresa que a recebeu (auth.empresaId); os produtos podem ir para outra loja.
+const lojasDestino = computed(() => auth.filiais)
+const destinoEmpresaId = ref<string>('')
+const locaisDestino = ref<any[]>([])
+
+async function carregarLocaisDestino() {
+  localEscrituracaoId.value = null
+  try {
+    const r = await api.get('/locais-estoque', { params: { empresaId: destinoEmpresaId.value } })
+    locaisDestino.value = r.data ?? []
+    localEscrituracaoId.value = locaisDestino.value[0]?.id ?? null
+  } catch { locaisDestino.value = [] }
+}
+
 function escriturarEntrada(item: any) {
   notaParaEscriturar.value = item
-  localEscrituracaoId.value = locaisEstoque.value[0]?.id ?? null
+  destinoEmpresaId.value = auth.empresaId as string   // padrão: a própria empresa da nota
   dlgEscriturar.value = true
+  carregarLocaisDestino()
 }
 
 async function confirmarEscriturar() {
@@ -1283,7 +1314,8 @@ async function confirmarEscriturar() {
   try {
     const r = await api.post(
       `/fiscal/entradas/de-nfe-recebida/${notaParaEscriturar.value.id}`,
-      { empresaId: auth.empresaId, localEstoqueId: localEscrituracaoId.value })
+      { empresaId: auth.empresaId, destinoEmpresaId: destinoEmpresaId.value,
+        localEstoqueId: localEscrituracaoId.value })
     notif.ok('Escrituração iniciada!')
     dlgEscriturar.value = false
     router.push(`/fiscal/entradas/${r.data.id}`)

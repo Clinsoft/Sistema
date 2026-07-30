@@ -414,7 +414,8 @@ const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   fim: new Date().toISOString().slice(0, 10),
 })
-const abertura = ref({ localEstoqueId: null as string | null, saldoAbertura: 0 })
+// Pré-seleciona a loja/unidade do colaborador logado (se tiver vínculo).
+const abertura = ref({ localEstoqueId: (auth.usuario?.localEstoqueId ?? null) as string | null, saldoAbertura: 0 })
 const fechamento = ref({ saldoContado: null as number | null, observacao: '' })
 
 // ── Saldo esperado em dinheiro no caixa físico ────────────────────

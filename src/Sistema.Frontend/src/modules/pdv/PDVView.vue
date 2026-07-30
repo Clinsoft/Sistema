@@ -924,7 +924,8 @@ const saldoInicial = ref<number>(0)
 const verificandoCaixa = ref(true)
 
 const locaisCaixa = ref<any[]>([])
-const localEstoqueIdCaixa = ref<string | null>(null)
+// Pré-seleciona a loja/unidade do colaborador logado (se tiver vínculo).
+const localEstoqueIdCaixa = ref<string | null>(auth.usuario?.localEstoqueId ?? null)
 
 async function verificarSessaoCaixa() {
   verificandoCaixa.value = true

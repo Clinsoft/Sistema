@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/composables/useApi'
 
-interface Usuario { id: string; nome: string; email: string; role: string }
+interface Usuario { id: string; nome: string; email: string; role: string; localEstoqueId?: string | null }
 interface EmpresaResumo { id: string; nomeFantasia: string; cnpj: string; tipoUnidade: string }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -32,6 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
     // (inexistente), então auth.usuario.id ficava undefined e caixa/vendas iam sem usuário.
     const res = await api.post<{
       token: string; nome: string; perfil: string; empresaId: string; usuarioId: string
+      localEstoqueId?: string | null
     }>('/auth/login', { email, senha })
 
     const u: Usuario = {
@@ -39,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
       nome: res.data.nome,
       email,
       role: res.data.perfil,
+      localEstoqueId: res.data.localEstoqueId ?? null,
     }
     token.value = res.data.token
     usuario.value = u

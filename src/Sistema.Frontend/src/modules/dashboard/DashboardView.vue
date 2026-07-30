@@ -223,6 +223,77 @@
           </v-card-actions>
         </v-card>
       </v-col>
+
+      <!-- Contas a Receber — Agenda do mês -->
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
+            Contas a Receber — {{ mesAtual }}
+            <v-spacer />
+            <v-chip v-if="totalMesReceber > 0" color="success" size="small" label>{{ fmt(totalMesReceber) }}</v-chip>
+          </v-card-title>
+
+          <v-card-text class="pt-1">
+            <div v-if="carregandoCR" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="success" />
+            </div>
+            <template v-else>
+              <div class="dash-cal-head">
+                <span v-for="(d, i) in ['D','S','T','Q','Q','S','S']" :key="i">{{ d }}</span>
+              </div>
+              <div class="dash-cal-grid">
+                <div v-for="(cel, i) in celasReceber" :key="i" class="dash-cal-cell"
+                  :class="{
+                    'dash-cal-empty': !cel.dia,
+                    'dash-cal-hoje': cel.dia === diaHoje,
+                    'dash-cal-vend': cel.total > 0,
+                    'dash-cal-sel-v': cel.dia === diaSelecionadoR && cel.total > 0,
+                  }"
+                  @click="cel.total > 0 && (diaSelecionadoR = cel.dia)">
+                  <template v-if="cel.dia">
+                    <div class="dash-cal-num">{{ cel.dia }}</div>
+                    <div v-if="cel.total > 0" class="dash-cal-val dash-cal-val-v">{{ fmtCel(cel.total) }}</div>
+                  </template>
+                </div>
+              </div>
+
+              <div v-if="receberDoDia.length" class="mt-2">
+                <div class="text-caption font-weight-bold mb-1">
+                  {{ String(diaSelecionadoR).padStart(2, '0') }}/{{ String(mesNum).padStart(2, '0') }} —
+                  {{ receberDoDia.length }} conta(s)
+                </div>
+                <v-list density="compact" class="pa-0" style="max-height: 120px; overflow-y: auto">
+                  <v-list-item v-for="c in receberDoDia" :key="c.id" class="px-2" min-height="34">
+                    <template #prepend>
+                      <v-icon :icon="c.vencido ? 'mdi-alert-circle' : 'mdi-clock-outline'"
+                        :color="c.vencido ? 'error' : 'success'" size="16" class="mr-1" />
+                    </template>
+                    <v-list-item-title class="text-caption">{{ c.descricao }}</v-list-item-title>
+                    <template #append>
+                      <span class="text-caption font-weight-bold text-success">{{ fmt(c.saldo) }}</span>
+                    </template>
+                  </v-list-item>
+                </v-list>
+              </div>
+              <div v-else class="text-caption text-medium-emphasis text-center mt-2">
+                Toque num dia com valor para ver as contas. Nada a receber em {{ String(diaSelecionadoR).padStart(2,'0') }}/{{ String(mesNum).padStart(2,'0') }}.
+              </div>
+            </template>
+          </v-card-text>
+
+          <v-card-actions class="pa-2 pt-0">
+            <v-btn variant="text" size="small" color="success" append-icon="mdi-arrow-right"
+              :to="receberDoDia.length
+                ? { path: '/financeiro/contas-receber', query: { data: dataSelecionadaISOR } }
+                : '/financeiro/contas-receber'">
+              {{ receberDoDia.length
+                ? `Ver dia ${String(diaSelecionadoR).padStart(2,'0')}/${String(mesNum).padStart(2,'0')}`
+                : 'Ver todas' }}
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
     </v-row>
 
     <!-- Ponto de Equilíbrio -->
@@ -724,6 +795,61 @@ async function carregarContasMes() {
   } catch { contasMes.value = [] } finally { carregandoCP.value = false }
 }
 
+// ── Contas a Receber — Agenda do mês ─────────────────────────────────────────
+interface ContaReceber {
+  id: string; descricao: string; saldo: number; dataVencimento: string; status: string
+}
+const receberMes = ref<ContaReceber[]>([])
+const carregandoCR = ref(true)
+const diaSelecionadoR = ref(diaHoje)
+const dataSelecionadaISOR = computed(() =>
+  `${anoRef}-${String(mesNum).padStart(2, '0')}-${String(diaSelecionadoR.value).padStart(2, '0')}`)
+
+const totalMesReceber = computed(() => receberMes.value.reduce((s, c) => s + c.saldo, 0))
+
+const receberPorDia = computed(() => {
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  const map: Record<number, { total: number; vencido: boolean; itens: (ContaReceber & { vencido: boolean })[] }> = {}
+  for (const c of receberMes.value) {
+    const d = new Date(String(c.dataVencimento).slice(0, 10) + 'T12:00:00')
+    if (d.getMonth() !== mesRef || d.getFullYear() !== anoRef) continue
+    const dia = d.getDate()
+    const vencido = String(c.dataVencimento).slice(0, 10) < hojeStr && c.status !== 'Pago'
+    if (!map[dia]) map[dia] = { total: 0, vencido: false, itens: [] }
+    map[dia].total += c.saldo
+    map[dia].itens.push({ ...c, vencido })
+    if (vencido) map[dia].vencido = true
+  }
+  return map
+})
+
+const celasReceber = computed(() => {
+  const primeiroDiaSemana = new Date(anoRef, mesRef, 1).getDay()
+  const diasNoMes = new Date(anoRef, mesRef + 1, 0).getDate()
+  const cells: { dia: number | null; total: number; vencido: boolean }[] = []
+  for (let i = 0; i < primeiroDiaSemana; i++) cells.push({ dia: null, total: 0, vencido: false })
+  for (let d = 1; d <= diasNoMes; d++) {
+    const info = receberPorDia.value[d]
+    cells.push({ dia: d, total: info?.total ?? 0, vencido: info?.vencido ?? false })
+  }
+  return cells
+})
+
+const receberDoDia = computed(() => receberPorDia.value[diaSelecionadoR.value]?.itens ?? [])
+
+async function carregarReceberMes() {
+  if (!auth.empresaId) { carregandoCR.value = false; return }
+  carregandoCR.value = true
+  try {
+    const inicio = new Date(anoRef, mesRef, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef, mesRef + 1, 0).toISOString().slice(0, 10)
+    const res = await api.get<ContaReceber[]>('/contas-receber', {
+      params: { empresaId: auth.empresaId, inicio, fim }
+    })
+    receberMes.value = (res.data ?? []).filter(c => c.status !== 'Pago' && c.status !== 'Cancelado')
+  } catch { receberMes.value = [] } finally { carregandoCR.value = false }
+}
+
 // ── Vendas por Colaborador ───────────────────────────────────────────────────
 interface VendaColab {
   usuarioId: string; nome: string; qtdVendas: number
@@ -982,6 +1108,7 @@ onMounted(async () => {
     carregarVendasMes(),
     carregarPe(),
     carregarContasMes(),
+    carregarReceberMes(),
     carregarVendasColaborador(),
     carregarDre(),
     carregarPlanejamento(),

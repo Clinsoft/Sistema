@@ -267,6 +267,7 @@
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -583,5 +584,19 @@ async function confirmarRenegociacao() {
   finally { salvando.value = false }
 }
 
-onMounted(() => { carregar(); carregarClientes() })
+const route = useRoute()
+
+onMounted(() => {
+  // Vindo do Dashboard (calendário) com ?data=YYYY-MM-DD: filtra só aquele dia.
+  const data = route.query.data
+  if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    filtros.value.inicio = data
+    filtros.value.fim = data
+    filtros.value.tudo = false
+    filtros.value.status = 'Todos'
+    filtros.value.categoria = 'Todas'
+  }
+  carregar()
+  carregarClientes()
+})
 </script>

@@ -58,10 +58,13 @@ public class Empresa : Entity
         string regimeTributario, string logradouro, string numero, string? complemento,
         string bairro, string cidade, string uf, string cep,
         string telefone, string email,
-        string inscricaoEstadual = "", string inscricaoMunicipal = "")
+        string inscricaoEstadual = "", string inscricaoMunicipal = "", string? cnpj = null)
     {
         RazaoSocial = razaoSocial;
         NomeFantasia = nomeFantasia;
+        // CNPJ só é alterado quando informado (ex.: filial que sai do CNPJ provisório
+        // para o definitivo). Sem valor, preserva o atual.
+        if (!string.IsNullOrWhiteSpace(cnpj)) Cnpj = cnpj;
         RegimeTributario = regimeTributario;
         Logradouro = logradouro;
         Numero = numero;

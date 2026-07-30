@@ -53,12 +53,13 @@
             no-data-text="Sem contas no período" />
         </v-col>
       </v-row>
-      <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
+      <div class="d-flex align-center flex-wrap mt-3 filtro-acoes">
+        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details inset
+          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
+        <v-spacer />
         <v-btn color="warning" variant="tonal" rounded="lg" prepend-icon="mdi-calendar-today"
           :loading="carregando" @click="filtrarHoje">Hoje</v-btn>
-        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
-          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
-        <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
+        <v-btn color="primary" rounded="lg" prepend-icon="mdi-magnify"
           :loading="carregando" @click="carregar">Buscar</v-btn>
       </div>
     </v-card>
@@ -824,6 +825,7 @@ const totalVencidos = computed(() =>
 )
 
 const totaisCategorias = computed(() => [
+  { label: 'Custo (CMV)', valor: somarAberto('Custo (CMV)'), cor: 'brown', icon: 'mdi-package-variant-closed' },
   { label: 'Despesas Administrativas', valor: somarAberto('Despesas Administrativas'),
     cor: 'deep-purple', icon: 'mdi-home-city-outline' },
   { label: 'Despesas Operacionais', valor: somarAberto('Despesas Operacionais'), cor: 'teal',   icon: 'mdi-cog-outline' },
@@ -1213,3 +1215,10 @@ onMounted(async () => {
   await carregarBeneficiarios()
 })
 </script>
+
+<style scoped>
+.filtro-acoes { gap: 12px; }
+/* Evita o thumb do switch encostar no texto do label */
+.filtro-acoes :deep(.v-switch .v-label) { padding-left: 8px; white-space: nowrap; opacity: .9; }
+.filtro-acoes :deep(.v-selection-control) { min-height: 40px; }
+</style>

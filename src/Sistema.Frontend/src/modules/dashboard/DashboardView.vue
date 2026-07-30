@@ -212,8 +212,13 @@
           </v-card-text>
 
           <v-card-actions class="pa-2 pt-0">
-            <v-btn variant="text" size="small" color="error" to="/financeiro/contas-pagar" append-icon="mdi-arrow-right">
-              Ver todas
+            <v-btn variant="text" size="small" color="error" append-icon="mdi-arrow-right"
+              :to="contasDoDia.length
+                ? { path: '/financeiro/contas-pagar', query: { data: dataSelecionadaISO } }
+                : '/financeiro/contas-pagar'">
+              {{ contasDoDia.length
+                ? `Ver dia ${String(diaSelecionado).padStart(2,'0')}/${String(mesNum).padStart(2,'0')}`
+                : 'Ver todas' }}
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -663,6 +668,8 @@ const mesRef = new Date().getMonth()          // 0-based
 const mesNum = mesRef + 1
 const diaHoje = new Date().getDate()
 const diaSelecionado = ref(diaHoje)
+const dataSelecionadaISO = computed(() =>
+  `${anoRef}-${String(mesNum).padStart(2, '0')}-${String(diaSelecionado.value).padStart(2, '0')}`)
 
 const fmtMil = (v: number) =>
   v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(v).toString()

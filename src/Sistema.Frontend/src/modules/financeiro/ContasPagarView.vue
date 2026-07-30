@@ -515,6 +515,7 @@
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -1016,7 +1017,18 @@ function beneficiarioPayload(id: string | null) {
     : { fornecedorId: id, colaboradorId: null }
 }
 
+const route = useRoute()
+
 onMounted(async () => {
+  // Vindo do Dashboard (calendário) com ?data=YYYY-MM-DD: filtra só aquele dia.
+  const data = route.query.data
+  if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    filtros.value.inicio = data
+    filtros.value.fim = data
+    filtros.value.tudo = false
+    filtros.value.status = 'Todos'
+    filtros.value.categoria = 'Todas'
+  }
   await carregar()
   await carregarBeneficiarios()
 })

@@ -222,7 +222,37 @@
 
           <v-btn :icon="tema === 'clinsoftLight' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
             variant="text" @click="alternarTema" />
-          <v-btn icon="mdi-bell-outline" variant="text" />
+          <v-menu offset-y :close-on-content-click="false">
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="text" icon>
+                <v-badge :content="totalNotif" :model-value="totalNotif > 0" color="error" max="99">
+                  <v-icon>{{ totalNotif > 0 ? 'mdi-bell-ring-outline' : 'mdi-bell-outline' }}</v-icon>
+                </v-badge>
+              </v-btn>
+            </template>
+            <v-list min-width="320" max-width="380" density="compact">
+              <v-list-subheader>Notificações</v-list-subheader>
+              <v-list-item v-if="!notificacoes.length" class="text-medium-emphasis">
+                <v-list-item-title class="text-body-2">Tudo em dia 🎉</v-list-item-title>
+                <v-list-item-subtitle class="text-caption">Nenhum alerta no momento.</v-list-item-subtitle>
+              </v-list-item>
+              <v-list-item v-for="n in notificacoes" :key="n.tipo" @click="abrirNotificacao(n)">
+                <template #prepend>
+                  <v-icon :icon="n.icone" :color="n.cor" class="mr-2" />
+                </template>
+                <v-list-item-title class="text-body-2 font-weight-medium">
+                  {{ n.titulo }}
+                  <v-chip size="x-small" :color="n.cor" variant="tonal" class="ml-1">{{ n.quantidade }}</v-chip>
+                </v-list-item-title>
+                <v-list-item-subtitle class="text-caption">{{ n.texto }}</v-list-item-subtitle>
+              </v-list-item>
+              <v-divider v-if="notificacoes.length" />
+              <v-list-item v-if="notificacoes.length" class="text-caption text-center text-medium-emphasis"
+                @click="carregarNotificacoes()">
+                <v-list-item-title class="text-caption">Atualizar</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
           <v-avatar color="primary" size="36" class="mr-2" style="cursor:pointer">
             <span class="text-caption text-white">{{ auth.iniciais }}</span>
           </v-avatar>
@@ -256,8 +286,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import api from '@/composables/useApi'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -267,6 +298,7 @@ import { storeToRefs } from 'pinia'
 const auth = useAuthStore()
 const notif = useNotifStore()
 const route = useRoute()
+const router = useRouter()
 const { mobile } = useDisplay()
 const ui = useUiStore()
 const { drawer } = storeToRefs(ui)
@@ -281,6 +313,23 @@ const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel'
 // Perfil "Atendente" só enxerga um conjunto reduzido de telas no menu.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const ehContador = computed(() => auth.usuario?.role === 'Contador')
+
+// ── Sininho de notificações ──────────────────────────────────────
+const notificacoes = ref<any[]>([])
+const totalNotif = computed(() => notificacoes.value.reduce((s, n) => s + (n.quantidade ?? 0), 0))
+async function carregarNotificacoes() {
+  if (!auth.logado || !auth.empresaId) return
+  try {
+    const { data } = await api.get('/notificacoes', { params: { empresaId: auth.empresaId } })
+    notificacoes.value = data.itens ?? []
+  } catch { notificacoes.value = [] }
+}
+function abrirNotificacao(n: any) { if (n?.rota) router.push(n.rota) }
+onMounted(() => {
+  carregarNotificacoes()
+  setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
+})
+watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).
 const pdvFullscreen = computed(() => mobile.value && route.path === '/pdv')
 

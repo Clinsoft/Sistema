@@ -238,57 +238,70 @@ public class ContasPagarController(
             using (var s = System.IO.File.Create(caminho)) await arq.CopyToAsync(s, ct);
             var url = $"/uploads/comprovantes/{id}.pdf";
 
-            var (valor, data, benef, doc) = ParseComprovante(ExtrairTextoPdf(caminho));
-            var docDigitos = SomenteDigitos(doc);
-            var benefTokens = Tokens(benef);
+            // Um PDF pode conter VÁRIOS pagamentos (um por página — ex.: Sicredi
+            // "Pagar Boletos Eletrônicos"). Trata cada página como um comprovante.
+            var paginas = ExtrairPaginas(caminho);
+            if (paginas.Count == 0) paginas.Add("");
+            var multi = paginas.Count > 1;
 
-            var ranqueadas = candidatas.Select(l =>
+            for (var pg = 0; pg < paginas.Count; pg++)
             {
-                double score = 0;
-                if (valor.HasValue)
-                {
-                    var alvo = l.Saldo > 0 ? l.Saldo : l.ValorOriginal;
-                    if (Math.Abs(alvo - valor.Value) <= 0.01m) score += 100;
-                    else if (alvo > 0 && Math.Abs(alvo - valor.Value) <= alvo * 0.02m) score += 60;
-                }
-                if (docDigitos.Length >= 11 && SomenteDigitos(DocBenef(l)) == docDigitos) score += 50;
-                var nome = NomeBenef(l);
-                if (benefTokens.Count > 0 && !string.IsNullOrWhiteSpace(nome))
-                {
-                    var nt = Tokens(nome).ToHashSet();
-                    var overlap = benefTokens.Count(t => nt.Contains(t));
-                    if (overlap > 0) score += Math.Min(40, overlap * 15);
-                }
-                var descTokens = Tokens(l.Descricao).ToHashSet();
-                var descOverlap = benefTokens.Count(t => descTokens.Contains(t));
-                if (descOverlap > 0) score += Math.Min(20, descOverlap * 8);
-                return new { l, nome, score };
-            })
-            .Where(x => x.score > 0)
-            .OrderByDescending(x => x.score).ToList();
+                var (valor, data, venc, nomes, docs) = ParsePagina(paginas[pg]);
+                if (valor is null && nomes.Count == 0) continue; // página sem pagamento (capa, rodapé)
 
-            var melhor = ranqueadas.FirstOrDefault();
-            resultado.Add(new
-            {
-                arquivo = arq.FileName,
-                comprovanteUrl = url,
-                valorLido = valor,
-                dataLida = data,
-                beneficiarioLido = benef,
-                documentoLido = doc,
-                sugestao = melhor is null ? null : (object)new
+                var urlPg = multi ? $"{url}#page={pg + 1}" : url;
+                var benefTokens = nomes.SelectMany(Tokens).Distinct().ToList();
+
+                var ranqueadas = candidatas.Select(l =>
                 {
-                    lancamentoId = melhor.l.Id, descricao = melhor.l.Descricao, beneficiario = melhor.nome,
-                    valorOriginal = melhor.l.ValorOriginal, saldo = melhor.l.Saldo,
-                    vencimento = melhor.l.DataVencimento, score = melhor.score
-                },
-                candidatos = ranqueadas.Take(6).Select(x => new
-                {
-                    lancamentoId = x.l.Id, descricao = x.l.Descricao, beneficiario = x.nome,
-                    valorOriginal = x.l.ValorOriginal, saldo = x.l.Saldo,
-                    vencimento = x.l.DataVencimento, score = x.score
+                    double score = 0;
+                    if (valor.HasValue)
+                    {
+                        var alvo = l.Saldo > 0 ? l.Saldo : l.ValorOriginal;
+                        if (Math.Abs(alvo - valor.Value) <= 0.01m) score += 100;
+                        else if (alvo > 0 && Math.Abs(alvo - valor.Value) <= alvo * 0.02m) score += 60;
+                    }
+                    var docConta = SomenteDigitos(DocBenef(l));
+                    if (docConta.Length >= 11 && docs.Contains(docConta)) score += 60;
+                    var nome = NomeBenef(l);
+                    if (benefTokens.Count > 0 && !string.IsNullOrWhiteSpace(nome))
+                    {
+                        var nt = Tokens(nome).ToHashSet();
+                        var overlap = benefTokens.Count(t => nt.Contains(t));
+                        if (overlap > 0) score += Math.Min(45, overlap * 15);
+                    }
+                    var descTokens = Tokens(l.Descricao).ToHashSet();
+                    var descOverlap = benefTokens.Count(t => descTokens.Contains(t));
+                    if (descOverlap > 0) score += Math.Min(20, descOverlap * 8);
+                    if (venc.HasValue && l.DataVencimento.Date == venc.Value.Date) score += 12;
+                    return new { l, nome, score };
                 })
-            });
+                .Where(x => x.score > 0)
+                .OrderByDescending(x => x.score).ToList();
+
+                var melhor = ranqueadas.FirstOrDefault();
+                resultado.Add(new
+                {
+                    arquivo = multi ? $"{arq.FileName} (pág. {pg + 1})" : arq.FileName,
+                    comprovanteUrl = urlPg,
+                    valorLido = valor,
+                    dataLida = data,
+                    beneficiarioLido = nomes.FirstOrDefault(),
+                    documentoLido = docs.FirstOrDefault(),
+                    sugestao = melhor is null ? null : (object)new
+                    {
+                        lancamentoId = melhor.l.Id, descricao = melhor.l.Descricao, beneficiario = melhor.nome,
+                        valorOriginal = melhor.l.ValorOriginal, saldo = melhor.l.Saldo,
+                        vencimento = melhor.l.DataVencimento, score = melhor.score
+                    },
+                    candidatos = ranqueadas.Take(6).Select(x => new
+                    {
+                        lancamentoId = x.l.Id, descricao = x.l.Descricao, beneficiario = x.nome,
+                        valorOriginal = x.l.ValorOriginal, saldo = x.l.Saldo,
+                        vencimento = x.l.DataVencimento, score = x.score
+                    })
+                });
+            }
         }
         return Ok(resultado);
     }
@@ -319,16 +332,55 @@ public class ContasPagarController(
     }
 
     // ─── Leitura/parse de comprovantes ──────────────────────────────────────
-    private static string ExtrairTextoPdf(string caminho)
+    private static List<string> ExtrairPaginas(string caminho)
     {
-        try
+        var paginas = new List<string>();
+        try { using var pdf = PdfDocument.Open(caminho); foreach (var p in pdf.GetPages()) paginas.Add(p.Text); }
+        catch { /* PDF ilegível (imagem/escaneado) */ }
+        return paginas;
+    }
+
+    private static string? Campo(string t, string pattern)
+    {
+        var m = Regex.Match(t, pattern, RegexOptions.IgnoreCase);
+        return m.Success ? Regex.Replace(m.Groups[1].Value, @"\s+", " ").Trim() : null;
+    }
+
+    private static DateTime? ParseData(string? s)
+        => DateTime.TryParseExact(s, "dd/MM/yyyy", CultureInfo.GetCultureInfo("pt-BR"), DateTimeStyles.None, out var d) ? d : null;
+
+    /// <summary>Lê UM comprovante (uma página). Reconhece o layout rotulado do Sicredi
+    /// (Valor Pago / Beneficiário / Beneficiário Final) e cai no parser genérico se não achar.</summary>
+    private static (decimal? valor, DateTime? data, DateTime? venc, List<string> nomes, List<string> docs) ParsePagina(string texto)
+    {
+        var t = (texto ?? "").Replace('\n', ' ').Replace('\r', ' ');
+
+        var valor = ParseMoeda(Campo(t, @"Valor Pago\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
+                 ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));
+        var data = ParseData(Campo(t, @"Data do Pagamento\s*:?\s*(\d{2}/\d{2}/\d{4})")
+                          ?? Campo(t, @"Data da Transa[cç][aã]o\s*:?\s*(\d{2}/\d{2}/\d{4})"));
+        var venc = ParseData(Campo(t, @"Data de Vencimento\s*:?\s*(\d{2}/\d{2}/\d{4})"));
+
+        var nomes = new List<string>();
+        void AddNome(string? n) { if (!string.IsNullOrWhiteSpace(n)) nomes.Add(n!); }
+        AddNome(Campo(t, @"Nome do Benefici[aá]rio Final\s*:?\s*(.+?)(?=\s+CPF/CNPJ|\s+Nome do Pagador|\s+N[uú]mero|$)"));
+        AddNome(Campo(t, @"Raz[aã]o Social do Benefici[aá]rio\s*:?\s*(.+?)(?=\s+Nome Fantasia|\s+CPF/CNPJ|\s+Nome do|\s+N[uú]mero|$)"));
+        AddNome(Campo(t, @"Nome Fantasia do Benefici[aá]rio\s*:?\s*(.+?)(?=\s+CPF/CNPJ|\s+Nome do|\s+N[uú]mero|$)"));
+
+        var docs = new List<string>();
+        void AddDoc(string? d) { var dd = SomenteDigitos(d); if (dd.Length is 11 or 14) docs.Add(dd); }
+        AddDoc(Campo(t, @"CPF/CNPJ do Benefici[aá]rio Final\s*:?\s*([\d\.\/-]{11,20})"));
+        AddDoc(Campo(t, @"CPF/CNPJ do Benefici[aá]rio\s*:?\s*([\d\.\/-]{11,20})"));
+
+        // Fallback genérico (bancos sem os rótulos do Sicredi: PIX, TED, DARF…)
+        if (valor is null)
         {
-            using var pdf = PdfDocument.Open(caminho);
-            var sb = new StringBuilder();
-            foreach (var p in pdf.GetPages()) sb.Append(' ').Append(p.Text);
-            return sb.ToString();
+            var (v, d, b, doc) = ParseComprovante(t);
+            valor = v; data ??= d;
+            if (!string.IsNullOrWhiteSpace(b)) nomes.Add(b!);
+            var dd = SomenteDigitos(doc); if (dd.Length is 11 or 14) docs.Add(dd);
         }
-        catch { return ""; }
+        return (valor, data, venc, nomes.Distinct().ToList(), docs.Distinct().ToList());
     }
 
     private static (decimal? valor, DateTime? data, string? beneficiario, string? doc) ParseComprovante(string texto)

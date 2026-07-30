@@ -220,6 +220,36 @@
             </v-list>
           </v-menu>
 
+          <!-- Seletor de LOJA/unidade (separa a operação: estoque, etiquetas, vendas) -->
+          <v-menu v-if="auth.lojas.length > 1" offset-y>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="tonal" color="deep-orange" class="mr-2"
+                prepend-icon="mdi-storefront-outline" append-icon="mdi-chevron-down"
+                size="small" style="max-width:220px">
+                <span class="text-truncate" style="max-width:150px">
+                  {{ auth.lojaAtual?.nome ?? 'Todas as lojas' }}
+                </span>
+              </v-btn>
+            </template>
+            <v-list min-width="240" density="compact">
+              <v-list-subheader>Loja / unidade</v-list-subheader>
+              <v-list-item :active="!auth.lojaAtualId" active-color="deep-orange"
+                @click="auth.setLoja(null)">
+                <template #prepend><v-icon icon="mdi-earth" size="18" class="mr-2" /></template>
+                <v-list-item-title>Todas as lojas</v-list-item-title>
+              </v-list-item>
+              <v-list-item v-for="l in auth.lojas" :key="l.id"
+                :active="l.id === auth.lojaAtualId" active-color="deep-orange"
+                @click="auth.setLoja(l.id)">
+                <template #prepend><v-icon icon="mdi-storefront-outline" size="18" class="mr-2" /></template>
+                <v-list-item-title>{{ l.nome }}</v-list-item-title>
+                <template #append>
+                  <v-icon v-if="l.id === auth.lojaAtualId" icon="mdi-check" color="deep-orange" size="16" />
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+
           <v-btn :icon="tema === 'clinsoftLight' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
             variant="text" @click="alternarTema" />
           <v-menu offset-y :close-on-content-click="false">
@@ -328,6 +358,8 @@ function abrirNotificacao(n: any) { if (n?.rota) router.push(n.rota) }
 onMounted(() => {
   carregarNotificacoes()
   setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
+  // Sessões antigas (login anterior à feature) ainda não têm as lojas em cache.
+  if (auth.logado && auth.lojas.length === 0) auth.carregarLojas()
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).

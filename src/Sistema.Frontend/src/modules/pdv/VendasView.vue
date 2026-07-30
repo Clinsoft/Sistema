@@ -326,7 +326,7 @@ const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   fim: new Date().toISOString().slice(0, 10),
   status: null as string | null,
-  loja: null as string | null,
+  loja: (auth.lojaAtual?.nome ?? null) as string | null,  // já vem na loja selecionada
 })
 
 const headers = [

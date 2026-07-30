@@ -148,7 +148,7 @@ const locaisEstoque = ref<any[]>([])
 const totais = ref<any>({ qtdProdutos: 0, qtdAbaixoMinimo: 0, custoTotalEstoque: 0, valorVendaTotalEstoque: 0 })
 const busca = ref('')
 const filtroCategoria = ref<string | null>(null)
-const filtroLoja = ref<string | null>(null)
+const filtroLoja = ref<string | null>(auth.lojaAtualId ?? null)  // já vem na loja selecionada
 const apenasAbaixoMinimo = ref(false)
 
 const dlgAjuste = ref(false)

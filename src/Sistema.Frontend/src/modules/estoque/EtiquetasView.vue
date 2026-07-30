@@ -965,12 +965,24 @@ async function carregarDesatualizadas() {
     const r = await api.get('/produtos', {
       params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
     })
-    const desat = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.etiquetaDesatualizada)
+    let desat = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.etiquetaDesatualizada)
+    // Com uma LOJA selecionada, só traz etiquetas de produtos COM ESTOQUE naquela
+    // loja (evita etiquetas da RIO CLARO aparecendo na IPANEMA e vice-versa).
+    if (auth.lojaAtualId) {
+      try {
+        const pos = await api.get('/estoque/posicao-por-loja', {
+          params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },
+        })
+        const idsLoja = new Set((pos.data?.produtos ?? []).map((p: any) => p.id))
+        desat = desat.filter((p: any) => idsLoja.has(p.id))
+      } catch { /* sem posição da loja → mantém a lista geral */ }
+    }
     const novos = desat.filter((p: any) => !produtosSel.value.find(x => x.id === p.id))
     await Promise.all(novos.map((p: any) => enriquecerValidadeRegistrada(p)))
     novos.forEach((p: any) => produtosSel.value.push(p))
-    if (!desat.length) notif.aviso('Nenhuma etiqueta desatualizada no momento.')
-    else notif.ok(`${novos.length} produto(s) com etiqueta desatualizada adicionado(s).`)
+    const escopo = auth.lojaAtual ? ` da loja ${auth.lojaAtual.nome}` : ''
+    if (!desat.length) notif.aviso(`Nenhuma etiqueta desatualizada${escopo} no momento.`)
+    else notif.ok(`${novos.length} produto(s) com etiqueta desatualizada${escopo} adicionado(s).`)
   } catch { notif.erro('Erro ao carregar as etiquetas desatualizadas.') }
   finally { carregandoDesat.value = false }
 }

@@ -267,6 +267,11 @@
               <span class="text-body-2 font-weight-bold">Total de Vendas</span>
               <span class="text-body-2 font-weight-bold">R$ {{ fmt(sessaoAtiva?.totalVendas ?? 0) }}</span>
             </div>
+            <div class="fech-linha" v-if="(sessaoAtiva?.totalCrediario ?? 0) > 0">
+              <span class="text-caption text-medium-emphasis">
+                Crediário é conta a receber — não entra na conferência do caixa.
+              </span>
+            </div>
             <div class="fech-linha" v-if="(sessaoAtiva?.totalSuprimentos ?? 0) > 0">
               <span class="text-body-2 text-secondary">+ Suprimentos</span>
               <span class="text-body-2 text-secondary">R$ {{ fmt(sessaoAtiva?.totalSuprimentos ?? 0) }}</span>
@@ -382,7 +387,7 @@ const formasPagamentoBanner = computed(() => {
     { label: 'Pix',             icon: 'mdi-qrcode',             cor: 'teal',     valor: s.totalPix ?? 0 },
     { label: 'Cartão Débito',   icon: 'mdi-credit-card-outline',cor: 'primary',  valor: s.totalCartaoDebito ?? 0 },
     { label: 'Cartão Crédito',  icon: 'mdi-credit-card',        cor: 'indigo',   valor: s.totalCartaoCredito ?? 0 },
-    { label: 'Crediário',       icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
+    { label: 'Crediário (a receber)', icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
   ].filter(fp => fp.valor > 0 || !sessaoAtiva.value?.totalDinheiro)
 })
 
@@ -394,7 +399,7 @@ const formasPagamentoFechamento = computed(() => {
     { label: 'Pix',             icon: 'mdi-qrcode',             cor: 'teal',     valor: s.totalPix ?? 0 },
     { label: 'Cartão Débito',   icon: 'mdi-credit-card-outline',cor: 'primary',  valor: s.totalCartaoDebito ?? 0 },
     { label: 'Cartão Crédito',  icon: 'mdi-credit-card',        cor: 'indigo',   valor: s.totalCartaoCredito ?? 0 },
-    { label: 'Crediário',       icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
+    { label: 'Crediário (a receber)', icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
   ]
 })
 

@@ -293,7 +293,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().Text(Linha("Pix", M(pix)));
                     col.Item().Text(Linha("Cartao Credito", M(credito)));
                     col.Item().Text(Linha("Cartao Debito", M(debito)));
-                    if (crediario > 0) col.Item().Text(Linha("Crediario", M(crediario)));
+                    if (crediario > 0) col.Item().Text(Linha("Crediario (a receber)", M(crediario)));
                     col.Item().Text(traco);
 
                     col.Item().Text(Linha("Esperado em dinheiro", M(esperadoDinheiro)));

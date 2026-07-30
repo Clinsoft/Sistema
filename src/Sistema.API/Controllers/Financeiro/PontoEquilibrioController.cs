@@ -54,6 +54,32 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var percentualMC = receitaTotal > 0
             ? Math.Round(margemContribuicao / receitaTotal * 100, 2) : 0m;
 
+        // Se o mês não tem vendas (ex.: mês futuro), estima a margem de contribuição
+        // pelos últimos 90 dias — assim o PE ainda é projetado com as contas do mês.
+        var margemEstimada = false;
+        if (percentualMC <= 0)
+        {
+            var histInicio = DateTime.Today.AddDays(-90);
+            var itensHist = await db.ItensVenda.AsNoTracking()
+                .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+                .Where(x => x.v.EmpresaId == empresaId
+                    && x.v.DataHora >= histInicio && x.v.DataHora < DateTime.Today.AddDays(1)
+                    && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
+                .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                    (x, p) => new
+                    {
+                        receita = x.i.PrecoUnitario * x.i.Quantidade,
+                        custo = p.CustoUnitario * x.i.Quantidade
+                    })
+                .ToListAsync(ct);
+            var recHist = itensHist.Sum(i => i.receita);
+            if (recHist > 0)
+            {
+                percentualMC = Math.Round((recHist - itensHist.Sum(i => i.custo)) / recHist * 100, 2);
+                margemEstimada = true;
+            }
+        }
+
         // PE = Custos Fixos / (Margem de Contribuição %)
         var pontoEquilibrio = percentualMC > 0
             ? Math.Round(totalCustosFixos / (percentualMC / 100), 2) : 0m;
@@ -74,6 +100,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             custoVariavelTotal,
             margemContribuicao,
             percentualMargemContribuicao = percentualMC,
+            margemEstimada,
             pontoEquilibrio,
             faturamentoMes,
             percentualAtingido,

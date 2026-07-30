@@ -332,9 +332,16 @@
 
           <v-card-text v-else-if="!pe || pe.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
             <v-icon icon="mdi-information-outline" class="mb-2" size="32" />
-            <div class="text-body-2">Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.</div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple" to="/financeiro/contas-pagar">
-              Ver contas a pagar
+            <div v-if="!pe || pe.totalCustosFixos === 0" class="text-body-2">
+              Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.
+            </div>
+            <div v-else class="text-body-2">
+              Sem <strong>vendas</strong> para calcular a margem de contribuição. Registre vendas
+              (ou tenha histórico dos últimos 90 dias) para projetar o ponto de equilíbrio.
+            </div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple"
+              :to="!pe || pe.totalCustosFixos === 0 ? '/financeiro/contas-pagar' : '/pdv'">
+              {{ !pe || pe.totalCustosFixos === 0 ? 'Ver contas a pagar' : 'Ir para o PDV' }}
             </v-btn>
           </v-card-text>
 
@@ -363,8 +370,14 @@
               </v-col>
               <v-col cols="6">
                 <div class="pe-stat">
-                  <div class="pe-stat-lbl">Margem de contribuição</div>
+                  <div class="pe-stat-lbl">
+                    Margem de contribuição
+                    <span v-if="pe.margemEstimada" class="text-warning" title="Estimada pelos últimos 90 dias (mês sem vendas)">*</span>
+                  </div>
                   <div class="pe-stat-val text-deep-purple">{{ pe.percentualMargemContribuicao }}%</div>
+                  <div v-if="pe.margemEstimada" class="text-caption text-warning" style="font-size:.6rem;line-height:1">
+                    estimada (90 dias)
+                  </div>
                 </div>
               </v-col>
               <v-col cols="6">
@@ -676,6 +689,7 @@ interface PeData {
   receitaTotal: number
   margemContribuicao: number
   percentualMargemContribuicao: number
+  margemEstimada?: boolean
   pontoEquilibrio: number
   faturamentoMes: number
   percentualAtingido: number

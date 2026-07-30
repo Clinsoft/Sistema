@@ -662,16 +662,25 @@ async function analisarComprovantes() {
     for (const f of arquivosComp.value) fd.append('arquivos', f)
     const r = await api.post('/contas-pagar/comprovantes/analisar', fd,
       { headers: { 'Content-Type': 'multipart/form-data' } })
-    resultadosComp.value = (r.data ?? []).map((x: any) => ({
+    const rows: ResultadoComp[] = (r.data ?? []).map((x: any) => ({
       ...x,
-      // Sem sugestão → já deixa marcado para CRIAR a conta (usuário revisa/desmarca).
-      escolhaId: x.sugestao?.lancamentoId ?? NOVA,
+      escolhaId: null,
       selecionado: true,
       novaDescricao: x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)',
       novaCategoria: 'Despesas Variáveis',
     }))
-    const semMatch = resultadosComp.value.filter(x => x.escolhaId === NOVA).length
-    if (semMatch) notif.aviso(`${semMatch} comprovante(s) sem conta cadastrada — marcados para "criar conta e dar baixa".`)
+    // Atribuição EXCLUSIVA: cada conta candidata é usada no máx. 1 vez (maior score
+    // primeiro). Assim dois pagamentos de mesmo valor não caem na mesma conta —
+    // o que sobra sem conta cai em "criar nova".
+    const usadas = new Set<string>()
+    ;[...rows].sort((a, b) => (b.sugestao?.score ?? 0) - (a.sugestao?.score ?? 0)).forEach(r => {
+      const cand = (r.candidatos ?? []).find(c => !usadas.has(c.lancamentoId))
+      if (cand) { r.escolhaId = cand.lancamentoId; usadas.add(cand.lancamentoId) }
+      else r.escolhaId = NOVA
+    })
+    resultadosComp.value = rows
+    const novos = rows.filter(x => x.escolhaId === NOVA).length
+    if (novos) notif.aviso(`${novos} comprovante(s) sem conta cadastrada — marcados para "criar conta e dar baixa".`)
   } catch (e: any) {
     notif.erro(e?.response?.data ?? 'Falha ao ler os comprovantes.')
   } finally { analisando.value = false }

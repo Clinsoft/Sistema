@@ -6,6 +6,8 @@
         class="mr-2" :loading="gerandoFolha" @click="gerarFolha">Prever folha</v-btn>
       <v-btn color="deep-purple" variant="tonal" rounded="lg" prepend-icon="mdi-bank-outline"
         class="mr-2" @click="abrirDas">Gerar DAS</v-btn>
+      <v-btn color="green-darken-2" variant="tonal" rounded="lg" prepend-icon="mdi-file-upload-outline"
+        class="mr-2" @click="abrirComprovantes">Importar comprovantes</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Nova</v-btn>
     </div>
 
@@ -107,6 +109,9 @@
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">
             {{ item.status }}
           </v-chip>
+          <v-btn v-if="item.comprovanteUrl" :href="item.comprovanteUrl" target="_blank"
+            icon="mdi-file-pdf-box" size="x-small" color="red-darken-1" variant="text"
+            title="Ver comprovante de pagamento" />
         </template>
         <template #item.valorOriginal="{ item }">R$ {{ fmt(item.valorOriginal) }}</template>
         <template #item.saldo="{ item }">R$ {{ fmt(item.saldo) }}</template>
@@ -508,6 +513,81 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- ── Dialog: Importar comprovantes de pagamento ── -->
+    <v-dialog v-model="dlgComp" max-width="920" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4">
+          <v-icon icon="mdi-file-upload-outline" color="green-darken-2" class="mr-2" />
+          Importar comprovantes de pagamento
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dlgComp = false" />
+        </v-card-title>
+
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" rounded="lg" class="mb-3">
+            Envie os <b>PDFs dos comprovantes</b> pagos no dia. O sistema lê cada um, sugere a
+            conta correspondente e guarda o PDF. <b>Confira</b> os pareamentos antes de dar baixa.
+          </v-alert>
+
+          <v-file-input
+            v-model="arquivosComp" label="Comprovantes (PDF) — pode selecionar vários"
+            accept="application/pdf" multiple chips show-size prepend-icon="mdi-paperclip"
+            variant="outlined" density="comfortable" :disabled="analisando" />
+          <div class="d-flex justify-end mb-2">
+            <v-btn color="green-darken-2" variant="flat" rounded="lg" prepend-icon="mdi-text-search"
+              :loading="analisando" :disabled="!arquivosComp.length" @click="analisarComprovantes">
+              Ler e sugerir baixas
+            </v-btn>
+          </div>
+
+          <template v-if="resultadosComp.length">
+            <v-divider class="mb-3" />
+            <div class="text-caption text-medium-emphasis mb-2">
+              Confira cada comprovante e a conta que receberá a baixa. Desmarque os que não quiser baixar.
+            </div>
+            <v-card v-for="(r, i) in resultadosComp" :key="i" variant="tonal"
+              :color="r.escolhaId ? 'success' : 'grey-lighten-3'" rounded="lg" class="mb-2">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-2">
+                  <v-checkbox-btn v-model="r.selecionado" :disabled="!r.escolhaId" color="success" class="flex-grow-0 mr-1" />
+                  <v-icon icon="mdi-file-pdf-box" color="red-darken-1" class="mr-1" />
+                  <a :href="r.comprovanteUrl" target="_blank" class="text-body-2 font-weight-medium text-truncate" style="max-width:220px">
+                    {{ r.arquivo }}
+                  </a>
+                  <v-spacer />
+                  <span class="text-caption text-medium-emphasis mr-3">Lido:</span>
+                  <v-chip size="small" label class="mr-1" color="green-darken-2">
+                    {{ r.valorLido != null ? 'R$ ' + fmt(r.valorLido) : 'valor?' }}
+                  </v-chip>
+                  <v-chip size="small" label variant="text">{{ r.dataLida ? fmtData(r.dataLida) : 'data?' }}</v-chip>
+                </div>
+                <div class="text-caption text-medium-emphasis mb-1">
+                  Beneficiário lido: <b>{{ r.beneficiarioLido || '—' }}</b>
+                  <span v-if="r.documentoLido"> · {{ r.documentoLido }}</span>
+                </div>
+                <v-select
+                  v-model="r.escolhaId" :items="opcoesConta(r)" item-title="titulo" item-value="lancamentoId"
+                  label="Dar baixa na conta" variant="outlined" density="compact" hide-details
+                  clearable @update:model-value="r.selecionado = !!r.escolhaId" />
+              </v-card-text>
+            </v-card>
+
+            <div class="d-flex align-center mt-3">
+              <span class="text-body-2 text-medium-emphasis">
+                {{ selecionadosComp.length }} de {{ resultadosComp.length }} marcados para baixa
+              </span>
+              <v-spacer />
+              <v-btn variant="text" @click="dlgComp = false">Fechar</v-btn>
+              <v-btn color="success" rounded="lg" prepend-icon="mdi-cash-check"
+                :loading="confirmandoComp" :disabled="!selecionadosComp.length" @click="confirmarComprovantes">
+                Confirmar {{ selecionadosComp.length }} baixa(s)
+              </v-btn>
+            </div>
+          </template>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -525,6 +605,78 @@ const auth = useAuthStore()
 const notif = useNotifStore()
 const { mobile } = useDisplay()
 const carregando = ref(false)
+
+// ── Importar comprovantes de pagamento ───────────────────────────────────────
+interface CandidatoConta {
+  lancamentoId: string; descricao: string; beneficiario: string
+  valorOriginal: number; saldo: number; vencimento: string; score: number
+}
+interface ResultadoComp {
+  arquivo: string; comprovanteUrl: string
+  valorLido: number | null; dataLida: string | null
+  beneficiarioLido: string | null; documentoLido: string | null
+  sugestao: CandidatoConta | null; candidatos: CandidatoConta[]
+  escolhaId: string | null; selecionado: boolean
+}
+const dlgComp = ref(false)
+const arquivosComp = ref<File[]>([])
+const analisando = ref(false)
+const confirmandoComp = ref(false)
+const resultadosComp = ref<ResultadoComp[]>([])
+const selecionadosComp = computed(() => resultadosComp.value.filter(r => r.selecionado && r.escolhaId))
+
+function abrirComprovantes() {
+  arquivosComp.value = []
+  resultadosComp.value = []
+  dlgComp.value = true
+}
+
+function opcoesConta(r: ResultadoComp) {
+  return (r.candidatos ?? []).map(c => ({
+    lancamentoId: c.lancamentoId,
+    titulo: `${c.descricao} — ${c.beneficiario || 's/ beneficiário'} · R$ ${fmt(c.saldo || c.valorOriginal)} (venc ${fmtData(c.vencimento)})`
+  }))
+}
+
+async function analisarComprovantes() {
+  if (!arquivosComp.value.length) return
+  analisando.value = true
+  try {
+    const fd = new FormData()
+    fd.append('empresaId', auth.empresaId as string)
+    for (const f of arquivosComp.value) fd.append('arquivos', f)
+    const r = await api.post('/contas-pagar/comprovantes/analisar', fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } })
+    resultadosComp.value = (r.data ?? []).map((x: any) => ({
+      ...x,
+      escolhaId: x.sugestao?.lancamentoId ?? null,
+      selecionado: !!x.sugestao?.lancamentoId,
+    }))
+    const semMatch = resultadosComp.value.filter(x => !x.escolhaId).length
+    if (semMatch) notif.aviso(`${semMatch} comprovante(s) sem conta sugerida — selecione manualmente.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data ?? 'Falha ao ler os comprovantes.')
+  } finally { analisando.value = false }
+}
+
+async function confirmarComprovantes() {
+  const itens = selecionadosComp.value.map(r => ({
+    lancamentoId: r.escolhaId,
+    valorPago: r.valorLido ?? 0,
+    dataPagamento: r.dataLida ?? null,
+    comprovanteUrl: r.comprovanteUrl,
+  }))
+  if (!itens.length) return
+  confirmandoComp.value = true
+  try {
+    const r = await api.post('/contas-pagar/comprovantes/confirmar', { itens })
+    notif.ok(`${r.data.baixados} conta(s) baixada(s) com comprovante.`)
+    dlgComp.value = false
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data ?? 'Falha ao confirmar as baixas.')
+  } finally { confirmandoComp.value = false }
+}
 const salvando = ref(false)
 const gerandoFolha = ref(false)
 const dlgDas = ref(false)

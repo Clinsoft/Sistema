@@ -26,6 +26,7 @@ public class LancamentoFinanceiro : Entity
     public int Parcela { get; private set; } = 1;
     public int TotalParcelas { get; private set; } = 1;
     public string? GrupoParcelamento { get; private set; } // GUID para agrupar parcelas do mesmo título
+    public string? ComprovanteUrl { get; private set; }    // PDF do comprovante de pagamento guardado
 
     private LancamentoFinanceiro() { }
 
@@ -64,6 +65,8 @@ public class LancamentoFinanceiro : Entity
         ContaBancariaId = contaBancariaId ?? ContaBancariaId;
         Status = valorPago >= ValorOriginal ? StatusLancamento.Pago : StatusLancamento.PagoParcialmente;
     }
+
+    public void AnexarComprovante(string url) => ComprovanteUrl = url;
 
     public void Cancelar()
     {

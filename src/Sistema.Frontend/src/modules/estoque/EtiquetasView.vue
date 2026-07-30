@@ -858,7 +858,18 @@ function escHtml(s: string): string {
 
 // Imprime as etiquetas de gôndola via diálogo do navegador (o usuário escolhe a
 // impressora). Layout em grade: por padrão 2 produtos por linha (gondolaColunas).
+// Após imprimir: marca as etiquetas como impressas (limpa o alerta/sininho)
+// e remove os produtos da lista.
+async function finalizarImpressao(ids: string[]) {
+  if (!ids.length) return
+  try { await api.post('/produtos/etiquetas-impressas', { ids }) } catch { /* silencioso */ }
+  produtosSel.value = produtosSel.value.filter((p: any) => !ids.includes(p.id))
+  ids.forEach(id => { delete marcados.value[id] })
+  notif.ok(`${ids.length} etiqueta(s) impressa(s) — removida(s) da lista e do alerta.`)
+}
+
 function imprimirGondola() {
+  const idsImpressos = produtosParaImprimir.value.map((p: any) => p.id)
   const cols = Math.min(4, Math.max(1, Number(gondolaColunas.value) || 2))
   const { w, h } = gondolaTamanhoAtual.value
   const cfg = gondolaCfg.value
@@ -905,9 +916,11 @@ function imprimirGondola() {
     <script>window.onload=function(){window.print();window.onafterprint=function(){window.close()}}<\/script>
     </body></html>`)
   win.document.close()
+  finalizarImpressao(idsImpressos)
 }
 
 function baixarZpl() {
+  const idsImpressos = produtosParaImprimir.value.map((p: any) => p.id)
   const zpl = gerarZpl()
   const blob = new Blob([zpl], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
@@ -917,6 +930,7 @@ function baixarZpl() {
   a.click()
   URL.revokeObjectURL(url)
   enviarZebraDialog.value = false
+  finalizarImpressao(idsImpressos)
 }
 
 // ── Busca de produtos ────────────────────────────────────────────────────────
@@ -1058,10 +1072,11 @@ function removerProduto(id: string) {
 
 // ── Impressão ────────────────────────────────────────────────────────────────
 function imprimir() {
+  const idsImpressos = produtosParaImprimir.value.map((p: any) => p.id)
   // Template EcoGranel (produtos por peso) → usa o template PADRÃO 6/A4 compartilhado.
   if (template.value === 'ecogranel') {
     imprimirEtiquetasKg(
-      produtosSel.value.map((p: any) => ({
+      produtosParaImprimir.value.map((p: any) => ({
         nome: p.descricao,
         codigoPlu: p.codigoPlu ?? p.codigo,
         precoVenda: p.precoVenda,
@@ -1084,6 +1099,7 @@ function imprimir() {
         escalaPreco: ecoCfg.value.escalaPreco,
       }
     )
+    finalizarImpressao(idsImpressos)
     return
   }
 
@@ -1169,6 +1185,7 @@ function imprimir() {
     </body></html>
   `)
   w.document.close()
+  finalizarImpressao(idsImpressos)
 }
 </script>
 

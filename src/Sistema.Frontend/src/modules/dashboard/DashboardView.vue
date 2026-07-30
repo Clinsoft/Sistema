@@ -314,7 +314,7 @@
 
       <!-- Ponto de Equilíbrio (ao lado do Contas a Receber) -->
       <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" height="100%">
+        <v-card rounded="xl" elevation="1" height="100%" style="display:flex;flex-direction:column">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
             Ponto de Equilíbrio — {{ calMesLabel }}
@@ -338,7 +338,7 @@
             </v-btn>
           </v-card-text>
 
-          <v-card-text v-else class="pb-4">
+          <v-card-text v-else class="pb-4 flex-grow-1 d-flex flex-column">
             <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
               <span>Faturamento acumulado</span>
               <span class="font-weight-bold">{{ fmt(pe.faturamentoMes) }} / {{ fmt(pe.pontoEquilibrio) }}</span>
@@ -346,41 +346,47 @@
             <v-progress-linear
               :model-value="Math.min(pe.percentualAtingido, 100)"
               :color="pe.peAtingido ? 'success' : pe.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
-              height="18" rounded class="mb-4"
+              height="22" rounded class="mb-4"
             >
               <template #default>
                 <span class="text-caption font-weight-bold" style="color:white">{{ pe.percentualAtingido }}%</span>
               </template>
             </v-progress-linear>
-            <v-row dense>
-              <v-col cols="12" sm="7">
-                <canvas ref="peCanvas" height="100" />
+
+            <!-- Indicadores em grade 2x2 -->
+            <v-row dense class="mb-3">
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Contas a pagar (mês)</div>
+                  <div class="pe-stat-val text-error">{{ fmt(pe.totalCustosFixos) }}</div>
+                </div>
               </v-col>
-              <v-col cols="12" sm="5">
-                <div class="d-flex flex-column gap-2 text-body-2">
-                  <div class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">Contas a pagar (mês)</span>
-                    <span class="font-weight-bold text-error">{{ fmt(pe.totalCustosFixos) }}</span>
-                  </div>
-                  <div class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">Margem contrib.</span>
-                    <span class="font-weight-bold text-deep-purple">{{ pe.percentualMargemContribuicao }}%</span>
-                  </div>
-                  <div class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">PE calculado</span>
-                    <span class="font-weight-bold">{{ fmt(pe.pontoEquilibrio) }}</span>
-                  </div>
-                  <div v-if="pe.peAtingido" class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">Lucro acima PE</span>
-                    <span class="font-weight-bold text-success">+{{ fmt(pe.lucroAcimaPE) }}</span>
-                  </div>
-                  <div v-else class="d-flex justify-space-between">
-                    <span class="text-medium-emphasis">Falta atingir</span>
-                    <span class="font-weight-bold text-warning">{{ fmt(pe.pontoEquilibrio - pe.faturamentoMes) }}</span>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Margem de contribuição</div>
+                  <div class="pe-stat-val text-deep-purple">{{ pe.percentualMargemContribuicao }}%</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">PE calculado</div>
+                  <div class="pe-stat-val">{{ fmt(pe.pontoEquilibrio) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat" :class="pe.peAtingido ? 'pe-stat--ok' : 'pe-stat--warn'">
+                  <div class="pe-stat-lbl">{{ pe.peAtingido ? 'Lucro acima do PE' : 'Falta atingir' }}</div>
+                  <div class="pe-stat-val" :class="pe.peAtingido ? 'text-success' : 'text-warning'">
+                    {{ pe.peAtingido ? '+' + fmt(pe.lucroAcimaPE) : fmt(pe.pontoEquilibrio - pe.faturamentoMes) }}
                   </div>
                 </div>
               </v-col>
             </v-row>
+
+            <!-- Gráfico ocupa o espaço restante -->
+            <div class="flex-grow-1 d-flex align-end" style="min-height:120px">
+              <canvas ref="peCanvas" style="width:100%" />
+            </div>
           </v-card-text>
         </v-card>
       </v-col>
@@ -731,8 +737,11 @@ function renderizarGraficoPe() {
   const labels = ['Faturamento', 'PE', ...cats.map(c => c.categoria)]
   const valores = [d.faturamentoMes, d.pontoEquilibrio, ...cats.map(c => c.total)]
   const cores = [d.peAtingido ? '#4caf50' : '#ab47bc', '#ef5350', ...cats.map(() => '#78909c')]
-  const W = canvas.offsetWidth || 260; const H = 100
+  // Ocupa toda a largura e a altura disponível do container (preenche o card).
+  const W = canvas.offsetWidth || 260
+  const H = Math.max(canvas.parentElement?.offsetHeight || 0, 140)
   canvas.width = W; canvas.height = H
+  canvas.style.height = H + 'px'
   const barW = Math.floor((W - 20) / labels.length) - 4
   const maxV = Math.max(...valores, 1); const maxBarH = H - 28
   ctx.clearRect(0, 0, W, H)
@@ -1184,4 +1193,17 @@ onMounted(async () => {
 .dash-cal-hoje { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -2px; }
 .dash-cal-hoje .dash-cal-num { font-weight: 800; color: rgb(var(--v-theme-primary)); }
 .dash-cal-sel { box-shadow: 0 0 0 2px #e53935 inset; }
+
+/* Indicadores do Ponto de Equilíbrio (grade 2x2) */
+.pe-stat {
+  background: #f6f4fb;
+  border: 1px solid #ece7f5;
+  border-radius: 10px;
+  padding: 8px 10px;
+  height: 100%;
+}
+.pe-stat-lbl { font-size: 0.7rem; color: #78909c; line-height: 1.1; }
+.pe-stat-val { font-size: 1rem; font-weight: 700; margin-top: 2px; }
+.pe-stat--ok { background: #edf7ee; border-color: #d7ecd9; }
+.pe-stat--warn { background: #fff8e9; border-color: #f7e6c2; }
 </style>

@@ -1148,6 +1148,22 @@ function renderizarCurvaAbc() {
   }
 }
 
+// ResizeObserver: redesenha cada gráfico assim que o canvas ganha tamanho no
+// DOM. É a forma robusta de resolver o "gráfico em branco no load inicial"
+// (quando o desenho roda antes do layout, com offsetWidth ainda 0).
+if (typeof ResizeObserver !== 'undefined') {
+  const liga = (getRef: () => HTMLCanvasElement | undefined, render: () => void) => {
+    const obs = new ResizeObserver(() => render())
+    watch(getRef, (el, old) => {
+      if (old) obs.unobserve(old)
+      if (el) obs.observe(el)
+    }, { immediate: true })
+  }
+  liga(() => peCanvas.value, renderizarGraficoPe)
+  liga(() => dreCanvas.value, renderizarGraficoDre)
+  liga(() => abcCanvas.value, renderizarCurvaAbc)
+}
+
 onMounted(async () => {
   await Promise.all([
     carregarResumo(),
@@ -1160,6 +1176,15 @@ onMounted(async () => {
     carregarPlanejamento(),
     carregarCurvaAbc(),
   ])
+  // Redesenha os gráficos DEPOIS que todos os cards assentaram no DOM. No load
+  // inicial os vizinhos trocam de spinner→conteúdo e re-renderizam por cima do
+  // canvas (que é imperativo), apagando o desenho feito durante o carregamento.
+  await nextTick()
+  requestAnimationFrame(() => {
+    renderizarGraficoPe()
+    renderizarGraficoDre()
+    renderizarCurvaAbc()
+  })
 })
 </script>
 

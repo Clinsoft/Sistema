@@ -36,6 +36,11 @@
           <v-select v-model="filtros.status" :items="statusOptions" label="Status"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
+        <v-col cols="12" sm="3">
+          <v-select v-model="filtros.loja" :items="lojasDisponiveis" label="Loja"
+            variant="outlined" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-store-outline" />
+        </v-col>
         <v-col cols="auto">
           <v-btn color="primary" variant="tonal" @click="carregar" :loading="carregando">Buscar</v-btn>
         </v-col>
@@ -46,7 +51,7 @@
     <v-row v-if="vendas.length" class="mb-4">
       <v-col cols="6" sm="3">
         <v-card rounded="xl" elevation="1" class="pa-3 text-center">
-          <div class="text-h6 font-weight-bold text-primary">{{ vendas.length }}</div>
+          <div class="text-h6 font-weight-bold text-primary">{{ vendasFiltradas.length }}</div>
           <div class="text-caption text-medium-emphasis">Vendas no Período</div>
         </v-card>
       </v-col>
@@ -72,9 +77,14 @@
 
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
-      <v-data-table :headers="headers" :items="vendas" :loading="carregando"
+      <v-data-table :headers="headers" :items="vendasFiltradas" :loading="carregando"
         density="compact" hover items-per-page="20"
         @click:row="(_: any, row: any) => abrirDetalhe(row.item)">
+        <template #item.loja="{ item }">
+          <v-chip size="x-small" color="deep-orange" variant="tonal" label>
+            <v-icon start size="12">mdi-store-outline</v-icon>{{ item.loja ?? '—' }}
+          </v-chip>
+        </template>
         <template #item.total="{ item }">
           <span class="font-weight-medium">R$ {{ fmt(item.total) }}</span>
         </template>
@@ -316,25 +326,35 @@ const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   fim: new Date().toISOString().slice(0, 10),
   status: null as string | null,
+  loja: null as string | null,
 })
 
 const headers = [
   { title: 'Nº', key: 'numero', width: 90 },
   { title: 'Data/Hora', key: 'dataHora', sortable: true, width: 160 },
   { title: 'Cliente', key: 'clienteNome' },
+  { title: 'Loja', key: 'loja', width: 150 },
   { title: 'Total', key: 'total', sortable: true, width: 120 },
   { title: 'Status', key: 'status', width: 110 },
   { title: '', key: 'actions', sortable: false, width: 50 },
 ]
 
+// Lojas presentes nas vendas carregadas (para o filtro).
+const lojasDisponiveis = computed(() =>
+  [...new Set(vendas.value.map(v => v.loja).filter(Boolean))].sort() as string[]
+)
+const vendasFiltradas = computed(() =>
+  filtros.value.loja ? vendas.value.filter(v => v.loja === filtros.value.loja) : vendas.value
+)
+
 const totalVendas = computed(() =>
-  vendas.value.filter(v => v.status === 'Finalizada').reduce((s, v) => s + (v.total ?? 0), 0)
+  vendasFiltradas.value.filter(v => v.status === 'Finalizada').reduce((s, v) => s + (v.total ?? 0), 0)
 )
 const ticketMedio = computed(() => {
-  const fins = vendas.value.filter(v => v.status === 'Finalizada')
+  const fins = vendasFiltradas.value.filter(v => v.status === 'Finalizada')
   return fins.length ? totalVendas.value / fins.length : 0
 })
-const canceladas = computed(() => vendas.value.filter(v => v.status === 'Cancelada').length)
+const canceladas = computed(() => vendasFiltradas.value.filter(v => v.status === 'Cancelada').length)
 
 function corStatus(s: string) {
   return s === 'Finalizada' ? 'success' : s === 'Cancelada' ? 'error' : 'warning'

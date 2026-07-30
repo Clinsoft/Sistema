@@ -118,7 +118,9 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
                 && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1))
-            .GroupBy(v => v.UsuarioId)
+            // Agrupa pelo VENDEDOR (colaborador que efetuou a venda). Vendas antigas
+            // sem VendedorId caem no operador (UsuarioId), preservando o histórico.
+            .GroupBy(v => v.VendedorId ?? v.UsuarioId)
             .Select(g => new
             {
                 usuarioId = g.Key,

@@ -38,8 +38,9 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         var venda = await db.Vendas.AsNoTracking()
             .Include(v => v.Pagamentos)
             .FirstOrDefaultAsync(v => v.Id == vendaId, ct);
-        var vendedor = venda is not null
-            ? await db.Usuarios.AsNoTracking().Where(u => u.Id == venda.UsuarioId)
+        var vendedorId = venda?.VendedorId ?? venda?.UsuarioId;
+        var vendedor = vendedorId is Guid vid
+            ? await db.Usuarios.AsNoTracking().Where(u => u.Id == vid)
                 .Select(u => u.Nome).FirstOrDefaultAsync(ct)
             : null;
 

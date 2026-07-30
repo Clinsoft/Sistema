@@ -312,9 +312,9 @@
         </v-card>
       </v-col>
 
-      <!-- Ponto de Equilíbrio (ao lado do Contas a Receber) -->
+      <!-- Ponto de Equilíbrio + DRE (empilhados, ao lado do Contas a Receber) -->
       <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" height="100%" style="display:flex;flex-direction:column">
+        <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
             Ponto de Equilíbrio — {{ calMesLabel }}
@@ -338,7 +338,7 @@
             </v-btn>
           </v-card-text>
 
-          <v-card-text v-else class="pb-4 flex-grow-1 d-flex flex-column">
+          <v-card-text v-else class="pb-2">
             <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
               <span>Faturamento acumulado</span>
               <span class="font-weight-bold">{{ fmt(pe.faturamentoMes) }} / {{ fmt(pe.pontoEquilibrio) }}</span>
@@ -383,14 +383,73 @@
               </v-col>
             </v-row>
 
-            <!-- Gráfico ocupa o espaço restante -->
-            <div class="flex-grow-1 d-flex align-end" style="min-height:120px">
-              <canvas ref="peCanvas" style="width:100%" />
-            </div>
+            <canvas ref="peCanvas" height="90" style="width:100%" />
           </v-card-text>
         </v-card>
-      </v-col>
 
+        <!-- DRE — abaixo do Ponto de Equilíbrio, mesmo tratamento visual -->
+        <v-card rounded="xl" elevation="1" class="mt-3">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
+            DRE — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
+            <v-spacer />
+            <v-chip v-if="dre" :color="dre.resultadoOperacional >= 0 ? 'success' : 'error'" size="small" label>
+              {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+            </v-chip>
+          </v-card-title>
+
+          <v-card-text v-if="carregandoDre" class="d-flex justify-center pa-8">
+            <v-progress-circular indeterminate color="indigo" />
+          </v-card-text>
+
+          <v-card-text v-else-if="!dre" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-chart-line-variant" size="36" class="mb-2" />
+            <div class="text-body-2">Sem dados para o período.</div>
+          </v-card-text>
+
+          <v-card-text v-else class="pb-2">
+            <!-- Indicadores em grade 2x2 -->
+            <v-row dense class="mb-3">
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Receita líquida</div>
+                  <div class="pe-stat-val text-indigo">{{ fmt(dre.receitaLiquida) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">CMV</div>
+                  <div class="pe-stat-val text-warning">{{ fmt(dre.cmv) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Margem bruta</div>
+                  <div class="pe-stat-val text-deep-purple">{{ dre.margemBruta }}%</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat" :class="dre.resultadoOperacional >= 0 ? 'pe-stat--ok' : 'pe-stat--warn'">
+                  <div class="pe-stat-lbl">Resultado operacional</div>
+                  <div class="pe-stat-val" :class="dre.resultadoOperacional >= 0 ? 'text-success' : 'text-error'">
+                    {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+                  </div>
+                </div>
+              </v-col>
+            </v-row>
+
+            <canvas ref="dreCanvas" height="80" style="width:100%" />
+          </v-card-text>
+
+          <v-card-actions class="pa-2 pt-0">
+            <v-btn variant="text" size="small" color="indigo" to="/financeiro/dre" append-icon="mdi-arrow-right">
+              Ver DRE completo
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
     </v-row>
 
     <!-- Planejamento + Vendas por Colaborador -->
@@ -503,91 +562,6 @@
 
     </v-row>
 
-    <!-- DRE do Mês -->
-    <v-row class="mt-2">
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
-            DRE — {{ calMesLabel }}
-            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
-            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
-            <v-spacer />
-            <v-chip
-              v-if="dre"
-              :color="dre.resultadoOperacional >= 0 ? 'success' : 'error'"
-              size="small" label
-            >
-              {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
-            </v-chip>
-          </v-card-title>
-
-          <v-card-text v-if="carregandoDre" class="d-flex justify-center pa-8">
-            <v-progress-circular indeterminate color="indigo" />
-          </v-card-text>
-
-          <v-card-text v-else-if="!dre" class="text-center text-medium-emphasis pa-6">
-            <v-icon icon="mdi-chart-line-variant" size="36" class="mb-2" />
-            <div class="text-body-2">Sem dados para o período.</div>
-          </v-card-text>
-
-          <div v-else class="pa-3 pt-0">
-            <!-- Linhas do DRE -->
-            <div
-              v-for="linha in linhasDre"
-              :key="linha.label"
-              class="d-flex justify-space-between align-center py-1"
-              :class="{ 'border-t-thin mt-1 pt-2': linha.separador }"
-            >
-              <span
-                class="text-body-2"
-                :class="linha.destaque ? 'font-weight-bold' : 'text-medium-emphasis'"
-                :style="linha.indent ? 'padding-left:16px' : ''"
-              >
-                {{ linha.label }}
-              </span>
-              <span
-                class="text-body-2 font-weight-bold"
-                :class="linha.cor ?? (linha.valor >= 0 ? '' : 'text-error')"
-              >
-                {{ linha.prefixo ?? '' }}{{ fmt(linha.valor) }}
-              </span>
-            </div>
-
-            <!-- Gráfico receita vs despesa -->
-            <v-divider class="my-3" />
-            <canvas ref="dreCanvas" height="80" />
-
-            <div class="d-flex justify-space-between mt-2">
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">Margem bruta</div>
-                <div class="text-body-2 font-weight-bold text-indigo">{{ dre.margemBruta }}%</div>
-              </div>
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">Margem operac.</div>
-                <div class="text-body-2 font-weight-bold"
-                  :class="dre.margemOperacional >= 0 ? 'text-success' : 'text-error'">
-                  {{ dre.margemOperacional }}%
-                </div>
-              </div>
-              <div class="text-center">
-                <div class="text-caption text-medium-emphasis">CMV / Receita</div>
-                <div class="text-body-2 font-weight-bold text-warning">
-                  {{ dre.receitaLiquida > 0 ? Math.round(dre.cmv / dre.receitaLiquida * 100) : 0 }}%
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <v-card-actions class="pa-2 pt-0">
-            <v-btn variant="text" size="small" color="indigo" to="/financeiro/dre" append-icon="mdi-arrow-right">
-              Ver DRE completo
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-col>
-    </v-row>
-
     <!-- Alertas -->
     <v-row v-if="alertas.length" class="mt-2">
       <v-col cols="12">
@@ -644,7 +618,7 @@ async function carregarPlanejamento() {
   } catch { planejamento.value = null }
 }
 
-const fmt = (v: number) => 'R$ ' + (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+const fmt = (v: number) => 'R$ ' + (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 const iniciais = (nome: string) => nome.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 
@@ -737,11 +711,8 @@ function renderizarGraficoPe() {
   const labels = ['Faturamento', 'PE', ...cats.map(c => c.categoria)]
   const valores = [d.faturamentoMes, d.pontoEquilibrio, ...cats.map(c => c.total)]
   const cores = [d.peAtingido ? '#4caf50' : '#ab47bc', '#ef5350', ...cats.map(() => '#78909c')]
-  // Ocupa toda a largura e a altura disponível do container (preenche o card).
-  const W = canvas.offsetWidth || 260
-  const H = Math.max(canvas.parentElement?.offsetHeight || 0, 140)
+  const W = canvas.offsetWidth || 260; const H = 90
   canvas.width = W; canvas.height = H
-  canvas.style.height = H + 'px'
   const barW = Math.floor((W - 20) / labels.length) - 4
   const maxV = Math.max(...valores, 1); const maxBarH = H - 28
   ctx.clearRect(0, 0, W, H)

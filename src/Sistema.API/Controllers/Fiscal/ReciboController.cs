@@ -216,7 +216,8 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Dinheiro),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Pix),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoCredito),
-            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito));
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito),
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Crediario));
         return File(pdf, "application/pdf", "fechamento-caixa.pdf");
     }
 
@@ -224,7 +225,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         Sistema.Domain.Vendas.Entities.PDVSessao s,
         Sistema.Domain.Cadastros.Entities.Empresa empresa,
         string? operador, string? local,
-        decimal dinheiro, decimal pix, decimal credito, decimal debito)
+        decimal dinheiro, decimal pix, decimal credito, decimal debito, decimal crediario)
     {
         var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
         const int larg = 36;
@@ -275,6 +276,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().Text(Linha("Pix", M(pix)));
                     col.Item().Text(Linha("Cartao Credito", M(credito)));
                     col.Item().Text(Linha("Cartao Debito", M(debito)));
+                    if (crediario > 0) col.Item().Text(Linha("Crediario", M(crediario)));
                     col.Item().Text(traco);
 
                     col.Item().Text(Linha("Esperado em dinheiro", M(esperadoDinheiro)));

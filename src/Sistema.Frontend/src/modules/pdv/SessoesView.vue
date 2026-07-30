@@ -382,6 +382,7 @@ const formasPagamentoBanner = computed(() => {
     { label: 'Pix',             icon: 'mdi-qrcode',             cor: 'teal',     valor: s.totalPix ?? 0 },
     { label: 'Cartão Débito',   icon: 'mdi-credit-card-outline',cor: 'primary',  valor: s.totalCartaoDebito ?? 0 },
     { label: 'Cartão Crédito',  icon: 'mdi-credit-card',        cor: 'indigo',   valor: s.totalCartaoCredito ?? 0 },
+    { label: 'Crediário',       icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
   ].filter(fp => fp.valor > 0 || !sessaoAtiva.value?.totalDinheiro)
 })
 
@@ -393,6 +394,7 @@ const formasPagamentoFechamento = computed(() => {
     { label: 'Pix',             icon: 'mdi-qrcode',             cor: 'teal',     valor: s.totalPix ?? 0 },
     { label: 'Cartão Débito',   icon: 'mdi-credit-card-outline',cor: 'primary',  valor: s.totalCartaoDebito ?? 0 },
     { label: 'Cartão Crédito',  icon: 'mdi-credit-card',        cor: 'indigo',   valor: s.totalCartaoCredito ?? 0 },
+    { label: 'Crediário',       icon: 'mdi-account-credit-card-outline', cor: 'purple', valor: s.totalCrediario ?? 0 },
   ]
 })
 

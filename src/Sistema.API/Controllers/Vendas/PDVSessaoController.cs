@@ -72,7 +72,7 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
             sessao.SaldoAbertura, sessao.TotalVendas,
             sessao.TotalSuprimentos, sessao.TotalSangrias,
             totalDinheiro = b.Dinheiro, totalPix = b.Pix,
-            totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito,
+            totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito, totalCrediario = b.Crediario,
             operacoes,
             sessao.Status
         });
@@ -111,7 +111,7 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
                 s.SaldoAbertura, s.SaldoFechamento,
                 s.TotalVendas, s.TotalSuprimentos, s.TotalSangrias,
                 totalDinheiro = b.Dinheiro, totalPix = b.Pix,
-                totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito,
+                totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito, totalCrediario = b.Crediario,
                 s.Status, s.ObservacaoFechamento
             });
         }
@@ -130,7 +130,7 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
     }
 
     /// <summary>Soma dos pagamentos finalizados na janela da sessão, por forma.</summary>
-    private async Task<(decimal Dinheiro, decimal Pix, decimal Credito, decimal Debito)> BreakdownFormasAsync(
+    private async Task<(decimal Dinheiro, decimal Pix, decimal Credito, decimal Debito, decimal Crediario)> BreakdownFormasAsync(
         PDVSessao s, CancellationToken ct)
     {
         var grupos = await db.PagamentosVenda.AsNoTracking()
@@ -146,7 +146,8 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
 
         decimal Get(FormaPagamento f) => grupos.FirstOrDefault(g => g.forma == f)?.total ?? 0m;
         return (Get(FormaPagamento.Dinheiro), Get(FormaPagamento.Pix),
-                Get(FormaPagamento.CartaoCredito), Get(FormaPagamento.CartaoDebito));
+                Get(FormaPagamento.CartaoCredito), Get(FormaPagamento.CartaoDebito),
+                Get(FormaPagamento.Crediario));
     }
 }
 

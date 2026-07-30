@@ -148,8 +148,18 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
             .Select(g => new { forma = g.Key, total = g.Sum(x => x.Valor) })
             .ToListAsync(ct);
 
+        // Troco devolvido sai da gaveta → o dinheiro líquido é recebido - troco.
+        var troco = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == s.EmpresaId
+                && v.UsuarioId == s.UsuarioId
+                && v.LocalEstoqueId == s.LocalEstoqueId
+                && v.Status == StatusVenda.Finalizada
+                && v.DataHora >= s.Abertura
+                && (s.Fechamento == null || v.DataHora <= s.Fechamento))
+            .SumAsync(v => v.Troco, ct);
+
         decimal Get(FormaPagamento f) => grupos.FirstOrDefault(g => g.forma == f)?.total ?? 0m;
-        return (Get(FormaPagamento.Dinheiro), Get(FormaPagamento.Pix),
+        return (Get(FormaPagamento.Dinheiro) - troco, Get(FormaPagamento.Pix),
                 Get(FormaPagamento.CartaoCredito), Get(FormaPagamento.CartaoDebito),
                 Get(FormaPagamento.Crediario));
     }

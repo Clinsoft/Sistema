@@ -214,12 +214,23 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         decimal Forma(Sistema.Domain.Vendas.Entities.FormaPagamento f) =>
             grupos.FirstOrDefault(g => g.forma == f)?.total ?? 0m;
 
+        // Troco devolvido na sessão — sai da gaveta, então desconta do dinheiro recebido.
+        var troco = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == sessao.EmpresaId
+                && v.UsuarioId == sessao.UsuarioId
+                && v.LocalEstoqueId == sessao.LocalEstoqueId
+                && v.Status == Sistema.Domain.Vendas.Entities.StatusVenda.Finalizada
+                && v.DataHora >= sessao.Abertura
+                && (sessao.Fechamento == null || v.DataHora <= sessao.Fechamento))
+            .SumAsync(v => v.Troco, ct);
+
         var pdf = GerarFechamentoTermico(sessao, empresa, operador, local,
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Dinheiro),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Pix),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoCredito),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito),
-            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Crediario));
+            Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Crediario),
+            troco);
         return File(pdf, "application/pdf", "fechamento-caixa.pdf");
     }
 
@@ -227,8 +238,11 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         Sistema.Domain.Vendas.Entities.PDVSessao s,
         Sistema.Domain.Cadastros.Entities.Empresa empresa,
         string? operador, string? local,
-        decimal dinheiro, decimal pix, decimal credito, decimal debito, decimal crediario)
+        decimal dinheiro, decimal pix, decimal credito, decimal debito, decimal crediario,
+        decimal troco)
     {
+        // Dinheiro que efetivamente ficou na gaveta = recebido - troco devolvido.
+        var dinheiroLiquido = dinheiro - troco;
         var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
         const int larg = 36;
         static string Linha(string esq, string dir)
@@ -241,7 +255,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         string M(decimal v) => v.ToString("N2", brl);
 
         // Saldo esperado em dinheiro na gaveta e diferença do conferido.
-        var esperadoDinheiro = s.SaldoAbertura + dinheiro + s.TotalSuprimentos - s.TotalSangrias;
+        var esperadoDinheiro = s.SaldoAbertura + dinheiroLiquido + s.TotalSuprimentos - s.TotalSangrias;
         var fechado = s.Fechamento != null;
         var diferenca = fechado ? s.SaldoFechamento - esperadoDinheiro : 0m;
 
@@ -268,13 +282,14 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().Text(traco);
 
                     col.Item().Text(Linha("Saldo inicial", M(s.SaldoAbertura)));
-                    col.Item().Text(Linha("Total de vendas", M(dinheiro + pix + credito + debito + crediario)));
+                    col.Item().Text(Linha("Total de vendas", M(dinheiroLiquido + pix + credito + debito + crediario)));
                     col.Item().Text(Linha("Suprimentos", M(s.TotalSuprimentos)));
                     col.Item().Text(Linha("Sangrias", "-" + M(s.TotalSangrias)));
                     col.Item().Text(traco);
 
                     col.Item().Text("VENDAS POR FORMA").Bold().FontSize(7);
                     col.Item().Text(Linha("Dinheiro", M(dinheiro)));
+                    if (troco > 0) col.Item().Text(Linha("(-) Troco", "-" + M(troco))).FontSize(7);
                     col.Item().Text(Linha("Pix", M(pix)));
                     col.Item().Text(Linha("Cartao Credito", M(credito)));
                     col.Item().Text(Linha("Cartao Debito", M(debito)));

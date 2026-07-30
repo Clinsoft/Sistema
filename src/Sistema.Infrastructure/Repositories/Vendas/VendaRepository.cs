@@ -49,4 +49,21 @@ public class VendaRepository(SistemaDbContext db) : BaseRepository<Venda>(db), I
         if (localEstoqueId.HasValue) q = q.Where(v => v.LocalEstoqueId == localEstoqueId.Value);
         return await q.SumAsync(v => v.Total, ct);
     }
+
+    public async Task<(decimal Dinheiro, decimal Troco)> TotaisDinheiroAsync(Guid empresaId, DateTime inicio, DateTime fim,
+        Guid? usuarioId = null, Guid? localEstoqueId = null, CancellationToken ct = default)
+    {
+        // O dinheiro RECEBIDO inclui o troco devolvido ao cliente. Para saber quanto
+        // sobra na gaveta é preciso: dinheiro recebido - troco. Retornamos os dois.
+        var q = _set.Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+            && v.DataHora >= inicio && v.DataHora <= fim);
+        if (usuarioId.HasValue) q = q.Where(v => v.UsuarioId == usuarioId.Value);
+        if (localEstoqueId.HasValue) q = q.Where(v => v.LocalEstoqueId == localEstoqueId.Value);
+
+        var dinheiro = await q.SelectMany(v => v.Pagamentos)
+            .Where(p => p.Forma == FormaPagamento.Dinheiro)
+            .SumAsync(p => p.Valor, ct);
+        var troco = await q.SumAsync(v => v.Troco, ct);
+        return (dinheiro, troco);
+    }
 }

@@ -27,12 +27,16 @@ public class FecharSessaoHandler(IPDVSessaoRepository repo, IVendaRepository ven
         var fim = DateTime.Now;
         var totalVendas = await vendaRepo.TotalVendidasAsync(sessao.EmpresaId, inicio, fim,
             sessao.UsuarioId, sessao.LocalEstoqueId, ct);
+        // Só o dinheiro fica na gaveta (cartão/pix/crediário não). E do dinheiro
+        // recebido é preciso descontar o troco devolvido ao cliente.
+        var (dinheiro, troco) = await vendaRepo.TotaisDinheiroAsync(sessao.EmpresaId, inicio, fim,
+            sessao.UsuarioId, sessao.LocalEstoqueId, ct);
 
         sessao.Fechar(cmd.SaldoFechamento, cmd.Observacao);
         repo.Atualizar(sessao);
         await uow.SalvarAsync(ct);
 
-        var saldoEsperado = sessao.SaldoAbertura + totalVendas + sessao.TotalSuprimentos - sessao.TotalSangrias;
+        var saldoEsperado = sessao.SaldoAbertura + (dinheiro - troco) + sessao.TotalSuprimentos - sessao.TotalSangrias;
         return new FecharSessaoResult(
             sessao.SaldoAbertura, totalVendas,
             sessao.TotalSuprimentos, sessao.TotalSangrias,

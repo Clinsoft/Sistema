@@ -10,4 +10,6 @@ public interface IVendaRepository : IRepository<Venda>
     Task<string> ProximoNumeroAsync(Guid empresaId, CancellationToken ct = default);
     Task<decimal> TotalVendidasAsync(Guid empresaId, DateTime inicio, DateTime fim,
         Guid? usuarioId = null, Guid? localEstoqueId = null, CancellationToken ct = default);
+    Task<(decimal Dinheiro, decimal Troco)> TotaisDinheiroAsync(Guid empresaId, DateTime inicio, DateTime fim,
+        Guid? usuarioId = null, Guid? localEstoqueId = null, CancellationToken ct = default);
 }

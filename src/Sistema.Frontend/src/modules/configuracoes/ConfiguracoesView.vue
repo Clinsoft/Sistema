@@ -808,6 +808,22 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Servidor (somente Administrador) -->
+    <v-card v-if="auth.usuario?.role === 'Administrador'" rounded="xl" elevation="1" class="mt-4">
+      <v-card-title class="pa-4 d-flex align-center">
+        <v-icon start color="error">mdi-server</v-icon>Servidor
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-4">
+        <div class="text-body-2 mb-3 text-medium-emphasis">
+          Reinicia o servidor do sistema. Use se algo travar ou após uma atualização.
+          Fica <b>alguns segundos fora do ar</b> e volta sozinho.
+        </div>
+        <v-btn color="error" variant="tonal" rounded="lg" prepend-icon="mdi-restart"
+          :loading="reiniciando" @click="reiniciarServidor">Reiniciar servidor</v-btn>
+      </v-card-text>
+    </v-card>
   </div>
 </template>
 <script setup lang="ts">
@@ -819,6 +835,17 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+const reiniciando = ref(false)
+async function reiniciarServidor() {
+  if (!confirm('Reiniciar o servidor agora? O sistema fica alguns segundos fora do ar.')) return
+  reiniciando.value = true
+  try {
+    await api.post('/admin/reiniciar').catch(() => null)   // o processo cai, a resposta pode não chegar
+    notif.ok('Servidor reiniciando… recarregando em 8 segundos.')
+    setTimeout(() => window.location.reload(), 8000)
+  } catch { notif.erro('Não foi possível reiniciar.') }
+}
 const aba = ref('empresa')
 const salvando = ref(false)
 

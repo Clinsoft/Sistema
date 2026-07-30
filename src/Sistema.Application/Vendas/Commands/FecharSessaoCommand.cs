@@ -25,7 +25,8 @@ public class FecharSessaoHandler(IPDVSessaoRepository repo, IVendaRepository ven
         // Total de vendas em dinheiro da sessão
         var inicio = sessao.Abertura;
         var fim = DateTime.Now;
-        var totalVendas = await vendaRepo.TotalVendidasAsync(sessao.EmpresaId, inicio, fim, ct);
+        var totalVendas = await vendaRepo.TotalVendidasAsync(sessao.EmpresaId, inicio, fim,
+            sessao.UsuarioId, sessao.LocalEstoqueId, ct);
 
         sessao.Fechar(cmd.SaldoFechamento, cmd.Observacao);
         repo.Atualizar(sessao);

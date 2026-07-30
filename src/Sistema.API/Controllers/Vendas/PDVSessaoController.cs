@@ -69,7 +69,8 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
             operador,
             localEstoque = local,
             sessao.UsuarioId, sessao.LocalEstoqueId,
-            sessao.SaldoAbertura, sessao.TotalVendas,
+            sessao.SaldoAbertura,
+            totalVendas = b.Dinheiro + b.Pix + b.Credito + b.Debito + b.Crediario,
             sessao.TotalSuprimentos, sessao.TotalSangrias,
             totalDinheiro = b.Dinheiro, totalPix = b.Pix,
             totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito, totalCrediario = b.Crediario,
@@ -109,7 +110,8 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
                 localEstoque = locais.GetValueOrDefault(s.LocalEstoqueId),
                 s.Abertura, s.Fechamento,
                 s.SaldoAbertura, s.SaldoFechamento,
-                s.TotalVendas, s.TotalSuprimentos, s.TotalSangrias,
+                totalVendas = b.Dinheiro + b.Pix + b.Credito + b.Debito + b.Crediario,
+                s.TotalSuprimentos, s.TotalSangrias,
                 totalDinheiro = b.Dinheiro, totalPix = b.Pix,
                 totalCartaoCredito = b.Credito, totalCartaoDebito = b.Debito, totalCrediario = b.Crediario,
                 s.Status, s.ObservacaoFechamento
@@ -135,8 +137,10 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
     {
         var grupos = await db.PagamentosVenda.AsNoTracking()
             .Join(db.Vendas, p => p.VendaId, v => v.Id,
-                (p, v) => new { p.Forma, p.Valor, v.Status, v.DataHora, v.EmpresaId })
+                (p, v) => new { p.Forma, p.Valor, v.Status, v.DataHora, v.EmpresaId, v.UsuarioId, v.LocalEstoqueId })
             .Where(x => x.EmpresaId == s.EmpresaId
+                && x.UsuarioId == s.UsuarioId          // só as vendas DESTE operador
+                && x.LocalEstoqueId == s.LocalEstoqueId // neste caixa
                 && x.Status == StatusVenda.Finalizada
                 && x.DataHora >= s.Abertura
                 && (s.Fechamento == null || x.DataHora <= s.Fechamento))

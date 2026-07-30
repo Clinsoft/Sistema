@@ -202,8 +202,10 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
         // Vendas por forma de pagamento no período da sessão.
         var grupos = await db.PagamentosVenda.AsNoTracking()
             .Join(db.Vendas, p => p.VendaId, v => v.Id,
-                (p, v) => new { p.Forma, p.Valor, v.Status, v.DataHora, v.EmpresaId })
+                (p, v) => new { p.Forma, p.Valor, v.Status, v.DataHora, v.EmpresaId, v.UsuarioId, v.LocalEstoqueId })
             .Where(x => x.EmpresaId == sessao.EmpresaId
+                && x.UsuarioId == sessao.UsuarioId
+                && x.LocalEstoqueId == sessao.LocalEstoqueId
                 && x.Status == Sistema.Domain.Vendas.Entities.StatusVenda.Finalizada
                 && x.DataHora >= sessao.Abertura
                 && (sessao.Fechamento == null || x.DataHora <= sessao.Fechamento))
@@ -266,7 +268,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().Text(traco);
 
                     col.Item().Text(Linha("Saldo inicial", M(s.SaldoAbertura)));
-                    col.Item().Text(Linha("Total de vendas", M(s.TotalVendas)));
+                    col.Item().Text(Linha("Total de vendas", M(dinheiro + pix + credito + debito + crediario)));
                     col.Item().Text(Linha("Suprimentos", M(s.TotalSuprimentos)));
                     col.Item().Text(Linha("Sangrias", "-" + M(s.TotalSangrias)));
                     col.Item().Text(traco);

@@ -38,12 +38,15 @@ public class VendaRepository(SistemaDbContext db) : BaseRepository<Venda>(db), I
         return int.TryParse(ultimo, out var n) ? (n + 1).ToString("D6") : "000001";
     }
 
-    public async Task<decimal> TotalVendidasAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
+    public async Task<decimal> TotalVendidasAsync(Guid empresaId, DateTime inicio, DateTime fim,
+        Guid? usuarioId = null, Guid? localEstoqueId = null, CancellationToken ct = default)
     {
-        var fimExclusivo = fim.Date.AddDays(1);
-        return await _set
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada &&
-                        v.DataHora >= inicio.Date && v.DataHora < fimExclusivo)
-            .SumAsync(v => v.Total, ct);
+        // Janela EXATA da sessão (não o dia inteiro) e, quando informado, apenas o
+        // operador/caixa da sessão — senão um caixa recém-aberto somava vendas de outros.
+        var q = _set.Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+            && v.DataHora >= inicio && v.DataHora <= fim);
+        if (usuarioId.HasValue) q = q.Where(v => v.UsuarioId == usuarioId.Value);
+        if (localEstoqueId.HasValue) q = q.Where(v => v.LocalEstoqueId == localEstoqueId.Value);
+        return await q.SumAsync(v => v.Total, ct);
     }
 }

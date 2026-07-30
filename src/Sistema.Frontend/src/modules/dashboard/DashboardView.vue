@@ -715,11 +715,18 @@ async function carregarPe() {
   }
 }
 
+let _peTry = 0
 function renderizarGraficoPe() {
   const canvas = peCanvas.value
   if (!canvas || !pe.value) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+  // No load inicial o layout ainda não fluiu e offsetWidth=0; re-tenta no próximo frame.
+  if (canvas.offsetWidth === 0) {
+    if (_peTry++ < 30) requestAnimationFrame(renderizarGraficoPe)
+    return
+  }
+  _peTry = 0
   const d = pe.value
   const cats = d.detalhesCustosFixos.length ? d.detalhesCustosFixos : [{ categoria: 'Custos Fixos', total: d.totalCustosFixos }]
   const labels = ['Faturamento', 'PE', ...cats.map(c => c.categoria)]
@@ -961,11 +968,17 @@ async function carregarDre() {
   } catch { /* vazio */ } finally { carregandoDre.value = false }
 }
 
+let _dreTry = 0
 function renderizarGraficoDre() {
   const canvas = dreCanvas.value
   if (!canvas || !dre.value) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+  if (canvas.offsetWidth === 0) {
+    if (_dreTry++ < 30) requestAnimationFrame(renderizarGraficoDre)
+    return
+  }
+  _dreTry = 0
   const d = dre.value
   const W = canvas.offsetWidth || 400; const H = 80
   canvas.width = W; canvas.height = H

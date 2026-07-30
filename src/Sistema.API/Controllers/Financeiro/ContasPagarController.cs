@@ -8,7 +8,9 @@ using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Financeiro.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
-using UglyToad.PdfPig;
+using PdfSharp.Pdf.IO;
+using PdfPigDocument = UglyToad.PdfPig.PdfDocument;
+using PdfSharpDocument = PdfSharp.Pdf.PdfDocument;
 
 namespace Sistema.API.Controllers.Financeiro;
 
@@ -243,13 +245,16 @@ public class ContasPagarController(
             var paginas = ExtrairPaginas(caminho);
             if (paginas.Count == 0) paginas.Add("");
             var multi = paginas.Count > 1;
+            // Fatia o PDF em 1 página por comprovante para cada conta ficar com o SEU arquivo.
+            var urlsPagina = multi ? SplitPdfPorPagina(caminho, dir, id, paginas.Count) : null;
 
             for (var pg = 0; pg < paginas.Count; pg++)
             {
                 var (valor, data, venc, nomes, docs) = ParsePagina(paginas[pg]);
                 if (valor is null && nomes.Count == 0) continue; // página sem pagamento (capa, rodapé)
 
-                var urlPg = multi ? $"{url}#page={pg + 1}" : url;
+                var urlPg = urlsPagina != null ? urlsPagina[pg]
+                          : (multi ? $"{url}#page={pg + 1}" : url);
                 var benefTokens = nomes.SelectMany(Tokens).Distinct().ToList();
 
                 var ranqueadas = candidatas.Select(l =>
@@ -351,11 +356,33 @@ public class ContasPagarController(
         return Ok(new { baixados, criados });
     }
 
+    /// <summary>Fatia um PDF de N páginas em N PDFs de 1 página cada (um por comprovante).
+    /// Retorna as URLs na mesma ordem das páginas, ou null se não conseguir fatiar.</summary>
+    private static List<string>? SplitPdfPorPagina(string caminho, string dir, Guid id, int esperado)
+    {
+        try
+        {
+            using var input = PdfReader.Open(caminho, PdfDocumentOpenMode.Import);
+            if (input.PageCount != esperado) return null;
+            var urls = new List<string>();
+            for (var i = 0; i < input.PageCount; i++)
+            {
+                using var outDoc = new PdfSharpDocument();
+                outDoc.AddPage(input.Pages[i]);
+                var nome = $"{id}_p{i + 1}.pdf";
+                outDoc.Save(Path.Combine(dir, nome));
+                urls.Add($"/uploads/comprovantes/{nome}");
+            }
+            return urls;
+        }
+        catch { return null; }
+    }
+
     // ─── Leitura/parse de comprovantes ──────────────────────────────────────
     private static List<string> ExtrairPaginas(string caminho)
     {
         var paginas = new List<string>();
-        try { using var pdf = PdfDocument.Open(caminho); foreach (var p in pdf.GetPages()) paginas.Add(p.Text); }
+        try { using var pdf = PdfPigDocument.Open(caminho); foreach (var p in pdf.GetPages()) paginas.Add(p.Text); }
         catch { /* PDF ilegível (imagem/escaneado) */ }
         return paginas;
     }

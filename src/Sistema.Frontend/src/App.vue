@@ -129,6 +129,8 @@
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-scale" title="Exportar para Balança"
+              to="/estoque/balanca" value="/estoque/balanca" color="teal" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"
               to="/estoque/materiais" value="/estoque/materiais" color="teal" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-desktop-classic" title="Ativo Imobilizado"

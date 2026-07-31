@@ -124,6 +124,14 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
     job => job.ExecutarAsync());
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
+    "taxa-cartao-despesa-variavel",
+    job => job.ExecutarAsync(),
+    "0 23 * * *");  // 23:00 todo dia — soma a taxa do dia e lança como despesa variável
+// Roda uma vez ao subir para gerar as despesas dos dias já passados.
+BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
+    job => job.ExecutarAsync());
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.BackupJob>(
     "backup-banco-dados",
     job => job.ExecutarAsync(),

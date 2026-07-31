@@ -883,7 +883,10 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             if (produto is not null)
             {
                 produto.EntradaEstoque(item.QuantidadeEstoque, item.CustoUnitarioFinal);
-                if (item.PrecoVendaSugerido.HasValue)
+                // Só define o preço de venda quando o produto ainda NÃO tem preço (novo/sem preço).
+                // Não sobrescreve o preço de produto já cadastrado — senão a escrituração de uma
+                // entrada (ex.: de Rio Claro) mexeria no preço/balança de produtos vendidos em Ipanema.
+                if (item.PrecoVendaSugerido.HasValue && produto.PrecoVenda <= 0)
                     produto.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? produto.Markup);
             }
 

@@ -330,9 +330,9 @@ public class ConfiguracaoFiscalController(
     {
         "SimplesNacional" => new
         {
-            csosnIcms = "400", cstIcms = (string?)null, aliquotaIcms = 0m,
+            csosnIcms = "102", cstIcms = (string?)null, aliquotaIcms = 0m,
             cstPisCofins = "07", aliquotaPis = 0m, aliquotaCofins = 0m, cfop = "5102",
-            descricao = "CSOSN 400 — Não tributado (SN). PIS/COFINS CST 07 — isento."
+            descricao = "CSOSN 102 — Tributada pelo Simples (CFOP 5102). ST usa CSOSN 500 (CFOP 5405). PIS/COFINS CST 07."
         },
         "LucroPresumido" => new
         {

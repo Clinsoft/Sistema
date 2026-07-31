@@ -239,7 +239,9 @@ public class Produto : Entity
         switch (regime)
         {
             case "SimplesNacional":
-                CsosnIcms      = "400";
+                // Padrão do contador: CFOP 5102 (venda normal) → CSOSN 102.
+                // Produtos com ST (CFOP 5405 → CSOSN 500) são exceção, ajustada por produto.
+                CsosnIcms      = "102";
                 CstIcms        = null;
                 AliquotaIcms   = 0m;
                 CstPisCofins   = "07";

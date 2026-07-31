@@ -25,10 +25,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var fim = inicio.AddMonths(1).AddDays(-1);
 
         // Custos fixos = contas a pagar que vencem no mês (exceto canceladas).
+        // "Despesas Variáveis" (ex.: taxa de cartão) NÃO entram no custo fixo do
+        // ponto de equilíbrio — são variáveis e já reduzem a margem de contribuição.
         var contasPagar = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && (l.Categoria == null || l.Categoria != "Despesas Variáveis")
                 && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1))
             .Select(l => new { l.Categoria, l.ValorOriginal })
             .ToListAsync(ct);

@@ -404,7 +404,8 @@ public class ContasPagarController(
         var t = (texto ?? "").Replace('\n', ' ').Replace('\r', ' ');
 
         var valor = ParseMoeda(Campo(t, @"Valor Pago\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
-                 ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));
+                 ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
+                 ?? ParseMoeda(Campo(t, @"Valor Total\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));   // tributos Sicredi (DARE/DAS)
         var data = ParseData(Campo(t, @"Data do Pagamento\s*:?\s*(\d{2}/\d{2}/\d{4})")
                           ?? Campo(t, @"Data da Transa[cç][aã]o\s*:?\s*(\d{2}/\d{2}/\d{4})"));
         var venc = ParseData(Campo(t, @"Data de Vencimento\s*:?\s*(\d{2}/\d{2}/\d{4})"));
@@ -417,6 +418,11 @@ public class ContasPagarController(
         AddNome(Campo(t, @"Nome do Benefici[aá]rio Final\s*:?\s*(.{3,80}?)" + fim));
         AddNome(Campo(t, @"Raz[aã]o Social do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
         AddNome(Campo(t, @"Nome Fantasia do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
+        // Tributos (Sicredi): o "beneficiário" vem em "Nome da Empresa" (ex.: SEFAZ SP - DARE).
+        AddNome(Campo(t, @"Nome da Empresa\s*:?\s*(.{3,60}?)(?=C[oó]digo|Data|Valor|Tipo|Hora|N[uú]mero|$)"));
+        // DAS do Simples Nacional não traz "Nome da Empresa" — identifica pelo cabeçalho.
+        if (nomes.Count == 0 && Regex.IsMatch(t, "SIMPLES NACIONAL", RegexOptions.IgnoreCase))
+            nomes.Add("DAS - Simples Nacional");
 
         var docs = new List<string>();
         void AddDoc(string? d) { var dd = SomenteDigitos(d); if (dd.Length is 11 or 14) docs.Add(dd); }

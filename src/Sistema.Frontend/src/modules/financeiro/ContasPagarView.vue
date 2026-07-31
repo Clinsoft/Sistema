@@ -111,7 +111,7 @@
             {{ item.status }}
           </v-chip>
           <v-btn v-if="item.comprovanteUrl" :href="item.comprovanteUrl" target="_blank"
-            icon="mdi-file-pdf-box" size="x-small" color="red-darken-1" variant="text"
+            icon="mdi-file-eye-outline" size="x-small" color="red-darken-1" variant="text"
             title="Ver comprovante de pagamento" />
         </template>
         <template #item.valorOriginal="{ item }">R$ {{ fmt(item.valorOriginal) }}</template>
@@ -127,6 +127,8 @@
               title="Duplicar (mesmo valor, outro fornecedor)" @click="duplicarConta(item)" />
             <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
               title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
+            <v-btn icon="mdi-paperclip" size="x-small" color="teal" variant="text"
+              title="Anexar comprovante (imagem/PDF)" @click="anexarComprovante(item)" />
             <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
               title="Cancelar título" @click="cancelarTitulo(item)" :disabled="item.status === 'Pago' || item.status === 'Cancelado'" />
           </template>
@@ -144,6 +146,8 @@
                   @click="duplicarConta(item)" />
                 <v-list-item prepend-icon="mdi-refresh" title="Renegociar"
                   :disabled="item.status === 'Pago'" @click="abrirRenegociar(item)" />
+                <v-list-item prepend-icon="mdi-paperclip" title="Anexar comprovante"
+                  @click="anexarComprovante(item)" />
                 <v-list-item prepend-icon="mdi-cancel" title="Cancelar título"
                   :disabled="item.status === 'Pago' || item.status === 'Cancelado'" @click="cancelarTitulo(item)" />
               </v-list>
@@ -152,6 +156,10 @@
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- Input oculto para anexar comprovante (imagem/PDF) direto na linha, só para guardar -->
+    <input ref="comprovanteInput" type="file" accept="image/*,application/pdf"
+      class="d-none" @change="onComprovanteSelecionado" />
 
     <!-- Dialog: Nova Conta a Pagar -->
     <v-dialog v-model="dialogNovo" max-width="560" persistent scrollable>
@@ -614,6 +622,31 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+// Anexar comprovante (imagem/PDF) direto na linha — só guarda, não lê nada.
+const comprovanteInput = ref<HTMLInputElement | null>(null)
+const anexarItemId = ref<string | null>(null)
+function anexarComprovante(item: any) {
+  anexarItemId.value = item.id
+  comprovanteInput.value?.click()
+}
+async function onComprovanteSelecionado(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  const id = anexarItemId.value
+  if (file && id) {
+    const fd = new FormData()
+    fd.append('arquivo', file)
+    try {
+      await api.post(`/contas-pagar/${id}/comprovante`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } })
+      notif.ok('Comprovante anexado!')
+      await carregar()
+    } catch { notif.erro('Erro ao anexar o comprovante.') }
+  }
+  input.value = ''
+  anexarItemId.value = null
+}
 const { mobile } = useDisplay()
 const carregando = ref(false)
 

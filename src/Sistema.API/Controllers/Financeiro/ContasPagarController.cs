@@ -163,6 +163,31 @@ public class ContasPagarController(
         return NoContent();
     }
 
+    /// <summary>Anexa um comprovante (imagem ou PDF) direto ao lançamento, só para guardar —
+    /// NÃO lê/parseia nada. Substitui o comprovante anterior, se houver.</summary>
+    [HttpPost("{id:guid}/comprovante")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<IActionResult> AnexarComprovanteArquivo(Guid id, [FromForm] IFormFile arquivo, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0) return BadRequest("Arquivo vazio.");
+        var lancamento = await repo.ObterPorIdAsync(id, ct);
+        if (lancamento is null) return NotFound();
+
+        var ext = Path.GetExtension(arquivo.FileName).ToLowerInvariant();
+        var permitidas = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp" };
+        if (!permitidas.Contains(ext)) return BadRequest("Formato não suportado (use imagem ou PDF).");
+
+        var dir = Path.Combine("wwwroot", "uploads", "comprovantes");
+        Directory.CreateDirectory(dir);
+        var nome = $"{Guid.NewGuid()}{ext}";
+        using (var s = System.IO.File.Create(Path.Combine(dir, nome))) await arquivo.CopyToAsync(s, ct);
+
+        lancamento.AnexarComprovante($"/uploads/comprovantes/{nome}");
+        repo.Atualizar(lancamento);
+        await uow.SalvarAsync(ct);
+        return Ok(new { comprovanteUrl = lancamento.ComprovanteUrl });
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Editar(Guid id, [FromBody] EditarLancamentoRequest req, CancellationToken ct)
     {

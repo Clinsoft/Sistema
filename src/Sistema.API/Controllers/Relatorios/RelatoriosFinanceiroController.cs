@@ -20,7 +20,7 @@ public class RelatoriosFinanceiroController(SistemaDbContext db) : ControllerBas
         var query = db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaReceber
-                && l.DataVencimento >= inicio && l.DataVencimento <= fim.AddDays(1));
+                && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1));
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             query = query.Where(l => l.Status == st);
@@ -59,7 +59,7 @@ public class RelatoriosFinanceiroController(SistemaDbContext db) : ControllerBas
         var query = db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaPagar
-                && l.DataVencimento >= inicio && l.DataVencimento <= fim.AddDays(1));
+                && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1));
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             query = query.Where(l => l.Status == st);
@@ -97,7 +97,7 @@ public class RelatoriosFinanceiroController(SistemaDbContext db) : ControllerBas
         var result = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaPagar
-                && l.DataPagamento >= inicio && l.DataPagamento <= fim.AddDays(1)
+                && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
                 && l.Status == StatusLancamento.Pago)
             .GroupJoin(db.CategoriasFinanceiras, l => l.CategoriaId, c => c.Id, (l, cs) => new { l, cs })
             .SelectMany(x => x.cs.DefaultIfEmpty(), (x, c) => new

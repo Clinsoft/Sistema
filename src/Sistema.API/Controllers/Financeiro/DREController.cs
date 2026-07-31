@@ -22,13 +22,13 @@ public class DREController(SistemaDbContext db) : ControllerBase
         // Receitas operacionais — vendas finalizadas no período
         var receitas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .SumAsync(v => v.Total, ct);
 
         var descontosVendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .SumAsync(v => v.TotalDesconto, ct);
 
@@ -36,7 +36,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
         var cmv = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
                 (x, p) => x.i.Quantidade * p.CustoUnitario)
@@ -46,7 +46,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
         var despesasPagas = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaPagar
-                && l.DataPagamento >= inicio && l.DataPagamento <= fim.AddDays(1)
+                && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
                 && (l.Status == StatusLancamento.Pago || l.Status == StatusLancamento.PagoParcialmente))
             .SumAsync(l => l.ValorPago, ct);
 
@@ -54,7 +54,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
         var despesasPorCategoria = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaPagar
-                && l.DataPagamento >= inicio && l.DataPagamento <= fim.AddDays(1)
+                && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
                 && l.Status == StatusLancamento.Pago)
             .Join(db.CategoriasFinanceiras, l => l.CategoriaId, c => c.Id,
                 (l, c) => new { c.Nome, l.ValorPago })

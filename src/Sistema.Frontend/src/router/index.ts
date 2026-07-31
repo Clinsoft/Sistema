@@ -152,7 +152,7 @@ const ROTAS_ATENDENTE = [
   '/pdv', '/pdv/vendas', '/pdv/sessoes',
   '/cadastros/clientes',
   '/estoque/produtos',
-  '/estoque/etiquetas', '/estoque/validade',
+  '/estoque/etiquetas', '/estoque/validade', '/estoque/balanca',
   '/whatsapp',
   '/marketing', '/marketing/clube',
 ]

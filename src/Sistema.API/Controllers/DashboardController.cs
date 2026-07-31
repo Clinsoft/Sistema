@@ -15,7 +15,8 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Indicadores dos 4 cards do topo do dashboard.</summary>
     [HttpGet("resumo")]
-    public async Task<IActionResult> Resumo([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> Resumo([FromQuery] Guid empresaId,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var hoje = DateTime.Today;
         var amanha = hoje.AddDays(1);
@@ -23,6 +24,7 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
         var vendasHoje = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.DataHora >= hoje && v.DataHora < amanha)
             .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
 

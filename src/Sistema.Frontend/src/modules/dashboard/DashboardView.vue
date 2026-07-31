@@ -710,7 +710,7 @@ const cards = computed(() => [
 async function carregarResumo() {
   if (!auth.empresaId) return
   try {
-    const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId } })
+    const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId } })
     resumo.value = res.data
     montarAlertas()
   } catch { resumo.value = null }
@@ -972,7 +972,7 @@ async function carregarVendasColaborador() {
     const [rankingRes, usuariosRes] = await Promise.all([
       api.get<{ usuarioId: string; qtdVendas: number; totalVendido: number; ticketMedio: number }[]>(
         '/relatorios/vendas/por-vendedor',
-        { params: { empresaId: auth.empresaId, inicio, fim } }
+        { params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId } }
       ),
       api.get<{ id: string; nome: string }[]>('/usuarios', { params: { empresaId: auth.empresaId } })
     ])
@@ -1127,7 +1127,7 @@ async function carregarVendasMes() {
     const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
     const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     vendasMes.value = res.data ?? []
   } catch { vendasMes.value = [] } finally { carregando.value = false }
@@ -1150,7 +1150,7 @@ async function carregarCurvaAbc() {
     const inicio = `${anoAtual}-01-01`
     const fim = new Date().toISOString().slice(0, 10)
     const res = await api.get<{ itens: AbcItem[] }>('/estoque/curva-abc', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     curvaAbc.value = res.data.itens ?? []
     await nextTick()

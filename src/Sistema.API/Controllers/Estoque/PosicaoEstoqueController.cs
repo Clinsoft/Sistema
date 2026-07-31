@@ -141,12 +141,14 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
     /// <summary>Curva ABC de produtos por valor de venda no período.</summary>
     [HttpGet("curva-abc")]
     public async Task<IActionResult> CurvaAbc([FromQuery] Guid empresaId,
-        [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || x.v.LocalEstoqueId == localEstoqueId)
                 && x.v.DataHora >= inicio.Date && x.v.DataHora < fim.Date.AddDays(1))
             .GroupBy(x => new { x.i.ProdutoId, x.i.Descricao })
             .Select(g => new

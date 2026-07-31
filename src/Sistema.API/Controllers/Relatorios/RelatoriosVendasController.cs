@@ -48,11 +48,13 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
     /// <summary>Vendas diárias com ticket médio.</summary>
     [HttpGet("diarias")]
     public async Task<IActionResult> VendasDiarias(
-        [FromQuery] Guid empresaId, [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+        [FromQuery] Guid empresaId, [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var dias = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1)
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .GroupBy(v => v.DataHora.Date)
             .Select(g => new
@@ -112,11 +114,13 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
     /// <summary>Ranking de vendas por vendedor.</summary>
     [HttpGet("por-vendedor")]
     public async Task<IActionResult> PorVendedor(
-        [FromQuery] Guid empresaId, [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+        [FromQuery] Guid empresaId, [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var ranking = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.DataHora >= inicio.Date && v.DataHora < fim.Date.AddDays(1))
             // Agrupa pelo VENDEDOR (colaborador que efetuou a venda). Vendas antigas
             // sem VendedorId caem no operador (UsuarioId), preservando o histórico.

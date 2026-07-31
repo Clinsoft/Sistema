@@ -172,19 +172,29 @@ public class Produto : Entity
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
     }
 
+    // NCM/CEST/CFOP vão no XML fiscal só com DÍGITOS (sem pontos). O usuário pode
+    // digitar "1904.90.00" — normalizamos para "19049000" e evitamos estourar a coluna.
+    private static string? SoDigitos(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var d = new string(s.Where(char.IsDigit).ToArray());
+        if (d.Length == 0) return null;
+        return d.Length > max ? d[..max] : d;
+    }
+
     public void EditarFiscal(string? ncm, string? cest, string? cstIcms, string? csosnIcms,
         string? cstPisCofins, decimal aliquotaIcms, decimal aliquotaPis, decimal aliquotaCofins,
         string? cfop, string origem, string? codigoFci)
     {
-        Ncm = ncm;
-        Cest = cest;
+        Ncm = SoDigitos(ncm, 8);
+        Cest = SoDigitos(cest, 7);
         CstIcms = cstIcms;
         CsosnIcms = csosnIcms;
         CstPisCofins = cstPisCofins;
         AliquotaIcms = aliquotaIcms;
         AliquotaPis = aliquotaPis;
         AliquotaCofins = aliquotaCofins;
-        Cfop = cfop;
+        Cfop = SoDigitos(cfop, 4) ?? cfop;
         Origem = origem;
         CodigoFci = codigoFci;
     }

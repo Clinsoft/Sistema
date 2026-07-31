@@ -40,9 +40,10 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> Exportar(
         [FromQuery] Guid empresaId,
         [FromQuery] string modelo,
+        [FromQuery] Guid? localEstoqueId,
         CancellationToken ct = default)
     {
-        var produtos = await ObterProdutosBalancaAsync(empresaId, ct);
+        var produtos = await ObterProdutosBalancaAsync(empresaId, localEstoqueId, ct);
 
         var (arquivos, familia) = modelo.ToUpperInvariant() switch
         {
@@ -67,10 +68,13 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
             }
         }
 
-        // Exportou → limpa a pendência de balança dos produtos de peso da empresa.
+        // Exportou → limpa a pendência de balança dos produtos que entraram neste arquivo
+        // (da loja escolhida, quando informada — senão de toda a empresa).
         await db.Produtos
             .Where(p => p.EmpresaId == empresaId && p.BalancaDesatualizada
-                     && (p.ProdutoBalanca || p.VendidoFracionado))
+                     && (p.ProdutoBalanca || p.VendidoFracionado)
+                     && (localEstoqueId == null
+                         || db.MovimentacoesEstoque.Any(m => m.ProdutoId == p.Id && m.LocalEstoqueId == localEstoqueId)))
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.BalancaDesatualizada, false), ct);
 
         var nomeZip = $"balanca_{familia}_{DateTime.Now:yyyyMMdd_HHmm}.zip";
@@ -79,11 +83,14 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     /// <summary>Quantos produtos de peso estão pendentes de envio à balança (troca de preço/novo).</summary>
     [HttpGet("pendencias")]
-    public async Task<IActionResult> Pendencias([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> Pendencias(
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var produtos = await db.Produtos.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.Ativo && p.BalancaDesatualizada
-                     && (p.ProdutoBalanca || p.VendidoFracionado))
+                     && (p.ProdutoBalanca || p.VendidoFracionado)
+                     && (localEstoqueId == null
+                         || db.MovimentacoesEstoque.Any(m => m.ProdutoId == p.Id && m.LocalEstoqueId == localEstoqueId)))
             .OrderBy(p => p.Descricao)
             .Select(p => new { p.Id, p.Codigo, p.CodigoPlu, p.Descricao, p.PrecoVenda })
             .ToListAsync(ct);
@@ -95,14 +102,19 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     /// que usam unidade pesável (KG). O PLU é o CodigoPlu e, quando não houver,
     /// o código interno do produto — que é o número usado na balança.
     /// </summary>
-    private async Task<List<ProdutoBalancaDto>> ObterProdutosBalancaAsync(Guid empresaId, CancellationToken ct)
+    private async Task<List<ProdutoBalancaDto>> ObterProdutosBalancaAsync(
+        Guid empresaId, Guid? localEstoqueId, CancellationToken ct)
     {
+        // Com loja informada, só entram os produtos que têm movimentação naquele local
+        // (recebidos/vendidos ali) — assim a balança de cada loja leva só os seus produtos.
         var itens = await (
             from p in db.Produtos.AsNoTracking()
             join u in db.UnidadesMedida on p.UnidadeMedidaId equals u.Id into unids
             from u in unids.DefaultIfEmpty()
             where p.EmpresaId == empresaId && p.Ativo
                && (p.ProdutoBalanca || p.VendidoFracionado || (u != null && u.Pesavel))
+               && (localEstoqueId == null
+                   || db.MovimentacoesEstoque.Any(m => m.ProdutoId == p.Id && m.LocalEstoqueId == localEstoqueId))
             select new { p.Codigo, p.CodigoPlu, p.Descricao, p.PrecoVenda, p.ValidadeEmDias }
         ).ToListAsync(ct);
 
@@ -119,8 +131,9 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
 
     /// <summary>Prévia dos produtos que serão exportados (usada pela tela).</summary>
     [HttpGet("produtos")]
-    public async Task<IActionResult> ProdutosParaExportar([FromQuery] Guid empresaId, CancellationToken ct)
-        => Ok(await ObterProdutosBalancaAsync(empresaId, ct));
+    public async Task<IActionResult> ProdutosParaExportar(
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
+        => Ok(await ObterProdutosBalancaAsync(empresaId, localEstoqueId, ct));
 
     // ─── Toledo (MGV5/6/7) e Ramuza (Atena) ─────────────────────────────────
     private static List<(string nome, string conteudo)> GerarToledoRamuza(

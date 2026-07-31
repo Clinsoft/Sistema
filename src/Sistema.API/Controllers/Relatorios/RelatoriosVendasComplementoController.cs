@@ -17,7 +17,7 @@ public class RelatoriosVendasComplementoController(SistemaDbContext db) : Contro
     {
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Select(v => new { v.DataHora, v.Total })
             .ToListAsync(ct);
@@ -52,7 +52,7 @@ public class RelatoriosVendasComplementoController(SistemaDbContext db) : Contro
     {
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Select(v => new { v.DataHora, v.Total, Desconto = v.TotalDesconto })
             .ToListAsync(ct);
@@ -115,7 +115,7 @@ public class RelatoriosVendasComplementoController(SistemaDbContext db) : Contro
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1))
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1))
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
                 (x, p) => new
                 {

@@ -12,7 +12,7 @@ public class DevolucaoVendaRepository(SistemaDbContext db) : BaseRepository<Devo
 
     public async Task<IReadOnlyList<DevolucaoVenda>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
         => await _set.AsNoTracking()
-            .Where(d => d.EmpresaId == empresaId && d.DataHora >= inicio && d.DataHora <= fim.AddDays(1))
+            .Where(d => d.EmpresaId == empresaId && d.DataHora >= inicio && d.DataHora < fim.AddDays(1))
             .OrderByDescending(d => d.DataHora)
             .ToListAsync(ct);
 }

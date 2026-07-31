@@ -21,7 +21,7 @@ public class RelatoriosFiscaisController(SistemaDbContext db) : ControllerBase
     {
         var query = db.NotasFiscais.AsNoTracking()
             .Where(n => n.EmpresaId == empresaId
-                && n.DataEmissao >= inicio && n.DataEmissao <= fim.AddDays(1));
+                && n.DataEmissao >= inicio && n.DataEmissao < fim.AddDays(1));
 
         if (!string.IsNullOrEmpty(modelo) && Enum.TryParse<ModeloNF>(modelo, out var m))
             query = query.Where(n => n.Modelo == m);
@@ -97,7 +97,7 @@ public class RelatoriosFiscaisController(SistemaDbContext db) : ControllerBase
     {
         var notas = await db.NotasFiscais.AsNoTracking()
             .Where(n => n.EmpresaId == empresaId
-                && n.DataEmissao >= inicio && n.DataEmissao <= fim.AddDays(1)
+                && n.DataEmissao >= inicio && n.DataEmissao < fim.AddDays(1)
                 && n.Status == StatusNF.Autorizada
                 && n.XmlRetorno != null)
             .Select(n => new { n.Numero, n.ChaveAcesso, n.XmlRetorno })

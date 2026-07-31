@@ -29,7 +29,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
-                && l.DataVencimento >= inicio && l.DataVencimento <= fim)
+                && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1))
             .Select(l => new { l.Categoria, l.ValorOriginal })
             .ToListAsync(ct);
         var totalCustosFixos = contasPagar.Sum(c => c.ValorOriginal);

@@ -23,7 +23,7 @@ public class ContaBancariaRepository(SistemaDbContext db)
         Guid empresaId, Guid contaId, DateTime inicio, DateTime fim, CancellationToken ct)
         => await _db.MovimentacoesBancarias
             .Where(m => m.EmpresaId == empresaId && m.ContaBancariaId == contaId
-                && m.DataMovimentacao >= inicio && m.DataMovimentacao <= fim.AddDays(1))
+                && m.DataMovimentacao >= inicio && m.DataMovimentacao < fim.AddDays(1))
             .OrderBy(m => m.DataMovimentacao)
             .ToListAsync(ct);
 }

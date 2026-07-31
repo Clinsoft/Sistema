@@ -20,7 +20,7 @@ public class NotaFiscalRepository(SistemaDbContext db)
         Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct)
         => await _db.NotasFiscais
             .Where(n => n.EmpresaId == empresaId
-                && n.DataEmissao >= inicio && n.DataEmissao <= fim.AddDays(1))
+                && n.DataEmissao >= inicio && n.DataEmissao < fim.AddDays(1))
             .OrderByDescending(n => n.DataEmissao)
             .ToListAsync(ct);
 

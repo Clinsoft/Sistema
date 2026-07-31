@@ -19,7 +19,7 @@ public class LancamentosContabeisController(SistemaDbContext db, IUnitOfWork uow
         var lancamentos = await db.LancamentosContabeis.AsNoTracking()
             .Include(l => l.Partidas)
             .Where(l => l.EmpresaId == empresaId
-                && l.DataCompetencia >= inicio && l.DataCompetencia <= fim
+                && l.DataCompetencia >= inicio && l.DataCompetencia < fim.AddDays(1)
                 && !l.Estornado)
             .OrderBy(l => l.DataCompetencia).ThenBy(l => l.Numero)
             .ToListAsync(ct);
@@ -98,7 +98,7 @@ public class LancamentosContabeisController(SistemaDbContext db, IUnitOfWork uow
         var partidas = await db.PartidasContabeis.AsNoTracking()
             .Join(db.LancamentosContabeis, p => p.LancamentoContabilId, l => l.Id, (p, l) => new { p, l })
             .Where(x => x.l.EmpresaId == empresaId
-                && x.l.DataCompetencia >= inicio && x.l.DataCompetencia <= fim
+                && x.l.DataCompetencia >= inicio && x.l.DataCompetencia < fim.AddDays(1)
                 && !x.l.Estornado)
             .Join(db.PlanoContas, x => x.p.ContaContabilId, c => c.Id,
                 (x, c) => new

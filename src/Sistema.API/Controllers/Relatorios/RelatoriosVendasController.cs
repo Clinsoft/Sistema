@@ -19,7 +19,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Include(v => v.Itens)
             .Include(v => v.Pagamentos)
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .OrderByDescending(v => v.DataHora)
             .ToListAsync(ct);
@@ -77,7 +77,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
     {
         var horas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .GroupBy(v => v.DataHora.Hour)
             .Select(g => new { hora = g.Key, qtdVendas = g.Count(), totalVendido = g.Sum(v => v.Total) })
@@ -96,7 +96,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1))
             .GroupBy(x => new { x.i.ProdutoId, x.i.Descricao })
             .Select(g => new
             {
@@ -179,7 +179,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Include(v => v.Itens)
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Cancelada
-                && v.DataHora >= inicio && v.DataHora <= fim)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1))
             .OrderByDescending(v => v.DataHora)
             .ToListAsync(ct);
 

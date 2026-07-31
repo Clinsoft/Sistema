@@ -27,7 +27,7 @@ public class DevolucoesController(IMediator mediator, SistemaDbContext db) : Con
             .Where(d => d.EmpresaId == empresaId);
 
         if (inicio.HasValue) query = query.Where(d => d.DataHora >= inicio.Value);
-        if (fim.HasValue) query = query.Where(d => d.DataHora <= fim.Value.AddDays(1));
+        if (fim.HasValue) query = query.Where(d => d.DataHora < fim.Value.AddDays(1));
 
         var lista = await query
             .OrderByDescending(d => d.DataHora)

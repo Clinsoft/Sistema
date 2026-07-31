@@ -13,7 +13,7 @@ public class PDVSessaoRepository(SistemaDbContext db) : BaseRepository<PDVSessao
 
     public async Task<IReadOnlyList<PDVSessao>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
         => await _set.AsNoTracking()
-            .Where(s => s.EmpresaId == empresaId && s.Abertura >= inicio && s.Abertura <= fim)
+            .Where(s => s.EmpresaId == empresaId && s.Abertura >= inicio && s.Abertura < fim.AddDays(1))
             .OrderByDescending(s => s.Abertura)
             .ToListAsync(ct);
 }

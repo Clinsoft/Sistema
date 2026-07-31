@@ -26,7 +26,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
     {
         var q = db.EntradasNFe.AsNoTracking().Where(e => e.EmpresaId == empresaId);
         if (dataInicio.HasValue) q = q.Where(e => e.DataEmissao >= dataInicio.Value);
-        if (dataFim.HasValue) q = q.Where(e => e.DataEmissao <= dataFim.Value.AddDays(1));
+        if (dataFim.HasValue) q = q.Where(e => e.DataEmissao < dataFim.Value.AddDays(1));
         if (status.HasValue) q = q.Where(e => e.Status == status.Value);
 
         var lista = await q.OrderByDescending(e => e.DataEntrada)

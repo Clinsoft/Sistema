@@ -19,7 +19,7 @@ public class RelatoriosPagamentosController(SistemaDbContext db) : ControllerBas
             .Join(db.Vendas, p => p.VendaId, v => v.Id,
                 (p, v) => new { p, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .GroupBy(x => x.p.Forma)
             .Select(g => new
@@ -53,7 +53,7 @@ public class RelatoriosPagamentosController(SistemaDbContext db) : ControllerBas
         var sessoes = await db.PDVSessoes.AsNoTracking()
             .Where(s => s.EmpresaId == empresaId
                 && s.Abertura >= inicio
-                && s.Fechamento.HasValue && s.Fechamento <= fim.AddDays(1))
+                && s.Fechamento.HasValue && s.Fechamento < fim.AddDays(1))
             .OrderByDescending(s => s.Abertura)
             .Select(s => new
             {

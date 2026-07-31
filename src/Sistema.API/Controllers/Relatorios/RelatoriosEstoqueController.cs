@@ -17,7 +17,7 @@ public class RelatoriosEstoqueController(SistemaDbContext db) : ControllerBase
         [FromQuery] Guid? produtoId, CancellationToken ct)
     {
         var query = db.MovimentacoesEstoque.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId && m.CriadoEm >= inicio && m.CriadoEm <= fim);
+            .Where(m => m.EmpresaId == empresaId && m.CriadoEm >= inicio && m.CriadoEm < fim.AddDays(1));
         if (produtoId.HasValue) query = query.Where(m => m.ProdutoId == produtoId);
 
         var movs = await query
@@ -89,7 +89,7 @@ public class RelatoriosEstoqueController(SistemaDbContext db) : ControllerBase
         var saidas = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId
                 && m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Saida
-                && m.CriadoEm >= inicio && m.CriadoEm <= fim)
+                && m.CriadoEm >= inicio && m.CriadoEm < fim.AddDays(1))
             .Join(db.Produtos, m => m.ProdutoId, p => p.Id,
                 (m, p) => new
                 {

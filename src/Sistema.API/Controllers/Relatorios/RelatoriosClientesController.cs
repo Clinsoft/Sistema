@@ -41,7 +41,7 @@ public class RelatoriosClientesController(SistemaDbContext db) : ControllerBase
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { v.ClienteId, v.DataHora, v.EmpresaId, v.Status })
             .Where(x => x.EmpresaId == empresaId
                 && x.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && x.DataHora >= inicio && x.DataHora <= fim
+                && x.DataHora >= inicio && x.DataHora < fim.AddDays(1)
                 && x.ClienteId.HasValue)
             .Select(x => x.ClienteId!.Value)
             .Distinct()
@@ -63,7 +63,7 @@ public class RelatoriosClientesController(SistemaDbContext db) : ControllerBase
         var ranking = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && v.DataHora >= inicio && v.DataHora <= fim
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.ClienteId.HasValue)
             .GroupBy(v => v.ClienteId!.Value)
             .Select(g => new

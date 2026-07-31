@@ -1708,7 +1708,9 @@ async function carregarPromocoes() {
 async function carregarColaboradores() {
   if (!auth.empresaId) return
   try {
-    const res = await api.get<Colaborador[]>('/usuarios', { params: { empresaId: auth.empresaId } })
+    // /vendedores é liberado a qualquer usuário logado (Atendente inclusive);
+    // /usuarios é restrito a Administrador e dava 403 → lista vazia no PDV.
+    const res = await api.get<Colaborador[]>('/vendedores', { params: { empresaId: auth.empresaId } })
     colaboradores.value = res.data.filter(u => u.perfil !== 'Contador')
     colaboradorId.value = auth.usuario?.id ?? colaboradores.value[0]?.id ?? ''
   } catch { /* silencioso */ }

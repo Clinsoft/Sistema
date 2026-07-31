@@ -17,15 +17,18 @@ public class TaxaCartaoDespesaJob(SistemaDbContext db, ILogger<TaxaCartaoDespesa
     [AutomaticRetry(Attempts = 3)]
     public async Task ExecutarAsync()
     {
-        var limite = DateTime.Today.AddDays(-45);   // catch-up dos últimos 45 dias
+        var hoje = DateTime.Today;
+        var limite = hoje.AddDays(-45);   // catch-up dos últimos 45 dias
         var empresas = await db.Empresas.AsNoTracking().Select(e => e.Id).ToListAsync();
 
         foreach (var empresaId in empresas)
         {
+            // Só dias JÁ FECHADOS (< hoje): o dia corrente ainda pode receber vendas,
+            // e o lançamento é idempotente — se criasse hoje, ficaria parcial pra sempre.
             var porDia = await db.ReceiveisCartao.AsNoTracking()
                 .Where(r => r.EmpresaId == empresaId
                          && r.Status != StatusRecebivelCartao.Cancelado
-                         && r.DataTransacao >= limite)
+                         && r.DataTransacao >= limite && r.DataTransacao < hoje)
                 .GroupBy(r => r.DataTransacao.Date)
                 .Select(g => new { Dia = g.Key, Taxa = g.Sum(x => x.ValorBruto - x.ValorLiquido) })
                 .Where(x => x.Taxa > 0)

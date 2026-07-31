@@ -127,8 +127,8 @@ BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     "taxa-cartao-despesa-variavel",
     job => job.ExecutarAsync(),
-    "0 23 * * *");  // 23:00 todo dia — soma a taxa do dia e lança como despesa variável
-// Roda uma vez ao subir para gerar as despesas dos dias já passados.
+    "30 0 * * *");  // 00:30 todo dia — lança a taxa do DIA ANTERIOR (já fechado)
+// Roda uma vez ao subir para gerar as despesas dos dias já fechados (não o dia corrente).
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     job => job.ExecutarAsync());
 

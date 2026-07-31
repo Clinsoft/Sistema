@@ -67,8 +67,27 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
             }
         }
 
+        // Exportou → limpa a pendência de balança dos produtos de peso da empresa.
+        await db.Produtos
+            .Where(p => p.EmpresaId == empresaId && p.BalancaDesatualizada
+                     && (p.ProdutoBalanca || p.VendidoFracionado))
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.BalancaDesatualizada, false), ct);
+
         var nomeZip = $"balanca_{familia}_{DateTime.Now:yyyyMMdd_HHmm}.zip";
         return File(ms.ToArray(), "application/zip", nomeZip);
+    }
+
+    /// <summary>Quantos produtos de peso estão pendentes de envio à balança (troca de preço/novo).</summary>
+    [HttpGet("pendencias")]
+    public async Task<IActionResult> Pendencias([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.BalancaDesatualizada
+                     && (p.ProdutoBalanca || p.VendidoFracionado))
+            .OrderBy(p => p.Descricao)
+            .Select(p => new { p.Id, p.Codigo, p.CodigoPlu, p.Descricao, p.PrecoVenda })
+            .ToListAsync(ct);
+        return Ok(new { pendentes = produtos.Count, produtos });
     }
 
     /// <summary>

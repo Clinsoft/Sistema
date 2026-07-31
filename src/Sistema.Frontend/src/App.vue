@@ -292,6 +292,19 @@
       </v-app-bar>
 
       <v-main>
+        <v-alert v-if="balancaPendentes > 0" type="warning" variant="tonal"
+          density="comfortable" class="mb-0 rounded-0" icon="mdi-scale-balance">
+          <div class="d-flex align-center flex-wrap" style="gap:8px">
+            <span>
+              <strong>{{ balancaPendentes }}</strong>
+              {{ balancaPendentes === 1 ? 'produto por kg está' : 'produtos por kg estão' }}
+              aguardando envio à balança (troca de valor ou item novo).
+            </span>
+            <v-spacer />
+            <v-btn size="small" color="warning" variant="flat"
+              prepend-icon="mdi-scale" to="/estoque/balanca">Exportar agora</v-btn>
+          </div>
+        </v-alert>
         <v-container fluid :class="mobile ? 'pa-0' : 'pa-4'">
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
@@ -357,14 +370,32 @@ async function carregarNotificacoes() {
   } catch { notificacoes.value = [] }
 }
 function abrirNotificacao(n: any) { if (n?.rota) router.push(n.rota) }
+
+// Pendência de balança: produtos de peso com troca de preço ou recém-criados
+// precisam ter o arquivo reexportado para a balança. Só avisa (não trava).
+const balancaPendentes = ref(0)
+async function carregarPendenciasBalanca() {
+  if (!auth.logado || !auth.empresaId) return
+  try {
+    const { data } = await api.get('/balanca/pendencias', { params: { empresaId: auth.empresaId } })
+    balancaPendentes.value = data?.pendentes ?? 0
+  } catch { balancaPendentes.value = 0 }
+}
+
 onMounted(() => {
   carregarNotificacoes()
+  carregarPendenciasBalanca()
   setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
+  setInterval(carregarPendenciasBalanca, 5 * 60 * 1000)
   // Mantém a lista de lojas sempre fresca (reflete lojas ativadas/inativadas
   // sem precisar relogar). Sessões antigas também passam a ter o seletor.
   if (auth.logado) auth.carregarLojas()
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
+// Reavalia a pendência ao entrar/sair da balança, produtos e alteração de preços.
+watch(() => route.path, (p) => {
+  if (['/estoque/balanca', '/estoque/produtos', '/estoque/alterar-precos', '/pdv'].includes(p)) carregarPendenciasBalanca()
+})
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).
 const pdvFullscreen = computed(() => mobile.value && route.path === '/pdv')
 

@@ -74,6 +74,18 @@ public class Produto : Entity
     public void MarcarEtiquetaImpressa() => EtiquetaDesatualizada = false;
     public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
 
+    // Balança: produto de peso fica "pendente" quando muda o preço ou quando vira produto
+    // de balança/peso. Obriga reexportar o arquivo para a balança antes de vender no peso certo.
+    public bool BalancaDesatualizada { get; private set; }
+
+    /// <summary>Marca que o arquivo foi (re)exportado para a balança e está atualizado.</summary>
+    public void MarcarBalancaEnviada() => BalancaDesatualizada = false;
+    /// <summary>Marca pendência de envio à balança (só faz sentido em produto de peso).</summary>
+    public void MarcarBalancaDesatualizada()
+    {
+        if (VendidoPorPeso) BalancaDesatualizada = true;
+    }
+
     // Imagem e informações adicionais
     public string? ImagemUrl { get; private set; }
     public string? FichaTecnicaUrl { get; private set; }
@@ -118,6 +130,7 @@ public class Produto : Entity
         bool controlarLote, bool controlarValidade, int? validadeEmDias,
         string? descricaoComplementar)
     {
+        var eraPeso = VendidoPorPeso;
         Descricao = descricao;
         Referencia = referencia;
         CategoriaId = categoriaId;
@@ -135,6 +148,8 @@ public class Produto : Entity
         ControlarValidade = controlarValidade;
         ValidadeEmDias = validadeEmDias;
         DescricaoComplementar = descricaoComplementar;
+        // Virou produto de peso agora → precisa exportar para a balança.
+        if (!eraPeso && VendidoPorPeso) BalancaDesatualizada = true;
     }
 
     /// <summary>Atualiza o código de barras (EAN/GTIN) do produto.</summary>
@@ -160,7 +175,7 @@ public class Produto : Entity
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)
     {
-        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoFornecedor = precoFornecedor;
         CustoUnitario = custoUnitario;
         MarkupMinimo = markupMinimo;
@@ -225,7 +240,7 @@ public class Produto : Entity
 
     public void AtualizarPreco(decimal novoCusto, decimal novoPreco)
     {
-        if (novoPreco != PrecoVenda) EtiquetaDesatualizada = true;
+        if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         CustoUnitario = novoCusto;
         PrecoVenda = novoPreco;
         Markup = novoCusto > 0 ? Math.Round(novoPreco / novoCusto, 4) : 0;
@@ -234,7 +249,7 @@ public class Produto : Entity
 
     public void AtualizarPrecoEMarkup(decimal precoVenda, decimal markup)
     {
-        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoVenda = precoVenda;
         Markup = markup;
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;

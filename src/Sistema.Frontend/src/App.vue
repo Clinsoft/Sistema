@@ -377,10 +377,16 @@ const balancaPendentes = ref(0)
 async function carregarPendenciasBalanca() {
   if (!auth.logado || !auth.empresaId) return
   try {
-    const { data } = await api.get('/balanca/pendencias', { params: { empresaId: auth.empresaId } })
+    // Respeita a loja selecionada: pendência da balança é por loja (só produtos
+    // com movimentação naquele local). Sem loja selecionada = empresa toda.
+    const { data } = await api.get('/balanca/pendencias', {
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },
+    })
     balancaPendentes.value = data?.pendentes ?? 0
   } catch { balancaPendentes.value = 0 }
 }
+// Ao trocar a loja no seletor do topo, recalcula a pendência da balança.
+watch(() => auth.lojaAtualId, carregarPendenciasBalanca)
 
 onMounted(() => {
   carregarNotificacoes()

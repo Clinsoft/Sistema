@@ -116,6 +116,14 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FinanceiroAlertaJob>(
     job => job.ExecutarAsync(),
     "0 8 * * *");   // 08:00 todo dia
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
+    "recebivel-cartao-baixa-automatica",
+    job => job.ExecutarAsync(),
+    "0 7 * * *");   // 07:00 todo dia — marca Recebido quando o crédito cai (D+prazo)
+// Roda uma vez ao subir para regularizar os recebíveis já vencidos.
+BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
+    job => job.ExecutarAsync());
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.BackupJob>(
     "backup-banco-dados",
     job => job.ExecutarAsync(),

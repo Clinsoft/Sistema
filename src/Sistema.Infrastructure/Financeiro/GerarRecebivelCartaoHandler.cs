@@ -45,12 +45,33 @@ public class GerarRecebivelCartaoHandler(SistemaDbContext db)
                                   $"Crédito {pag.Parcelas}x"),
             };
 
-            db.ReceiveisCartao.Add(RecebivelCartao.Criar(
-                evt.EmpresaId, op.Id, evt.VendaId,
-                forma, credito ? pag.Parcelas : 1,
-                valorBruto: pag.Valor, taxa: taxa,
-                dataTransacao: hoje,
-                dataPrevistaRepasse: hoje.AddDays(prazoDias)));
+            if (parcelado)
+            {
+                // Uma linha por parcela: cada parcela cai ~30 dias após a anterior
+                // (parcela 1 em D+prazo, parcela 2 em D+prazo+30, ...). Repasse real da operadora.
+                var n = pag.Parcelas;
+                var valorParcela = Math.Round(pag.Valor / n, 2);
+                for (var k = 1; k <= n; k++)
+                {
+                    // A última parcela absorve a sobra do arredondamento.
+                    var valor = k == n ? pag.Valor - valorParcela * (n - 1) : valorParcela;
+                    db.ReceiveisCartao.Add(RecebivelCartao.Criar(
+                        evt.EmpresaId, op.Id, evt.VendaId,
+                        forma, n,
+                        valorBruto: valor, taxa: taxa,
+                        dataTransacao: hoje,
+                        dataPrevistaRepasse: hoje.AddDays(prazoDias + 30 * (k - 1))));
+                }
+            }
+            else
+            {
+                db.ReceiveisCartao.Add(RecebivelCartao.Criar(
+                    evt.EmpresaId, op.Id, evt.VendaId,
+                    forma, credito ? pag.Parcelas : 1,
+                    valorBruto: pag.Valor, taxa: taxa,
+                    dataTransacao: hoje,
+                    dataPrevistaRepasse: hoje.AddDays(prazoDias)));
+            }
         }
 
         await db.SaveChangesAsync(ct);

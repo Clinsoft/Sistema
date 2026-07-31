@@ -136,6 +136,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<Sistema.Infrastructure.Services.SiteSyncService>(c =>
             c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>();
 
         return services;
     }

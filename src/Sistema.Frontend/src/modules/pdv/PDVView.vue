@@ -379,7 +379,7 @@
           </div>
           <v-select
             v-model="colaboradorId"
-            :items="colaboradores"
+            :items="vendedoresDaLoja"
             item-title="nome"
             item-value="id"
             variant="outlined"
@@ -852,7 +852,7 @@ interface Produto {
   unidadeSigla: string; vendidoFracionado?: boolean; codigoPlu?: number | null
 }
 interface Cliente { id: string; nome: string }
-interface Colaborador { id: string; nome: string; perfil: string }
+interface Colaborador { id: string; nome: string; perfil: string; localEstoqueId?: string | null }
 
 // ── Refs ─────────────────────────────────────────────────────────
 const inputCodigo = ref()
@@ -904,6 +904,20 @@ const modalAtalhos = ref(false)
 const finalizando = ref(false)
 const colaboradores = ref<Colaborador[]>([])
 const colaboradorId = ref('')
+
+// Só os colaboradores da LOJA do caixa (ou da loja selecionada no topo), sem
+// Administrador. Assim IPANEMA mostra IPANEMA e RIO CLARO mostra RIO CLARO.
+const vendedoresDaLoja = computed(() => {
+  const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId
+  return colaboradores.value.filter(u =>
+    u.perfil !== 'Administrador' && u.perfil !== 'Contador' &&
+    (!loja || u.localEstoqueId === loja))
+})
+// Garante que o vendedor selecionado seja um da loja; senão, o primeiro.
+watch(vendedoresDaLoja, (lista) => {
+  if (!lista.find(u => u.id === colaboradorId.value))
+    colaboradorId.value = lista[0]?.id ?? ''
+}, { immediate: true })
 const cpfConsumidor = ref('')
 const tipoDocConsumidor = ref<'cpf' | 'cnpj'>('cpf')
 

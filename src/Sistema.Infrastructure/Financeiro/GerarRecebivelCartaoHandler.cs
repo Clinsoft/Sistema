@@ -17,6 +17,27 @@ public class GerarRecebivelCartaoHandler(SistemaDbContext db)
 {
     public async Task Handle(VendaFinalizadaEvent evt, CancellationToken ct)
     {
+        var hoje = DateTime.Today;
+
+        // Pix recebido na maquininha: taxa 0, atribuído à operadora "Pix" da empresa.
+        // Todo pagamento em Pix vira recebível para conciliar com o repasse da adquirente.
+        var pagamentosPix = evt.Pagamentos.Where(p => p.Forma == FormaPagamento.Pix).ToList();
+        if (pagamentosPix.Count > 0)
+        {
+            var opPix = await db.OperadorasCartao.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.EmpresaId == evt.EmpresaId && o.EhPix && o.Ativo, ct);
+            if (opPix is not null)
+            {
+                foreach (var pag in pagamentosPix)
+                    db.ReceiveisCartao.Add(RecebivelCartao.Criar(
+                        evt.EmpresaId, opPix.Id, evt.VendaId,
+                        "Pix", 1, valorBruto: pag.Valor, taxa: opPix.TaxaPix,
+                        dataTransacao: hoje,
+                        dataPrevistaRepasse: hoje.AddDays(opPix.PrazoDiasPix)));
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
         var pagamentosCartao = evt.Pagamentos
             .Where(p => p.OperadoraCartaoId is not null &&
                         p.Forma is FormaPagamento.CartaoCredito or FormaPagamento.CartaoDebito)
@@ -27,8 +48,6 @@ public class GerarRecebivelCartaoHandler(SistemaDbContext db)
         var operadoras = await db.OperadorasCartao.AsNoTracking()
             .Where(o => operadoraIds.Contains(o.Id))
             .ToDictionaryAsync(o => o.Id, ct);
-
-        var hoje = DateTime.Today;
 
         foreach (var pag in pagamentosCartao)
         {

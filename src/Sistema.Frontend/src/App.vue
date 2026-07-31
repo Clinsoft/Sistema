@@ -358,8 +358,9 @@ function abrirNotificacao(n: any) { if (n?.rota) router.push(n.rota) }
 onMounted(() => {
   carregarNotificacoes()
   setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
-  // Sessões antigas (login anterior à feature) ainda não têm as lojas em cache.
-  if (auth.logado && auth.lojas.length === 0) auth.carregarLojas()
+  // Mantém a lista de lojas sempre fresca (reflete lojas ativadas/inativadas
+  // sem precisar relogar). Sessões antigas também passam a ter o seletor.
+  if (auth.logado) auth.carregarLojas()
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).

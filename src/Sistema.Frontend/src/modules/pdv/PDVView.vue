@@ -904,20 +904,6 @@ const modalAtalhos = ref(false)
 const finalizando = ref(false)
 const colaboradores = ref<Colaborador[]>([])
 const colaboradorId = ref('')
-
-// Só os colaboradores da LOJA do caixa (ou da loja selecionada no topo), sem
-// Administrador. Assim IPANEMA mostra IPANEMA e RIO CLARO mostra RIO CLARO.
-const vendedoresDaLoja = computed(() => {
-  const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId
-  return colaboradores.value.filter(u =>
-    u.perfil !== 'Administrador' && u.perfil !== 'Contador' &&
-    (!loja || u.localEstoqueId === loja))
-})
-// Garante que o vendedor selecionado seja um da loja; senão, o primeiro.
-watch(vendedoresDaLoja, (lista) => {
-  if (!lista.find(u => u.id === colaboradorId.value))
-    colaboradorId.value = lista[0]?.id ?? ''
-}, { immediate: true })
 const cpfConsumidor = ref('')
 const tipoDocConsumidor = ref<'cpf' | 'cnpj'>('cpf')
 
@@ -932,6 +918,21 @@ const ultimaVendaAutorizada = ref(false)
 
 // ── Sessão de caixa ──────────────────────────────────────────────
 const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string; localEstoqueId?: string | null } | null>(null)
+
+// Só os colaboradores da LOJA do caixa (ou da loja selecionada no topo), sem
+// Administrador. IPANEMA mostra IPANEMA e RIO CLARO mostra RIO CLARO.
+const vendedoresDaLoja = computed(() => {
+  const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId
+  return colaboradores.value.filter(u =>
+    u.perfil !== 'Administrador' && u.perfil !== 'Contador' &&
+    (!loja || u.localEstoqueId === loja))
+})
+// Garante que o vendedor selecionado seja um da loja; senão, o primeiro.
+watch(vendedoresDaLoja, (lista) => {
+  if (!lista.find(u => u.id === colaboradorId.value))
+    colaboradorId.value = lista[0]?.id ?? ''
+}, { immediate: true })
+
 const dialogAbrirCaixa = ref(false)
 const abrindoCaixa = ref(false)
 const saldoInicial = ref<number>(0)

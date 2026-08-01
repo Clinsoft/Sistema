@@ -65,11 +65,20 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .Select(g => new { categoria = g.Key, total = g.Sum(x => x.ValorPago) })
             .ToListAsync(ct);
 
+        // Outras Receitas Operacionais recebidas no período (ex.: ajuste de fechamento,
+        // subvenções). Entram no resultado como receita — mas NÃO são venda nem aporte de capital.
+        var outrasReceitas = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaReceber
+                && l.Categoria == "Outras Receitas Operacionais"
+                && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
+                && (l.Status == StatusLancamento.Pago || l.Status == StatusLancamento.PagoParcialmente))
+            .SumAsync(l => l.ValorPago, ct);
+
         var receitaBruta = receitas + descontosVendas;
         var receitaLiquida = receitas;
         var lucroBruto = receitaLiquida - cmv;
         var margemBruta = receitaLiquida > 0 ? Math.Round(lucroBruto / receitaLiquida * 100, 2) : 0m;
-        var resultadoOperacional = lucroBruto - despesasPagas;
+        var resultadoOperacional = lucroBruto - despesasPagas + outrasReceitas;
         var margemOperacional = receitaLiquida > 0 ? Math.Round(resultadoOperacional / receitaLiquida * 100, 2) : 0m;
 
         return Ok(new
@@ -83,6 +92,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
             margemBruta,
             despesasOperacionais = despesasPagas,
             despesasPorCategoria,
+            outrasReceitas,
             resultadoOperacional,
             margemOperacional
         });

@@ -157,6 +157,59 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>Necessidade de capital de giro do mês: quanto a COMPRA de estoque do mês
+    /// supera o CUSTO das vendas previstas (ritmo dos últimos 30 dias). Positivo = você
+    /// compra mais mercadoria do que vende, e a diferença precisa vir de capital de giro.</summary>
+    [HttpGet("capital-giro")]
+    public async Task<IActionResult> CapitalGiro([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+    {
+        var anoRef = ano ?? DateTime.Today.Year;
+        var mesRef = mes ?? DateTime.Today.Month;
+        var inicio = new DateTime(anoRef, mesRef, 1);
+        var fimExcl = inicio.AddMonths(1);
+
+        var estoqueAPagar = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.Categoria == "Custo (CMV)"
+                && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
+            .SumAsync(l => l.ValorOriginal, ct);
+
+        // Vendas previstas = ritmo dos últimos 30 dias (mês corrente real da operação).
+        var vendasPrevistas = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId
+                && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && v.DataHora >= DateTime.Today.AddDays(-30))
+            .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
+
+        // Margem de contribuição dos últimos 90 dias (base estável para o % de custo).
+        var de90 = DateTime.Today.AddDays(-90);
+        var itens90 = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId && x.v.DataHora >= de90
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                (x, p) => new { rec = x.i.PrecoUnitario * x.i.Quantidade, cus = p.CustoUnitario * x.i.Quantidade })
+            .ToListAsync(ct);
+        var rec90 = itens90.Sum(i => i.rec);
+        var mc = rec90 > 0 ? Math.Round((rec90 - itens90.Sum(i => i.cus)) / rec90 * 100, 2) : 0m;
+
+        var cmvPrevisto = Math.Round(vendasPrevistas * (1 - mc / 100m), 2);
+        var necessidade = Math.Round(estoqueAPagar - cmvPrevisto, 2);
+
+        return Ok(new
+        {
+            periodo = new { ano = anoRef, mes = mesRef },
+            estoqueAPagarMes = estoqueAPagar,
+            vendasPrevistas = Math.Round(vendasPrevistas, 2),
+            percentualMargemContribuicao = mc,
+            cmvPrevisto,
+            necessidadeCapitalGiro = necessidade
+        });
+    }
+
     /// <summary>Margem de contribuição por CATEGORIA de produto nos últimos N dias — para
     /// afinar a meta de venda (o mix vendido muda a margem média).</summary>
     [HttpGet("margem-categorias")]

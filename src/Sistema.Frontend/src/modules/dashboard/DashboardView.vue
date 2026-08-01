@@ -389,6 +389,32 @@
           </v-col>
         </v-row>
 
+        <!-- Necessidade de capital de giro do mês -->
+        <v-card v-if="capitalGiro" rounded="xl" elevation="1" class="mb-3"
+          :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-lighten-5' : 'green-lighten-5'">
+          <v-card-text class="pa-3">
+            <div class="d-flex align-center mb-1" style="gap:6px">
+              <v-icon icon="mdi-cash-sync"
+                :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
+              <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
+            </div>
+            <div class="text-h5 font-weight-bold"
+              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
+              R$ {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Compra de estoque R$ {{ fmtMil(capitalGiro.estoqueAPagarMes) }}
+              − custo das vendas previstas R$ {{ fmtMil(capitalGiro.cmvPrevisto) }}
+            </div>
+            <div class="text-caption mt-1"
+              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+              {{ capitalGiro.necessidadeCapitalGiro > 0
+                ? 'Comprando mais estoque do que vende — a diferença vem de capital de giro.'
+                : 'Vendas cobrem a reposição de estoque do mês.' }}
+            </div>
+          </v-card-text>
+        </v-card>
+
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
@@ -852,6 +878,24 @@ function corMargem(pct: number) {
   return pct >= 65 ? 'success' : pct >= 55 ? 'warning' : 'error'
 }
 
+// Necessidade de capital de giro (compra de estoque − custo das vendas previstas)
+interface CapitalGiro {
+  estoqueAPagarMes: number
+  vendasPrevistas: number
+  cmvPrevisto: number
+  necessidadeCapitalGiro: number
+}
+const capitalGiro = ref<CapitalGiro | null>(null)
+async function carregarCapitalGiro() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<CapitalGiro>('/financeiro/ponto-equilibrio/capital-giro', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    capitalGiro.value = res.data
+  } catch { capitalGiro.value = null }
+}
+
 async function carregarPe() {
   if (!auth.empresaId) { carregandoPe.value = false; return }
   try {
@@ -922,7 +966,7 @@ async function mudarMes(delta: number) {
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
     carregarPe(), carregarDre(), carregarVendasColaborador(), carregarVendasLoja(),
-    carregarMetas(),
+    carregarMetas(), carregarCapitalGiro(),
   ])
 }
 const diaSelecionado = ref(diaHoje)
@@ -1330,6 +1374,7 @@ onMounted(async () => {
     carregarCurvaAbc(),
     carregarMetas(),
     carregarMargemCats(),
+    carregarCapitalGiro(),
   ])
   // Redesenha os gráficos DEPOIS que todos os cards assentaram no DOM. No load
   // inicial os vizinhos trocam de spinner→conteúdo e re-renderizam por cima do

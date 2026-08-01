@@ -241,7 +241,7 @@
 
       <!-- Contas a Receber — Agenda do mês -->
       <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" height="100%">
+        <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
             Contas a Receber — {{ calMesLabel }}
@@ -309,6 +309,48 @@
                 : 'Ver todas' }}
             </v-btn>
           </v-card-actions>
+        </v-card>
+
+        <!-- Planejamento (abaixo do Contas a Receber) -->
+        <v-card rounded="xl" elevation="1" class="mt-4">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
+            Planejamento — {{ anoAtual }}
+            <v-spacer />
+            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Ver
+            </v-btn>
+          </v-card-title>
+
+          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
+            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Criar Planejamento
+            </v-btn>
+          </v-card-text>
+
+          <div v-else class="pa-3 pt-0">
+            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
+              <div class="d-flex align-center mb-1">
+                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
+                <span class="text-caption font-weight-bold"
+                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
+                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
+                </span>
+              </div>
+              <v-progress-linear
+                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
+                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
+                height="5" rounded
+              />
+            </div>
+            <v-divider class="my-2" />
+            <div class="d-flex justify-space-between text-caption">
+              <span class="text-medium-emphasis">Realizado YTD</span>
+              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
+            </div>
+          </div>
         </v-card>
       </v-col>
 
@@ -527,53 +569,9 @@
       </v-col>
     </v-row>
 
-    <!-- Planejamento + Vendas por Colaborador -->
+    <!-- Vendas por Colaborador -->
     <v-row class="mt-2">
-      <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" style="display:flex;flex-direction:column">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
-            Planejamento — {{ anoAtual }}
-            <v-spacer />
-            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Ver
-            </v-btn>
-          </v-card-title>
-
-          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis flex-grow-1 d-flex flex-column justify-center pa-6">
-            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
-            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Criar Planejamento
-            </v-btn>
-          </v-card-text>
-
-          <div v-else class="pa-3 pt-0 flex-grow-1">
-            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
-              <div class="d-flex align-center mb-1">
-                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
-                <span class="text-caption font-weight-bold"
-                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
-                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
-                </span>
-              </div>
-              <v-progress-linear
-                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
-                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
-                height="5" rounded
-              />
-            </div>
-            <v-divider class="my-2" />
-            <div class="d-flex justify-space-between text-caption">
-              <span class="text-medium-emphasis">Realizado YTD</span>
-              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- Vendas por Colaborador -->
-      <v-col cols="12" md="6">
+      <v-col cols="12">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-account-group-outline" class="mr-2" color="teal" />

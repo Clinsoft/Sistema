@@ -47,6 +47,9 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == TipoLancamento.ContaPagar
                 && l.DataPagamento >= inicio && l.DataPagamento < fim.AddDays(1)
+                // Não conta como despesa: compra de mercadoria (já entra pelo CMV do que foi
+                // vendido) nem capital/imobilizado (móveis, equipamentos são investimento).
+                && l.Categoria != "Custo (CMV)" && l.Categoria != "Imobilizado"
                 && (l.Status == StatusLancamento.Pago || l.Status == StatusLancamento.PagoParcialmente))
             .SumAsync(l => l.ValorPago, ct);
 
@@ -121,7 +124,8 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .ToListAsync(ct);
 
         var receber = lancs.Where(l => l.Tipo == TipoLancamento.ContaReceber).ToList();
-        var pagar = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar).ToList();
+        // Capital/imobilizado (móveis, equipamentos) é investimento — não entra como despesa no DRE.
+        var pagar = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar && l.Categoria != "Imobilizado").ToList();
 
         // Subcategorias dos recebimentos agrupadas pela categoria (Vendas, Serviços…)
         var subRecebimentos = receber

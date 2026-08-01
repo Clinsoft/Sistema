@@ -314,6 +314,39 @@
 
       <!-- Ponto de Equilíbrio + DRE (empilhados, ao lado do Contas a Receber) -->
       <v-col cols="12" md="6">
+        <!-- Metas de venda diária: cobrir despesas operacionais e financiamentos -->
+        <v-row v-if="metas && (metas.metaDiariaOperacional > 0 || metas.metaDiariaFinanciamentos > 0)"
+          dense class="mb-3">
+          <v-col cols="6">
+            <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Operacional</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-teal-darken-3">R$ {{ fmt(metas.metaDiariaOperacional) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.despesasOperacionaisMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Financiamentos</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">R$ {{ fmt(metas.metaDiariaFinanciamentos) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.financiamentosMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
@@ -756,6 +789,25 @@ interface PeData {
 const pe = ref<PeData | null>(null)
 const carregandoPe = ref(true)
 
+// Metas de venda diária (cobrir despesas operacionais / financiamentos)
+interface MetasDiarias {
+  percentualMargemContribuicao: number
+  despesasOperacionaisMes: number
+  financiamentosMes: number
+  metaDiariaOperacional: number
+  metaDiariaFinanciamentos: number
+}
+const metas = ref<MetasDiarias | null>(null)
+async function carregarMetas() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<MetasDiarias>('/financeiro/ponto-equilibrio/metas-diarias', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    metas.value = res.data
+  } catch { metas.value = null }
+}
+
 async function carregarPe() {
   if (!auth.empresaId) { carregandoPe.value = false; return }
   try {
@@ -826,6 +878,7 @@ async function mudarMes(delta: number) {
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
     carregarPe(), carregarDre(), carregarVendasColaborador(), carregarVendasLoja(),
+    carregarMetas(),
   ])
 }
 const diaSelecionado = ref(diaHoje)
@@ -1231,6 +1284,7 @@ onMounted(async () => {
     carregarDre(),
     carregarPlanejamento(),
     carregarCurvaAbc(),
+    carregarMetas(),
   ])
   // Redesenha os gráficos DEPOIS que todos os cards assentaram no DOM. No load
   // inicial os vizinhos trocam de spinner→conteúdo e re-renderizam por cima do

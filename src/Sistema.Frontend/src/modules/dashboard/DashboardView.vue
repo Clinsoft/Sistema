@@ -366,7 +366,7 @@
                   <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
                   <span class="text-caption font-weight-medium">Meta/dia · Operacional</span>
                 </div>
-                <div class="text-h6 font-weight-bold text-teal-darken-3">R$ {{ fmt(metas.metaDiariaOperacional) }}</div>
+                <div class="text-h6 font-weight-bold text-teal-darken-3">{{ fmt(metas.metaDiariaOperacional) }}</div>
                 <div class="text-caption text-medium-emphasis">
                   p/ cobrir R$ {{ fmtMil(metas.despesasOperacionaisMes) }}/mês
                 </div>
@@ -380,7 +380,7 @@
                   <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
                   <span class="text-caption font-weight-medium">Meta/dia · Financiamentos</span>
                 </div>
-                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">R$ {{ fmt(metas.metaDiariaFinanciamentos) }}</div>
+                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">{{ fmt(metas.metaDiariaFinanciamentos) }}</div>
                 <div class="text-caption text-medium-emphasis">
                   p/ cobrir R$ {{ fmtMil(metas.financiamentosMes) }}/mês
                 </div>
@@ -398,9 +398,15 @@
                 :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
               <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
             </div>
-            <div class="text-h5 font-weight-bold"
-              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
-              R$ {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
+            <div class="d-flex align-baseline flex-wrap" style="gap:6px 12px">
+              <span class="text-h5 font-weight-bold"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
+                {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
+              </span>
+              <span class="text-subtitle-1 font-weight-medium"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+                {{ fmt(capitalGiroDia) }}/dia
+              </span>
             </div>
             <div class="text-caption text-medium-emphasis mt-1">
               Compra de estoque R$ {{ fmtMil(capitalGiro.estoqueAPagarMes) }}
@@ -886,6 +892,11 @@ interface CapitalGiro {
   necessidadeCapitalGiro: number
 }
 const capitalGiro = ref<CapitalGiro | null>(null)
+const capitalGiroDia = computed(() => {
+  if (!capitalGiro.value) return 0
+  const dias = new Date(anoRef.value, mesRef.value + 1, 0).getDate()   // dias do mês
+  return capitalGiro.value.necessidadeCapitalGiro / dias
+})
 async function carregarCapitalGiro() {
   if (!auth.empresaId) return
   try {

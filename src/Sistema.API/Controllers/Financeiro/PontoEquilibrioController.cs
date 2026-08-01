@@ -157,6 +157,44 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>Margem de contribuição por CATEGORIA de produto nos últimos N dias — para
+    /// afinar a meta de venda (o mix vendido muda a margem média).</summary>
+    [HttpGet("margem-categorias")]
+    public async Task<IActionResult> MargemCategorias([FromQuery] Guid empresaId,
+        [FromQuery] int dias = 90, CancellationToken ct = default)
+    {
+        var de = DateTime.Today.AddDays(-Math.Abs(dias));
+        var itens = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId && x.v.DataHora >= de
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                (x, p) => new { p.CategoriaId, receita = x.i.PrecoUnitario * x.i.Quantidade, custo = p.CustoUnitario * x.i.Quantidade })
+            .ToListAsync(ct);
+
+        var catIds = itens.Select(i => i.CategoriaId).Distinct().ToList();
+        var nomes = await db.Categorias.AsNoTracking().Where(c => catIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+
+        var totalReceita = itens.Sum(i => i.receita);
+        var categorias = itens.GroupBy(i => i.CategoriaId)
+            .Select(g => new { id = g.Key, rec = g.Sum(x => x.receita), mar = g.Sum(x => x.receita) - g.Sum(x => x.custo) })
+            .Select(x => new
+            {
+                categoria = nomes.TryGetValue(x.id, out var n) ? n : "(sem categoria)",
+                receita = Math.Round(x.rec, 2),
+                margem = Math.Round(x.mar, 2),
+                margemPct = x.rec > 0 ? Math.Round(x.mar / x.rec * 100, 1) : 0m,
+                pctFaturamento = totalReceita > 0 ? Math.Round(x.rec / totalReceita * 100, 1) : 0m,
+            })
+            .OrderByDescending(x => x.receita).ToList();
+
+        var margemMedia = totalReceita > 0
+            ? Math.Round((totalReceita - itens.Sum(i => i.custo)) / totalReceita * 100, 2) : 0m;
+
+        return Ok(new { dias = Math.Abs(dias), margemMedia, categorias });
+    }
+
     /// <summary>Margem de contribuição % do mês; se o mês não tem vendas, usa os últimos 90 dias.</summary>
     private async Task<decimal> MargemContribuicaoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct)
     {

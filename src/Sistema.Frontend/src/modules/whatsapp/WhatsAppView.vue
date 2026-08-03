@@ -513,6 +513,15 @@
               <v-col cols="12">
                 <v-switch v-model="cfgMsg.ativo" color="success" label="Mensagens automáticas ativas" density="compact" hide-details />
               </v-col>
+              <v-col cols="12">
+                <v-divider class="mb-2" />
+                <v-switch v-model="cfgMsg.iaAtendimentoAtiva" color="deep-purple" density="compact" hide-details
+                  label="🤖 Atendente por IA (responde e monta pedido automático)" />
+                <div class="text-caption text-medium-emphasis ml-2">
+                  Quando o cliente manda mensagem, a IA responde usando o catálogo/preços da loja e vai montando o pedido.
+                  A conversa fica no inbox e o atendente pode assumir a qualquer momento.
+                </div>
+              </v-col>
             </v-row>
           </v-card-text>
           <v-card-actions>
@@ -1091,7 +1100,7 @@ const cfgMsg = ref({
   phoneNumberId: '', accessToken: '', businessAccountId: '',
   webhookVerifyToken: '', appId: '',
   ativo: false, enviarAniversario: true, enviarPromocoes: true,
-  enviarNovidades: false, horaDisparo: 8,
+  enviarNovidades: false, horaDisparo: 8, iaAtendimentoAtiva: false,
 })
 const mostrarToken = ref(false)
 

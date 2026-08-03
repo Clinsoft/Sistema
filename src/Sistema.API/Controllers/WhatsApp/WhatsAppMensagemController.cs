@@ -14,7 +14,8 @@ namespace Sistema.API.Controllers.WhatsApp;
 public class WhatsAppMensagemController(
     SistemaDbContext db,
     IUnitOfWork uow,
-    WhatsAppCloudApiService whatsAppService) : ControllerBase
+    WhatsAppCloudApiService whatsAppService,
+    WhatsAppIaAtendenteService iaAtendente) : ControllerBase
 {
     // ─── Configuração ─────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ public class WhatsAppMensagemController(
             cfg.EnviarPromocoes,
             cfg.EnviarNovidades,
             cfg.HoraDisparo,
+            cfg.IaAtendimentoAtiva,
         });
     }
 
@@ -70,6 +72,7 @@ public class WhatsAppMensagemController(
             req.WebhookVerifyToken, req.AppId,
             req.Ativo, req.EnviarAniversario, req.EnviarPromocoes, req.EnviarNovidades,
             req.HoraDisparo);
+        cfg.DefinirIaAtendimento(req.IaAtendimentoAtiva);
 
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -693,6 +696,9 @@ public class WhatsAppMensagemController(
         using (var sr = new System.IO.StreamReader(Request.Body))
             body = await sr.ReadToEndAsync(ct);
 
+        // Mensagens de texto recebidas que devem acionar o atendimento por IA (após salvar).
+        var atendimentosIa = new List<(ConfiguracaoWhatsAppMensagem cfg, string de, string? nome, string texto)>();
+
         try
         {
             using var doc = JsonDocument.Parse(body);
@@ -779,8 +785,11 @@ public class WhatsAppMensagemController(
                             if (tipo == "text" && m.TryGetProperty("text", out var txtEl)
                                 && txtEl.TryGetProperty("body", out var bodyEl))
                             {
+                                var textoCliente = bodyEl.GetString() ?? "";
                                 msg = MensagemWhatsApp.Receber(empresaId, from, nome,
-                                    bodyEl.GetString() ?? "", tipo, wamId, dataHora, localEstoqueId);
+                                    textoCliente, tipo, wamId, dataHora, localEstoqueId);
+                                if (cfg.IaAtendimentoAtiva && !string.IsNullOrWhiteSpace(textoCliente))
+                                    atendimentosIa.Add((cfg, from, nome, textoCliente));
                             }
                             else if (m.TryGetProperty(tipo, out var midiaEl) && cfg.AccessToken is not null)
                             {
@@ -815,6 +824,10 @@ public class WhatsAppMensagemController(
                 }
             }
             await uow.SalvarAsync(ct);
+
+            // Atendimento por IA: responde e monta o pedido para cada mensagem recebida.
+            foreach (var a in atendimentosIa)
+                await iaAtendente.AtenderAsync(a.cfg, a.de, a.nome, a.texto, ct);
         }
         catch { /* webhook nunca pode retornar erro para Meta */ }
 
@@ -843,7 +856,7 @@ public record SalvarConfigWhatsAppRequest(
     string? PhoneNumberId, string? AccessToken, string? BusinessAccountId,
     string? WebhookVerifyToken, string? AppId, bool Ativo,
     bool EnviarAniversario, bool EnviarPromocoes, bool EnviarNovidades,
-    int HoraDisparo = 8);
+    int HoraDisparo = 8, bool IaAtendimentoAtiva = false);
 
 public record SalvarConfigCatalogoRequest(
     Guid EmpresaId, string? PhoneNumberId, string? AccessToken,

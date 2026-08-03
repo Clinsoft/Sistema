@@ -24,6 +24,9 @@ public class ConfiguracaoWhatsAppMensagem : Entity
 
     // Comportamento
     public bool Ativo                 { get; private set; } = false;
+    public bool IaAtendimentoAtiva    { get; private set; } = false;  // bot de IA responde no WhatsApp
+
+    public void DefinirIaAtendimento(bool ativa) => IaAtendimentoAtiva = ativa;
 
     // Regras de disparo automático
     public bool   EnviarAniversario   { get; private set; } = true;

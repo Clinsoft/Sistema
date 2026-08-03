@@ -35,11 +35,11 @@ public class WhatsAppIaAtendenteService(
                 .Where(e => e.Id == cfg.EmpresaId).Select(e => e.NomeFantasia ?? e.RazaoSocial).FirstOrDefaultAsync(ct)
                 ?? "nossa loja";
 
-            // Catálogo: produtos ativos com preço (nome exato + preço). Limite p/ caber no contexto.
+            // Catálogo: produtos ativos com preço. PorPeso = vendido por kg (balança/fracionado).
             var catalogo = await db.Produtos.AsNoTracking()
                 .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0)
                 .OrderBy(p => p.Descricao)
-                .Select(p => new { p.Descricao, p.PrecoVenda })
+                .Select(p => new { p.Descricao, p.PrecoVenda, PorPeso = p.ProdutoBalanca || p.VendidoFracionado })
                 .Take(150).ToListAsync(ct);
             if (catalogo.Count == 0) return;
 
@@ -53,6 +53,8 @@ public class WhatsAppIaAtendenteService(
             var sys = new StringBuilder();
             sys.AppendLine($"Você é o atendente virtual da {nomeEmpresa} (loja de produtos naturais) no WhatsApp.");
             sys.AppendLine("Responda em português, de forma simpática, curta e clara. Use SOMENTE os produtos e preços da lista abaixo — nunca invente produto nem preço.");
+            sys.AppendLine("Produtos marcados [por peso] são vendidos por QUILO. SEMPRE informe o preço POR 100g (é assim que o cliente compra); mencione o valor por kg só se ajudar.");
+            sys.AppendLine("Ao montar o pedido de item POR PESO, a 'quantidade' deve estar em QUILOS: 100g = 0.1, 250g = 0.25, 500g = 0.5, 1kg = 1. Para itens por unidade, 'quantidade' é o número de unidades.");
             sys.AppendLine("Ajude o cliente a montar o pedido. Se ele pedir algo que não está na lista, diga que não temos e sugira um similar da lista.");
             sys.AppendLine("Se a conversa sair do escopo (reclamação, troca, entrega complexa, algo que você não sabe), responda que vai chamar um atendente humano.");
             sys.AppendLine("Responda SEMPRE em JSON: {\"resposta\": \"texto que será enviado ao cliente\", \"itens\": [{\"nome\": \"NOME EXATO DA LISTA\", \"quantidade\": N}], \"finalizarPedido\": false}.");
@@ -62,7 +64,9 @@ public class WhatsAppIaAtendenteService(
             var user = new StringBuilder();
             user.AppendLine("=== CATÁLOGO (nome — preço) ===");
             foreach (var p in catalogo)
-                user.AppendLine($"- {p.Descricao} — R$ {p.PrecoVenda:0.00}");
+                user.AppendLine(p.PorPeso
+                    ? $"- {p.Descricao} — R$ {p.PrecoVenda / 10m:0.00} por 100g (R$ {p.PrecoVenda:0.00}/kg) [por peso]"
+                    : $"- {p.Descricao} — R$ {p.PrecoVenda:0.00} (unidade)");
             user.AppendLine();
             user.AppendLine("=== CONVERSA ATÉ AGORA ===");
             foreach (var m in hist)

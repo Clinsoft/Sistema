@@ -9,6 +9,7 @@ namespace Sistema.Domain.WhatsApp.Entities;
 public class ConfiguracaoWhatsAppMensagem : Entity
 {
     public Guid   EmpresaId           { get; private set; }
+    public Guid?  LocalEstoqueId      { get; private set; }  // loja dona deste número/conta (null = matriz)
 
     // Credenciais Meta Cloud API
     public string? PhoneNumberId      { get; private set; }  // ex: 123456789012345
@@ -32,8 +33,10 @@ public class ConfiguracaoWhatsAppMensagem : Entity
 
     private ConfiguracaoWhatsAppMensagem() { }
 
-    public static ConfiguracaoWhatsAppMensagem Criar(Guid empresaId)
-        => new() { EmpresaId = empresaId };
+    public static ConfiguracaoWhatsAppMensagem Criar(Guid empresaId, Guid? localEstoqueId = null)
+        => new() { EmpresaId = empresaId, LocalEstoqueId = localEstoqueId };
+
+    public void DefinirLoja(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
 
     public void Atualizar(string? phoneNumberId, string? accessToken,
         string? businessAccountId, string? webhookVerifyToken, string? appId,

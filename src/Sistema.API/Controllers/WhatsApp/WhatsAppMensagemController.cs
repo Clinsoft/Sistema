@@ -20,11 +20,11 @@ public class WhatsAppMensagemController(
 
     [HttpGet("config")]
     [Authorize]
-    public async Task<IActionResult> ObterConfig([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> ObterConfig([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct)
-            ?? ConfiguracaoWhatsAppMensagem.Criar(empresaId);
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId, ct)
+            ?? ConfiguracaoWhatsAppMensagem.Criar(empresaId, localEstoqueId);
 
         return Ok(new
         {
@@ -47,21 +47,21 @@ public class WhatsAppMensagemController(
     [HttpPut("config")]
     [Authorize]
     public async Task<IActionResult> SalvarConfig(
-        [FromQuery] Guid empresaId, [FromBody] SalvarConfigWhatsAppRequest req, CancellationToken ct)
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, [FromBody] SalvarConfigWhatsAppRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem
-            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId, ct);
 
         if (cfg is null)
         {
-            cfg = ConfiguracaoWhatsAppMensagem.Criar(empresaId);
+            cfg = ConfiguracaoWhatsAppMensagem.Criar(empresaId, localEstoqueId);
             db.ConfiguracoesWhatsAppMensagem.Add(cfg);
         }
 
         // Só atualiza o token se um novo valor foi enviado (não começa com ****)
         var token = req.AccessToken?.StartsWith("****") == true
             ? (await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-               .Where(c => c.EmpresaId == empresaId)
+               .Where(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId)
                .Select(c => c.AccessToken)
                .FirstOrDefaultAsync(ct))
             : req.AccessToken;
@@ -79,11 +79,11 @@ public class WhatsAppMensagemController(
 
     [HttpGet("/api/whatsapp/configuracao")]
     [Authorize]
-    public async Task<IActionResult> ObterConfigCatalogo([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> ObterConfigCatalogo([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct)
-            ?? ConfiguracaoWhatsAppMensagem.Criar(empresaId);
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId, ct)
+            ?? ConfiguracaoWhatsAppMensagem.Criar(empresaId, localEstoqueId);
 
         return Ok(new
         {
@@ -101,10 +101,10 @@ public class WhatsAppMensagemController(
         [FromBody] SalvarConfigCatalogoRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
         if (cfg is null)
         {
-            cfg = ConfiguracaoWhatsAppMensagem.Criar(req.EmpresaId);
+            cfg = ConfiguracaoWhatsAppMensagem.Criar(req.EmpresaId, req.LocalEstoqueId);
             db.ConfiguracoesWhatsAppMensagem.Add(cfg);
         }
 
@@ -356,7 +356,7 @@ public class WhatsAppMensagemController(
         [FromBody] EnviarMensagemRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
 
         if (cfg is null || !cfg.Ativo || cfg.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado ou inativo." });
@@ -366,7 +366,7 @@ public class WhatsAppMensagemController(
 
         var historico = HistoricoMensagemWhatsApp.Criar(
             req.EmpresaId, req.ClienteId, req.Telefone, req.NomeDestinatario,
-            tipo, req.TemplateName);
+            tipo, req.TemplateName, req.LocalEstoqueId);
 
         db.HistoricosMensagensWhatsApp.Add(historico);
         await uow.SalvarAsync(ct);
@@ -391,20 +391,20 @@ public class WhatsAppMensagemController(
     /// <summary>Enfileira imediatamente o job de promoções para esta empresa.</summary>
     [HttpPost("disparar-promocao")]
     [Authorize]
-    public IActionResult DispararPromocaoAgora([FromQuery] Guid empresaId)
+    public IActionResult DispararPromocaoAgora([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId)
     {
         Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
-            j => j.DispararPromocaoManualAsync(empresaId));
+            j => j.DispararPromocaoManualAsync(empresaId, localEstoqueId));
         return Accepted(new { mensagem = "Disparo de promoção enfileirado. Aguarde alguns instantes." });
     }
 
     /// <summary>Enfileira imediatamente o job de novidades para esta empresa.</summary>
     [HttpPost("disparar-novidade")]
     [Authorize]
-    public IActionResult DispararNovidadeAgora([FromQuery] Guid empresaId)
+    public IActionResult DispararNovidadeAgora([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId)
     {
         Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
-            j => j.DispararNovidadeManualAsync(empresaId));
+            j => j.DispararNovidadeManualAsync(empresaId, localEstoqueId));
         return Accepted(new { mensagem = "Disparo de novidade enfileirado. Aguarde alguns instantes." });
     }
 
@@ -414,13 +414,15 @@ public class WhatsAppMensagemController(
     [Authorize]
     public async Task<IActionResult> Historico(
         [FromQuery] Guid empresaId,
+        [FromQuery] Guid? localEstoqueId,
         [FromQuery] string? tipo,
         [FromQuery] string? status,
         [FromQuery] int pagina = 1,
         CancellationToken ct = default)
     {
         var query = db.HistoricosMensagensWhatsApp.AsNoTracking()
-            .Where(h => h.EmpresaId == empresaId);
+            .Where(h => h.EmpresaId == empresaId
+                     && (localEstoqueId == null || h.LocalEstoqueId == localEstoqueId));
 
         if (Enum.TryParse<TipoDisparoWhatsApp>(tipo, out var td))
             query = query.Where(h => h.TipoDisparo == td);
@@ -454,10 +456,11 @@ public class WhatsAppMensagemController(
     /// se a janela de 24h (para responder com texto livre) ainda está aberta.</summary>
     [HttpGet("/api/whatsapp/conversas")]
     [Authorize]
-    public async Task<IActionResult> Conversas([FromQuery] Guid empresaId, [FromQuery] string? busca, CancellationToken ct)
+    public async Task<IActionResult> Conversas([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, [FromQuery] string? busca, CancellationToken ct)
     {
         var brutas = await db.MensagensWhatsApp.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId)
+            .Where(m => m.EmpresaId == empresaId
+                     && (localEstoqueId == null || m.LocalEstoqueId == localEstoqueId))
             .GroupBy(m => m.Telefone)
             .Select(g => new
             {
@@ -490,10 +493,11 @@ public class WhatsAppMensagemController(
     /// <summary>Mensagens de uma conversa (marca as recebidas como lidas).</summary>
     [HttpGet("/api/whatsapp/conversas/{telefone}/mensagens")]
     [Authorize]
-    public async Task<IActionResult> MensagensConversa(string telefone, [FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> MensagensConversa(string telefone, [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var msgs = await db.MensagensWhatsApp
-            .Where(m => m.EmpresaId == empresaId && m.Telefone == telefone)
+            .Where(m => m.EmpresaId == empresaId && m.Telefone == telefone
+                     && (localEstoqueId == null || m.LocalEstoqueId == localEstoqueId))
             .OrderBy(m => m.DataHora)
             .ToListAsync(ct);
 
@@ -519,7 +523,7 @@ public class WhatsAppMensagemController(
     public async Task<IActionResult> Responder(string telefone, [FromBody] ResponderRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
         if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado." });
         if (string.IsNullOrWhiteSpace(req.Texto))
@@ -535,7 +539,7 @@ public class WhatsAppMensagemController(
             .Where(m => m.Telefone == telefone && m.NomeContato != null)
             .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
 
-        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, req.Texto, wamId));
+        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, req.Texto, wamId, localEstoqueId: req.LocalEstoqueId));
         await uow.SalvarAsync(ct);
         return Ok(new { wamId });
     }
@@ -545,10 +549,10 @@ public class WhatsAppMensagemController(
     [Authorize]
     public async Task<IActionResult> ResponderMidia(
         string telefone, [FromForm] Guid empresaId, [FromForm] IFormFile arquivo,
-        [FromForm] string? legenda, CancellationToken ct)
+        [FromForm] string? legenda, [FromForm] Guid? localEstoqueId, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId, ct);
         if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado." });
         if (arquivo is null || arquivo.Length == 0)
@@ -578,7 +582,7 @@ public class WhatsAppMensagemController(
             .Where(m => m.Telefone == telefone && m.NomeContato != null)
             .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
 
-        var msg = MensagemWhatsApp.Enviar(empresaId, telefone, nome, legenda ?? "", wamId, tipo);
+        var msg = MensagemWhatsApp.Enviar(empresaId, telefone, nome, legenda ?? "", wamId, tipo, localEstoqueId);
         msg.DefinirMidia($"/uploads/whatsapp/{nomeArquivo}", mime, arquivo.FileName);
         db.MensagensWhatsApp.Add(msg);
         await uow.SalvarAsync(ct);
@@ -592,7 +596,7 @@ public class WhatsAppMensagemController(
         string telefone, [FromBody] ResponderTemplateRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
         if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado." });
 
@@ -606,7 +610,7 @@ public class WhatsAppMensagemController(
             .Where(m => m.Telefone == telefone && m.NomeContato != null)
             .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
         db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(
-            req.EmpresaId, telefone, nome, $"📋 Template: {req.TemplateName}", wamId));
+            req.EmpresaId, telefone, nome, $"📋 Template: {req.TemplateName}", wamId, localEstoqueId: req.LocalEstoqueId));
         await uow.SalvarAsync(ct);
         return Ok(new { wamId });
     }
@@ -618,7 +622,7 @@ public class WhatsAppMensagemController(
         string telefone, [FromBody] ResponderRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
         if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado." });
 
@@ -637,7 +641,7 @@ public class WhatsAppMensagemController(
         var nome = await db.MensagensWhatsApp
             .Where(m => m.Telefone == telefone && m.NomeContato != null)
             .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
-        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, "📖 Catálogo enviado", wamId));
+        db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(req.EmpresaId, telefone, nome, "📖 Catálogo enviado", wamId, localEstoqueId: req.LocalEstoqueId));
         await uow.SalvarAsync(ct);
         return Ok(new { wamId });
     }
@@ -645,10 +649,11 @@ public class WhatsAppMensagemController(
     /// <summary>Total de mensagens recebidas não lidas (para o badge do menu).</summary>
     [HttpGet("/api/whatsapp/conversas/nao-lidas")]
     [Authorize]
-    public async Task<IActionResult> NaoLidas([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> NaoLidas([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var total = await db.MensagensWhatsApp.CountAsync(
             m => m.EmpresaId == empresaId
+              && (localEstoqueId == null || m.LocalEstoqueId == localEstoqueId)
               && m.Direcao == DirecaoMensagemWhatsApp.Recebida && !m.Lida, ct);
         return Ok(new { total });
     }
@@ -747,6 +752,7 @@ public class WhatsAppMensagemController(
                                 .FirstOrDefaultAsync(c => c.PhoneNumberId == phoneNumberId, ct);
                         if (cfg is null) continue;
                         var empresaId = cfg.EmpresaId;
+                        var localEstoqueId = cfg.LocalEstoqueId;
 
                         // Nome do contato (perfil do cliente).
                         string? nome = null;
@@ -768,13 +774,13 @@ public class WhatsAppMensagemController(
                                 ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime
                                 : DateTime.UtcNow;
 
-                            var msg = MensagemWhatsApp.Receber(empresaId, from, nome, "", tipo, wamId, dataHora);
+                            var msg = MensagemWhatsApp.Receber(empresaId, from, nome, "", tipo, wamId, dataHora, localEstoqueId);
 
                             if (tipo == "text" && m.TryGetProperty("text", out var txtEl)
                                 && txtEl.TryGetProperty("body", out var bodyEl))
                             {
                                 msg = MensagemWhatsApp.Receber(empresaId, from, nome,
-                                    bodyEl.GetString() ?? "", tipo, wamId, dataHora);
+                                    bodyEl.GetString() ?? "", tipo, wamId, dataHora, localEstoqueId);
                             }
                             else if (m.TryGetProperty(tipo, out var midiaEl) && cfg.AccessToken is not null)
                             {
@@ -782,7 +788,7 @@ public class WhatsAppMensagemController(
                                 var legenda = midiaEl.TryGetProperty("caption", out var capEl) ? capEl.GetString() : null;
                                 var nomeArq = midiaEl.TryGetProperty("filename", out var fnEl) ? fnEl.GetString() : null;
                                 msg = MensagemWhatsApp.Receber(empresaId, from, nome,
-                                    legenda ?? "", tipo, wamId, dataHora);
+                                    legenda ?? "", tipo, wamId, dataHora, localEstoqueId);
 
                                 if (midiaEl.TryGetProperty("id", out var midIdEl) && midIdEl.GetString() is { } midId)
                                 {
@@ -800,7 +806,7 @@ public class WhatsAppMensagemController(
                             }
                             else if (tipo != "text")
                             {
-                                msg = MensagemWhatsApp.Receber(empresaId, from, nome, $"[{tipo}]", tipo, wamId, dataHora);
+                                msg = MensagemWhatsApp.Receber(empresaId, from, nome, $"[{tipo}]", tipo, wamId, dataHora, localEstoqueId);
                             }
 
                             db.MensagensWhatsApp.Add(msg);
@@ -841,7 +847,8 @@ public record SalvarConfigWhatsAppRequest(
 
 public record SalvarConfigCatalogoRequest(
     Guid EmpresaId, string? PhoneNumberId, string? AccessToken,
-    string? CatalogId, string? NumeroWhatsApp, bool Ativo = false);
+    string? CatalogId, string? NumeroWhatsApp, bool Ativo = false,
+    Guid? LocalEstoqueId = null);
 
 public record CriarTemplateWhatsAppRequest(
     string NomeMeta, string TipoDisparo, string? Idioma = "pt_BR",
@@ -851,7 +858,7 @@ public record EnviarMensagemRequest(
     Guid EmpresaId, string Telefone, string NomeDestinatario, string TemplateName,
     string TipoDisparo = "Personalizado", Guid? ClienteId = null,
     string? Idioma = "pt_BR", IEnumerable<string>? Variaveis = null,
-    string? HeaderImageUrl = null);
+    string? HeaderImageUrl = null, Guid? LocalEstoqueId = null);
 
 public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);
 
@@ -863,8 +870,8 @@ public record CriarTemplateDeArteRequest(
     Guid EmpresaId, Guid ArteId, string TipoDisparo, string Nome, string Corpo,
     IEnumerable<string>? Exemplos = null, string? VariaveisJson = null);
 
-public record ResponderRequest(Guid EmpresaId, string Texto);
+public record ResponderRequest(Guid EmpresaId, string Texto, Guid? LocalEstoqueId = null);
 
 public record ResponderTemplateRequest(
     Guid EmpresaId, string TemplateName, string? Idioma = "pt_BR",
-    IEnumerable<string>? Variaveis = null, string? Nome = null);
+    IEnumerable<string>? Variaveis = null, string? Nome = null, Guid? LocalEstoqueId = null);

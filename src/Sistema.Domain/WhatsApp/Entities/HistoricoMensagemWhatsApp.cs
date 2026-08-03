@@ -5,6 +5,7 @@ namespace Sistema.Domain.WhatsApp.Entities;
 public class HistoricoMensagemWhatsApp : Entity
 {
     public Guid   EmpresaId    { get; private set; }
+    public Guid?  LocalEstoqueId { get; private set; }   // loja/unidade que disparou
     public Guid?  ClienteId    { get; private set; }
     public string Telefone     { get; private set; } = null!;
     public string NomeDestinatario { get; private set; } = null!;
@@ -23,10 +24,11 @@ public class HistoricoMensagemWhatsApp : Entity
 
     public static HistoricoMensagemWhatsApp Criar(Guid empresaId, Guid? clienteId,
         string telefone, string nomeDestinatario,
-        TipoDisparoWhatsApp tipoDisparo, string templateName)
+        TipoDisparoWhatsApp tipoDisparo, string templateName, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId          = empresaId,
+            LocalEstoqueId     = localEstoqueId,
             ClienteId          = clienteId,
             Telefone           = telefone,
             NomeDestinatario   = nomeDestinatario,

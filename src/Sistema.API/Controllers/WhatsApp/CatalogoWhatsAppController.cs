@@ -18,7 +18,7 @@ public class CatalogoWhatsAppController(SistemaDbContext db, IUnitOfWork uow,
     public async Task<IActionResult> Sincronizar([FromBody] SincronizarCatalogoRequest req, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
+            .FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId && c.LocalEstoqueId == req.LocalEstoqueId, ct);
         if (cfg is null || string.IsNullOrWhiteSpace(cfg.CatalogId) || string.IsNullOrWhiteSpace(cfg.AccessToken))
             return BadRequest(new { mensagem = "Configure o Catalog ID e o Access Token antes de sincronizar." });
 
@@ -123,5 +123,5 @@ public class CatalogoWhatsAppController(SistemaDbContext db, IUnitOfWork uow,
 }
 
 public record CriarCatalogoRequest(Guid EmpresaId, string Nome, string Provedor, string? Descricao = null);
-public record SincronizarCatalogoRequest(Guid EmpresaId);
+public record SincronizarCatalogoRequest(Guid EmpresaId, Guid? LocalEstoqueId = null);
 public record AdicionarItemCatalogoRequest(Guid ProdutoId, string Descricao, decimal Preco, string? UrlFoto = null, bool Disponivel = true);

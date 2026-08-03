@@ -744,7 +744,7 @@ function abrirImagem(url: string) { window.open(url, '_blank') }
 async function carregarConversas() {
   try {
     const { data } = await api.get('/whatsapp/conversas', {
-      params: { empresaId: auth.empresaId, busca: buscaConversa.value || undefined },
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, busca: buscaConversa.value || undefined },
     })
     conversas.value = Array.isArray(data) ? data : []
     // Mantém sincronizado o dentroDe24h da conversa aberta.
@@ -758,7 +758,7 @@ async function carregarConversas() {
 
 async function carregarNaoLidas() {
   try {
-    const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     totalNaoLidas.value = data?.total ?? 0
   } catch { /* silencioso */ }
 }
@@ -766,7 +766,7 @@ async function carregarNaoLidas() {
 async function abrirConversa(c: any, manterScroll = false) {
   conversaAtiva.value = c
   try {
-    const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     const antes = mensagens.value.length
     mensagens.value = Array.isArray(data) ? data : []
     c.naoLidas = 0
@@ -784,7 +784,7 @@ async function responder() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
-      { empresaId: auth.empresaId, texto })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto })
     respostaTexto.value = ''
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
@@ -797,7 +797,7 @@ async function enviarCatalogoNativo() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/enviar-catalogo`,
-      { empresaId: auth.empresaId, texto: '' })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto: '' })
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o catálogo.')
@@ -822,7 +822,7 @@ async function carregarClientes(termo?: string) {
   buscandoCliente.value = true
   try {
     const { data } = await api.get('/clientes', {
-      params: { empresaId: auth.empresaId, termo: termo || undefined, tamanhoPagina: 100 },
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, termo: termo || undefined, tamanhoPagina: 100 },
     })
     const lista = Array.isArray(data) ? data : (data?.itens ?? [])
     // Prioriza quem tem telefone/celular; mantém os demais no fim (dá pra digitar o número).
@@ -852,6 +852,7 @@ async function iniciarConversa() {
     const tpl = templates.value.find(t => t.nomeMeta === novaConv.value.template)
     await api.post(`/whatsapp/conversas/${tel}/responder-template`, {
       empresaId: auth.empresaId,
+      localEstoqueId: auth.lojaAtualId || undefined,
       templateName: novaConv.value.template,
       idioma: tpl?.idioma || 'pt_BR',
       nome: novaConv.value.nome || null,
@@ -874,7 +875,7 @@ async function enviarLinkCatalogo() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
-      { empresaId: auth.empresaId, texto })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto })
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o link do catálogo.')
@@ -887,7 +888,7 @@ async function responderTemplate() {
   try {
     const tpl = templates.value.find(t => t.nomeMeta === templateResposta.value)
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-template`,
-      { empresaId: auth.empresaId, templateName: templateResposta.value, idioma: tpl?.idioma || 'pt_BR' })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, templateName: templateResposta.value, idioma: tpl?.idioma || 'pt_BR' })
     templateResposta.value = null
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
@@ -903,6 +904,7 @@ async function enviarAnexo(ev: Event) {
   try {
     const fd = new FormData()
     fd.append('empresaId', auth.empresaId as any)
+    if (auth.lojaAtualId) fd.append('localEstoqueId', auth.lojaAtualId)
     fd.append('arquivo', file)
     if (respostaTexto.value.trim()) fd.append('legenda', respostaTexto.value.trim())
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
@@ -962,6 +964,7 @@ async function pararEnviarGravacao() {
     const ext = mime.includes('ogg') ? '.ogg' : mime.includes('webm') ? '.webm' : '.m4a'
     const fd = new FormData()
     fd.append('empresaId', auth.empresaId as any)
+    if (auth.lojaAtualId) fd.append('localEstoqueId', auth.lojaAtualId)
     fd.append('arquivo', new File([blob], `audio${ext}`, { type: mime }))
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
@@ -1013,6 +1016,7 @@ const linkCatalogo = computed(() =>
 // URL pública do feed do catálogo (a Meta baixa por agendamento).
 const feedUrl = computed(() =>
   `${window.location.origin}/api/produtos/feed-catalogo?empresaId=${auth.empresaId}`
+  + (auth.lojaAtualId ? `&localEstoqueId=${auth.lojaAtualId}` : '')
 )
 async function copiarFeedUrl() {
   try {
@@ -1026,7 +1030,7 @@ async function copiarFeedUrl() {
 async function listarPedidos() {
   carregandoPedidos.value = true
   try {
-    const { data } = await api.get('/whatsapp/pedidos', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/pedidos', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     pedidos.value = Array.isArray(data) ? data : []
   } finally {
     carregandoPedidos.value = false
@@ -1057,6 +1061,7 @@ async function salvarConfig() {
     // Feed: só grava número (link wa.me) e Catalog ID informativo — não mexe no token.
     await api.put('/whatsapp/configuracao', {
       empresaId: auth.empresaId,
+      localEstoqueId: auth.lojaAtualId || null,
       catalogId: config.value.catalogId || null,
       numeroWhatsApp: config.value.numeroWhatsApp || null,
     })
@@ -1101,14 +1106,14 @@ function copiarWebhookUrl() {
 
 async function carregarCfgMsg() {
   try {
-    const { data } = await api.get('/whatsapp/mensagem/config', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/config', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     cfgMsg.value = { ...cfgMsg.value, ...data, accessToken: data.accessTokenMask ?? '' }
   } catch {}
 }
 
 async function salvarCfgMsg() {
   try {
-    await api.put('/whatsapp/mensagem/config', cfgMsg.value, { params: { empresaId: auth.empresaId } })
+    await api.put('/whatsapp/mensagem/config', cfgMsg.value, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Configuração de mensagens salva!')
   } catch {
     notif.erro('Erro ao salvar configuração.')
@@ -1131,12 +1136,12 @@ const statusMeta = ref<Record<string, string>>({})
 
 async function carregarTemplates() {
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     templates.value = Array.isArray(data) ? data : []
   } catch {}
   // Busca os status reais na Meta (silencioso — se não estiver configurado, ignora).
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     const mapa: Record<string, string> = {}
     for (const t of (Array.isArray(data) ? data : [])) mapa[t.name] = t.status
     statusMeta.value = mapa
@@ -1235,7 +1240,7 @@ async function excluirTemplate(t: any) {
 async function importarTemplatesMeta() {
   importandoTemplates.value = true
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     if (Array.isArray(data) && data.length > 0) {
       // Prepara cada template com um tipo de disparo sugerido para cadastro em 1 clique.
       templatesMeta.value = data.map((t: any) => ({ ...t, _tipo: sugerirTipo(t.name, t.category) }))
@@ -1426,7 +1431,7 @@ const disparandoNovidade  = ref(false)
 async function dispararPromocao() {
   disparandoPromocao.value = true
   try {
-    await api.post('/whatsapp/mensagem/disparar-promocao', null, { params: { empresaId: auth.empresaId } })
+    await api.post('/whatsapp/mensagem/disparar-promocao', null, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Disparo de promoções enfileirado! As mensagens serão enviadas em instantes.')
     setTimeout(carregarHistorico, 3000)
   } catch {
@@ -1439,7 +1444,7 @@ async function dispararPromocao() {
 async function dispararNovidade() {
   disparandoNovidade.value = true
   try {
-    await api.post('/whatsapp/mensagem/disparar-novidade', null, { params: { empresaId: auth.empresaId } })
+    await api.post('/whatsapp/mensagem/disparar-novidade', null, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Disparo de novidade enfileirado! As mensagens serão enviadas em instantes.')
     setTimeout(carregarHistorico, 3000)
   } catch {
@@ -1453,7 +1458,7 @@ async function carregarHistorico() {
   carregandoHistorico.value = true
   try {
     const { data } = await api.get('/whatsapp/mensagem/historico', {
-      params: { empresaId: auth.empresaId, ...filtroHistorico.value }
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, ...filtroHistorico.value }
     })
     historico.value = data?.itens ?? []
   } finally {
@@ -1463,7 +1468,7 @@ async function carregarHistorico() {
 
 async function carregarConfigCatalogo() {
   try {
-    const { data } = await api.get('/whatsapp/configuracao', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/configuracao', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     if (data) config.value = {
       catalogId: data.catalogId ?? '', numeroWhatsApp: data.numeroWhatsApp ?? '',
     }

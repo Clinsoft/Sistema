@@ -40,7 +40,7 @@ public class WhatsAppIaAtendenteService(
                 .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0)
                 .OrderBy(p => p.Descricao)
                 .Select(p => new { p.Descricao, p.PrecoVenda, PorPeso = p.ProdutoBalanca || p.VendidoFracionado })
-                .Take(150).ToListAsync(ct);
+                .Take(1000).ToListAsync(ct);   // catálogo inteiro (cabe no contexto do modelo)
             if (catalogo.Count == 0) return;
 
             // Histórico recente da conversa (contexto).

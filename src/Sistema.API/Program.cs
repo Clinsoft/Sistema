@@ -124,10 +124,14 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
     job => job.ExecutarAsync());
 
+// Fuso de Brasília: o Hangfire usa UTC por padrão, e a lógica "dia < hoje" da taxa
+// depende da meia-noite LOCAL — senão roda 21:30 BRT e processa um dia a menos.
+var tzBrasil = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     "taxa-cartao-despesa-variavel",
     job => job.ExecutarAsync(),
-    "30 0 * * *");  // 00:30 todo dia — lança a taxa do DIA ANTERIOR (já fechado)
+    "30 0 * * *",
+    new RecurringJobOptions { TimeZone = tzBrasil });  // 00:30 BRT — lança a taxa do DIA ANTERIOR (já fechado)
 // Roda uma vez ao subir para gerar as despesas dos dias já fechados (não o dia corrente).
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     job => job.ExecutarAsync());

@@ -100,38 +100,38 @@ app.Use(async (context, next) =>
 
 app.UseHangfireDashboard("/jobs");
 
-// Registrar jobs recorrentes
+// Registrar jobs recorrentes — TODOS no fuso de Brasília (o Hangfire usa UTC por padrão,
+// o que rodava 3h adiantado; na taxa isso ainda processava um dia a menos).
+var tzBrasil = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
+var optsBR = new RecurringJobOptions { TimeZone = tzBrasil };
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.EstoqueAlertaJob>(
     "estoque-alerta-minimo",
     job => job.ExecutarAsync(),
-    "0 8 * * *");   // 08:00 todo dia
+    "0 8 * * *", optsBR);   // 08:00 BRT
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.CrediarioLembreteJob>(
     "crediario-lembrete-parcelas",
     job => job.ExecutarAsync(),
-    "0 9 * * *");   // 09:00 todo dia
+    "0 9 * * *", optsBR);   // 09:00 BRT
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FinanceiroAlertaJob>(
     "financeiro-alerta-vencimentos",
     job => job.ExecutarAsync(),
-    "0 8 * * *");   // 08:00 todo dia
+    "0 8 * * *", optsBR);   // 08:00 BRT
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
     "recebivel-cartao-baixa-automatica",
     job => job.ExecutarAsync(),
-    "0 7 * * *");   // 07:00 todo dia — marca Recebido quando o crédito cai (D+prazo)
+    "0 7 * * *", optsBR);   // 07:00 BRT — marca Recebido quando o crédito cai (D+prazo)
 // Roda uma vez ao subir para regularizar os recebíveis já vencidos.
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>(
     job => job.ExecutarAsync());
 
-// Fuso de Brasília: o Hangfire usa UTC por padrão, e a lógica "dia < hoje" da taxa
-// depende da meia-noite LOCAL — senão roda 21:30 BRT e processa um dia a menos.
-var tzBrasil = TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo");
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     "taxa-cartao-despesa-variavel",
     job => job.ExecutarAsync(),
-    "30 0 * * *",
-    new RecurringJobOptions { TimeZone = tzBrasil });  // 00:30 BRT — lança a taxa do DIA ANTERIOR (já fechado)
+    "30 0 * * *", optsBR);  // 00:30 BRT — lança a taxa do DIA ANTERIOR (já fechado)
 // Roda uma vez ao subir para gerar as despesas dos dias já fechados (não o dia corrente).
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
     job => job.ExecutarAsync());
@@ -139,32 +139,32 @@ BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>(
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.BackupJob>(
     "backup-banco-dados",
     job => job.ExecutarAsync(),
-    "0 2 * * *");   // 02:00 toda madrugada
+    "0 2 * * *", optsBR);   // 02:00 BRT
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ValidadeJob>(
     "validade-monitoramento",
     job => job.ExecutarAsync(),
-    "0 8 * * *");   // 08:00 todo dia — verifica vencimentos e gera promoções
+    "0 8 * * *", optsBR);   // 08:00 BRT — verifica vencimentos e gera promoções
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
     "whatsapp-disparos-automaticos",
     job => job.ExecutarAsync(),
-    "0 8 * * *");   // 08:00 todo dia — aniversariantes, promoções, novidades
+    "0 8 * * *", optsBR);   // 08:00 BRT — aniversariantes, promoções, novidades
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
     "limpar-vendas-abertas",
     job => job.ExecutarAsync(),
-    "0 * * * *");   // de hora em hora — descarta vendas em aberto há +6h
+    "0 * * * *", optsBR);   // de hora em hora — descarta vendas em aberto há +6h
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FolhaPagamentoJob>(
     "folha-previsao-mensal",
     job => job.ExecutarAsync(),
-    "0 6 1 * *");   // 06:00 do dia 1º — previsão de salários + FGTS/INSS da folha
+    "0 6 1 * *", optsBR);   // 06:00 BRT do dia 1º — previsão de salários + FGTS/INSS da folha
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.DespesasFixasJob>(
     "despesas-fixas-mensais",
     job => job.ExecutarAsync(),
-    "10 6 1 * *");  // 06:10 do dia 1º — mensalidades fixas (contador, aluguel, etc.)
+    "10 6 1 * *", optsBR);  // 06:10 BRT do dia 1º — mensalidades fixas (contador, aluguel, etc.)
 
 app.MapControllers();
 

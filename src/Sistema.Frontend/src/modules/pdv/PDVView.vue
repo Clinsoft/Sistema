@@ -2507,14 +2507,22 @@ onUnmounted(() => {
     flex: none;
   }
 
-  /* Itens com touch mais fácil */
-  .pdv-item { padding: 13px 14px; gap: 10px; }
-  .pdv-qtd-btn { width: 36px; height: 36px; font-size: 18px; }
-  .pdv-qtd-input { height: 36px; font-size: 14px; }
-  .pdv-item-qtd { width: 112px; }
+  /* Item da venda: NOME em cima (linha inteira) e QUANTIDADE/TOTAL/AÇÕES embaixo,
+     com alvos de toque grandes (≥ 44px) — some o número de sequência pra liberar espaço */
+  .pdv-item { flex-wrap: wrap; padding: 12px 14px; column-gap: 10px; row-gap: 10px; }
+  .pdv-item-seq { display: none; }
+  .pdv-item-info { flex: 1 1 100%; }
+  .pdv-item-nome { font-size: 15px; line-height: 1.25; }
+  .pdv-item-detalhe { font-size: 12px; }
+  .pdv-item-qtd { width: 154px; border-width: 2px; }
+  .pdv-qtd-btn { width: 50px; height: 48px; font-size: 24px; }
+  .pdv-qtd-input { height: 48px; font-size: 17px; }
+  .pdv-item-total { flex: 1; min-width: 0; text-align: right; font-size: 16px; }
+  .pdv-item-desc, .pdv-item-del { width: 46px; height: 46px; border-radius: 10px; }
+  .pdv-item-desc .v-icon, .pdv-item-del .v-icon { font-size: 24px !important; }
 
-  /* Formas de pagamento em grid 2x2 mais generoso */
-  .pdv-fp-btn { padding: 16px 6px; font-size: 12px; }
+  /* Formas de pagamento: botões grandes e fáceis de acertar */
+  .pdv-fp-btn { padding: 18px 6px; font-size: 13px; min-height: 64px; }
 
   /* Botão Finalizar maior para toque, fixo no rodapé para sempre poder finalizar */
   .pdv-btn-finalizar { height: 60px; font-size: 17px; }

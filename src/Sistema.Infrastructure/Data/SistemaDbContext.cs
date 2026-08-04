@@ -29,6 +29,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<UnidadeMedida> UnidadesMedida => Set<UnidadeMedida>();
     public DbSet<LocalEstoque> LocaisEstoque => Set<LocalEstoque>();
     public DbSet<Produto> Produtos => Set<Produto>();
+    public DbSet<LogExclusaoProduto> LogsExclusaoProduto => Set<LogExclusaoProduto>();
     public DbSet<ProdutoEmbalagem> ProdutosEmbalagem => Set<ProdutoEmbalagem>();
     public DbSet<AlimentoTaco> AlimentosTaco => Set<AlimentoTaco>();
     public DbSet<Lote> Lotes => Set<Lote>();

@@ -476,9 +476,31 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         var emMovimento = await db.MovimentacoesEstoque.AnyAsync(m => m.ProdutoId == id, ct);
         if (emNFe || emVenda || emMovimento)
             return BadRequest(new { mensagem = "Produto possui movimentações (vendas, entradas ou estoque) e não pode ser excluído. Inative-o." });
+        RegistrarExclusao(produto, "Exclusão manual");
         db.Produtos.Remove(produto);
         await uow.SalvarAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Grava o log de auditoria da exclusão do produto (quem/quando/origem).</summary>
+    private void RegistrarExclusao(Sistema.Domain.Estoque.Entities.Produto p, string origem)
+    {
+        Guid? uid = Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;
+        var nome = User.FindFirst("nome")?.Value;
+        db.LogsExclusaoProduto.Add(Sistema.Domain.Estoque.Entities.LogExclusaoProduto.Criar(
+            p.EmpresaId, p.Id, p.Codigo, p.Descricao, p.PrecoVenda, uid, nome, origem));
+    }
+
+    /// <summary>Lista as últimas exclusões de produto (auditoria) — para rastrear sumiços.</summary>
+    [HttpGet("log-exclusoes")]
+    public async Task<IActionResult> LogExclusoes([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var logs = await db.LogsExclusaoProduto.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .OrderByDescending(l => l.ExcluidoEm)
+            .Select(l => new { l.Codigo, l.Descricao, l.PrecoVenda, l.UsuarioNome, l.Origem, l.ExcluidoEm })
+            .Take(200).ToListAsync(ct);
+        return Ok(logs);
     }
 
     // ── Produtos duplicados: detectar e unificar ──────────────────────────
@@ -685,6 +707,11 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                 await db.Database.ExecuteSqlRawAsync(
                     "UPDATE Produtos SET EstoqueAtual = EstoqueAtual + {0} WHERE Id = {1}",
                     new object[] { somaEstoque, req.DestinoId }, ct);
+
+            // Auditoria: registra cada produto de origem que será removido na unificação
+            foreach (var o in origens)
+                RegistrarExclusao(o, "Unificação de duplicados");
+            await db.SaveChangesAsync(ct);
 
             // Remove os produtos de origem
             await db.Database.ExecuteSqlRawAsync($"DELETE FROM Produtos WHERE Id IN ({idsCsv})", ct);

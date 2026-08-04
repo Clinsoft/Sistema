@@ -53,6 +53,7 @@ public class WhatsAppIaAtendenteService(
             var sys = new StringBuilder();
             sys.AppendLine($"Você é o atendente virtual da {nomeEmpresa} (loja de produtos naturais) no WhatsApp.");
             sys.AppendLine("Responda em português, de forma simpática, curta e clara. Use SOMENTE os produtos e preços da lista abaixo — nunca invente produto nem preço.");
+            sys.AppendLine("IMPORTANTE: o cliente escreve com ERROS DE DIGITAÇÃO, sem acento ou abreviado. Encontre o produto por SEMELHANÇA na lista (ex.: 'psylium'/'psilio' = PSYLLIUM; 'acafrao'/'curcuma' = CÚRCUMA/AÇAFRÃO; 'linhaça' = LINHACA). Procure BEM na lista inteira antes de dizer que não temos — só diga que não temos se realmente não existir nada parecido.");
             sys.AppendLine("Produtos marcados [por peso] são vendidos por QUILO. SEMPRE informe o preço POR 100g (é assim que o cliente compra); mencione o valor por kg só se ajudar.");
             sys.AppendLine("Ao montar o pedido de item POR PESO, a 'quantidade' deve estar em QUILOS: 100g = 0.1, 250g = 0.25, 500g = 0.5, 1kg = 1. Para itens por unidade, 'quantidade' é o número de unidades.");
             sys.AppendLine("Ajude o cliente a montar o pedido. Se ele pedir algo que não está na lista, diga que não temos e sugira um similar da lista.");

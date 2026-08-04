@@ -62,12 +62,34 @@ public class WhatsAppIaAtendenteService(
             sys.AppendLine("Em 'itens' liste o pedido ACUMULADO até agora (todos os itens que o cliente quer); use o nome EXATO da lista. Vazio se ainda não pediu nada.");
             sys.AppendLine("'finalizarPedido' = true SOMENTE quando o cliente confirmar que quer fechar o pedido.");
 
+            string Linha(string desc, decimal preco, bool porPeso) => porPeso
+                ? $"- {desc} — R$ {preco / 10m:0.00} por 100g (R$ {preco:0.00}/kg) [por peso]"
+                : $"- {desc} — R$ {preco:0.00} (unidade)";
+
+            // Busca aproximada: produtos que compartilham trechos (4 letras) com as palavras
+            // da mensagem — tolera erro de digitação ("psylium"→"PSYLLIUM") e destaca no topo.
+            static string SemAcento(string s) => new string(s.Normalize(System.Text.NormalizationForm.FormD)
+                .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+            static string Norm(string s) => SemAcento(s.ToLowerInvariant());
+            var palavras = Norm(mensagemCliente)
+                .Split(new[] { ' ', ',', '.', '?', '!', ';', ':', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 4).Distinct().ToList();
+            var gramas = palavras.SelectMany(w => w.Length < 4 ? new[] { w }
+                : Enumerable.Range(0, w.Length - 3).Select(i => w.Substring(i, 4))).ToHashSet();
+            var relevantes = gramas.Count == 0 ? new List<string>()
+                : catalogo.Where(p => { var n = Norm(p.Descricao); return gramas.Any(g => n.Contains(g)); })
+                    .Take(30).Select(p => Linha(p.Descricao, p.PrecoVenda, p.PorPeso)).ToList();
+
             var user = new StringBuilder();
-            user.AppendLine("=== CATÁLOGO (nome — preço) ===");
+            if (relevantes.Count > 0)
+            {
+                user.AppendLine("=== PRODUTOS QUE PARECEM COM O QUE O CLIENTE PEDIU (confira AQUI primeiro) ===");
+                foreach (var l in relevantes) user.AppendLine(l);
+                user.AppendLine();
+            }
+            user.AppendLine("=== CATÁLOGO COMPLETO (nome — preço) ===");
             foreach (var p in catalogo)
-                user.AppendLine(p.PorPeso
-                    ? $"- {p.Descricao} — R$ {p.PrecoVenda / 10m:0.00} por 100g (R$ {p.PrecoVenda:0.00}/kg) [por peso]"
-                    : $"- {p.Descricao} — R$ {p.PrecoVenda:0.00} (unidade)");
+                user.AppendLine(Linha(p.Descricao, p.PrecoVenda, p.PorPeso));
             user.AppendLine();
             user.AppendLine("=== CONVERSA ATÉ AGORA ===");
             foreach (var m in hist)

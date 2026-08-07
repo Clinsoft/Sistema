@@ -704,6 +704,99 @@
       </v-col>
     </v-row>
 
+    <!-- Movimento por loja (dia da semana × hora) -->
+    <v-row class="mt-2">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center flex-wrap">
+            <v-icon icon="mdi-clock-time-four-outline" class="mr-2" color="teal" />
+            Dias e horários de maior movimento
+            <v-spacer />
+            <v-btn-toggle v-model="periodoMov" mandatory density="compact" rounded="lg" color="teal">
+              <v-btn :value="7" size="small">7d</v-btn>
+              <v-btn :value="30" size="small">30d</v-btn>
+              <v-btn :value="90" size="small">90d</v-btn>
+              <v-btn :value="180" size="small">180d</v-btn>
+            </v-btn-toggle>
+          </v-card-title>
+          <v-card-text>
+            <div v-if="carregandoMov" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="teal" />
+            </div>
+            <div v-else-if="!lojasMovimento.length" class="text-center text-medium-emphasis pa-6">
+              Sem vendas no período.
+            </div>
+            <!-- Legenda -->
+            <div v-if="lojasMovimento.length" class="d-flex align-center flex-wrap gap-4 mb-3 text-caption text-medium-emphasis">
+              <div class="d-flex align-center gap-1">
+                <span>Menos</span>
+                <span class="leg-cel" style="background:rgba(0,150,136,0.15)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,0.45)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,0.7)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,1)" />
+                <span>Mais vendas</span>
+              </div>
+              <div class="d-flex align-center gap-1">
+                <span class="leg-cel heat-peak" style="background:rgba(0,150,136,0.7)" />
+                <span>Dia e horário de maior movimento</span>
+              </div>
+            </div>
+
+            <v-row>
+              <v-col v-for="loja in lojasMovimento" :key="loja.localEstoqueId" cols="12" md="6">
+                <div class="d-flex align-center justify-space-between mb-1">
+                  <span class="font-weight-bold text-body-2">{{ loja.nome }}</span>
+                  <span class="text-caption text-medium-emphasis">{{ loja.totalVendas }} vendas · {{ fmt(loja.faturamento) }}</span>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                  <v-chip size="x-small" color="primary" variant="tonal" prepend-icon="mdi-calendar-star">
+                    Dia: <b class="ml-1">{{ loja.picoDia.label }}</b>&nbsp;· {{ loja.picoDia.vendas }}
+                  </v-chip>
+                  <v-chip v-if="loja.picoHora" size="x-small" color="deep-orange" variant="tonal" prepend-icon="mdi-clock-alert-outline">
+                    Horário: <b class="ml-1">{{ loja.picoHora.label }}</b>&nbsp;· {{ loja.picoHora.vendas }}
+                  </v-chip>
+                </div>
+
+                <!-- Gráfico de barras: vendas por horário -->
+                <div class="text-caption text-medium-emphasis mb-1">Vendas por horário</div>
+                <div class="barras mb-3">
+                  <div v-for="b in loja.barras" :key="b.h" class="barra-col" :title="`${b.h}h — ${b.v} venda(s)`">
+                    <div class="barra-bar" :class="{ 'barra-peak': b.peak }"
+                      :style="{ height: (b.v ? Math.max(3, b.pct * 0.62) : 0) + 'px' }" />
+                    <div class="barra-h">{{ b.h }}</div>
+                  </div>
+                </div>
+
+                <!-- Heatmap: dia da semana × hora -->
+                <div class="text-caption text-medium-emphasis mb-1">Dia da semana × horário</div>
+                <div class="heat-scroll">
+                  <table class="heat">
+                    <thead>
+                      <tr>
+                        <th class="heat-corner"></th>
+                        <th v-for="col in loja.horas" :key="col.h" :class="{ 'heat-col-peak': col.peak }">{{ col.h }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="linha in loja.linhas" :key="linha.d">
+                        <td class="heat-dia" :class="{ 'heat-dia-peak': linha.isPeak }">{{ linha.label }}</td>
+                        <td v-for="c in linha.cells" :key="c.h"
+                          class="heat-cell" :class="{ 'heat-peak': c.peak }"
+                          :style="{ background: c.v ? `rgba(0,150,136,${c.a})` : 'rgba(127,127,127,0.06)', color: c.a > 0.55 ? '#fff' : '' }"
+                          :title="`${linha.label} ${c.h}h — ${c.v} venda(s)`">
+                          {{ c.v || '' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- Alertas -->
     <v-row v-if="alertas.length" class="mt-2">
       <v-col cols="12">
@@ -1371,9 +1464,58 @@ if (typeof ResizeObserver !== 'undefined') {
   liga(() => abcCanvas.value, renderizarCurvaAbc)
 }
 
+// ── Movimento (dia da semana × hora, por loja) ─────────────────────
+const movimento = ref<any>(null)
+const carregandoMov = ref(true)
+const periodoMov = ref(90)
+const diasCurto = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+async function carregarMovimento() {
+  if (!auth.empresaId) { carregandoMov.value = false; return }
+  carregandoMov.value = true
+  try {
+    const r = await api.get('/dashboard/movimento', { params: { empresaId: auth.empresaId, dias: periodoMov.value } })
+    movimento.value = r.data
+  } finally { carregandoMov.value = false }
+}
+
+watch(periodoMov, carregarMovimento)
+
+const lojasMovimento = computed(() => (movimento.value?.lojas ?? []).map((loja: any) => {
+  const hs = loja.porHora.map((h: any) => h.hora)
+  const min = hs.length ? Math.min(...hs) : 8
+  const max = hs.length ? Math.max(...hs) : 20
+  const horas: { h: number; peak: boolean }[] = []
+  for (let h = min; h <= max; h++) horas.push({ h, peak: !!loja.picoHora && h === loja.picoHora.hora })
+  const map: Record<string, number> = {}
+  let mx = 0, maxDia = -1, maxHora = -1
+  for (const c of loja.heatmap) {
+    map[`${c.dia}-${c.hora}`] = c.vendas
+    if (c.vendas > mx) { mx = c.vendas; maxDia = c.dia; maxHora = c.hora }
+  }
+  const linhas = []
+  for (let d = 0; d < 7; d++) {
+    const cells = horas.map(({ h }) => {
+      const v = map[`${d}-${h}`] || 0
+      return { h, v, a: v ? 0.15 + 0.85 * v / (mx || 1) : 0, peak: d === maxDia && h === maxHora }
+    })
+    linhas.push({ d, label: diasCurto[d], isPeak: d === loja.picoDia.dia, cells })
+  }
+  // Barras: vendas por horário (usa o mesmo range de horas do heatmap)
+  const porHoraMap: Record<number, number> = {}
+  let maxBar = 0
+  for (const ph of loja.porHora) { porHoraMap[ph.hora] = ph.vendas; if (ph.vendas > maxBar) maxBar = ph.vendas }
+  const barras = horas.map(({ h, peak }) => {
+    const v = porHoraMap[h] || 0
+    return { h, v, pct: maxBar ? v / maxBar * 100 : 0, peak }
+  })
+  return { ...loja, horas, linhas, barras }
+}))
+
 onMounted(async () => {
   await Promise.all([
     carregarResumo(),
+    carregarMovimento(),
     carregarVendasMes(),
     carregarPe(),
     carregarContasMes(),
@@ -1400,6 +1542,38 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.heat-scroll { overflow-x: auto; padding-bottom: 2px; }
+.heat { border-collapse: separate; border-spacing: 3px; font-size: 0.68rem; }
+.heat th {
+  font-weight: 500; color: rgba(var(--v-theme-on-surface), 0.45);
+  padding: 0 0 3px; text-align: center; font-size: 0.65rem;
+}
+.heat-corner { width: 28px; }
+.heat-dia {
+  font-weight: 600; color: rgba(var(--v-theme-on-surface), 0.6);
+  padding-right: 8px; text-align: right; white-space: nowrap; font-size: 0.7rem;
+}
+.heat-cell {
+  width: 24px; min-width: 24px; height: 20px; text-align: center; vertical-align: middle;
+  border-radius: 4px; color: rgba(var(--v-theme-on-surface), 0.75);
+  transition: transform 0.08s ease;
+}
+.heat-cell:hover { transform: scale(1.18); cursor: default; position: relative; z-index: 1; }
+.heat-peak { outline: 2px solid #ff5722; outline-offset: -1px; font-weight: 700; }
+.heat-col-peak { color: #ff5722 !important; font-weight: 700; }
+.heat-dia-peak { color: #ff5722 !important; }
+.leg-cel {
+  display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle;
+}
+.barras { display: flex; align-items: flex-end; gap: 3px; height: 72px; }
+.barra-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; }
+.barra-bar {
+  width: 100%; max-width: 20px; background: rgba(0, 150, 136, 0.75);
+  border-radius: 3px 3px 0 0; transition: background 0.1s;
+}
+.barra-col:hover .barra-bar { background: rgba(0, 150, 136, 1); }
+.barra-peak { background: #ff5722 !important; }
+.barra-h { font-size: 0.6rem; color: rgba(var(--v-theme-on-surface), 0.45); margin-top: 3px; }
 .dash-cal-head {
   display: grid; grid-template-columns: repeat(7, 1fr);
   font-size: 10px; font-weight: 700; color: #9e9e9e; text-align: center; margin-bottom: 4px;

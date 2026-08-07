@@ -24,12 +24,13 @@ public class Cliente : Entity
     public decimal LimiteCredito { get; private set; }
     public bool Ativo { get; private set; } = true;
     public int PontosFidelidade { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }   // loja onde o cliente foi cadastrado/atendido
 
     private Cliente() { }
 
     public static Cliente Criar(Guid empresaId, string nome, TipoPessoa tipoPessoa,
         string? cpfCnpj = null, string? email = null, string? telefone = null,
-        string? celular = null, DateTime? dataNascimento = null)
+        string? celular = null, DateTime? dataNascimento = null, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId,
@@ -39,8 +40,19 @@ public class Cliente : Entity
             Email = email,
             Telefone = telefone,
             Celular = celular,
-            DataNascimento = dataNascimento
+            DataNascimento = dataNascimento,
+            LocalEstoqueId = localEstoqueId
         };
+
+    /// <summary>Define/atualiza a loja (unidade) do cliente. Só grava se ainda não tiver.</summary>
+    public void DefinirLoja(Guid? localEstoqueId)
+    {
+        if (localEstoqueId.HasValue && LocalEstoqueId is null)
+            LocalEstoqueId = localEstoqueId;
+    }
+
+    /// <summary>Altera a loja do cliente (correção manual — sobrescreve).</summary>
+    public void AlterarLoja(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
 
     public void AdicionarEndereco(string logradouro, string numero, string bairro,
         string cidade, string uf, string cep, string? complemento = null)

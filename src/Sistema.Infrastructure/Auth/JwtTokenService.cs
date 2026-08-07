@@ -18,14 +18,17 @@ public class JwtTokenService(IConfiguration config) : IJwtTokenService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, usuario.Email ?? ""),
-            new Claim("empresaId", usuario.EmpresaId.ToString()),
-            new Claim(ClaimTypes.Role, usuario.Perfil ?? ""),
-            new Claim("nome", usuario.Nome)
+            new(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, usuario.Email ?? ""),
+            new("empresaId", usuario.EmpresaId.ToString()),
+            new(ClaimTypes.Role, usuario.Perfil ?? ""),
+            new("nome", usuario.Nome)
         };
+        // Loja (unidade) do colaborador — usada para limitar o atendente à sua loja.
+        if (usuario.LocalEstoqueId.HasValue)
+            claims.Add(new Claim("localEstoqueId", usuario.LocalEstoqueId.Value.ToString()));
 
         var token = new JwtSecurityToken(
             claims: claims,

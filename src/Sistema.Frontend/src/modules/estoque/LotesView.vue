@@ -186,7 +186,13 @@ const headersVenc = [
 ]
 
 function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
-function fmtData(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '' }
+function fmtData(d: string) {
+  if (!d) return ''
+  const s = String(d)
+  if (s.includes('/')) return s.slice(0, 10)              // já dd/MM/yyyy
+  const dt = new Date(s.slice(0, 10) + 'T12:00:00')       // corta hora/timezone antes de montar
+  return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('pt-BR')
+}
 
 async function listar() {
   carregando.value = true

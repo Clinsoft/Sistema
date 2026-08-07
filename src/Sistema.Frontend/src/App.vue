@@ -87,6 +87,8 @@
               to="/financeiro/dre" value="/financeiro/dre" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-cash-flow" title="Fluxo de Caixa"
               to="/financeiro/fluxo-caixa" value="/financeiro/fluxo-caixa" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-bank-outline" title="Financiamentos"
+              to="/financeiro/financiamentos" value="/financeiro/financiamentos" color="brown" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-month-outline" title="Planejamento Anual"
               to="/relatorios/planejamento-anual" value="/relatorios/planejamento-anual" color="blue-darken-2" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-credit-card-clock-outline" title="Recebíveis de Cartão"

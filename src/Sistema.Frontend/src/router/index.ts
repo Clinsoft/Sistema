@@ -84,6 +84,8 @@ const router = createRouter({
       meta: { titulo: 'Operadoras de Cartão' } },
     { path: '/financeiro/recebiveis-cartao', component: () => import('@/modules/financeiro/ReceiveisCartaoView.vue'),
       meta: { titulo: 'Recebíveis de Cartão' } },
+    { path: '/financeiro/financiamentos', component: () => import('@/modules/financeiro/FinanciamentosView.vue'),
+      meta: { titulo: 'Financiamentos' } },
 
     // Fiscal
     { path: '/fiscal', component: () => import('@/modules/fiscal/FiscalView.vue'),

@@ -130,18 +130,56 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Status != StatusLancamento.Cancelado
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
-            .Select(l => new { l.Tipo, l.Categoria, l.Descricao, l.ValorOriginal })
+            .Select(l => new { l.Tipo, l.Categoria, l.Descricao, l.ValorOriginal, l.ValorJuros })
             .ToListAsync(ct);
 
-        var receber = lancs.Where(l => l.Tipo == TipoLancamento.ContaReceber).ToList();
-        // Capital/imobilizado (móveis, equipamentos) é investimento — não entra como despesa no DRE.
-        var pagar = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar && l.Categoria != "Imobilizado").ToList();
+        // Não são receita: Aporte de Capital (injeção do sócio) nem Empréstimo Captado
+        // (dinheiro do banco que entrou no caixa — é passivo, não faturamento).
+        var receber = lancs.Where(l => l.Tipo == TipoLancamento.ContaReceber
+            && l.Categoria != "Aporte de Capital" && l.Categoria != "Empréstimo Captado").ToList();
+        // Fora do RESULTADO operacional: Imobilizado (investimento), Custo (CMV) (compra de
+        // mercadoria — entra pelo CMV do vendido), Financiamentos (amortização do principal — reduz
+        // passivo, não é despesa) e Frete (custo de compra — somado ao CMV abaixo).
+        // OBS: os JUROS do financiamento entram, sim (categoria "Despesas Financeiras").
+        var pagar = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar
+            && l.Categoria != "Imobilizado" && l.Categoria != "Custo (CMV)"
+            && l.Categoria != "Financiamentos" && l.Categoria != "Frete").ToList();
 
-        // Subcategorias dos recebimentos agrupadas pela categoria (Vendas, Serviços…)
-        var subRecebimentos = receber
+        // Frete de compra entra como CUSTO (junto do CMV), não como despesa operacional.
+        var freteCompra = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar && l.Categoria == "Frete")
+            .Sum(l => l.ValorOriginal);
+
+        // Juros embutidos nas parcelas de financiamento: a parcela (uma só, categoria "Financiamentos")
+        // é paga inteira; a parte de juro (ValorJuros) é DESPESA e o restante é amortização (fora do resultado).
+        var jurosFinanciamento = lancs.Where(l => l.Tipo == TipoLancamento.ContaPagar
+            && l.Categoria == "Financiamentos").Sum(l => l.ValorJuros ?? 0);
+
+        // Vendas do PDV pagas na hora (não-crediário): são RECEITA, mas não viram conta a receber.
+        var vendasPdv = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId
+                && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && v.DataHora >= inicio && v.DataHora < fimExcl
+                && !v.Pagamentos.Any(p => p.Forma == Domain.Vendas.Entities.FormaPagamento.Crediario))
+            .SumAsync(v => v.Total, ct);
+
+        // CMV — custo do que foi VENDIDO no período (qtd × custo do produto), não a compra de estoque.
+        var cmv = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= inicio && x.v.DataHora < fimExcl)
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id, (x, p) => x.i.Quantidade * p.CustoUnitario)
+            .SumAsync(v => (decimal?)v ?? 0, ct);
+        cmv += freteCompra;   // custo do vendido + frete de compra
+
+        // Subcategorias dos recebimentos: Vendas (PDV) + os lançamentos de conta a receber.
+        var subRecebimentos = new List<object>();
+        if (vendasPdv > 0) subRecebimentos.Add(new { nome = "Vendas (PDV)", total = vendasPdv });
+        subRecebimentos.AddRange(receber
             .GroupBy(l => string.IsNullOrWhiteSpace(l.Categoria) ? "Recebimentos" : l.Categoria!)
             .Select(g => new { nome = g.Key, total = g.Sum(x => x.ValorOriginal) })
-            .OrderByDescending(x => x.total).ToList();
+            .OrderByDescending(x => x.total)
+            .Cast<object>());
 
         // Despesas por macro-categoria; desconhecidas caem em "Despesas Variáveis"
         static string Grupo(string? cat) => cat switch
@@ -150,6 +188,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
             "Despesas Operacionais" => "Despesas Operacionais",
             "Pessoas" => "Pessoas",
             "Impostos" => "Impostos",
+            "Despesas Financeiras" => "Despesas Financeiras",   // juros de empréstimo/financiamento
             _ => "Despesas Variáveis"
         };
 
@@ -161,20 +200,21 @@ public class DREController(SistemaDbContext db) : ControllerBase
 
         decimal TotalGrupo(string grupo) => pagar.Where(l => Grupo(l.Categoria) == grupo).Sum(l => l.ValorOriginal);
 
-        var recebimentos = receber.Sum(l => l.ValorOriginal);
+        var recebimentos = receber.Sum(l => l.ValorOriginal) + vendasPdv;
         var despesasAdministrativas = TotalGrupo("Despesas Administrativas");
         var despesasOperacionais = TotalGrupo("Despesas Operacionais");
         var despesasVariaveis = TotalGrupo("Despesas Variáveis");
         var pessoas = TotalGrupo("Pessoas");
         var impostos = TotalGrupo("Impostos");
-        var resultado = recebimentos - despesasAdministrativas - despesasOperacionais
-                      - despesasVariaveis - pessoas - impostos;
+        var despesasFinanceiras = TotalGrupo("Despesas Financeiras") + jurosFinanciamento;
+        var resultado = recebimentos - cmv - despesasAdministrativas - despesasOperacionais
+                      - despesasVariaveis - pessoas - impostos - despesasFinanceiras;
         var margemLiquida = recebimentos > 0 ? Math.Round(resultado / recebimentos * 100, 1) : 0m;
 
         return new
         {
-            recebimentos, despesasAdministrativas, despesasOperacionais,
-            despesasVariaveis, pessoas, impostos,
+            recebimentos, cmv, despesasAdministrativas, despesasOperacionais,
+            despesasVariaveis, pessoas, impostos, despesasFinanceiras,
             resultado, margemLiquida,
             subcategorias = new
             {
@@ -183,7 +223,11 @@ public class DREController(SistemaDbContext db) : ControllerBase
                 despesasOperacionais = SubPorDescricao("Despesas Operacionais"),
                 despesasVariaveis = SubPorDescricao("Despesas Variáveis"),
                 pessoas = SubPorDescricao("Pessoas"),
-                impostos = SubPorDescricao("Impostos")
+                impostos = SubPorDescricao("Impostos"),
+                despesasFinanceiras = (jurosFinanciamento > 0
+                        ? new List<object> { new { nome = "Juros de financiamento", total = jurosFinanciamento } }
+                        : new List<object>())
+                    .Concat(SubPorDescricao("Despesas Financeiras")).ToList()
             }
         };
     }

@@ -2174,8 +2174,12 @@ onUnmounted(() => {
 
 .pdv-pag-forma-label {
   font-size: 12px; color: #64748b;
-  min-width: 80px; display: flex; align-items: center;
+  flex: 0 0 120px;               /* largura fixa: não espreme o campo do valor */
+  display: flex; flex-wrap: wrap; align-items: center;
+  line-height: 1.2;
 }
+/* operadora/parcelas descem para a linha de baixo (ex.: "Crédito" / "· Mastercard") */
+.pdv-pag-forma-label > span { flex-basis: 100%; }
 .pdv-del-pag {
   background: none; border: none;
   color: #cbd5e1;

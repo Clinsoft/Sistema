@@ -188,23 +188,43 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             .Select(p => new { p.Id, p.Codigo, p.CodigoBarras, p.ImagemUrl, p.ControlarValidade })
             .ToDictionaryAsync(p => p.Id, ct);
 
+        // Lotes com validade já existentes desses produtos. Assim reconhecemos como
+        // "já feito" também o que foi registrado ANTES (gravava só o Lote, não o item).
+        var lotes = await db.Lotes.AsNoTracking()
+            .Where(l => produtoIds.Contains(l.ProdutoId) && l.DataValidade != null)
+            .Select(l => new { l.Id, l.ProdutoId, l.DataValidade, l.ImagemUrl, l.CriadoEm })
+            .ToListAsync(ct);
+        var loteById = lotes.ToDictionary(l => l.Id);
+        var lotePorProduto = lotes.GroupBy(l => l.ProdutoId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CriadoEm).First());
+
         var itens = entradas.SelectMany(e => e.Itens
                 .Where(i => i.ProdutoId.HasValue)
-                .Select(i => new
+                .Select(i =>
                 {
-                    e.Id,                       // entradaId
-                    EmitenteNome = e.EmitenteNome,
-                    DataEmissao  = e.DataEmissao.ToString("dd/MM/yyyy"),
-                    ItemId       = i.Id,
-                    ProdutoId    = i.ProdutoId!.Value,
-                    Descricao    = i.ProdutoDescricao ?? i.DescricaoXml,
-                    CodigoBarras = produtos.TryGetValue(i.ProdutoId!.Value, out var p) ? p.CodigoBarras : i.CodigoBarras,
-                    Codigo       = produtos.TryGetValue(i.ProdutoId!.Value, out var p2) ? p2.Codigo : null,
-                    ImagemUrl    = produtos.TryGetValue(i.ProdutoId!.Value, out var p3) ? p3.ImagemUrl : null,
-                    i.QuantidadeEstoque,
-                    i.NumeroLote,
-                    i.LoteId,
-                    ValidadeIso  = i.Validade?.ToString("yyyy-MM-dd"),
+                    var pid = i.ProdutoId!.Value;
+                    var lote = (i.LoteId.HasValue && loteById.TryGetValue(i.LoteId.Value, out var lb)) ? lb
+                             : (lotePorProduto.TryGetValue(pid, out var lp) ? lp : null);
+                    var validadeIso = i.Validade?.ToString("yyyy-MM-dd")
+                                    ?? lote?.DataValidade?.ToString("yyyy-MM-dd");
+                    return new
+                    {
+                        e.Id,                       // entradaId
+                        EmitenteNome = e.EmitenteNome,
+                        DataEmissao  = e.DataEmissao.ToString("dd/MM/yyyy"),
+                        ItemId       = i.Id,
+                        ProdutoId    = pid,
+                        Descricao    = i.ProdutoDescricao ?? i.DescricaoXml,
+                        CodigoBarras = produtos.TryGetValue(pid, out var p) ? p.CodigoBarras : i.CodigoBarras,
+                        Codigo       = produtos.TryGetValue(pid, out var p2) ? p2.Codigo : null,
+                        ImagemUrl    = produtos.TryGetValue(pid, out var p3) ? p3.ImagemUrl : null,
+                        i.QuantidadeEstoque,
+                        i.NumeroLote,
+                        i.LoteId,
+                        ValidadeIso   = validadeIso,
+                        LoteImagemUrl = lote?.ImagemUrl,
+                        JaRegistrado  = validadeIso != null,   // validade já lançada (item ou lote) = concluído
+                    };
                 }))
             .OrderBy(i => i.Descricao)
             .ToList();
@@ -271,6 +291,14 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
         // Mudou a validade → a etiqueta do produto precisa ser reimpressa.
         var prodEtiq = await db.Produtos.FindAsync([lote.ProdutoId], ct);
         prodEtiq?.MarcarEtiquetaDesatualizada();
+
+        // Marca o item da NOTA como concluído (validade + lote), para o progresso
+        // "já registrei este" persistir mesmo se recarregar a tela / sair pro almoço.
+        if (req.ItemEntradaId.HasValue)
+        {
+            var item = await db.ItensEntradaNFe.FirstOrDefaultAsync(i => i.Id == req.ItemEntradaId.Value, ct);
+            item?.DefinirLote(lote.NumeroLote, req.DataValidade, lote.Id);
+        }
 
         await uow.SalvarAsync(ct);
         return Ok(new { lote.Id, mensagem, imagemUrl = lote.ImagemUrl });
@@ -377,7 +405,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
 public record RegistrarValidadeRequest(
     Guid EmpresaId, Guid ProdutoId, DateTime DataValidade,
     Guid? LoteId = null, string? NumeroLote = null, decimal? Quantidade = null,
-    string? ImagemBase64 = null);
+    string? ImagemBase64 = null, Guid? ItemEntradaId = null);
 
 public record SalvarConfigRequest(
     int DiasAlertaAmarelo, int DiasAlertaVermelho, int DiasAlertaUrgente,

@@ -172,6 +172,12 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .SumAsync(v => (decimal?)v ?? 0, ct);
         cmv += freteCompra;   // custo do vendido + frete de compra
 
+        // Perdas de vencidos (destino "Descarte") no período — custo dos produtos jogados fora.
+        var perdas = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && m.DocumentoOrigem == "VENCIDO:Descarte"
+                && m.CriadoEm >= inicio && m.CriadoEm < fimExcl)
+            .SumAsync(m => (decimal?)(m.Quantidade * m.CustoUnitario) ?? 0, ct);
+
         // Subcategorias dos recebimentos: Vendas (PDV) + os lançamentos de conta a receber.
         var subRecebimentos = new List<object>();
         if (vendasPdv > 0) subRecebimentos.Add(new { nome = "Vendas (PDV)", total = vendasPdv });
@@ -208,13 +214,13 @@ public class DREController(SistemaDbContext db) : ControllerBase
         var impostos = TotalGrupo("Impostos");
         var despesasFinanceiras = TotalGrupo("Despesas Financeiras") + jurosFinanciamento;
         var resultado = recebimentos - cmv - despesasAdministrativas - despesasOperacionais
-                      - despesasVariaveis - pessoas - impostos - despesasFinanceiras;
+                      - despesasVariaveis - pessoas - impostos - despesasFinanceiras - perdas;
         var margemLiquida = recebimentos > 0 ? Math.Round(resultado / recebimentos * 100, 1) : 0m;
 
         return new
         {
             recebimentos, cmv, despesasAdministrativas, despesasOperacionais,
-            despesasVariaveis, pessoas, impostos, despesasFinanceiras,
+            despesasVariaveis, pessoas, impostos, despesasFinanceiras, perdas,
             resultado, margemLiquida,
             subcategorias = new
             {

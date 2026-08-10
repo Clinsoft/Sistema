@@ -198,6 +198,14 @@
           </v-list-item>
         </template>
 
+        <!-- PERDAS (produtos vencidos descartados) -->
+        <v-list-item v-if="(dre.perdas ?? 0) > 0" class="dre-total-linha">
+          <template #title><span class="font-weight-bold">(-) Perdas (vencidos descartados)</span></template>
+          <template #append>
+            <span class="font-weight-bold text-brown-darken-2 text-body-1">- R$ {{ fmt(dre.perdas) }}</span>
+          </template>
+        </v-list-item>
+
         <v-divider class="my-2" style="border-width:2px" />
 
         <!-- RESULTADO LÍQUIDO -->

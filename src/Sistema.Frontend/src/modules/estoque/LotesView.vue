@@ -55,6 +55,11 @@
         </template>
         <template #item.quantidade="{ item }">{{ item.quantidade }}</template>
         <template #item.custoUnitario="{ item }">R$ {{ fmt(item.custoUnitario) }}</template>
+        <template #item.acoes="{ item }">
+          <v-btn v-if="item.quantidade > 0" size="x-small" variant="tonal"
+            :color="item.vencido ? 'error' : 'grey'" prepend-icon="mdi-delete-sweep-outline"
+            @click="abrirDestino(item)">Dar destino</v-btn>
+        </template>
       </v-data-table>
     </v-card>
 
@@ -71,6 +76,11 @@
           <v-chip :color="item.vencido ? 'error' : 'warning'" size="small">
             {{ item.vencido ? 'VENCIDO' : 'Próximo' }}
           </v-chip>
+        </template>
+        <template #item.acoes="{ item }">
+          <v-btn v-if="item.quantidade > 0" size="x-small" variant="tonal"
+            :color="item.vencido ? 'error' : 'grey'" prepend-icon="mdi-delete-sweep-outline"
+            @click="abrirDestino(item)">Dar destino</v-btn>
         </template>
       </v-data-table>
     </v-card>
@@ -130,6 +140,36 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog: dar destino ao lote (vencido) -->
+    <v-dialog v-model="dlgDestino" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-1 d-flex align-center">
+          <v-icon icon="mdi-delete-sweep-outline" color="error" class="mr-2" />
+          Dar destino ao lote
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            <b>{{ destino.descricao }}</b> · Lote {{ destino.numeroLote }}<br>
+            <span class="text-medium-emphasis">Em estoque: {{ destino.saldo }} · custo unit. R$ {{ fmt(destino.custoUnitario) }}</span>
+          </div>
+          <v-select v-model="destino.tipo" :items="destinos" item-title="label" item-value="value"
+            label="Destino *" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model.number="destino.quantidade" type="number" min="0" :max="destino.saldo"
+            label="Quantidade (vazio = tudo)" variant="outlined" density="compact" class="mb-2" />
+          <v-textarea v-model="destino.observacao" label="Observação (opcional)" rows="2"
+            variant="outlined" density="compact" auto-grow />
+          <v-alert v-if="destino.tipo === 'Descarte'" type="warning" variant="tonal" density="compact" class="mt-1">
+            Vai lançar como <b>perda</b>: R$ {{ fmt((destino.quantidade || destino.saldo) * destino.custoUnitario) }} (custo), que aparece no DRE.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-3 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgDestino = false">Cancelar</v-btn>
+          <v-btn color="error" :loading="salvandoDestino" @click="confirmarDestino">Confirmar baixa</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -175,6 +215,7 @@ const headers = [
   { title: 'Qtd.', key: 'quantidade', width: 80 },
   { title: 'Custo', key: 'custoUnitario', width: 110 },
   { title: 'Validade', key: 'dataValidade', width: 130 },
+  { title: 'Ações', key: 'acoes', width: 130, sortable: false },
 ]
 
 const headersVenc = [
@@ -183,6 +224,7 @@ const headersVenc = [
   { title: 'Qtd.', key: 'quantidade', width: 80 },
   { title: 'Validade', key: 'dataValidade', width: 130 },
   { title: 'Status', key: 'status', width: 110 },
+  { title: 'Ações', key: 'acoes', width: 130, sortable: false },
 ]
 
 function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
@@ -192,6 +234,41 @@ function fmtData(d: string) {
   if (s.includes('/')) return s.slice(0, 10)              // já dd/MM/yyyy
   const dt = new Date(s.slice(0, 10) + 'T12:00:00')       // corta hora/timezone antes de montar
   return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('pt-BR')
+}
+
+// ── Dar destino ao lote (vencido) ─────────────────────────────────
+const dlgDestino = ref(false)
+const salvandoDestino = ref(false)
+const destinos = [
+  { label: 'Descarte / Perda', value: 'Descarte' },
+  { label: 'Devolução ao fornecedor', value: 'Devolucao' },
+  { label: 'Uso interno / reprocesso', value: 'UsoInterno' },
+]
+const destino = ref<any>({ id: '', descricao: '', numeroLote: '', saldo: 0, custoUnitario: 0, tipo: 'Descarte', quantidade: null, observacao: '' })
+
+function abrirDestino(item: any) {
+  destino.value = {
+    id: item.id, descricao: item.descricao, numeroLote: item.numeroLote,
+    saldo: item.quantidade, custoUnitario: item.custoUnitario ?? 0,
+    tipo: 'Descarte', quantidade: null, observacao: '',
+  }
+  dlgDestino.value = true
+}
+
+async function confirmarDestino() {
+  salvandoDestino.value = true
+  try {
+    await api.post(`/lotes/${destino.value.id}/dar-destino`, {
+      destino: destino.value.tipo,
+      quantidade: destino.value.quantidade || 0,
+      observacao: destino.value.observacao || null,
+    })
+    notif.ok('Baixa registrada — o lote saiu do controle de validade.')
+    dlgDestino.value = false
+    await Promise.all([listar(), listarVencimentos()])
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao dar destino ao lote.')
+  } finally { salvandoDestino.value = false }
 }
 
 async function listar() {

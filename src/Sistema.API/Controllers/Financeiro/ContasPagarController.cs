@@ -16,7 +16,7 @@ namespace Sistema.API.Controllers.Financeiro;
 
 [ApiController]
 [Route("api/contas-pagar")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class ContasPagarController(
     ILancamentoFinanceiroRepository repo,
     IContaBancariaRepository contaRepo,

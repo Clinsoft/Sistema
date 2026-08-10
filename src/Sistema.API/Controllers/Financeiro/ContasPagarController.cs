@@ -62,7 +62,7 @@ public class ContasPagarController(
             categoria = l.Categoria, l.FornecedorId, l.ColaboradorId,
             fornecedorNome = l.FornecedorId.HasValue && fornecedores.TryGetValue(l.FornecedorId.Value, out var fn) ? fn
                            : l.ColaboradorId.HasValue && colaboradores.TryGetValue(l.ColaboradorId.Value, out var cn) ? cn
-                           : null,
+                           : l.ClienteNome,   // beneficiário informado manualmente (ex.: transportadora do CT-e)
             l.DocumentoOrigem, vencido = l.Vencido, l.ComprovanteUrl
         }));
     }

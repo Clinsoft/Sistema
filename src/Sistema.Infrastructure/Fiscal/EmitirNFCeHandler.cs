@@ -1,21 +1,28 @@
+using Hangfire;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Sistema.Domain.Fiscal.Entities;
-using Sistema.Domain.Fiscal.Interfaces;
+using Sistema.Infrastructure.Data;
+using Sistema.Infrastructure.Jobs;
 using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Vendas.Events;
-using Sistema.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace Sistema.Infrastructure.Fiscal;
 
 /// <summary>
-/// Emite a NFC-e ao finalizar a venda: monta e assina o XML, transmite à SEFAZ
-/// (ambiente conforme a Configuração Fiscal) e registra autorização ou rejeição.
-/// A transmissão é protegida — uma falha não derruba a venda.
+/// Ao finalizar a venda: monta e ASSINA o XML da NFC-e e SALVA a nota (status
+/// 'Transmitindo'). A TRANSMISSÃO à SEFAZ acontece em SEGUNDO PLANO (Hangfire,
+/// <see cref="TransmitirNFCeJob"/>), com retentativa automática — assim uma SEFAZ
+/// lenta ou fora NUNCA trava a venda. Todo o processo é protegido: qualquer falha
+/// aqui é registrada e NÃO derruba a finalização da venda.
 /// </summary>
-public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService transmissao)
+public class EmitirNFCeHandler(
+    SistemaDbContext db,
+    IBackgroundJobClient jobs,
+    ILogger<EmitirNFCeHandler> logger)
     : INotificationHandler<VendaFinalizadaEvent>
 {
     // URLs de consulta QR Code por UF (NT 2013.001 rev. 9 — produção)
@@ -79,10 +86,17 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
             .FirstOrDefaultAsync(c => c.EmpresaId == evt.EmpresaId, ct);
         if (config is null) return;
 
+        // Emissão desligada para esta empresa (ex.: filial sem CNPJ válido ainda).
+        if (!config.EmissaoNFCeAtiva) return;
+
         var empresa = await db.Empresas
             .FirstOrDefaultAsync(e => e.Id == evt.EmpresaId, ct);
         if (empresa is null) return;
 
+        // Toda a geração da NFC-e é PROTEGIDA: qualquer falha aqui é registrada e
+        // NUNCA derruba a venda (que já foi finalizada e salva antes deste handler).
+        try
+        {
         // Buscar dados dos produtos para montar itens da NFC-e
         var produtoIds = evt.Itens.Select(i => i.ProdutoId).ToList();
         var produtos = await db.Produtos
@@ -187,28 +201,21 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
         // apenas a URL base de consulta (máx. 85 caracteres).
         nfce.RegistrarQrCode($"{urlQr}?p={qrCodeData}", urlChave);
 
-        // Monta, assina e TRANSMITE à SEFAZ. Uma falha de transmissão (SEFAZ fora,
-        // rejeição, sem certificado) NÃO pode derrubar a venda — a nota fica salva
-        // com o status correspondente e pode ser retransmitida depois.
+        // Monta e ASSINA o XML (local e rápido). NÃO transmite aqui — a transmissão
+        // à SEFAZ é feita em segundo plano pelo TransmitirNFCeJob (com retentativa),
+        // para que uma SEFAZ lenta ou fora nunca trave a finalização da venda.
         try
         {
             var pagamentos = evt.Pagamentos
                 .Select(p => (TPag: MapearTPag(p.Forma), VPag: p.Valor))
                 .ToList();
             var xmlAssinado = NFeXmlBuilder.GerarXmlAssinadoComChave(nfce, empresa, config, chave44, pagamentos);
-            nfce.RegistrarTransmissao(chave44, xmlAssinado);
-
-            var resultado = await transmissao.TransmitirAsync(xmlAssinado, config, ct);
-            if (resultado.Autorizada)
-                nfce.RegistrarAutorizacao(resultado.Protocolo!, resultado.XmlRetorno ?? xmlAssinado);
-            else
-                nfce.RegistrarRejeicao(resultado.MotivoRejeicao ?? "Rejeitada pela SEFAZ",
-                    resultado.XmlRetorno ?? "");
+            nfce.RegistrarTransmissao(chave44, xmlAssinado);   // status Transmitindo + guarda o XML assinado
         }
         catch (Exception ex)
         {
-            // Sem certificado / SEFAZ indisponível: mantém a nota pendente para retransmitir.
-            nfce.RegistrarRejeicao($"Falha na transmissão: {ex.Message}", "");
+            // Sem certificado / erro ao montar o XML: nota fica rejeitada para correção (venda segue).
+            nfce.RegistrarRejeicao($"Falha ao gerar XML: {ex.Message}", "");
         }
 
         db.NotasFiscais.Add(nfce);
@@ -218,6 +225,16 @@ public class EmitirNFCeHandler(SistemaDbContext db, INFeTransmissaoService trans
         venda?.VincularNotaFiscal(nfce.Id);
 
         await db.SaveChangesAsync(ct);
+
+        // Enfileira a transmissão à SEFAZ em segundo plano (só se o XML foi gerado).
+        if (nfce.Status == StatusNF.Transmitindo)
+            jobs.Enqueue<TransmitirNFCeJob>(j => j.ExecutarAsync(nfce.Id));
+        }
+        catch (Exception ex)
+        {
+            // Blindagem final: emissão de NFC-e jamais derruba a venda.
+            logger.LogError(ex, "[NFCe] Falha ao gerar a NFC-e da venda {Venda} — venda mantida.", evt.VendaId);
+        }
     }
 
     /// <summary>Forma de pagamento interna → tPag da SEFAZ (Anexo I do MOC).</summary>

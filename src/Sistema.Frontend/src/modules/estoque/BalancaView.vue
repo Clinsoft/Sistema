@@ -17,6 +17,17 @@
           </v-card-title>
           <v-card-text class="pt-0">
 
+            <!-- Loja / balança -->
+            <template v-if="auth.lojas.length > 1">
+              <div class="text-body-2 font-weight-medium mb-1">Loja / balança *</div>
+              <v-select v-model="lojaSel" :items="auth.lojas" item-title="nome" item-value="id"
+                variant="outlined" density="compact" hide-details />
+              <div class="text-caption text-medium-emphasis mt-1 mb-4">
+                Entram só os produtos com movimentação nesta loja.
+              </div>
+              <v-divider class="mb-4" />
+            </template>
+
             <!-- Modelo -->
             <div class="text-body-2 font-weight-medium mb-1">Modelo da balança *</div>
             <v-select v-model="cfg.modelo" :items="modelos" item-title="label" item-value="id"
@@ -145,7 +156,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -156,6 +167,8 @@ const notif = useNotifStore()
 const carregando = ref(false)
 const exportando = ref(false)
 const produtos = ref<any[]>([])
+// Loja cuja balança será exportada — só produtos com movimentação nela.
+const lojaSel = ref<string | null>(auth.lojaAtualId ?? auth.lojas[0]?.id ?? null)
 
 const modelos = [
   { id: 'FILIZOLA_SMART', label: 'Filizola SMART' },
@@ -209,12 +222,15 @@ function dataValidade(dias: number) {
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/balanca/produtos', { params: { empresaId: auth.empresaId } })
+    const r = await api.get('/balanca/produtos', {
+      params: { empresaId: auth.empresaId, localEstoqueId: lojaSel.value },
+    })
     produtos.value = r.data ?? []
   } catch { produtos.value = [] } finally {
     carregando.value = false
   }
 }
+watch(lojaSel, carregar)
 
 async function exportar() {
   if (!produtos.value.length) return
@@ -224,6 +240,7 @@ async function exportar() {
       params: {
         empresaId: auth.empresaId,
         modelo: cfg.modelo,
+        localEstoqueId: lojaSel.value,
       },
       responseType: 'blob',
     })

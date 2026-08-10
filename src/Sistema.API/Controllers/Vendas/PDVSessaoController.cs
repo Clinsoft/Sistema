@@ -87,7 +87,20 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         [FromQuery] DateTime fim,
         CancellationToken ct)
     {
+        // Atendente NÃO vê histórico nem caixa de outros: força só o PRÓPRIO caixa e só HOJE.
+        Guid? somenteUsuario = null;
+        if (User.IsInRole("Atendente"))
+        {
+            somenteUsuario = Guid.TryParse(
+                User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid)
+                ? uid : Guid.Empty;
+            inicio = DateTime.Today;
+            fim = DateTime.Today.AddDays(1);
+        }
+
         var sessoes = (await repo.ListarPorPeriodoAsync(empresaId, inicio, fim, ct)).ToList();
+        if (somenteUsuario is Guid fu)
+            sessoes = sessoes.Where(s => s.UsuarioId == fu).ToList();
 
         var numeros = await NumerosPorSessaoAsync(empresaId, ct);
         var usuarioIds = sessoes.Select(s => s.UsuarioId).Distinct().ToList();

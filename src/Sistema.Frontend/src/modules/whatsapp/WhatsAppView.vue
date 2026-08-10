@@ -433,6 +433,35 @@
 
       <!-- Configuração -->
       <v-window-item value="config">
+        <!-- Vitrine / Loja Online (e-commerce próprio) -->
+        <v-card max-width="700" class="mb-4">
+          <v-card-title><v-icon icon="mdi-storefront" class="mr-2" />Vitrine / Loja Online</v-card-title>
+          <v-card-text>
+            <v-alert type="success" variant="tonal" density="comfortable" class="mb-4">
+              Sua <strong>loja online própria</strong>: o cliente navega os produtos, monta o carrinho
+              e envia o pedido. Os pedidos caem na aba <strong>Pedidos</strong> aqui do sistema.
+            </v-alert>
+            <div class="d-flex flex-column flex-sm-row gap-4 align-center">
+              <div class="text-center">
+                <canvas ref="qrVitrine" class="qr-vitrine" />
+                <div class="text-caption text-medium-emphasis">Aponte a câmera / imprima na loja</div>
+              </div>
+              <div class="flex-grow-1" style="width:100%">
+                <v-text-field :model-value="linkVitrine" label="Link da loja online" readonly
+                  density="compact" prepend-inner-icon="mdi-link-variant">
+                  <template #append-inner>
+                    <v-btn icon="mdi-content-copy" size="small" variant="text" @click="copiarLinkVitrine" title="Copiar link" />
+                    <v-btn icon="mdi-open-in-new" size="small" variant="text" :href="linkVitrine" target="_blank" title="Abrir loja" />
+                  </template>
+                </v-text-field>
+                <v-btn color="primary" variant="tonal" size="small" @click="baixarQrVitrine">
+                  <v-icon start>mdi-download</v-icon>Baixar QR code
+                </v-btn>
+              </div>
+            </div>
+          </v-card-text>
+        </v-card>
+
         <!-- Catálogo por feed (a Meta puxa sozinha) -->
         <v-card max-width="700" class="mb-4">
           <v-card-title>Catálogo (sincronização por feed)</v-card-title>
@@ -512,6 +541,15 @@
               </v-col>
               <v-col cols="12">
                 <v-switch v-model="cfgMsg.ativo" color="success" label="Mensagens automáticas ativas" density="compact" hide-details />
+              </v-col>
+              <v-col cols="12">
+                <v-divider class="mb-2" />
+                <v-switch v-model="cfgMsg.iaAtendimentoAtiva" color="deep-purple" density="compact" hide-details
+                  label="🤖 Atendente por IA (responde e monta pedido automático)" />
+                <div class="text-caption text-medium-emphasis ml-2">
+                  Quando o cliente manda mensagem, a IA responde usando o catálogo/preços da loja e vai montando o pedido.
+                  A conversa fica no inbox e o atendente pode assumir a qualquer momento.
+                </div>
               </v-col>
             </v-row>
           </v-card-text>
@@ -683,7 +721,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
@@ -694,6 +732,8 @@ const auth = useAuthStore()
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const tab = ref('conversas')
+// Renderiza o QR da vitrine quando a aba Configuração é aberta (canvas só existe então).
+watch(tab, v => { if (v === 'config') renderQrVitrine() })
 
 // ─── Caixa de entrada (conversas) ───────────────────────────────
 const conversas = ref<any[]>([])
@@ -744,7 +784,7 @@ function abrirImagem(url: string) { window.open(url, '_blank') }
 async function carregarConversas() {
   try {
     const { data } = await api.get('/whatsapp/conversas', {
-      params: { empresaId: auth.empresaId, busca: buscaConversa.value || undefined },
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, busca: buscaConversa.value || undefined },
     })
     conversas.value = Array.isArray(data) ? data : []
     // Mantém sincronizado o dentroDe24h da conversa aberta.
@@ -758,7 +798,7 @@ async function carregarConversas() {
 
 async function carregarNaoLidas() {
   try {
-    const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     totalNaoLidas.value = data?.total ?? 0
   } catch { /* silencioso */ }
 }
@@ -766,7 +806,7 @@ async function carregarNaoLidas() {
 async function abrirConversa(c: any, manterScroll = false) {
   conversaAtiva.value = c
   try {
-    const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get(`/whatsapp/conversas/${c.telefone}/mensagens`, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     const antes = mensagens.value.length
     mensagens.value = Array.isArray(data) ? data : []
     c.naoLidas = 0
@@ -784,7 +824,7 @@ async function responder() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
-      { empresaId: auth.empresaId, texto })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto })
     respostaTexto.value = ''
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
@@ -797,7 +837,7 @@ async function enviarCatalogoNativo() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/enviar-catalogo`,
-      { empresaId: auth.empresaId, texto: '' })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto: '' })
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o catálogo.')
@@ -822,7 +862,7 @@ async function carregarClientes(termo?: string) {
   buscandoCliente.value = true
   try {
     const { data } = await api.get('/clientes', {
-      params: { empresaId: auth.empresaId, termo: termo || undefined, tamanhoPagina: 100 },
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, termo: termo || undefined, tamanhoPagina: 100 },
     })
     const lista = Array.isArray(data) ? data : (data?.itens ?? [])
     // Prioriza quem tem telefone/celular; mantém os demais no fim (dá pra digitar o número).
@@ -852,6 +892,7 @@ async function iniciarConversa() {
     const tpl = templates.value.find(t => t.nomeMeta === novaConv.value.template)
     await api.post(`/whatsapp/conversas/${tel}/responder-template`, {
       empresaId: auth.empresaId,
+      localEstoqueId: auth.lojaAtualId || undefined,
       templateName: novaConv.value.template,
       idioma: tpl?.idioma || 'pt_BR',
       nome: novaConv.value.nome || null,
@@ -874,7 +915,7 @@ async function enviarLinkCatalogo() {
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,
-      { empresaId: auth.empresaId, texto })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, texto })
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o link do catálogo.')
@@ -887,7 +928,7 @@ async function responderTemplate() {
   try {
     const tpl = templates.value.find(t => t.nomeMeta === templateResposta.value)
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-template`,
-      { empresaId: auth.empresaId, templateName: templateResposta.value, idioma: tpl?.idioma || 'pt_BR' })
+      { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, templateName: templateResposta.value, idioma: tpl?.idioma || 'pt_BR' })
     templateResposta.value = null
     await abrirConversa(conversaAtiva.value)
   } catch (e: any) {
@@ -903,6 +944,7 @@ async function enviarAnexo(ev: Event) {
   try {
     const fd = new FormData()
     fd.append('empresaId', auth.empresaId as any)
+    if (auth.lojaAtualId) fd.append('localEstoqueId', auth.lojaAtualId)
     fd.append('arquivo', file)
     if (respostaTexto.value.trim()) fd.append('legenda', respostaTexto.value.trim())
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
@@ -962,6 +1004,7 @@ async function pararEnviarGravacao() {
     const ext = mime.includes('ogg') ? '.ogg' : mime.includes('webm') ? '.webm' : '.m4a'
     const fd = new FormData()
     fd.append('empresaId', auth.empresaId as any)
+    if (auth.lojaAtualId) fd.append('localEstoqueId', auth.lojaAtualId)
     fd.append('arquivo', new File([blob], `audio${ext}`, { type: mime }))
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder-midia`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
@@ -1010,9 +1053,39 @@ const linkCatalogo = computed(() =>
   `https://wa.me/${config.value.numeroWhatsApp}?text=Quero+ver+o+catálogo`
 )
 
+// Vitrine / loja online própria (rota pública /loja/:empresaId — hash history).
+const linkVitrine = computed(() =>
+  `${window.location.origin}/#/loja/${auth.empresaId}`
+)
+const qrVitrine = ref<HTMLCanvasElement | null>(null)
+async function renderQrVitrine() {
+  await nextTick()
+  if (!qrVitrine.value) return
+  try {
+    const QRCode = (await import('qrcode')).default
+    await QRCode.toCanvas(qrVitrine.value, linkVitrine.value, { width: 150, margin: 1 })
+  } catch { /* qr opcional */ }
+}
+async function copiarLinkVitrine() {
+  try {
+    await navigator.clipboard.writeText(linkVitrine.value)
+    notif.ok('Link da loja online copiado!')
+  } catch {
+    notif.aviso('Copie manualmente o link exibido na tela.')
+  }
+}
+function baixarQrVitrine() {
+  if (!qrVitrine.value) return
+  const a = document.createElement('a')
+  a.href = qrVitrine.value.toDataURL('image/png')
+  a.download = 'loja-online-qrcode.png'
+  a.click()
+}
+
 // URL pública do feed do catálogo (a Meta baixa por agendamento).
 const feedUrl = computed(() =>
   `${window.location.origin}/api/produtos/feed-catalogo?empresaId=${auth.empresaId}`
+  + (auth.lojaAtualId ? `&localEstoqueId=${auth.lojaAtualId}` : '')
 )
 async function copiarFeedUrl() {
   try {
@@ -1026,7 +1099,7 @@ async function copiarFeedUrl() {
 async function listarPedidos() {
   carregandoPedidos.value = true
   try {
-    const { data } = await api.get('/whatsapp/pedidos', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/pedidos', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     pedidos.value = Array.isArray(data) ? data : []
   } finally {
     carregandoPedidos.value = false
@@ -1057,6 +1130,7 @@ async function salvarConfig() {
     // Feed: só grava número (link wa.me) e Catalog ID informativo — não mexe no token.
     await api.put('/whatsapp/configuracao', {
       empresaId: auth.empresaId,
+      localEstoqueId: auth.lojaAtualId || null,
       catalogId: config.value.catalogId || null,
       numeroWhatsApp: config.value.numeroWhatsApp || null,
     })
@@ -1086,7 +1160,7 @@ const cfgMsg = ref({
   phoneNumberId: '', accessToken: '', businessAccountId: '',
   webhookVerifyToken: '', appId: '',
   ativo: false, enviarAniversario: true, enviarPromocoes: true,
-  enviarNovidades: false, horaDisparo: 8,
+  enviarNovidades: false, horaDisparo: 8, iaAtendimentoAtiva: false,
 })
 const mostrarToken = ref(false)
 
@@ -1101,14 +1175,14 @@ function copiarWebhookUrl() {
 
 async function carregarCfgMsg() {
   try {
-    const { data } = await api.get('/whatsapp/mensagem/config', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/config', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     cfgMsg.value = { ...cfgMsg.value, ...data, accessToken: data.accessTokenMask ?? '' }
   } catch {}
 }
 
 async function salvarCfgMsg() {
   try {
-    await api.put('/whatsapp/mensagem/config', cfgMsg.value, { params: { empresaId: auth.empresaId } })
+    await api.put('/whatsapp/mensagem/config', cfgMsg.value, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Configuração de mensagens salva!')
   } catch {
     notif.erro('Erro ao salvar configuração.')
@@ -1131,12 +1205,12 @@ const statusMeta = ref<Record<string, string>>({})
 
 async function carregarTemplates() {
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     templates.value = Array.isArray(data) ? data : []
   } catch {}
   // Busca os status reais na Meta (silencioso — se não estiver configurado, ignora).
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     const mapa: Record<string, string> = {}
     for (const t of (Array.isArray(data) ? data : [])) mapa[t.name] = t.status
     statusMeta.value = mapa
@@ -1235,7 +1309,7 @@ async function excluirTemplate(t: any) {
 async function importarTemplatesMeta() {
   importandoTemplates.value = true
   try {
-    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/mensagem/templates/meta', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     if (Array.isArray(data) && data.length > 0) {
       // Prepara cada template com um tipo de disparo sugerido para cadastro em 1 clique.
       templatesMeta.value = data.map((t: any) => ({ ...t, _tipo: sugerirTipo(t.name, t.category) }))
@@ -1426,7 +1500,7 @@ const disparandoNovidade  = ref(false)
 async function dispararPromocao() {
   disparandoPromocao.value = true
   try {
-    await api.post('/whatsapp/mensagem/disparar-promocao', null, { params: { empresaId: auth.empresaId } })
+    await api.post('/whatsapp/mensagem/disparar-promocao', null, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Disparo de promoções enfileirado! As mensagens serão enviadas em instantes.')
     setTimeout(carregarHistorico, 3000)
   } catch {
@@ -1439,7 +1513,7 @@ async function dispararPromocao() {
 async function dispararNovidade() {
   disparandoNovidade.value = true
   try {
-    await api.post('/whatsapp/mensagem/disparar-novidade', null, { params: { empresaId: auth.empresaId } })
+    await api.post('/whatsapp/mensagem/disparar-novidade', null, { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     notif.ok('Disparo de novidade enfileirado! As mensagens serão enviadas em instantes.')
     setTimeout(carregarHistorico, 3000)
   } catch {
@@ -1453,7 +1527,7 @@ async function carregarHistorico() {
   carregandoHistorico.value = true
   try {
     const { data } = await api.get('/whatsapp/mensagem/historico', {
-      params: { empresaId: auth.empresaId, ...filtroHistorico.value }
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined, ...filtroHistorico.value }
     })
     historico.value = data?.itens ?? []
   } finally {
@@ -1463,7 +1537,7 @@ async function carregarHistorico() {
 
 async function carregarConfigCatalogo() {
   try {
-    const { data } = await api.get('/whatsapp/configuracao', { params: { empresaId: auth.empresaId } })
+    const { data } = await api.get('/whatsapp/configuracao', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     if (data) config.value = {
       catalogId: data.catalogId ?? '', numeroWhatsApp: data.numeroWhatsApp ?? '',
     }
@@ -1484,6 +1558,13 @@ onUnmounted(pararPolling)
 </script>
 
 <style scoped>
+.qr-vitrine {
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+}
+.gap-4 { gap: 16px; }
 .msg-bolha {
   max-width: 75%;
   padding: 8px 12px;

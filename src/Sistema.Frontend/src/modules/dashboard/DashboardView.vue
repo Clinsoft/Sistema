@@ -241,7 +241,7 @@
 
       <!-- Contas a Receber — Agenda do mês -->
       <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" height="100%">
+        <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
             Contas a Receber — {{ calMesLabel }}
@@ -310,10 +310,117 @@
             </v-btn>
           </v-card-actions>
         </v-card>
+
+        <!-- Planejamento (abaixo do Contas a Receber) -->
+        <v-card rounded="xl" elevation="1" class="mt-4">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
+            Planejamento — {{ anoAtual }}
+            <v-spacer />
+            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Ver
+            </v-btn>
+          </v-card-title>
+
+          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
+            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
+              Criar Planejamento
+            </v-btn>
+          </v-card-text>
+
+          <div v-else class="pa-3 pt-0">
+            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
+              <div class="d-flex align-center mb-1">
+                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
+                <span class="text-caption font-weight-bold"
+                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
+                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
+                </span>
+              </div>
+              <v-progress-linear
+                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
+                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
+                height="5" rounded
+              />
+            </div>
+            <v-divider class="my-2" />
+            <div class="d-flex justify-space-between text-caption">
+              <span class="text-medium-emphasis">Realizado YTD</span>
+              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
+            </div>
+          </div>
+        </v-card>
       </v-col>
 
       <!-- Ponto de Equilíbrio + DRE (empilhados, ao lado do Contas a Receber) -->
       <v-col cols="12" md="6">
+        <!-- Metas de venda diária: cobrir despesas operacionais e financiamentos -->
+        <v-row v-if="metas && (metas.metaDiariaOperacional > 0 || metas.metaDiariaFinanciamentos > 0)"
+          dense class="mb-3">
+          <v-col cols="6">
+            <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Operacional</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-teal-darken-3">{{ fmt(metas.metaDiariaOperacional) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.despesasOperacionaisMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+          <v-col cols="6">
+            <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Financiamentos</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">{{ fmt(metas.metaDiariaFinanciamentos) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.financiamentosMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Necessidade de capital de giro do mês -->
+        <v-card v-if="capitalGiro" rounded="xl" elevation="1" class="mb-3"
+          :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-lighten-5' : 'green-lighten-5'">
+          <v-card-text class="pa-3">
+            <div class="d-flex align-center mb-1" style="gap:6px">
+              <v-icon icon="mdi-cash-sync"
+                :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
+              <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
+            </div>
+            <div class="d-flex align-baseline flex-wrap" style="gap:6px 12px">
+              <span class="text-h5 font-weight-bold"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
+                {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
+              </span>
+              <span class="text-subtitle-1 font-weight-medium"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+                {{ fmt(capitalGiroDia) }}/dia
+              </span>
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Compra de estoque R$ {{ fmtMil(capitalGiro.estoqueAPagarMes) }}
+              − custo das vendas previstas R$ {{ fmtMil(capitalGiro.cmvPrevisto) }}
+            </div>
+            <div class="text-caption mt-1"
+              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+              {{ capitalGiro.necessidadeCapitalGiro > 0
+                ? 'Comprando mais estoque do que vende — a diferença vem de capital de giro.'
+                : 'Vendas cobrem a reposição de estoque do mês.' }}
+            </div>
+          </v-card-text>
+        </v-card>
+
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
@@ -462,56 +569,41 @@
             </v-btn>
           </v-card-actions>
         </v-card>
+
+        <!-- Margem de contribuição por categoria (afina a meta de venda) -->
+        <v-card rounded="xl" elevation="1" class="mt-4"
+          v-if="margemCats && margemCats.categorias.length">
+          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-tag-percent-outline" class="mr-2" color="teal" />
+            Margem por categoria
+            <v-spacer />
+            <v-chip size="small" color="teal" variant="tonal" label>Média {{ margemCats.margemMedia }}%</v-chip>
+          </v-card-title>
+          <v-card-text class="pt-1">
+            <div class="text-caption text-medium-emphasis mb-3">
+              Últimos {{ margemCats.dias }} dias · margem de contribuição (já tira o custo do produto)
+            </div>
+            <div v-for="c in margemCats.categorias" :key="c.categoria" class="mb-2">
+              <div class="d-flex align-center justify-space-between text-body-2">
+                <span class="text-truncate" style="max-width:52%">{{ c.categoria }}</span>
+                <span class="d-flex align-center" style="gap:8px">
+                  <span class="text-caption text-medium-emphasis">{{ c.pctFaturamento }}% do fat.</span>
+                  <strong :class="`text-${corMargem(c.margemPct)}`" style="min-width:48px;text-align:right">
+                    {{ c.margemPct }}%
+                  </strong>
+                </span>
+              </div>
+              <v-progress-linear :model-value="c.margemPct" :color="corMargem(c.margemPct)"
+                height="5" rounded class="mt-1" />
+            </div>
+          </v-card-text>
+        </v-card>
       </v-col>
     </v-row>
 
-    <!-- Planejamento + Vendas por Colaborador -->
+    <!-- Vendas por Colaborador -->
     <v-row class="mt-2">
-      <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" style="display:flex;flex-direction:column">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
-            Planejamento — {{ anoAtual }}
-            <v-spacer />
-            <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Ver
-            </v-btn>
-          </v-card-title>
-
-          <v-card-text v-if="!planejamento" class="text-center text-medium-emphasis flex-grow-1 d-flex flex-column justify-center pa-6">
-            <v-icon icon="mdi-chart-timeline-variant-shimmer" size="36" class="mb-2" color="blue-lighten-3" />
-            <div class="text-body-2">Nenhum planejamento para {{ anoAtual }}.</div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
-              Criar Planejamento
-            </v-btn>
-          </v-card-text>
-
-          <div v-else class="pa-3 pt-0 flex-grow-1">
-            <div v-for="item in planejamento.meses" :key="item.mes" class="mb-2">
-              <div class="d-flex align-center mb-1">
-                <span class="text-caption text-medium-emphasis flex-grow-1">{{ item.nomeMes }}</span>
-                <span class="text-caption font-weight-bold"
-                  :class="item.realizado >= item.meta ? 'text-success' : item.mes <= mesAtualNum ? 'text-warning' : ''">
-                  {{ item.realizado > 0 ? fmt(item.realizado) : '—' }}
-                </span>
-              </div>
-              <v-progress-linear
-                :model-value="item.meta > 0 ? Math.min((item.realizado / item.meta) * 100, 100) : 0"
-                :color="item.realizado >= item.meta ? 'success' : item.mes <= mesAtualNum ? 'warning' : 'blue-lighten-3'"
-                height="5" rounded
-              />
-            </div>
-            <v-divider class="my-2" />
-            <div class="d-flex justify-space-between text-caption">
-              <span class="text-medium-emphasis">Realizado YTD</span>
-              <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- Vendas por Colaborador -->
-      <v-col cols="12" md="6">
+      <v-col cols="12">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-account-group-outline" class="mr-2" color="teal" />
@@ -572,7 +664,137 @@
           </div>
         </v-card>
       </v-col>
+    </v-row>
 
+    <!-- Vendas por Loja -->
+    <v-row class="mt-2">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-store-outline" class="mr-2" color="deep-orange" />
+            Vendas por Loja — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
+          </v-card-title>
+
+          <v-card-text v-if="carregandoLoja" class="d-flex justify-center pa-8">
+            <v-progress-circular indeterminate color="deep-orange" />
+          </v-card-text>
+          <div v-else-if="vendasLoja.length === 0" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-store-off-outline" size="36" class="mb-2" />
+            <div class="text-body-2">Nenhuma venda registrada no período.</div>
+          </div>
+          <div v-else class="pa-3 pt-0">
+            <div v-for="(v, i) in vendasLoja" :key="v.localEstoqueId" class="mb-3">
+              <div class="d-flex align-center mb-1">
+                <v-icon icon="mdi-storefront-outline" :color="coresLoja[i % coresLoja.length]" size="20" class="mr-2" />
+                <span class="text-body-2 font-weight-medium flex-grow-1">{{ v.loja }}</span>
+                <span class="text-body-2 font-weight-bold ml-2">{{ fmt(v.totalVendido) }}</span>
+              </div>
+              <div class="d-flex align-center gap-2">
+                <v-progress-linear :model-value="(v.totalVendido / vendasLoja[0].totalVendido) * 100"
+                  :color="coresLoja[i % coresLoja.length]" height="6" rounded class="flex-grow-1" />
+                <span class="text-caption text-medium-emphasis" style="min-width:80px;text-align:right">
+                  {{ v.qtdVendas }} vda{{ v.qtdVendas !== 1 ? 's' : '' }} · TM {{ fmt(v.ticketMedio) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Movimento por loja (dia da semana × hora) -->
+    <v-row class="mt-2">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center flex-wrap">
+            <v-icon icon="mdi-clock-time-four-outline" class="mr-2" color="teal" />
+            Dias e horários de maior movimento
+            <v-spacer />
+            <v-btn-toggle v-model="periodoMov" mandatory density="compact" rounded="lg" color="teal">
+              <v-btn :value="7" size="small">7d</v-btn>
+              <v-btn :value="30" size="small">30d</v-btn>
+              <v-btn :value="90" size="small">90d</v-btn>
+              <v-btn :value="180" size="small">180d</v-btn>
+            </v-btn-toggle>
+          </v-card-title>
+          <v-card-text>
+            <div v-if="carregandoMov" class="d-flex justify-center pa-6">
+              <v-progress-circular indeterminate color="teal" />
+            </div>
+            <div v-else-if="!lojasMovimento.length" class="text-center text-medium-emphasis pa-6">
+              Sem vendas no período.
+            </div>
+            <!-- Legenda -->
+            <div v-if="lojasMovimento.length" class="d-flex align-center flex-wrap gap-4 mb-3 text-caption text-medium-emphasis">
+              <div class="d-flex align-center gap-1">
+                <span>Menos</span>
+                <span class="leg-cel" style="background:rgba(0,150,136,0.15)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,0.45)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,0.7)" />
+                <span class="leg-cel" style="background:rgba(0,150,136,1)" />
+                <span>Mais vendas</span>
+              </div>
+              <div class="d-flex align-center gap-1">
+                <span class="leg-cel heat-peak" style="background:rgba(0,150,136,0.7)" />
+                <span>Dia e horário de maior movimento</span>
+              </div>
+            </div>
+
+            <v-row>
+              <v-col v-for="loja in lojasMovimento" :key="loja.localEstoqueId" cols="12" md="6">
+                <div class="d-flex align-center justify-space-between mb-1">
+                  <span class="font-weight-bold text-body-2">{{ loja.nome }}</span>
+                  <span class="text-caption text-medium-emphasis">{{ loja.totalVendas }} vendas · {{ fmt(loja.faturamento) }}</span>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                  <v-chip size="x-small" color="primary" variant="tonal" prepend-icon="mdi-calendar-star">
+                    Dia: <b class="ml-1">{{ loja.picoDia.label }}</b>&nbsp;· {{ loja.picoDia.vendas }}
+                  </v-chip>
+                  <v-chip v-if="loja.picoHora" size="x-small" color="deep-orange" variant="tonal" prepend-icon="mdi-clock-alert-outline">
+                    Horário: <b class="ml-1">{{ loja.picoHora.label }}</b>&nbsp;· {{ loja.picoHora.vendas }}
+                  </v-chip>
+                </div>
+
+                <!-- Gráfico de barras: vendas por horário -->
+                <div class="text-caption text-medium-emphasis mb-1">Vendas por horário</div>
+                <div class="barras mb-3">
+                  <div v-for="b in loja.barras" :key="b.h" class="barra-col" :title="`${b.h}h — ${b.v} venda(s)`">
+                    <div class="barra-bar" :class="{ 'barra-peak': b.peak }"
+                      :style="{ height: (b.v ? Math.max(3, b.pct * 0.62) : 0) + 'px' }" />
+                    <div class="barra-h">{{ b.h }}</div>
+                  </div>
+                </div>
+
+                <!-- Heatmap: dia da semana × hora -->
+                <div class="text-caption text-medium-emphasis mb-1">Dia da semana × horário</div>
+                <div class="heat-scroll">
+                  <table class="heat">
+                    <thead>
+                      <tr>
+                        <th class="heat-corner"></th>
+                        <th v-for="col in loja.horas" :key="col.h" :class="{ 'heat-col-peak': col.peak }">{{ col.h }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="linha in loja.linhas" :key="linha.d">
+                        <td class="heat-dia" :class="{ 'heat-dia-peak': linha.isPeak }">{{ linha.label }}</td>
+                        <td v-for="c in linha.cells" :key="c.h"
+                          class="heat-cell" :class="{ 'heat-peak': c.peak }"
+                          :style="{ background: c.v ? `rgba(0,150,136,${c.a})` : 'rgba(127,127,127,0.06)', color: c.a > 0.55 ? '#fff' : '' }"
+                          :title="`${linha.label} ${c.h}h — ${c.v} venda(s)`">
+                          {{ c.v || '' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
     </v-row>
 
     <!-- Alertas -->
@@ -636,6 +858,24 @@ const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 const iniciais = (nome: string) => nome.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 
 const coresColab = ['teal', 'indigo', 'deep-purple', 'blue', 'cyan', 'green', 'orange']
+const coresLoja = ['deep-orange', 'teal', 'indigo', 'blue', 'green', 'purple']
+
+// ── Vendas por Loja (unidade do caixa) ───────────────────────────────────────
+interface VendaLoja { localEstoqueId: string; loja: string; qtdVendas: number; totalVendido: number; ticketMedio: number }
+const vendasLoja = ref<VendaLoja[]>([])
+const carregandoLoja = ref(true)
+async function carregarVendasLoja() {
+  if (!auth.empresaId) { carregandoLoja.value = false; return }
+  carregandoLoja.value = true
+  try {
+    const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
+    const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
+    const r = await api.get<VendaLoja[]>('/relatorios/vendas/por-loja', {
+      params: { empresaId: auth.empresaId, inicio, fim },
+    })
+    vendasLoja.value = r.data ?? []
+  } catch { vendasLoja.value = [] } finally { carregandoLoja.value = false }
+}
 
 interface ResumoData {
   vendasHoje: number
@@ -655,7 +895,7 @@ const cards = computed(() => [
 async function carregarResumo() {
   if (!auth.empresaId) return
   try {
-    const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId } })
+    const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId } })
     resumo.value = res.data
     montarAlertas()
   } catch { resumo.value = null }
@@ -700,6 +940,65 @@ interface PeData {
 
 const pe = ref<PeData | null>(null)
 const carregandoPe = ref(true)
+
+// Metas de venda diária (cobrir despesas operacionais / financiamentos)
+interface MetasDiarias {
+  percentualMargemContribuicao: number
+  despesasOperacionaisMes: number
+  financiamentosMes: number
+  metaDiariaOperacional: number
+  metaDiariaFinanciamentos: number
+}
+const metas = ref<MetasDiarias | null>(null)
+async function carregarMetas() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<MetasDiarias>('/financeiro/ponto-equilibrio/metas-diarias', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    metas.value = res.data
+  } catch { metas.value = null }
+}
+
+// Margem de contribuição por categoria (últimos 90 dias)
+interface MargemCat { categoria: string; receita: number; margem: number; margemPct: number; pctFaturamento: number }
+interface MargemCatData { dias: number; margemMedia: number; categorias: MargemCat[] }
+const margemCats = ref<MargemCatData | null>(null)
+async function carregarMargemCats() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<MargemCatData>('/financeiro/ponto-equilibrio/margem-categorias', {
+      params: { empresaId: auth.empresaId, dias: 90 }
+    })
+    margemCats.value = res.data
+  } catch { margemCats.value = null }
+}
+function corMargem(pct: number) {
+  return pct >= 65 ? 'success' : pct >= 55 ? 'warning' : 'error'
+}
+
+// Necessidade de capital de giro (compra de estoque − custo das vendas previstas)
+interface CapitalGiro {
+  estoqueAPagarMes: number
+  vendasPrevistas: number
+  cmvPrevisto: number
+  necessidadeCapitalGiro: number
+}
+const capitalGiro = ref<CapitalGiro | null>(null)
+const capitalGiroDia = computed(() => {
+  if (!capitalGiro.value) return 0
+  const dias = new Date(anoRef.value, mesRef.value + 1, 0).getDate()   // dias do mês
+  return capitalGiro.value.necessidadeCapitalGiro / dias
+})
+async function carregarCapitalGiro() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<CapitalGiro>('/financeiro/ponto-equilibrio/capital-giro', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    capitalGiro.value = res.data
+  } catch { capitalGiro.value = null }
+}
 
 async function carregarPe() {
   if (!auth.empresaId) { carregandoPe.value = false; return }
@@ -770,7 +1069,8 @@ async function mudarMes(delta: number) {
   mesOffset.value += delta
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
-    carregarPe(), carregarDre(), carregarVendasColaborador(),
+    carregarPe(), carregarDre(), carregarVendasColaborador(), carregarVendasLoja(),
+    carregarMetas(), carregarCapitalGiro(),
   ])
 }
 const diaSelecionado = ref(diaHoje)
@@ -917,7 +1217,7 @@ async function carregarVendasColaborador() {
     const [rankingRes, usuariosRes] = await Promise.all([
       api.get<{ usuarioId: string; qtdVendas: number; totalVendido: number; ticketMedio: number }[]>(
         '/relatorios/vendas/por-vendedor',
-        { params: { empresaId: auth.empresaId, inicio, fim } }
+        { params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId } }
       ),
       api.get<{ id: string; nome: string }[]>('/usuarios', { params: { empresaId: auth.empresaId } })
     ])
@@ -1072,7 +1372,7 @@ async function carregarVendasMes() {
     const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
     const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<VendaDia[]>('/relatorios/vendas/diarias', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     vendasMes.value = res.data ?? []
   } catch { vendasMes.value = [] } finally { carregando.value = false }
@@ -1095,7 +1395,7 @@ async function carregarCurvaAbc() {
     const inicio = `${anoAtual}-01-01`
     const fim = new Date().toISOString().slice(0, 10)
     const res = await api.get<{ itens: AbcItem[] }>('/estoque/curva-abc', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     curvaAbc.value = res.data.itens ?? []
     await nextTick()
@@ -1164,17 +1464,70 @@ if (typeof ResizeObserver !== 'undefined') {
   liga(() => abcCanvas.value, renderizarCurvaAbc)
 }
 
+// ── Movimento (dia da semana × hora, por loja) ─────────────────────
+const movimento = ref<any>(null)
+const carregandoMov = ref(true)
+const periodoMov = ref(90)
+const diasCurto = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+async function carregarMovimento() {
+  if (!auth.empresaId) { carregandoMov.value = false; return }
+  carregandoMov.value = true
+  try {
+    const r = await api.get('/dashboard/movimento', { params: { empresaId: auth.empresaId, dias: periodoMov.value } })
+    movimento.value = r.data
+  } finally { carregandoMov.value = false }
+}
+
+watch(periodoMov, carregarMovimento)
+
+const lojasMovimento = computed(() => (movimento.value?.lojas ?? []).map((loja: any) => {
+  const hs = loja.porHora.map((h: any) => h.hora)
+  const min = hs.length ? Math.min(...hs) : 8
+  const max = hs.length ? Math.max(...hs) : 20
+  const horas: { h: number; peak: boolean }[] = []
+  for (let h = min; h <= max; h++) horas.push({ h, peak: !!loja.picoHora && h === loja.picoHora.hora })
+  const map: Record<string, number> = {}
+  let mx = 0, maxDia = -1, maxHora = -1
+  for (const c of loja.heatmap) {
+    map[`${c.dia}-${c.hora}`] = c.vendas
+    if (c.vendas > mx) { mx = c.vendas; maxDia = c.dia; maxHora = c.hora }
+  }
+  const linhas = []
+  for (let d = 0; d < 7; d++) {
+    const cells = horas.map(({ h }) => {
+      const v = map[`${d}-${h}`] || 0
+      return { h, v, a: v ? 0.15 + 0.85 * v / (mx || 1) : 0, peak: d === maxDia && h === maxHora }
+    })
+    linhas.push({ d, label: diasCurto[d], isPeak: d === loja.picoDia.dia, cells })
+  }
+  // Barras: vendas por horário (usa o mesmo range de horas do heatmap)
+  const porHoraMap: Record<number, number> = {}
+  let maxBar = 0
+  for (const ph of loja.porHora) { porHoraMap[ph.hora] = ph.vendas; if (ph.vendas > maxBar) maxBar = ph.vendas }
+  const barras = horas.map(({ h, peak }) => {
+    const v = porHoraMap[h] || 0
+    return { h, v, pct: maxBar ? v / maxBar * 100 : 0, peak }
+  })
+  return { ...loja, horas, linhas, barras }
+}))
+
 onMounted(async () => {
   await Promise.all([
     carregarResumo(),
+    carregarMovimento(),
     carregarVendasMes(),
     carregarPe(),
     carregarContasMes(),
     carregarReceberMes(),
     carregarVendasColaborador(),
+    carregarVendasLoja(),
     carregarDre(),
     carregarPlanejamento(),
     carregarCurvaAbc(),
+    carregarMetas(),
+    carregarMargemCats(),
+    carregarCapitalGiro(),
   ])
   // Redesenha os gráficos DEPOIS que todos os cards assentaram no DOM. No load
   // inicial os vizinhos trocam de spinner→conteúdo e re-renderizam por cima do
@@ -1189,6 +1542,38 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.heat-scroll { overflow-x: auto; padding-bottom: 2px; }
+.heat { border-collapse: separate; border-spacing: 3px; font-size: 0.68rem; }
+.heat th {
+  font-weight: 500; color: rgba(var(--v-theme-on-surface), 0.45);
+  padding: 0 0 3px; text-align: center; font-size: 0.65rem;
+}
+.heat-corner { width: 28px; }
+.heat-dia {
+  font-weight: 600; color: rgba(var(--v-theme-on-surface), 0.6);
+  padding-right: 8px; text-align: right; white-space: nowrap; font-size: 0.7rem;
+}
+.heat-cell {
+  width: 24px; min-width: 24px; height: 20px; text-align: center; vertical-align: middle;
+  border-radius: 4px; color: rgba(var(--v-theme-on-surface), 0.75);
+  transition: transform 0.08s ease;
+}
+.heat-cell:hover { transform: scale(1.18); cursor: default; position: relative; z-index: 1; }
+.heat-peak { outline: 2px solid #ff5722; outline-offset: -1px; font-weight: 700; }
+.heat-col-peak { color: #ff5722 !important; font-weight: 700; }
+.heat-dia-peak { color: #ff5722 !important; }
+.leg-cel {
+  display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle;
+}
+.barras { display: flex; align-items: flex-end; gap: 3px; height: 72px; }
+.barra-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; }
+.barra-bar {
+  width: 100%; max-width: 20px; background: rgba(0, 150, 136, 0.75);
+  border-radius: 3px 3px 0 0; transition: background 0.1s;
+}
+.barra-col:hover .barra-bar { background: rgba(0, 150, 136, 1); }
+.barra-peak { background: #ff5722 !important; }
+.barra-h { font-size: 0.6rem; color: rgba(var(--v-theme-on-surface), 0.45); margin-top: 3px; }
 .dash-cal-head {
   display: grid; grid-template-columns: repeat(7, 1fr);
   font-size: 10px; font-weight: 700; color: #9e9e9e; text-align: center; margin-bottom: 4px;

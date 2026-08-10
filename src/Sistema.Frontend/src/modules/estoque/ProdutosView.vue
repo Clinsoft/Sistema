@@ -5,6 +5,12 @@
       <v-col cols="12" sm="auto" class="d-flex flex-wrap gap-2">
         <v-btn v-if="!ehAtendente" color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
           @click="abrirUnificar">Unificar duplicados</v-btn>
+        <v-btn v-if="!ehAtendente" color="blue-grey" variant="tonal" prepend-icon="mdi-broom" :block="mobile"
+          :loading="limpandoDescricoes" @click="limparDescricoes"
+          title="Apara espaços no início/fim e colapsa espaços repetidos nos nomes dos produtos (espaço no fim quebra a NFC-e / cStat 225)">
+          Limpar descrições</v-btn>
+        <v-btn v-if="!ehAtendente" color="teal" variant="tonal" prepend-icon="mdi-file-import-outline" :block="mobile"
+          @click="abrirImportar">Importar planilha</v-btn>
         <v-btn v-if="!ehAtendente" color="green-darken-1" variant="tonal" prepend-icon="mdi-cloud-sync-outline" :block="mobile"
           :loading="sincronizandoSite" @click="sincronizarSite"
           title="Envia os produtos por kg (nome, descrição, foto, categoria e tabela nutricional) para o site ecogranel.com.br">
@@ -12,6 +18,74 @@
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
+
+    <!-- Dialog: Importar planilha de produtos -->
+    <v-dialog v-model="dlgImportar" max-width="820" scrollable>
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-file-import-outline" class="mr-2" color="teal" />Importar produtos de planilha
+        </v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-4">
+            Envie um arquivo <b>.xlsx</b> ou <b>.csv</b> com colunas <b>Nome</b>, <b>NCM</b>, <b>Estoque</b> e <b>Preço</b>
+            (o cabeçalho é detectado automaticamente). Escolha categoria, marca e unidade abaixo — valem para todos os itens.
+          </v-alert>
+
+          <v-file-input v-model="impArquivo" accept=".xlsx,.xls,.csv" label="Arquivo da planilha"
+            prepend-icon="mdi-paperclip" variant="outlined" density="compact" show-size
+            @update:model-value="lerPlanilha" :loading="impLendo" class="mb-3" />
+
+          <v-row dense>
+            <v-col cols="12" sm="4">
+              <v-select v-model="impCategoriaId" :items="categorias" item-title="nome" item-value="id"
+                label="Categoria *" variant="outlined" density="compact" />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-combobox v-model="impMarca" :items="marcas.map((m:any)=>m.nome)"
+                label="Marca *" variant="outlined" density="compact"
+                hint="Escolha ou digite uma nova (ex.: Olichia)" persistent-hint />
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-select v-model="impUnidadeId" :items="unidades" :item-title="(u:any)=>u.sigla+' - '+u.descricao" item-value="id"
+                label="Unidade *" variant="outlined" density="compact" />
+            </v-col>
+          </v-row>
+
+          <div v-if="impLinhas.length" class="mt-2">
+            <div class="text-caption text-medium-emphasis mb-1">{{ impLinhas.length }} produto(s) na planilha:</div>
+            <v-table density="compact" class="border rounded" style="max-height: 260px; overflow-y: auto">
+              <thead><tr><th>Nome</th><th>NCM</th><th class="text-right">Preço</th></tr></thead>
+              <tbody>
+                <tr v-for="(l, i) in impLinhas" :key="i">
+                  <td>{{ l.descricao }}</td><td>{{ l.ncm || '—' }}</td>
+                  <td class="text-right">R$ {{ (l.precoVenda ?? 0).toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+
+          <div v-if="impResultado" class="mt-3">
+            <v-alert :type="impResultado.criados > 0 ? 'success' : 'warning'" variant="tonal" density="compact">
+              <b>{{ impResultado.criados }}</b> criado(s).
+              <span v-if="impResultado.ignorados?.length"> {{ impResultado.ignorados.length }} ignorado(s) (já existiam).</span>
+              <span v-if="impResultado.erros?.length"> {{ impResultado.erros.length }} com erro.</span>
+            </v-alert>
+            <div v-if="impResultado.erros?.length" class="text-caption text-error mt-1">
+              <div v-for="(e:any, i) in impResultado.erros" :key="i">• {{ e.nome }}: {{ e.erro }}</div>
+            </div>
+          </div>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="dlgImportar = false">Fechar</v-btn>
+          <v-btn color="teal" rounded="lg" :loading="importando"
+            :disabled="!impLinhas.length || !impCategoriaId || !impMarca || !impUnidadeId"
+            @click="confirmarImportar">Importar {{ impLinhas.length || '' }} produto(s)</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Dialog: Ajuste de estoque rápido -->
     <v-dialog v-model="dlgAjuste" max-width="480">
@@ -113,9 +187,11 @@
           <v-card v-for="(g, gi) in gruposDup" :key="gi" variant="outlined" rounded="lg" class="mb-3 pa-3"
             :color="g.similar ? 'warning' : undefined">
             <div class="d-flex align-center gap-2 mb-2">
+              <v-checkbox v-model="g._incluir" density="compact" hide-details color="warning"
+                class="flex-grow-0" :label="g.similar ? 'Unificar mesmo assim' : 'Unificar este'" />
               <span class="text-caption text-medium-emphasis">{{ g.chave }}</span>
               <v-chip v-if="g.similar" size="x-small" color="warning" variant="flat">
-                <v-icon start size="x-small">mdi-alert</v-icon>similar — confira
+                <v-icon start size="x-small">mdi-alert</v-icon>similar — não marcado
               </v-chip>
             </div>
             <v-radio-group v-model="g._manter" density="compact" hide-details>
@@ -141,7 +217,8 @@
           <v-spacer />
           <v-btn variant="text" @click="dlgUnificar = false">Fechar</v-btn>
           <v-btn v-if="gruposDup.length" color="warning" rounded="lg" :loading="unificando"
-            @click="confirmarUnificar">Unificar ({{ gruposDup.length }})</v-btn>
+            :disabled="gruposParaUnificar === 0"
+            @click="confirmarUnificar">Unificar ({{ gruposParaUnificar }})</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -987,6 +1064,118 @@ async function sincronizarSite() {
     sincronizandoSite.value = false
   }
 }
+// Limpa espaços das descrições (espaço no fim quebra a NFC-e / cStat 225).
+const limpandoDescricoes = ref(false)
+async function limparDescricoes() {
+  limpandoDescricoes.value = true
+  try {
+    const { data } = await api.post('/produtos/limpar-descricoes', null,
+      { params: { empresaId: auth.empresaId } })
+    if (data?.limpos > 0) {
+      notif.ok(`${data.limpos} descrição(ões) limpa(s).`)
+      await listar()
+    } else {
+      notif.ok('Tudo certo — nenhuma descrição precisava de limpeza.')
+    }
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao limpar as descrições.')
+  } finally {
+    limpandoDescricoes.value = false
+  }
+}
+
+// ─── Importar planilha de produtos ─────────────────────────────────────────
+const dlgImportar = ref(false)
+const impArquivo = ref<any>(null)
+const impLendo = ref(false)
+const impLinhas = ref<any[]>([])
+const impCategoriaId = ref<string | null>(null)
+const impMarca = ref<string | null>(null)
+const impUnidadeId = ref<string | null>(null)
+const importando = ref(false)
+const impResultado = ref<any>(null)
+
+function abrirImportar() {
+  impArquivo.value = null
+  impLinhas.value = []
+  impResultado.value = null
+  impCategoriaId.value = categorias.value.find((c: any) => /óleo|oleo|gordura/i.test(c.nome))?.id ?? null
+  impUnidadeId.value = unidades.value.find((u: any) => (u.sigla || '').toUpperCase() === 'UN')?.id ?? null
+  impMarca.value = 'Olichia'
+  dlgImportar.value = true
+}
+
+function normHeader(s: any) {
+  return String(s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+}
+function parseNumero(v: any): number {
+  if (v == null || v === '') return 0
+  if (typeof v === 'number') return v
+  const n = parseFloat(String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))
+  return isNaN(n) ? 0 : n
+}
+
+async function lerPlanilha(f: any) {
+  const file: File | null = Array.isArray(f) ? (f[0] ?? null) : (f ?? null)
+  if (!file) { impLinhas.value = []; return }
+  impLendo.value = true; impResultado.value = null
+  try {
+    const XLSX = await import('xlsx')
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false })
+    if (!rows.length) { notif.aviso('Planilha vazia.'); impLinhas.value = []; return }
+    const head = rows[0].map(normHeader)
+    const iNome = head.findIndex(h => h.includes('nome') || h.includes('descri') || h.includes('produto'))
+    const iNcm = head.findIndex(h => h.includes('ncm'))
+    const iPreco = head.findIndex(h => h.includes('preco') || h.includes('venda') || h.includes('valor'))
+    if (iNome < 0 || iPreco < 0) {
+      notif.erro('Não encontrei as colunas "Nome" e "Preço" no cabeçalho da planilha.')
+      impLinhas.value = []; return
+    }
+    impLinhas.value = rows.slice(1)
+      .map(r => ({
+        descricao: String(r[iNome] ?? '').replace(/\s+/g, ' ').trim(),
+        ncm: iNcm >= 0 ? String(r[iNcm] ?? '').trim() : '',
+        precoVenda: parseNumero(r[iPreco]),
+      }))
+      .filter(l => l.descricao)
+  } catch {
+    notif.erro('Não consegui ler a planilha. Confira se é um .xlsx ou .csv válido.')
+    impLinhas.value = []
+  } finally {
+    impLendo.value = false
+  }
+}
+
+async function confirmarImportar() {
+  if (!impLinhas.value.length || !impCategoriaId.value || !impMarca.value || !impUnidadeId.value) return
+  importando.value = true; impResultado.value = null
+  try {
+    // Resolve a marca: usa a existente ou cria a nova (ex.: Olichia).
+    let marcaId = marcas.value.find((m: any) => (m.nome || '').toLowerCase() === String(impMarca.value).toLowerCase())?.id
+    if (!marcaId) {
+      const r = await api.post('/marcas', { nome: String(impMarca.value).trim(), empresaId: auth.empresaId })
+      marcaId = r.data?.id ?? r.data
+      await api.get('/marcas', { params: { empresaId: auth.empresaId } }).then(res => { marcas.value = res.data })
+    }
+    const { data } = await api.post('/produtos/importar', {
+      empresaId: auth.empresaId,
+      categoriaId: impCategoriaId.value,
+      marcaId,
+      unidadeMedidaId: impUnidadeId.value,
+      itens: impLinhas.value.map(l => ({ descricao: l.descricao, ncm: l.ncm || null, precoVenda: l.precoVenda })),
+    })
+    impResultado.value = data
+    if (data.criados > 0) { notif.ok(`${data.criados} produto(s) importado(s)!`); await listar() }
+    else notif.aviso('Nenhum produto novo importado (podem já existir).')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao importar os produtos.')
+  } finally {
+    importando.value = false
+  }
+}
+
 const sugerindoDesc = ref(false)
 const excluindo = ref(false)
 const inativando = ref(false)
@@ -1564,6 +1753,10 @@ const produtosSelManual = computed(() =>
 
 const itemTituloProduto = (p: any) => `${p.descricao} — cód. ${p.codigo}`
 
+// Quantos grupos estão marcados para unificar (exclui os "similares" desmarcados).
+const gruposParaUnificar = computed(() =>
+  gruposDup.value.filter((g: any) => g._incluir && g.produtos.length > 1).length)
+
 // Mantém a seleção do "manter" válida conforme a lista muda.
 watch(selManual, (ids) => {
   if (!ids.includes(manterManual.value as string)) manterManual.value = ids[0] ?? null
@@ -1595,15 +1788,16 @@ async function abrirUnificar() {
   gruposDup.value = []
   try {
     const r = await api.get('/produtos/duplicados', { params: { empresaId: auth.empresaId } })
-    // pré-seleciona manter o mais antigo (primeiro da lista) de cada grupo
-    gruposDup.value = (r.data ?? []).map((g: any) => ({ ...g, _manter: g.produtos[0]?.id }))
+    // pré-seleciona manter o mais antigo (primeiro da lista) de cada grupo.
+    // _incluir: duplicados reais já marcados; "similares" desmarcados (você opta).
+    gruposDup.value = (r.data ?? []).map((g: any) => ({ ...g, _manter: g.produtos[0]?.id, _incluir: !g.similar }))
   } catch { gruposDup.value = [] }
   finally { carregandoDup.value = false }
 }
 
 async function confirmarUnificar() {
-  const grupos = gruposDup.value.filter(g => g._manter && g.produtos.length > 1)
-  if (!grupos.length) { notif.aviso('Nada a unificar.'); return }
+  const grupos = gruposDup.value.filter(g => g._incluir && g._manter && g.produtos.length > 1)
+  if (!grupos.length) { notif.aviso('Marque ao menos um grupo para unificar.'); return }
   if (!confirm(`Unificar ${grupos.length} grupo(s) de duplicados? Ação irreversível.`)) return
   unificando.value = true
   try {

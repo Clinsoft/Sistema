@@ -74,6 +74,18 @@ public class Produto : Entity
     public void MarcarEtiquetaImpressa() => EtiquetaDesatualizada = false;
     public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
 
+    // Balança: produto de peso fica "pendente" quando muda o preço ou quando vira produto
+    // de balança/peso. Obriga reexportar o arquivo para a balança antes de vender no peso certo.
+    public bool BalancaDesatualizada { get; private set; }
+
+    /// <summary>Marca que o arquivo foi (re)exportado para a balança e está atualizado.</summary>
+    public void MarcarBalancaEnviada() => BalancaDesatualizada = false;
+    /// <summary>Marca pendência de envio à balança (só faz sentido em produto de peso).</summary>
+    public void MarcarBalancaDesatualizada()
+    {
+        if (VendidoPorPeso) BalancaDesatualizada = true;
+    }
+
     // Imagem e informações adicionais
     public string? ImagemUrl { get; private set; }
     public string? FichaTecnicaUrl { get; private set; }
@@ -118,6 +130,7 @@ public class Produto : Entity
         bool controlarLote, bool controlarValidade, int? validadeEmDias,
         string? descricaoComplementar)
     {
+        var eraPeso = VendidoPorPeso;
         Descricao = descricao;
         Referencia = referencia;
         CategoriaId = categoriaId;
@@ -135,6 +148,8 @@ public class Produto : Entity
         ControlarValidade = controlarValidade;
         ValidadeEmDias = validadeEmDias;
         DescricaoComplementar = descricaoComplementar;
+        // Virou produto de peso agora → precisa exportar para a balança.
+        if (!eraPeso && VendidoPorPeso) BalancaDesatualizada = true;
     }
 
     /// <summary>Atualiza o código de barras (EAN/GTIN) do produto.</summary>
@@ -156,11 +171,15 @@ public class Produto : Entity
             CodigoFornecedorPrincipal = codigoNoFornecedor;
     }
 
+    /// <summary>Remove o código do fornecedor (de-para) deste produto — usado quando o
+    /// código estava vinculado ao produto errado e foi movido para o correto.</summary>
+    public void LimparReferenciaFornecedor() => CodigoFornecedorPrincipal = null;
+
     public void EditarPrecos(decimal precoFornecedor, decimal custoUnitario,
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)
     {
-        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoFornecedor = precoFornecedor;
         CustoUnitario = custoUnitario;
         MarkupMinimo = markupMinimo;
@@ -172,19 +191,29 @@ public class Produto : Entity
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
     }
 
+    // NCM/CEST/CFOP vão no XML fiscal só com DÍGITOS (sem pontos). O usuário pode
+    // digitar "1904.90.00" — normalizamos para "19049000" e evitamos estourar a coluna.
+    private static string? SoDigitos(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var d = new string(s.Where(char.IsDigit).ToArray());
+        if (d.Length == 0) return null;
+        return d.Length > max ? d[..max] : d;
+    }
+
     public void EditarFiscal(string? ncm, string? cest, string? cstIcms, string? csosnIcms,
         string? cstPisCofins, decimal aliquotaIcms, decimal aliquotaPis, decimal aliquotaCofins,
         string? cfop, string origem, string? codigoFci)
     {
-        Ncm = ncm;
-        Cest = cest;
+        Ncm = SoDigitos(ncm, 8);
+        Cest = SoDigitos(cest, 7);
         CstIcms = cstIcms;
         CsosnIcms = csosnIcms;
         CstPisCofins = cstPisCofins;
         AliquotaIcms = aliquotaIcms;
         AliquotaPis = aliquotaPis;
         AliquotaCofins = aliquotaCofins;
-        Cfop = cfop;
+        Cfop = SoDigitos(cfop, 4) ?? cfop;
         Origem = origem;
         CodigoFci = codigoFci;
     }
@@ -215,7 +244,7 @@ public class Produto : Entity
 
     public void AtualizarPreco(decimal novoCusto, decimal novoPreco)
     {
-        if (novoPreco != PrecoVenda) EtiquetaDesatualizada = true;
+        if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         CustoUnitario = novoCusto;
         PrecoVenda = novoPreco;
         Markup = novoCusto > 0 ? Math.Round(novoPreco / novoCusto, 4) : 0;
@@ -224,7 +253,7 @@ public class Produto : Entity
 
     public void AtualizarPrecoEMarkup(decimal precoVenda, decimal markup)
     {
-        if (precoVenda != PrecoVenda) EtiquetaDesatualizada = true;
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoVenda = precoVenda;
         Markup = markup;
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;
@@ -239,7 +268,9 @@ public class Produto : Entity
         switch (regime)
         {
             case "SimplesNacional":
-                CsosnIcms      = "400";
+                // Padrão do contador: CFOP 5102 (venda normal) → CSOSN 102.
+                // Produtos com ST (CFOP 5405 → CSOSN 500) são exceção, ajustada por produto.
+                CsosnIcms      = "102";
                 CstIcms        = null;
                 AliquotaIcms   = 0m;
                 CstPisCofins   = "07";

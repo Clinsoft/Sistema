@@ -22,7 +22,7 @@ public class ListarClientesHandler(IClienteRepository repo)
             c.Email, c.Telefone, c.Celular, c.DataNascimento,
             c.Classificacao, c.Logradouro, c.Numero, c.Complemento,
             c.Bairro, c.Cidade, c.Uf, c.Cep,
-            c.LimiteCredito, c.PontosFidelidade, c.Ativo, c.CriadoEm
+            c.LimiteCredito, c.PontosFidelidade, c.Ativo, c.CriadoEm, c.LocalEstoqueId
         )).ToList();
 
         return new ListarClientesResult(dtos, total);

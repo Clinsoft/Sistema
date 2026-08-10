@@ -10,6 +10,7 @@ namespace Sistema.Domain.WhatsApp.Entities;
 public class MensagemWhatsApp : Entity
 {
     public Guid   EmpresaId   { get; private set; }
+    public Guid?  LocalEstoqueId { get; private set; }          // loja/unidade dona da conversa (número)
     public string Telefone    { get; private set; } = null!;   // wa_id (só dígitos)
     public string? NomeContato { get; private set; }           // nome do perfil do cliente
     public DirecaoMensagemWhatsApp Direcao { get; private set; }
@@ -30,19 +31,19 @@ public class MensagemWhatsApp : Entity
     private MensagemWhatsApp() { }
 
     public static MensagemWhatsApp Receber(Guid empresaId, string telefone, string? nome,
-        string texto, string tipo, string? wamId, DateTime dataHora)
+        string texto, string tipo, string? wamId, DateTime dataHora, Guid? localEstoqueId = null)
         => new()
         {
-            EmpresaId = empresaId, Telefone = telefone, NomeContato = nome,
+            EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, Telefone = telefone, NomeContato = nome,
             Direcao = DirecaoMensagemWhatsApp.Recebida, Texto = texto, Tipo = tipo,
             WamId = wamId, DataHora = dataHora, Lida = false
         };
 
     public static MensagemWhatsApp Enviar(Guid empresaId, string telefone, string? nome,
-        string texto, string? wamId, string tipo = "text")
+        string texto, string? wamId, string tipo = "text", Guid? localEstoqueId = null)
         => new()
         {
-            EmpresaId = empresaId, Telefone = telefone, NomeContato = nome,
+            EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, Telefone = telefone, NomeContato = nome,
             Direcao = DirecaoMensagemWhatsApp.Enviada, Texto = texto, Tipo = tipo,
             WamId = wamId, DataHora = DateTime.UtcNow, Lida = true,
             StatusEntrega = StatusEntregaWhatsApp.Enviada

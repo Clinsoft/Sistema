@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Infrastructure.Data;
 
@@ -48,10 +49,78 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Posição de estoque por LOJA (local). O saldo de cada produto na loja é
+    /// reconstruído do histórico de movimentações (que já registra o local),
+    /// com o mesmo sinal por tipo usado no estoque global.
+    /// </summary>
+    [HttpGet("posicao-por-loja")]
+    public async Task<IActionResult> PosicaoPorLoja([FromQuery] Guid empresaId,
+        [FromQuery] Guid localEstoqueId, [FromQuery] bool somenteComSaldo = true, CancellationToken ct = default)
+    {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
+        var saldos = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && m.LocalEstoqueId == localEstoqueId)
+            .GroupBy(m => m.ProdutoId)
+            .Select(g => new
+            {
+                produtoId = g.Key,
+                saldo = g.Sum(m =>
+                    m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            })
+            .ToListAsync(ct);
+
+        var comSaldo = somenteComSaldo ? saldos.Where(s => s.saldo != 0).ToList() : saldos;
+        var ids = comSaldo.Select(s => s.produtoId).ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => ids.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var lista = comSaldo
+            .Where(s => produtos.ContainsKey(s.produtoId))
+            .Select(s =>
+            {
+                var p = produtos[s.produtoId];
+                return new
+                {
+                    p.Id, p.Codigo, p.Descricao, p.CategoriaId, p.MarcaId, p.UnidadeMedidaId,
+                    saldoLoja = s.saldo,
+                    estoqueTotal = p.EstoqueAtual,          // soma de todas as lojas
+                    p.EstoqueMinimo, p.CustoUnitario, p.PrecoVenda,
+                    custoTotal = s.saldo * p.CustoUnitario,
+                    valorVendaTotal = s.saldo * p.PrecoVenda,
+                    abaixoMinimo = s.saldo <= p.EstoqueMinimo
+                };
+            })
+            .OrderBy(x => x.Descricao)
+            .ToList();
+
+        return Ok(new
+        {
+            produtos = lista,
+            totais = new
+            {
+                qtdProdutos = lista.Count,
+                custoTotalEstoque = lista.Sum(p => p.custoTotal),
+                valorVendaTotalEstoque = lista.Sum(p => p.valorVendaTotal),
+                qtdAbaixoMinimo = lista.Count(p => p.abaixoMinimo)
+            }
+        });
+    }
+
     /// <summary>Inventário — posição de estoque por local para contagem física.</summary>
     [HttpGet("inventario")]
     public async Task<IActionResult> Inventario([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var query = db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Quantidade > 0);
 
@@ -75,12 +144,15 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
     /// <summary>Curva ABC de produtos por valor de venda no período.</summary>
     [HttpGet("curva-abc")]
     public async Task<IActionResult> CurvaAbc([FromQuery] Guid empresaId,
-        [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || x.v.LocalEstoqueId == localEstoqueId)
                 && x.v.DataHora >= inicio.Date && x.v.DataHora < fim.Date.AddDays(1))
             .GroupBy(x => new { x.i.ProdutoId, x.i.Descricao })
             .Select(g => new

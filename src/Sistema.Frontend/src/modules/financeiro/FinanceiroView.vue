@@ -31,6 +31,8 @@
               to="/financeiro/dre" color="primary" rounded="lg" />
             <v-list-item prepend-icon="mdi-tools" title="Custos Fixos (Ponto de Equilíbrio)"
               to="/financeiro/custos-fixos" color="primary" rounded="lg" />
+            <v-list-item prepend-icon="mdi-bank-outline" title="Financiamentos (comprometimento)"
+              to="/financeiro/financiamentos" color="primary" rounded="lg" />
             <v-divider class="my-1" />
             <v-list-item prepend-icon="mdi-credit-card-clock-outline" title="Recebíveis de Cartão"
               to="/financeiro/recebiveis-cartao" color="indigo" rounded="lg" />
@@ -75,6 +77,7 @@ const cards = ref([
   { label: 'A Pagar (em aberto)',   valor: 'R$ --', icon: 'mdi-arrow-up-circle-outline',   cor: 'error',   to: '/financeiro/contas-pagar' },
   { label: 'Títulos vencidos',      valor: '--',    icon: 'mdi-calendar-alert',             cor: 'warning', to: '/financeiro/contas-receber' },
   { label: 'Resultado do mês',      valor: 'R$ --', icon: 'mdi-bank-outline',               cor: 'info',    to: '/financeiro/dre' },
+  { label: 'Financiamentos/mês',    valor: 'R$ --', icon: 'mdi-calendar-clock',             cor: 'brown',   to: '/financeiro/financiamentos' },
 ])
 
 onMounted(async () => {
@@ -114,6 +117,12 @@ onMounted(async () => {
     api.get('/financeiro/dre', { params: { empresaId: auth.empresaId, ano, mes } })
       .then(r => {
         if (r.data) cards.value[3].valor = fmt(r.data.resultadoOperacional ?? 0)
+      }),
+
+    // Card 4 — Comprometimento mensal com financiamentos
+    api.get('/financeiro/financiamentos/comprometimento', { params: { empresaId: auth.empresaId } })
+      .then(r => {
+        if (r.data) cards.value[4].valor = fmt(r.data.resumo?.comprometimentoMensal ?? 0)
       }),
   ])
 })

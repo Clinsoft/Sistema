@@ -44,7 +44,7 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
         // Transferência = par de movimentações (Saida + Entrada) com DocumentoOrigem = "TRANSFERENCIA-{guid}"
         var movs = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId
-                && m.CriadoEm >= inicio && m.CriadoEm <= fim.AddDays(1)
+                && m.CriadoEm >= inicio && m.CriadoEm < fim.AddDays(1)
                 && (m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Saida
                     || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada)
                 && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSFERENCIA"))
@@ -115,7 +115,7 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
         var vendas = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .GroupBy(x => x.i.ProdutoId)
             .Select(g => new

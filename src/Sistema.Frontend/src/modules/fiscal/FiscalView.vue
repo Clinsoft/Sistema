@@ -966,10 +966,12 @@
               Valor: R$ {{ fmt(notaParaEscriturar?.valorTotal) }}
             </span>
           </div>
-          <v-select v-model="localEscrituracaoId" label="Local de estoque de destino *"
+          <v-select v-model="localEscrituracaoId" label="Loja / local de estoque de destino *"
             :items="locaisEstoque" item-title="nome" item-value="id"
             variant="outlined" density="compact"
-            :rules="[r => !!r || 'Selecione o local de estoque']" />
+            prepend-inner-icon="mdi-store-outline"
+            hint="Escolha a loja que recebe os produtos (ex.: matriz ou filial)" persistent-hint
+            :rules="[r => !!r || 'Selecione a loja de destino']" />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -1271,6 +1273,8 @@ async function carregarLocaisEstoque() {
   } catch {}
 }
 
+// A "loja" de destino é um LOCAL de estoque da própria empresa (matriz) — ex.:
+// IPANEMA (matriz) ou RIO CLARO (filial). Tudo numa empresa/CNPJ só.
 function escriturarEntrada(item: any) {
   notaParaEscriturar.value = item
   localEscrituracaoId.value = locaisEstoque.value[0]?.id ?? null

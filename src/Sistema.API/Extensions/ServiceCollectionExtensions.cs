@@ -54,7 +54,12 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<SistemaDbContext>(opt =>
             opt.UseSqlServer(connectionString, sql =>
             {
-                sql.EnableRetryOnFailure(3);
+                // 1205 = deadlock. Não vem na lista padrão do EF, então precisa ser
+                // adicionado para a estratégia de retry repetir a transação vítima.
+                sql.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(3),
+                    errorNumbersToAdd: new[] { 1205 });
                 sql.CommandTimeout(60);
             }));
 
@@ -131,6 +136,9 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<Sistema.Infrastructure.Services.SiteSyncService>(c =>
             c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
+        services.AddScoped<Sistema.Infrastructure.Services.WhatsAppIaAtendenteService>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>();
 
         return services;
     }

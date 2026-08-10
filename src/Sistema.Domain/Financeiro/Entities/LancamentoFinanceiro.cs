@@ -27,6 +27,7 @@ public class LancamentoFinanceiro : Entity
     public int TotalParcelas { get; private set; } = 1;
     public string? GrupoParcelamento { get; private set; } // GUID para agrupar parcelas do mesmo título
     public string? ComprovanteUrl { get; private set; }    // PDF do comprovante de pagamento guardado
+    public decimal? ValorJuros { get; private set; }       // parte de juro embutida na parcela (financiamento) — o restante é amortização do principal
 
     private LancamentoFinanceiro() { }
 
@@ -67,6 +68,9 @@ public class LancamentoFinanceiro : Entity
     }
 
     public void AnexarComprovante(string url) => ComprovanteUrl = url;
+
+    /// <summary>Define a parte de juro embutida na parcela (o restante do valor é amortização do principal).</summary>
+    public void DefinirJuros(decimal? valorJuros) => ValorJuros = valorJuros;
 
     public void Cancelar()
     {

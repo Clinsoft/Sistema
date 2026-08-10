@@ -13,7 +13,7 @@ public class LancamentoFinanceiroRepository(SistemaDbContext db)
         Guid empresaId, TipoLancamento tipo, DateTime inicio, DateTime fim, CancellationToken ct)
         => await _db.LancamentosFinanceiros
             .Where(l => l.EmpresaId == empresaId && l.Tipo == tipo
-                && l.DataVencimento >= inicio && l.DataVencimento <= fim)
+                && l.DataVencimento >= inicio.Date && l.DataVencimento < fim.Date.AddDays(1))
             .OrderBy(l => l.DataVencimento)
             .ToListAsync(ct);
 

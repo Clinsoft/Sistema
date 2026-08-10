@@ -8,7 +8,8 @@ public record ClienteDto(
     DateTime? DataNascimento, string? Classificacao,
     string? Logradouro, string? Numero, string? Complemento,
     string? Bairro, string? Cidade, string? Uf, string? Cep,
-    decimal LimiteCredito, int PontosFidelidade, bool Ativo, DateTime CriadoEm);
+    decimal LimiteCredito, int PontosFidelidade, bool Ativo, DateTime CriadoEm,
+    Guid? LocalEstoqueId = null);
 
 public record FornecedorDto(
     Guid Id, string RazaoSocial, string? NomeFantasia, string Cnpj,

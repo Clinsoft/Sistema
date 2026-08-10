@@ -171,8 +171,8 @@
       </v-card-text>
     </v-card>
 
-    <!-- Filtros histórico -->
-    <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
+    <!-- Filtros histórico (o atendente não vê histórico — só o caixa de hoje) -->
+    <v-card v-if="!ehAtendente" rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
         <v-col cols="12" sm="3">
           <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
@@ -193,6 +193,9 @@
 
     <!-- Tabela histórico -->
     <v-card rounded="xl" elevation="1">
+      <div v-if="ehAtendente" class="px-4 pt-3 text-subtitle-2 font-weight-bold">
+        <v-icon icon="mdi-cash-register" size="18" class="mr-1" />Seu caixa de hoje
+      </div>
       <v-data-table :headers="headers" :items="sessoes" :loading="carregando"
         density="compact" hover items-per-page="20">
         <template #item.status="{ item }">
@@ -409,12 +412,15 @@ const caixasAbertos = ref<any[]>([])
 // Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
 const podeSupervisionar = computed(() =>
   ['Administrador', 'Gerente'].includes(auth.usuario?.role ?? ''))
+// Atendente: só o próprio caixa e só do dia (sem histórico nem filtro de período).
+const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const filtros = ref({
   inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   fim: new Date().toISOString().slice(0, 10),
 })
-const abertura = ref({ localEstoqueId: null as string | null, saldoAbertura: 0 })
+// Pré-seleciona a loja/unidade do colaborador logado (se tiver vínculo).
+const abertura = ref({ localEstoqueId: (auth.usuario?.localEstoqueId ?? null) as string | null, saldoAbertura: 0 })
 const fechamento = ref({ saldoContado: null as number | null, observacao: '' })
 
 // ── Saldo esperado em dinheiro no caixa físico ────────────────────

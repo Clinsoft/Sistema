@@ -26,7 +26,7 @@ public class RelatoriosPdfController(SistemaDbContext db) : ControllerBase
 
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .OrderBy(v => v.DataHora)
             .Select(v => new
@@ -225,7 +225,7 @@ public class RelatoriosPdfController(SistemaDbContext db) : ControllerBase
         var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empresaId, ct);
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas.Where(v => v.EmpresaId == empresaId
-                && v.DataHora >= inicio && v.DataHora <= fim.AddDays(1)
+                && v.DataHora >= inicio && v.DataHora < fim.AddDays(1)
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada),
                 i => i.VendaId, v => v.Id, (i, v) => i)
             .GroupBy(i => new { i.ProdutoId, i.Descricao })

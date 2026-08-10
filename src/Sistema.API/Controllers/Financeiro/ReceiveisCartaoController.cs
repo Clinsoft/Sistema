@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Financeiro;
 
 [ApiController]
 [Route("api/financeiro/recebiveis-cartao")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class ReceiveisCartaoController(SistemaDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -36,8 +36,10 @@ public class ReceiveisCartaoController(SistemaDbContext db) : ControllerBase
         if (!string.IsNullOrWhiteSpace(formaPagamento))
             query = query.Where(r => r.FormaPagamento == formaPagamento);
 
-        if (inicio.HasValue) query = query.Where(r => r.DataTransacao >= inicio.Value);
-        if (fim.HasValue)    query = query.Where(r => r.DataTransacao <= fim.Value.AddDays(1));
+        // Intervalo meio-aberto [inicio 00:00, fim+1dia 00:00). A DataTransacao é gravada
+        // à meia-noite; com "<=" o dia seguinte (00:00) vazava para o filtro do dia anterior.
+        if (inicio.HasValue) query = query.Where(r => r.DataTransacao >= inicio.Value.Date);
+        if (fim.HasValue)    query = query.Where(r => r.DataTransacao < fim.Value.Date.AddDays(1));
 
         var raw = await query
             .OrderByDescending(r => r.DataPrevistaRepasse)

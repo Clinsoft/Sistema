@@ -16,7 +16,7 @@ namespace Sistema.API.Controllers.Financeiro;
 
 [ApiController]
 [Route("api/contas-pagar")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class ContasPagarController(
     ILancamentoFinanceiroRepository repo,
     IContaBancariaRepository contaRepo,
@@ -161,6 +161,31 @@ public class ContasPagarController(
         repo.Atualizar(lancamento);
         await uow.SalvarAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Anexa um comprovante (imagem ou PDF) direto ao lançamento, só para guardar —
+    /// NÃO lê/parseia nada. Substitui o comprovante anterior, se houver.</summary>
+    [HttpPost("{id:guid}/comprovante")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<IActionResult> AnexarComprovanteArquivo(Guid id, [FromForm] IFormFile arquivo, CancellationToken ct)
+    {
+        if (arquivo is null || arquivo.Length == 0) return BadRequest("Arquivo vazio.");
+        var lancamento = await repo.ObterPorIdAsync(id, ct);
+        if (lancamento is null) return NotFound();
+
+        var ext = Path.GetExtension(arquivo.FileName).ToLowerInvariant();
+        var permitidas = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp" };
+        if (!permitidas.Contains(ext)) return BadRequest("Formato não suportado (use imagem ou PDF).");
+
+        var dir = Path.Combine("wwwroot", "uploads", "comprovantes");
+        Directory.CreateDirectory(dir);
+        var nome = $"{Guid.NewGuid()}{ext}";
+        using (var s = System.IO.File.Create(Path.Combine(dir, nome))) await arquivo.CopyToAsync(s, ct);
+
+        lancamento.AnexarComprovante($"/uploads/comprovantes/{nome}");
+        repo.Atualizar(lancamento);
+        await uow.SalvarAsync(ct);
+        return Ok(new { comprovanteUrl = lancamento.ComprovanteUrl });
     }
 
     [HttpPut("{id:guid}")]
@@ -404,7 +429,8 @@ public class ContasPagarController(
         var t = (texto ?? "").Replace('\n', ' ').Replace('\r', ' ');
 
         var valor = ParseMoeda(Campo(t, @"Valor Pago\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
-                 ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));
+                 ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
+                 ?? ParseMoeda(Campo(t, @"Valor Total\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));   // tributos Sicredi (DARE/DAS)
         var data = ParseData(Campo(t, @"Data do Pagamento\s*:?\s*(\d{2}/\d{2}/\d{4})")
                           ?? Campo(t, @"Data da Transa[cç][aã]o\s*:?\s*(\d{2}/\d{2}/\d{4})"));
         var venc = ParseData(Campo(t, @"Data de Vencimento\s*:?\s*(\d{2}/\d{2}/\d{4})"));
@@ -417,6 +443,11 @@ public class ContasPagarController(
         AddNome(Campo(t, @"Nome do Benefici[aá]rio Final\s*:?\s*(.{3,80}?)" + fim));
         AddNome(Campo(t, @"Raz[aã]o Social do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
         AddNome(Campo(t, @"Nome Fantasia do Benefici[aá]rio\s*:?\s*(.{3,80}?)" + fim));
+        // Tributos (Sicredi): o "beneficiário" vem em "Nome da Empresa" (ex.: SEFAZ SP - DARE).
+        AddNome(Campo(t, @"Nome da Empresa\s*:?\s*(.{3,60}?)(?=C[oó]digo|Data|Valor|Tipo|Hora|N[uú]mero|$)"));
+        // DAS do Simples Nacional não traz "Nome da Empresa" — identifica pelo cabeçalho.
+        if (nomes.Count == 0 && Regex.IsMatch(t, "SIMPLES NACIONAL", RegexOptions.IgnoreCase))
+            nomes.Add("DAS - Simples Nacional");
 
         var docs = new List<string>();
         void AddDoc(string? d) { var dd = SomenteDigitos(d); if (dd.Length is 11 or 14) docs.Add(dd); }

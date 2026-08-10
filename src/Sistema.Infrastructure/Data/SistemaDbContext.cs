@@ -12,11 +12,17 @@ using Sistema.Domain.Shared.Primitives;
 using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.WhatsApp.Entities;
 using System.Reflection;
+using Sistema.Domain.Auditoria.Entities;
+using Sistema.Domain.Shared.Interfaces;
 
 namespace Sistema.Infrastructure.Data;
 
-public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMediator? mediator = null) : DbContext(options)
+public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMediator? mediator = null,
+    ICurrentUser? currentUser = null) : DbContext(options)
 {
+    // Auditoria
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
     // Cadastros
     public DbSet<Empresa> Empresas => Set<Empresa>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
@@ -29,6 +35,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<UnidadeMedida> UnidadesMedida => Set<UnidadeMedida>();
     public DbSet<LocalEstoque> LocaisEstoque => Set<LocalEstoque>();
     public DbSet<Produto> Produtos => Set<Produto>();
+    public DbSet<LogExclusaoProduto> LogsExclusaoProduto => Set<LogExclusaoProduto>();
     public DbSet<ProdutoEmbalagem> ProdutosEmbalagem => Set<ProdutoEmbalagem>();
     public DbSet<AlimentoTaco> AlimentosTaco => Set<AlimentoTaco>();
     public DbSet<Lote> Lotes => Set<Lote>();
@@ -69,6 +76,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<MovimentacaoBancaria> MovimentacoesBancarias => Set<MovimentacaoBancaria>();
     public DbSet<CustoFixo> CustosFixos => Set<CustoFixo>();
+    public DbSet<Financiamento> Financiamentos => Set<Financiamento>();
     public DbSet<OperadoraCartao> OperadorasCartao => Set<OperadoraCartao>();
     public DbSet<RecebivelCartao> ReceiveisCartao => Set<RecebivelCartao>();
 
@@ -138,7 +146,28 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
             .Where(e => e.DomainEvents.Count > 0)
             .ToList();
 
+        // Coleta auditoria ANTES de salvar (para capturar também os excluídos)
+        var auditorias = CapturarAuditoria();
+
         var result = await base.SaveChangesAsync(cancellationToken);
+
+        // Persiste a auditoria num segundo save (não re-audita a própria AuditLog).
+        // NUNCA pode quebrar a operação principal (que já foi salva acima).
+        if (auditorias.Count > 0)
+        {
+            try
+            {
+                AuditLogs.AddRange(auditorias);
+                await base.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Auditoria é best-effort: se falhar, descarta e segue (log p/ diagnóstico).
+                Console.Error.WriteLine($"[AUDIT-ERRO] {ex.GetType().Name}: {ex.Message} | inner: {ex.InnerException?.Message}");
+                foreach (var entry in ChangeTracker.Entries<AuditLog>().ToList())
+                    entry.State = EntityState.Detached;
+            }
+        }
 
         // Despacha domain events após persistência
         if (mediator is not null)
@@ -153,5 +182,63 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
         }
 
         return result;
+    }
+
+    // ── Auditoria automática ─────────────────────────────────────────────────
+    // Entidades muito volumosas ou filhas — não geram log (evita ruído).
+    private static readonly HashSet<string> AuditoriaIgnorar =
+    [
+        "AuditLog", "MovimentacaoEstoque", "ItemVenda", "PagamentoVenda",
+        "ItemNotaFiscal", "PartidaContabil", "LancamentoContabil", "MovimentacaoBancaria",
+        "ParcelaCrediario", "ItemPedidoWhatsApp", "MensagemWhatsApp"
+    ];
+
+    private List<AuditLog> CapturarAuditoria()
+    {
+        var agora = DateTime.UtcNow;
+        var uid = currentUser?.UsuarioId;
+        var nome = currentUser?.Nome;
+        var emp = currentUser?.EmpresaId;
+        var ip = currentUser?.Ip;
+        var logs = new List<AuditLog>();
+
+        foreach (var entry in ChangeTracker.Entries<Entity>())
+        {
+            var tipo = entry.Entity.GetType().Name;
+            if (AuditoriaIgnorar.Contains(tipo)) continue;
+
+            string acao;
+            string? alteracoes = null;
+            switch (entry.State)
+            {
+                case EntityState.Added: acao = "Inserir"; break;
+                case EntityState.Deleted: acao = "Excluir"; break;
+                case EntityState.Modified:
+                    var campos = entry.Properties
+                        .Where(p => p.IsModified && p.Metadata.Name is not ("AtualizadoEm" or "CriadoEm"))
+                        .Select(p => p.Metadata.Name).ToList();
+                    if (campos.Count == 0) continue;   // só timestamp mudou → ignora
+                    acao = "Atualizar";
+                    alteracoes = string.Join(", ", campos);
+                    if (alteracoes.Length > 1000) alteracoes = alteracoes[..1000];
+                    break;
+                default: continue;
+            }
+
+            logs.Add(AuditLog.Criar(emp, uid, nome, acao, tipo,
+                entry.Entity.Id.ToString(), Resumo(entry.Entity), alteracoes, agora, ip));
+        }
+        return logs;
+    }
+
+    private static string? Resumo(Entity e)
+    {
+        var t = e.GetType();
+        foreach (var prop in new[] { "Nome", "Descricao", "NumeroLote", "Numero", "RazaoSocial", "Titulo", "Codigo" })
+        {
+            var val = t.GetProperty(prop)?.GetValue(e)?.ToString();
+            if (!string.IsNullOrWhiteSpace(val)) return val.Length > 200 ? val[..200] : val;
+        }
+        return null;
     }
 }

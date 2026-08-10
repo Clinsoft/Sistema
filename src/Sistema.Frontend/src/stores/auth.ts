@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/composables/useApi'
 
-interface Usuario { id: string; nome: string; email: string; role: string }
+interface Usuario { id: string; nome: string; email: string; role: string; localEstoqueId?: string | null }
 interface EmpresaResumo { id: string; nomeFantasia: string; cnpj: string; tipoUnidade: string }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -16,6 +16,13 @@ export const useAuthStore = defineStore('auth', () => {
     try { return JSON.parse(localStorage.getItem('filiais') ?? '[]') }
     catch { return [] }
   })())
+  // Loja (local de estoque) atualmente selecionada — separa a operação por unidade.
+  const lojas = ref<{ id: string; nome: string }[]>((() => {
+    try { return JSON.parse(localStorage.getItem('lojas') ?? '[]') }
+    catch { return [] }
+  })())
+  const lojaAtualId = ref<string | null>(localStorage.getItem('lojaAtualId') || null)
+  const lojaAtual = computed(() => lojas.value.find(l => l.id === lojaAtualId.value) ?? null)
 
   const logado = computed(() => !!token.value)
   const iniciais = computed(() =>
@@ -32,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
     // (inexistente), então auth.usuario.id ficava undefined e caixa/vendas iam sem usuário.
     const res = await api.post<{
       token: string; nome: string; perfil: string; empresaId: string; usuarioId: string
+      localEstoqueId?: string | null
     }>('/auth/login', { email, senha })
 
     const u: Usuario = {
@@ -39,6 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
       nome: res.data.nome,
       email,
       role: res.data.perfil,
+      localEstoqueId: res.data.localEstoqueId ?? null,
     }
     token.value = res.data.token
     usuario.value = u
@@ -48,8 +57,46 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('empresaId', res.data.empresaId)
     api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`
 
-    // Carrega grupo de filiais
+    // Carrega grupo de filiais e as lojas (locais); default = unidade do colaborador.
     await carregarFiliais()
+    await carregarLojas()
+    lojaAtualId.value = (u.localEstoqueId ?? lojas.value[0]?.id) ?? null
+    localStorage.setItem('lojaAtualId', lojaAtualId.value ?? '')
+  }
+
+  async function carregarLojas() {
+    if (!empresaId.value) return
+    try {
+      const r = await api.get('/locais-estoque', { params: { empresaId: empresaId.value } })
+      lojas.value = (r.data ?? []).map((l: any) => ({ id: l.id, nome: l.nome }))
+      localStorage.setItem('lojas', JSON.stringify(lojas.value))
+    } catch { lojas.value = [] }
+  }
+
+  function setLoja(id: string | null) {
+    // Atendente é preso à loja de origem — não pode trocar nem ver "todas as lojas".
+    if (usuario.value?.role === 'Atendente') {
+      const fixa = usuario.value.localEstoqueId ?? null
+      if (lojaAtualId.value !== fixa) {
+        lojaAtualId.value = fixa
+        localStorage.setItem('lojaAtualId', fixa ?? '')
+      }
+      return
+    }
+    lojaAtualId.value = id
+    localStorage.setItem('lojaAtualId', id ?? '')
+    window.location.reload()   // recarrega para reaplicar o filtro em todas as telas
+  }
+
+  // Garante que o atendente sempre fique na própria loja (mesmo com localStorage antigo).
+  function fixarLojaAtendente() {
+    if (usuario.value?.role === 'Atendente') {
+      const fixa = usuario.value.localEstoqueId ?? null
+      if (lojaAtualId.value !== fixa) {
+        lojaAtualId.value = fixa
+        localStorage.setItem('lojaAtualId', fixa ?? '')
+      }
+    }
   }
 
   async function carregarFiliais() {
@@ -87,6 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token, usuario, empresaId, logado, iniciais,
     filiais, empresaAtual, temFiliais,
+    lojas, lojaAtualId, lojaAtual, carregarLojas, setLoja, fixarLojaAtendente,
     login, sair, carregarFiliais, trocarFilial,
   }
 })

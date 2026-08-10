@@ -5,6 +5,7 @@ namespace Sistema.Domain.WhatsApp.Entities;
 public class PedidoWhatsApp : Entity
 {
     public Guid EmpresaId { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }   // loja que recebeu o pedido
     public Guid? ClienteId { get; private set; }
     public string TelefoneCliente { get; private set; } = null!;
     public string NomeCliente { get; private set; } = null!;
@@ -24,10 +25,11 @@ public class PedidoWhatsApp : Entity
     private PedidoWhatsApp() { }
 
     public static PedidoWhatsApp Criar(Guid empresaId, string telefone, string nomeCliente,
-        string numero, TipoEntregaWhatsApp tipoEntrega, Guid? clienteId = null)
+        string numero, TipoEntregaWhatsApp tipoEntrega, Guid? clienteId = null, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId,
+            LocalEstoqueId = localEstoqueId,
             TelefoneCliente = telefone,
             NomeCliente = nomeCliente,
             Numero = numero,
@@ -43,10 +45,15 @@ public class PedidoWhatsApp : Entity
         Total = _itens.Sum(i => i.Total);
     }
 
+    /// <summary>Zera os itens (usado pelo atendimento de IA para reconstruir o pedido a cada mensagem).</summary>
+    public void LimparItens() { _itens.Clear(); Total = 0; }
+    public void DefinirNome(string nome) { if (!string.IsNullOrWhiteSpace(nome)) NomeCliente = nome; }
+
     public void AvancarStatus(StatusPedidoWhatsApp novoStatus) => Status = novoStatus;
     public void RegistrarPagamento() { StatusPagamento = StatusPagamentoWhatsApp.Pago; DataPagamento = DateTime.UtcNow; }
     public void DefinirPix(string copiaCola) => PixCopiaCola = copiaCola;
     public void DefinirEndereco(string endereco) => EnderecoEntrega = endereco;
+    public void DefinirObservacao(string? obs) => Observacao = string.IsNullOrWhiteSpace(obs) ? null : obs.Trim();
 }
 
 public enum StatusPedidoWhatsApp { Novo, Confirmado, EmSeparacao, ProntoParaRetirada, Enviado, Entregue, Cancelado }

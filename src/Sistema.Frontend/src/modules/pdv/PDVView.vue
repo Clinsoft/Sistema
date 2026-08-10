@@ -379,7 +379,7 @@
           </div>
           <v-select
             v-model="colaboradorId"
-            :items="colaboradores"
+            :items="vendedoresDaLoja"
             item-title="nome"
             item-value="id"
             variant="outlined"
@@ -852,7 +852,7 @@ interface Produto {
   unidadeSigla: string; vendidoFracionado?: boolean; codigoPlu?: number | null
 }
 interface Cliente { id: string; nome: string }
-interface Colaborador { id: string; nome: string; perfil: string }
+interface Colaborador { id: string; nome: string; perfil: string; localEstoqueId?: string | null }
 
 // ── Refs ─────────────────────────────────────────────────────────
 const inputCodigo = ref()
@@ -918,13 +918,29 @@ const ultimaVendaAutorizada = ref(false)
 
 // ── Sessão de caixa ──────────────────────────────────────────────
 const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string; localEstoqueId?: string | null } | null>(null)
+
+// Só os colaboradores da LOJA do caixa (ou da loja selecionada no topo), sem
+// Administrador. IPANEMA mostra IPANEMA e RIO CLARO mostra RIO CLARO.
+const vendedoresDaLoja = computed(() => {
+  const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId
+  return colaboradores.value.filter(u =>
+    u.perfil !== 'Administrador' && u.perfil !== 'Contador' &&
+    (!loja || u.localEstoqueId === loja))
+})
+// Garante que o vendedor selecionado seja um da loja; senão, o primeiro.
+watch(vendedoresDaLoja, (lista) => {
+  if (!lista.find(u => u.id === colaboradorId.value))
+    colaboradorId.value = lista[0]?.id ?? ''
+}, { immediate: true })
+
 const dialogAbrirCaixa = ref(false)
 const abrindoCaixa = ref(false)
 const saldoInicial = ref<number>(0)
 const verificandoCaixa = ref(true)
 
 const locaisCaixa = ref<any[]>([])
-const localEstoqueIdCaixa = ref<string | null>(null)
+// Pré-seleciona a loja/unidade do colaborador logado (se tiver vínculo).
+const localEstoqueIdCaixa = ref<string | null>(auth.usuario?.localEstoqueId ?? null)
 
 async function verificarSessaoCaixa() {
   verificandoCaixa.value = true
@@ -1707,7 +1723,9 @@ async function carregarPromocoes() {
 async function carregarColaboradores() {
   if (!auth.empresaId) return
   try {
-    const res = await api.get<Colaborador[]>('/usuarios', { params: { empresaId: auth.empresaId } })
+    // /vendedores é liberado a qualquer usuário logado (Atendente inclusive);
+    // /usuarios é restrito a Administrador e dava 403 → lista vazia no PDV.
+    const res = await api.get<Colaborador[]>('/vendedores', { params: { empresaId: auth.empresaId } })
     colaboradores.value = res.data.filter(u => u.perfil !== 'Contador')
     colaboradorId.value = auth.usuario?.id ?? colaboradores.value[0]?.id ?? ''
   } catch { /* silencioso */ }
@@ -2489,14 +2507,22 @@ onUnmounted(() => {
     flex: none;
   }
 
-  /* Itens com touch mais fácil */
-  .pdv-item { padding: 13px 14px; gap: 10px; }
-  .pdv-qtd-btn { width: 36px; height: 36px; font-size: 18px; }
-  .pdv-qtd-input { height: 36px; font-size: 14px; }
-  .pdv-item-qtd { width: 112px; }
+  /* Item da venda: NOME em cima (linha inteira) e QUANTIDADE/TOTAL/AÇÕES embaixo,
+     com alvos de toque grandes (≥ 44px) — some o número de sequência pra liberar espaço */
+  .pdv-item { flex-wrap: wrap; padding: 12px 14px; column-gap: 10px; row-gap: 10px; }
+  .pdv-item-seq { display: none; }
+  .pdv-item-info { flex: 1 1 100%; }
+  .pdv-item-nome { font-size: 15px; line-height: 1.25; }
+  .pdv-item-detalhe { font-size: 12px; }
+  .pdv-item-qtd { width: 154px; border-width: 2px; }
+  .pdv-qtd-btn { width: 50px; height: 48px; font-size: 24px; }
+  .pdv-qtd-input { height: 48px; font-size: 17px; }
+  .pdv-item-total { flex: 1; min-width: 0; text-align: right; font-size: 16px; }
+  .pdv-item-desc, .pdv-item-del { width: 46px; height: 46px; border-radius: 10px; }
+  .pdv-item-desc .v-icon, .pdv-item-del .v-icon { font-size: 24px !important; }
 
-  /* Formas de pagamento em grid 2x2 mais generoso */
-  .pdv-fp-btn { padding: 16px 6px; font-size: 12px; }
+  /* Formas de pagamento: botões grandes e fáceis de acertar */
+  .pdv-fp-btn { padding: 18px 6px; font-size: 13px; min-height: 64px; }
 
   /* Botão Finalizar maior para toque, fixo no rodapé para sempre poder finalizar */
   .pdv-btn-finalizar { height: 60px; font-size: 17px; }

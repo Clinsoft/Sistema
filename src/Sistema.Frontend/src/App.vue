@@ -59,6 +59,10 @@
               to="/cadastros/categorias" value="/cadastros/categorias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-account-group-outline" title="Clientes"
               to="/cadastros/clientes" value="/cadastros/clientes" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-history" title="Auditoria (atividade)"
+              to="/auditoria" value="/auditoria" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-cash-remove" title="Perdas por Validade"
+              to="/estoque/perdas-validade" value="/estoque/perdas-validade" color="error" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-account-tie-outline" title="Colaboradores"
               to="/cadastros/colaboradores" value="/cadastros/colaboradores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"
@@ -87,6 +91,8 @@
               to="/financeiro/dre" value="/financeiro/dre" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-cash-flow" title="Fluxo de Caixa"
               to="/financeiro/fluxo-caixa" value="/financeiro/fluxo-caixa" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-bank-outline" title="Financiamentos"
+              to="/financeiro/financiamentos" value="/financeiro/financiamentos" color="brown" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-month-outline" title="Planejamento Anual"
               to="/relatorios/planejamento-anual" value="/relatorios/planejamento-anual" color="blue-darken-2" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-credit-card-clock-outline" title="Recebíveis de Cartão"
@@ -129,6 +135,8 @@
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-scale" title="Exportar para Balança"
+              to="/estoque/balanca" value="/estoque/balanca" color="teal" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"
               to="/estoque/materiais" value="/estoque/materiais" color="teal" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-desktop-classic" title="Ativo Imobilizado"
@@ -220,6 +228,44 @@
             </v-list>
           </v-menu>
 
+          <!-- Atendente: loja FIXA (loja de origem), sem poder trocar -->
+          <v-btn v-if="ehAtendente && auth.lojaAtual" variant="tonal" color="deep-orange" class="mr-2"
+            prepend-icon="mdi-storefront-outline" size="small" style="max-width:220px"
+            :ripple="false" title="Sua loja de origem">
+            <span class="text-truncate" style="max-width:150px">{{ auth.lojaAtual?.nome }}</span>
+            <v-icon icon="mdi-lock" size="14" class="ml-1" />
+          </v-btn>
+
+          <!-- Seletor de LOJA/unidade (separa a operação: estoque, etiquetas, vendas) -->
+          <v-menu v-else-if="auth.lojas.length > 1" offset-y>
+            <template #activator="{ props }">
+              <v-btn v-bind="props" variant="tonal" color="deep-orange" class="mr-2"
+                prepend-icon="mdi-storefront-outline" append-icon="mdi-chevron-down"
+                size="small" style="max-width:220px">
+                <span class="text-truncate" style="max-width:150px">
+                  {{ auth.lojaAtual?.nome ?? 'Todas as lojas' }}
+                </span>
+              </v-btn>
+            </template>
+            <v-list min-width="240" density="compact">
+              <v-list-subheader>Loja / unidade</v-list-subheader>
+              <v-list-item :active="!auth.lojaAtualId" active-color="deep-orange"
+                @click="auth.setLoja(null)">
+                <template #prepend><v-icon icon="mdi-earth" size="18" class="mr-2" /></template>
+                <v-list-item-title>Todas as lojas</v-list-item-title>
+              </v-list-item>
+              <v-list-item v-for="l in auth.lojas" :key="l.id"
+                :active="l.id === auth.lojaAtualId" active-color="deep-orange"
+                @click="auth.setLoja(l.id)">
+                <template #prepend><v-icon icon="mdi-storefront-outline" size="18" class="mr-2" /></template>
+                <v-list-item-title>{{ l.nome }}</v-list-item-title>
+                <template #append>
+                  <v-icon v-if="l.id === auth.lojaAtualId" icon="mdi-check" color="deep-orange" size="16" />
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+
           <v-btn :icon="tema === 'clinsoftLight' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
             variant="text" @click="alternarTema" />
           <v-menu offset-y :close-on-content-click="false">
@@ -260,6 +306,19 @@
       </v-app-bar>
 
       <v-main>
+        <v-alert v-if="balancaPendentes > 0" type="warning" variant="tonal"
+          density="comfortable" class="mb-0 rounded-0" icon="mdi-scale-balance">
+          <div class="d-flex align-center flex-wrap" style="gap:8px">
+            <span>
+              <strong>{{ balancaPendentes }}</strong>
+              {{ balancaPendentes === 1 ? 'produto por kg está' : 'produtos por kg estão' }}
+              aguardando envio à balança (troca de valor ou item novo).
+            </span>
+            <v-spacer />
+            <v-btn size="small" color="warning" variant="flat"
+              prepend-icon="mdi-scale" to="/estoque/balanca">Exportar agora</v-btn>
+          </div>
+        </v-alert>
         <v-container fluid :class="mobile ? 'pa-0' : 'pa-4'">
           <router-view v-slot="{ Component }">
             <transition name="fade" mode="out-in">
@@ -313,6 +372,7 @@ const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel'
 // Perfil "Atendente" só enxerga um conjunto reduzido de telas no menu.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const ehContador = computed(() => auth.usuario?.role === 'Contador')
+const ehGestor = computed(() => auth.usuario?.role === 'Administrador' || auth.usuario?.role === 'Gerente')
 
 // ── Sininho de notificações ──────────────────────────────────────
 const notificacoes = ref<any[]>([])
@@ -325,11 +385,39 @@ async function carregarNotificacoes() {
   } catch { notificacoes.value = [] }
 }
 function abrirNotificacao(n: any) { if (n?.rota) router.push(n.rota) }
+
+// Pendência de balança: produtos de peso com troca de preço ou recém-criados
+// precisam ter o arquivo reexportado para a balança. Só avisa (não trava).
+const balancaPendentes = ref(0)
+async function carregarPendenciasBalanca() {
+  if (!auth.logado || !auth.empresaId) return
+  try {
+    // Respeita a loja selecionada: pendência da balança é por loja (só produtos
+    // com movimentação naquele local). Sem loja selecionada = empresa toda.
+    const { data } = await api.get('/balanca/pendencias', {
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },
+    })
+    balancaPendentes.value = data?.pendentes ?? 0
+  } catch { balancaPendentes.value = 0 }
+}
+// Ao trocar a loja no seletor do topo, recalcula a pendência da balança.
+watch(() => auth.lojaAtualId, carregarPendenciasBalanca)
+
 onMounted(() => {
   carregarNotificacoes()
+  carregarPendenciasBalanca()
   setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
+  setInterval(carregarPendenciasBalanca, 5 * 60 * 1000)
+  // Mantém a lista de lojas sempre fresca (reflete lojas ativadas/inativadas
+  // sem precisar relogar). Sessões antigas também passam a ter o seletor.
+  if (auth.logado) auth.carregarLojas()
+  auth.fixarLojaAtendente()   // atendente sempre preso à própria loja (corrige localStorage antigo)
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
+// Reavalia a pendência ao entrar/sair da balança, produtos e alteração de preços.
+watch(() => route.path, (p) => {
+  if (['/estoque/balanca', '/estoque/produtos', '/estoque/alterar-precos', '/pdv'].includes(p)) carregarPendenciasBalanca()
+})
 // No celular, o PDV ocupa a tela inteira (esconde a app-bar branca redundante).
 const pdvFullscreen = computed(() => mobile.value && route.path === '/pdv')
 

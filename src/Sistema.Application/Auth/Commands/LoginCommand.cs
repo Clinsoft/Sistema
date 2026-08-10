@@ -8,7 +8,7 @@ namespace Sistema.Application.Auth.Commands;
 
 public record LoginCommand(string Email, string Senha, Guid? EmpresaId = null) : IRequest<LoginResult>;
 
-public record LoginResult(string Token, string Nome, string Perfil, DateTime Expiracao, Guid EmpresaId, Guid UsuarioId);
+public record LoginResult(string Token, string Nome, string Perfil, DateTime Expiracao, Guid EmpresaId, Guid UsuarioId, Guid? LocalEstoqueId);
 
 public class LoginValidator : AbstractValidator<LoginCommand>
 {
@@ -37,6 +37,6 @@ public class LoginHandler(IUsuarioRepository repo, IJwtTokenService jwt, IUnitOf
         await uow.SalvarAsync(ct);
 
         var token = jwt.GerarToken(usuario);
-        return new LoginResult(token, usuario.Nome, usuario.Perfil ?? "", jwt.Expiracao, usuario.EmpresaId, usuario.Id);
+        return new LoginResult(token, usuario.Nome, usuario.Perfil ?? "", jwt.Expiracao, usuario.EmpresaId, usuario.Id, usuario.LocalEstoqueId);
     }
 }

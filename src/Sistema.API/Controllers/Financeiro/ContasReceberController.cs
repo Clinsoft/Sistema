@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Financeiro;
 
 [ApiController]
 [Route("api/contas-receber")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class ContasReceberController(
     ILancamentoFinanceiroRepository repo,
     IContaBancariaRepository contaRepo,

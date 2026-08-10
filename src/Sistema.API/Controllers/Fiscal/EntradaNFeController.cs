@@ -26,7 +26,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
     {
         var q = db.EntradasNFe.AsNoTracking().Where(e => e.EmpresaId == empresaId);
         if (dataInicio.HasValue) q = q.Where(e => e.DataEmissao >= dataInicio.Value);
-        if (dataFim.HasValue) q = q.Where(e => e.DataEmissao <= dataFim.Value.AddDays(1));
+        if (dataFim.HasValue) q = q.Where(e => e.DataEmissao < dataFim.Value.AddDays(1));
         if (status.HasValue) q = q.Where(e => e.Status == status.Value);
 
         var lista = await q.OrderByDescending(e => e.DataEntrada)
@@ -309,18 +309,23 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(n => n.Id == notaId && n.EmpresaId == req.EmpresaId, ct)
             ?? throw new KeyNotFoundException("NF-e não encontrada.");
 
+        // A nota fica na empresa que a recebeu (ex.: matriz), mas os PRODUTOS,
+        // estoque e financeiro podem ir para OUTRA loja do grupo (ex.: filial),
+        // quando DestinoEmpresaId é informado. Sem destino, entra na própria empresa.
+        var destino = req.DestinoEmpresaId ?? req.EmpresaId;
+
         // Verificar se já existe entrada para esta nota
         if (await db.EntradasNFe.AnyAsync(e => e.NotaFiscalRecebidaId == notaId, ct))
             return Conflict(new { mensagem = "Já existe uma escrituração para esta NF-e." });
 
-        // Verificar local de estoque
+        // Verificar local de estoque (da loja de DESTINO)
         var local = await db.LocaisEstoque
-            .FirstOrDefaultAsync(l => l.Id == req.LocalEstoqueId && l.EmpresaId == req.EmpresaId, ct)
+            .FirstOrDefaultAsync(l => l.Id == req.LocalEstoqueId && l.EmpresaId == destino, ct)
             ?? throw new KeyNotFoundException("Local de estoque não encontrado.");
 
         // Criar entrada com dados da nota recebida
         var entrada = EntradaNFe.Criar(
-            req.EmpresaId, notaId, nota.ChaveAcesso,
+            destino, notaId, nota.ChaveAcesso,
             nota.EmitenteNome, nota.EmitenteCnpj, nota.DataEmissao,
             req.LocalEstoqueId,
             valProdutos: nota.ValorTotal, valFrete: 0, valSeguro: 0,
@@ -350,7 +355,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         // Vincular ou criar o fornecedor pelo CNPJ do emitente. Com XML, usa os
         // dados completos (fantasia/endereço/IE); sem XML, os da nota recebida.
         var fornecedor = await VincularOuCriarFornecedorAsync(
-            req.EmpresaId,
+            destino,
             parsed?.EmitenteCnpj ?? nota.EmitenteCnpj,
             parsed?.EmitenteNome ?? nota.EmitenteNome,
             parsed?.EmitenteNomeFantasia, parsed?.EmitenteEndereco, parsed?.EmitenteIE, ct);
@@ -471,6 +476,106 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 
         await db.SaveChangesAsync(ct);
         return Ok(item);
+    }
+
+    /// <summary>
+    /// Corrige o PRODUTO de um item numa entrada JÁ PROCESSADA, sem estornar a nota toda:
+    /// reverte o estoque do produto errado, re-vincula ao produto certo, re-aplica o estoque
+    /// e conserta o de-para (código do fornecedor). Atômico; não mexe nos outros itens.
+    /// </summary>
+    [HttpPost("{id:guid}/itens/{itemId:guid}/corrigir-produto")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> CorrigirProdutoItem(
+        Guid id, Guid itemId, [FromBody] CorrigirProdutoItemRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+        if (entrada.Status != StatusEntradaNFe.Processada)
+            return BadRequest(new { mensagem = "Este ajuste é só para entradas já PROCESSADAS. Em 'Em Edição', use o editar item normal." });
+
+        var item = entrada.Itens.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new KeyNotFoundException("Item não encontrado.");
+        if (item.ProdutoId is null)
+            return BadRequest(new { mensagem = "Item sem produto vinculado." });
+
+        var novo = await db.Produtos.FirstOrDefaultAsync(p => p.Id == req.ProdutoId && p.EmpresaId == entrada.EmpresaId, ct);
+        if (novo is null) return NotFound(new { mensagem = "Produto de destino não encontrado." });
+
+        var mudaProduto = item.ProdutoId != novo.Id;
+        var mudaFator = req.FatorConversao.HasValue && req.FatorConversao.Value > 0
+                        && req.FatorConversao.Value != item.FatorConversao;
+        if (!mudaProduto && !mudaFator)
+            return Ok(new { mensagem = "Nada a alterar (mesmo produto e mesma quantidade)." });
+
+        var antigoId = item.ProdutoId.Value;
+
+        // 1) Reverte o estoque ATUAL do item (produto/qtd/custo de agora).
+        if (item.EstoqueMovimentado)
+        {
+            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+                entrada.EmpresaId, antigoId, entrada.LocalEstoqueId,
+                TipoMovimentacao.Saida, item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                documentoOrigem: entrada.ChaveAcesso,
+                observacao: $"Correção de item ({item.DescricaoXml})"));
+
+            var antigo = await db.Produtos.FindAsync([antigoId], ct);
+            antigo?.SaidaEstoque(item.QuantidadeEstoque);
+            if (mudaProduto && antigo is not null && !string.IsNullOrWhiteSpace(item.CodigoFornecedor)
+                && antigo.CodigoFornecedorPrincipal == item.CodigoFornecedor)
+                antigo.LimparReferenciaFornecedor();
+
+            if (item.LoteId is Guid loteAntigo)
+            {
+                var lote = await db.Lotes.FindAsync([loteAntigo], ct);
+                lote?.Baixar(item.QuantidadeEstoque);
+            }
+        }
+
+        // 2) Troca de produto (se pedido).
+        if (mudaProduto) item.VincularProduto(novo.Id, novo.Descricao);
+
+        // 3) Ajusta o fator/quantidade (se pedido) e recalcula o custo unitário.
+        if (mudaFator)
+        {
+            item.DefinirConversao(req.FatorConversao!.Value, item.UnidadeEstoque ?? item.UnidadeXml);
+            entrada.RatearFrete();   // recomputa CustoUnitarioFinal (total do item ÷ nova quantidade)
+        }
+
+        // Quantidade/custo já com produto e fator novos.
+        var qtd = item.QuantidadeEstoque;
+        var custo = item.CustoUnitarioFinal;
+
+        // 4) Aplica o estoque no produto de destino (espelha o Processar).
+        Guid? loteId = null;
+        if (!string.IsNullOrWhiteSpace(item.NumeroLote))
+        {
+            var novoLote = Lote.Criar(entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
+                item.NumeroLote!, qtd, custo, dataValidade: item.Validade);
+            db.Lotes.Add(novoLote);
+            await db.SaveChangesAsync(ct);
+            loteId = novoLote.Id;
+            item.DefinirLote(item.NumeroLote!, item.Validade, loteId);
+        }
+
+        db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+            entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
+            TipoMovimentacao.Entrada, qtd, custo, loteId: loteId,
+            documentoOrigem: entrada.ChaveAcesso));
+
+        novo.EntradaEstoque(qtd, custo);
+        if (item.PrecoVendaSugerido.HasValue && novo.PrecoVenda <= 0)
+            novo.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? novo.Markup);
+
+        // 5) Memoriza o de-para no produto de destino.
+        if (mudaProduto && entrada.FornecedorId is Guid fid && !string.IsNullOrWhiteSpace(item.CodigoFornecedor))
+            novo.VincularReferenciaFornecedor(fid, item.CodigoFornecedor);
+
+        item.MarcarEstoqueMovimentado();
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { mensagem = $"Item corrigido: '{novo.Descricao}', {qtd:0.##} un a R$ {custo:0.00}/un.",
+            quantidade = qtd, custoUnitario = custo, produtoAntigo = antigoId, produtoNovo = novo.Id });
     }
 
     [HttpPatch("{id:guid}/local-estoque")]
@@ -878,7 +983,10 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             if (produto is not null)
             {
                 produto.EntradaEstoque(item.QuantidadeEstoque, item.CustoUnitarioFinal);
-                if (item.PrecoVendaSugerido.HasValue)
+                // Só define o preço de venda quando o produto ainda NÃO tem preço (novo/sem preço).
+                // Não sobrescreve o preço de produto já cadastrado — senão a escrituração de uma
+                // entrada (ex.: de Rio Claro) mexeria no preço/balança de produtos vendidos em Ipanema.
+                if (item.PrecoVendaSugerido.HasValue && produto.PrecoVenda <= 0)
                     produto.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? produto.Markup);
             }
 
@@ -1572,7 +1680,7 @@ public record EnderecoXml(string? Logradouro, string? Numero, string? Complement
     string? Bairro, string? Municipio, string? UF, string? Cep);
 
 // ── Requests ──────────────────────────────────────────────────────────
-public record IniciarEntradaRequest(Guid EmpresaId, Guid LocalEstoqueId);
+public record IniciarEntradaRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid? DestinoEmpresaId = null);
 
 public record EditarItemRequest(
     string? CfopUtilizado,
@@ -1610,4 +1718,5 @@ public record ProcessarEntradaRequest(
     string? Categoria = null,        // categoria do contas a pagar
     string? FormaPagamento = null);  // forma de pagamento (informativo)
 public record EstornarRequest(string Motivo);
+public record CorrigirProdutoItemRequest(Guid ProdutoId, decimal? FatorConversao = null);
 public record DevolucaoEntradaRequest(List<Guid>? Itens);

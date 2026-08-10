@@ -21,12 +21,21 @@
         <v-text-field v-model="busca" placeholder="Buscar por nome, CPF/CNPJ ou telefone..."
           prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable
           class="flex-grow-1" @update:model-value="carregar" />
+        <v-select v-if="!ehAtendente" v-model="filtroLoja" :items="lojasFiltro" item-title="nome" item-value="id"
+          label="Loja" variant="outlined" density="compact" hide-details clearable
+          style="max-width:220px" @update:model-value="carregar" />
         <v-switch v-model="mostrarInativos" label="Mostrar inativos" color="primary"
           density="compact" hide-details @update:model-value="carregar" />
       </div>
     </v-card>
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="clientes" :loading="carregando" density="compact" hover>
+        <template #item.localEstoqueId="{ item }">
+          <v-chip v-if="item.localEstoqueId" size="small" variant="tonal" color="teal">
+            {{ nomeLoja(item.localEstoqueId) }}
+          </v-chip>
+          <span v-else class="text-medium-emphasis">—</span>
+        </template>
         <template #item.ativo="{ item }">
           <v-chip :color="item.ativo ? 'success' : 'error'" size="small" variant="tonal">
             {{ item.ativo ? 'Ativo' : 'Inativo' }}
@@ -149,6 +158,13 @@
                       <v-text-field v-model.number="fd.limiteCredito" label="Limite Crediário (R$)"
                         type="number" prefix="R$" variant="outlined" density="compact" />
                     </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-select v-model="fd.localEstoqueId" :items="locais" item-title="nome" item-value="id"
+                        label="Loja" variant="outlined" density="compact" :clearable="!ehAtendente && !editando"
+                        :disabled="ehAtendente || editando"
+                        :hint="editando ? 'A loja não muda ao editar.' : ''" persistent-hint
+                        prepend-inner-icon="mdi-store-outline" />
+                    </v-col>
                   </v-row>
                 </div>
               </div>
@@ -191,6 +207,9 @@ const buscandoDoc = ref(false)
 const docStatus = ref<'idle'|'ok'|'erro'>('idle')
 const clientes = ref<any[]>([]); const busca = ref(''); const dialog = ref(false)
 const mostrarInativos = ref(false)
+const locais = ref<any[]>([]); const filtroLoja = ref<string | null>(null)
+const lojasFiltro = computed(() => [{ id: null, nome: 'Todas as lojas' }, ...locais.value])
+const nomeLoja = (id: string) => locais.value.find(l => l.id === id)?.nome ?? '—'
 const editando = ref(false); const dialogHistorico = ref(false)
 const historico = ref<any[]>([]); const loadHist = ref(false); const clienteSel = ref<any>(null)
 const form = ref()
@@ -199,6 +218,7 @@ const fd = ref({ id:'', nome:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', e
 const headers = [
   { title:'Nome', key:'nome', sortable:true }, { title:'CPF/CNPJ', key:'cpfCnpj' },
   { title:'Telefone', key:'telefone' }, { title:'Cidade', key:'cidade' },
+  { title:'Loja', key:'localEstoqueId' },
   { title:'Status', key:'ativo' }, { title:'Ações', key:'actions', sortable:false },
 ]
 const headersHist = [{ title:'Nº', key:'numero' }, { title:'Data', key:'dataHora' }, { title:'Itens', key:'qtdItens' }, { title:'Total', key:'total' }]
@@ -206,14 +226,15 @@ const fmt = (v: number) => (v??0).toLocaleString('pt-BR', { minimumFractionDigit
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, termo: busca.value, incluirInativos: mostrarInativos.value } })
+    const r = await api.get('/clientes', { params: { empresaId: auth.empresaId, termo: busca.value, incluirInativos: mostrarInativos.value, localEstoqueId: filtroLoja.value || undefined } })
     clientes.value = r.data?.itens ?? r.data ?? []
   }
   finally { carregando.value = false }
 }
 const fdPadrao = () => ({ id:'', nome:'', tipoPessoa:'Fisica', cpfCnpj:'', telefone:'', email:'',
-  cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', dataNascimento:'', limiteCredito:0 })
-function abrirNovo() { editando.value=false; fd.value=fdPadrao(); docStatus.value='idle'; dialog.value=true }
+  cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', dataNascimento:'', limiteCredito:0,
+  localEstoqueId: null as string | null })
+function abrirNovo() { editando.value=false; fd.value=fdPadrao(); fd.value.localEstoqueId = auth.lojaAtualId as any; docStatus.value='idle'; dialog.value=true }
 function abrirEdicao(item: any) {
   editando.value=true
   fd.value={...fdPadrao(),...item,
@@ -274,7 +295,9 @@ async function salvar() {
       cep: (fd.value.cep ?? '').replace(/\D/g,'') || null,
       cpfCnpj: cnpjRaw(fd.value.cpfCnpj ?? '') || null,
       dataNascimento: fd.value.dataNascimento || null,
-      email: (fd.value.email ?? '').trim() || null }
+      email: (fd.value.email ?? '').trim() || null,
+      // Loja escolhida no form (novo cliente já vem com a loja ativa do topo).
+      localEstoqueId: fd.value.localEstoqueId || null }
     if (editando.value) { await api.put(`/clientes/${fd.value.id}`, payload); notif.ok('Cliente atualizado!') }
     else { await api.post('/clientes', payload); notif.ok('Cliente cadastrado!') }
     dialog.value=false; await carregar()
@@ -307,7 +330,10 @@ async function reativar(item: any) {
   } catch { notif.erro('Erro ao reativar.') }
 }
 
-onMounted(carregar)
+onMounted(async () => {
+  try { locais.value = (await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })).data } catch { /* ignore */ }
+  await carregar()
+})
 </script>
 
 <style scoped>

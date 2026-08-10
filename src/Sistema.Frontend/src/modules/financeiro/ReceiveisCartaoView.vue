@@ -43,6 +43,40 @@
       </v-col>
     </v-row>
 
+    <!-- Cards por operadora (conciliação por maquininha) -->
+    <div v-if="porOperadora.length" class="mb-2 text-caption text-medium-emphasis font-weight-medium">
+      POR OPERADORA
+    </div>
+    <v-row v-if="porOperadora.length" class="mb-4">
+      <v-col v-for="op in porOperadora" :key="op.operadora" cols="12" md="4" sm="6">
+        <v-card rounded="xl" elevation="1">
+          <v-card-text class="pa-4">
+            <div class="d-flex align-center mb-2" style="gap:8px">
+              <v-avatar :color="op.cor" size="28" rounded="lg">
+                <v-icon :icon="op.ehPix ? 'mdi-qrcode' : 'mdi-credit-card-outline'" color="white" size="16" />
+              </v-avatar>
+              <span class="text-subtitle-2 font-weight-bold text-truncate">{{ op.operadora }}</span>
+              <v-spacer />
+              <v-chip size="x-small" variant="tonal">{{ op.qtd }}</v-chip>
+            </div>
+            <div class="det-linha py-0">
+              <span class="text-caption text-medium-emphasis">Bruto</span>
+              <strong>R$ {{ fmt(op.bruto) }}</strong>
+            </div>
+            <div class="det-linha py-0 text-error">
+              <span class="text-caption">Taxa</span>
+              <strong>-R$ {{ fmt(op.taxa) }}</strong>
+            </div>
+            <v-divider class="my-1" />
+            <div class="det-linha py-0">
+              <span class="text-caption font-weight-medium">Líquido</span>
+              <strong class="text-success">R$ {{ fmt(op.liquido) }}</strong>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- Filtros -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
@@ -366,6 +400,27 @@ const cards = computed(() => [
   { label: 'Total Líquido',    valor: totais.value.liquido, cor: 'success', icon: 'mdi-cash-check',           textCor: 'text-success' },
   { label: 'A Receber',        valor: aReceber.value.reduce((s,r) => s+(r.valorLiquido??0),0), cor: 'warning', icon: 'mdi-clock-outline', textCor: 'text-warning', sub: `${aReceber.value.length} transações` },
 ])
+
+const CORES_OP = ['#3f51b5', '#00897b', '#43a047', '#fb8c00', '#8e24aa', '#e53935']
+const porOperadora = computed(() => {
+  const map = new Map<string, any>()
+  for (const r of recebiveis.value) {
+    const key = r.operadora || '—'
+    const cur = map.get(key) ?? { operadora: key, qtd: 0, bruto: 0, taxa: 0, liquido: 0 }
+    cur.qtd++
+    cur.bruto += r.valorBruto ?? 0
+    cur.taxa += r.valorTaxa ?? 0
+    cur.liquido += r.valorLiquido ?? 0
+    map.set(key, cur)
+  }
+  const arr = Array.from(map.values()).sort((a, b) => b.bruto - a.bruto)
+  arr.forEach((op, i) => {
+    const meta = operadoras.value.find((o: any) => o.nome === op.operadora)
+    op.cor = meta?.cor || CORES_OP[i % CORES_OP.length]
+    op.ehPix = /pix/i.test(op.operadora)
+  })
+  return arr
+})
 
 const selecionadosAReceberIds = computed(() =>
   selecionados.value.filter(s => s.status === 'A Receber').map(s => s.id)

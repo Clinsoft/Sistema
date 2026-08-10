@@ -40,6 +40,7 @@ public class LancamentoFinanceiroConfiguration : IEntityTypeConfiguration<Lancam
         b.Property(x => x.Descricao).HasMaxLength(200).IsRequired();
         b.Property(x => x.ValorOriginal).HasColumnType("decimal(18,2)");
         b.Property(x => x.ValorPago).HasColumnType("decimal(18,2)");
+        b.Property(x => x.ValorJuros).HasColumnType("decimal(18,2)");
         b.Property(x => x.DocumentoOrigem).HasMaxLength(50);
         b.Property(x => x.GrupoParcelamento).HasMaxLength(36);
         b.Property(x => x.Observacao).HasMaxLength(500);
@@ -52,6 +53,25 @@ public class LancamentoFinanceiroConfiguration : IEntityTypeConfiguration<Lancam
         // Propriedades calculadas — ignoradas no mapeamento
         b.Ignore(x => x.Saldo);
         b.Ignore(x => x.Vencido);
+    }
+}
+
+public class FinanciamentoConfiguration : IEntityTypeConfiguration<Financiamento>
+{
+    public void Configure(EntityTypeBuilder<Financiamento> b)
+    {
+        b.ToTable("Financiamentos");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Banco).HasMaxLength(80).IsRequired();
+        b.Property(x => x.Titulo).HasMaxLength(50);
+        b.Property(x => x.Descricao).HasMaxLength(200).IsRequired();
+        b.Property(x => x.ValorCredito).HasColumnType("decimal(18,2)");
+        b.Property(x => x.ValorParcela).HasColumnType("decimal(18,2)");
+        b.Property(x => x.TaxaEfetivaMensal).HasColumnType("decimal(9,6)");
+        b.Property(x => x.TaxaNominalMensal).HasColumnType("decimal(9,6)");
+        b.Property(x => x.GrupoParcelamento).HasMaxLength(36).IsRequired();
+        b.Property(x => x.ContratoPdfUrl).HasMaxLength(300);
+        b.HasIndex(x => x.EmpresaId);
     }
 }
 

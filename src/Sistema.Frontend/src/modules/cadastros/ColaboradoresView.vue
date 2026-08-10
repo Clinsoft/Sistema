@@ -52,6 +52,13 @@
           </div>
         </template>
 
+        <template #item.unidade="{ item }">
+          <v-chip v-if="item.unidade" size="x-small" color="deep-orange" variant="tonal" label>
+            <v-icon start size="12">mdi-store-outline</v-icon>{{ item.unidade }}
+          </v-chip>
+          <span v-else class="text-caption text-medium-emphasis">—</span>
+        </template>
+
         <template #item.acesso="{ item }">
           <v-chip v-if="item.temAcesso" size="small" :color="corPerfil(item.perfil || '')"
             variant="tonal" :prepend-icon="iconePerfil(item.perfil || '')">
@@ -130,6 +137,12 @@
                   <v-col cols="12" sm="6">
                     <v-text-field v-model="form.cargo" label="Cargo"
                       variant="outlined" density="compact" />
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-select v-model="form.localEstoqueId" :items="locaisEstoque"
+                      item-title="nome" item-value="id" label="Unidade / Loja"
+                      variant="outlined" density="compact" clearable
+                      prepend-inner-icon="mdi-store-outline" />
                   </v-col>
                   <v-col cols="12" sm="6">
                     <v-text-field v-model.number="form.salario" label="Salário" type="number"
@@ -301,6 +314,7 @@ interface Colaborador {
   cpf: string | null; telefone: string | null; cargo: string | null
   salario: number | null; dataAdmissao: string | null; observacao: string | null
   perfil: string | null; temAcesso: boolean; ehCliente: boolean; ativo: boolean; ultimoAcesso: string | null
+  localEstoqueId: string | null; unidade: string | null
 }
 
 const colaboradores = ref<Colaborador[]>([])
@@ -321,14 +335,16 @@ const confirmarNovaSenha = ref('')
 
 const formPadrao = () => ({
   nome: '', cpf: '', telefone: '', cargo: '', salario: null as number | null,
-  dataAdmissao: '', observacao: '', ehCliente: false,
+  dataAdmissao: '', observacao: '', ehCliente: false, localEstoqueId: null as string | null,
   darAcesso: false, email: '', senha: '', confirmarSenha: '', perfil: 'Atendente',
 })
 const form = ref(formPadrao())
+const locaisEstoque = ref<any[]>([])
 
 const headers = [
   { title: 'Colaborador', key: 'nome', sortable: true },
   { title: 'Cargo', key: 'cargo', width: 160 },
+  { title: 'Unidade', key: 'unidade', width: 150 },
   { title: 'Acesso', key: 'acesso', width: 160 },
   { title: 'Status', key: 'ativo', width: 100 },
   { title: 'Último acesso', key: 'ultimoAcesso', width: 170 },
@@ -421,8 +437,12 @@ function permissoesPerfil(p: string): PermModulo[] {
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/usuarios', { params: { empresaId: auth.empresaId } })
+    const [r, loc] = await Promise.all([
+      api.get('/usuarios', { params: { empresaId: auth.empresaId } }),
+      api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
+    ])
     colaboradores.value = r.data
+    locaisEstoque.value = loc.data ?? []
   } finally { carregando.value = false }
 }
 
@@ -443,6 +463,7 @@ function abrirEdicao(item: Colaborador) {
     nome: item.nome, cpf: item.cpf ?? '', telefone: item.telefone ?? '',
     cargo: item.cargo ?? '', salario: item.salario, dataAdmissao: item.dataAdmissao?.slice(0, 10) ?? '',
     observacao: item.observacao ?? '', ehCliente: item.ehCliente,
+    localEstoqueId: item.localEstoqueId ?? null,
     darAcesso: item.temAcesso, email: item.email ?? '', senha: '', confirmarSenha: '',
     perfil: item.perfil ?? 'Atendente',
   }
@@ -482,6 +503,7 @@ async function salvar() {
     cpf: f.cpf.trim() || null, telefone: f.telefone.trim() || null,
     cargo: f.cargo.trim() || null, salario: f.salario,
     dataAdmissao: f.dataAdmissao || null, observacao: f.observacao.trim() || null,
+    localEstoqueId: f.localEstoqueId || null,
   }
   const acesso = { email: f.email.trim(), senha: f.senha, perfil: f.perfil }
 

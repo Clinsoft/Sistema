@@ -17,7 +17,7 @@ public class RelatoriosFornecedoresController(SistemaDbContext db) : ControllerB
     {
         var pedidos = await db.PedidosCompra.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId
-                && p.DataPedido >= inicio && p.DataPedido <= fim.AddDays(1)
+                && p.DataPedido >= inicio && p.DataPedido < fim.AddDays(1)
                 && (p.Status == Domain.Compras.Entities.StatusPedidoCompra.Recebido
                     || p.Status == Domain.Compras.Entities.StatusPedidoCompra.Enviado))
             .Join(db.Fornecedores, p => p.FornecedorId, f => f.Id,
@@ -63,7 +63,7 @@ public class RelatoriosFornecedoresController(SistemaDbContext db) : ControllerB
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id, (x, p) => new { x.i, x.v, p })
             .Join(db.Categorias, x => x.p.CategoriaId, c => c.Id,
@@ -94,7 +94,7 @@ public class RelatoriosFornecedoresController(SistemaDbContext db) : ControllerB
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId
-                && x.v.DataHora >= inicio && x.v.DataHora <= fim.AddDays(1)
+                && x.v.DataHora >= inicio && x.v.DataHora < fim.AddDays(1)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id, (x, p) => new { x.i, x.v, p })
             .Join(db.Marcas, x => x.p.MarcaId, m => m.Id,

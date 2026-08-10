@@ -69,7 +69,7 @@ public class EmpresasController(SistemaDbContext db, IUnitOfWork uow) : Controll
         e.Atualizar(req.RazaoSocial, req.NomeFantasia, req.RegimeTributario,
             req.Logradouro, req.Numero, req.Complemento, req.Bairro,
             req.Cidade, req.Uf, req.Cep, req.Telefone, req.Email,
-            req.InscricaoEstadual ?? "", req.InscricaoMunicipal ?? "");
+            req.InscricaoEstadual ?? "", req.InscricaoMunicipal ?? "", req.Cnpj);
 
         db.Empresas.Update(e);
         await uow.SalvarAsync(ct);
@@ -141,7 +141,8 @@ public record AtualizarEmpresaRequest(
     string Logradouro, string Numero, string? Complemento,
     string Bairro, string Cidade, string Uf, string Cep,
     string Telefone, string Email,
-    string? InscricaoEstadual = null, string? InscricaoMunicipal = null);
+    string? InscricaoEstadual = null, string? InscricaoMunicipal = null,
+    string? Cnpj = null);
 
 public record CriarFilialRequest(
     string RazaoSocial, string NomeFantasia, string Cnpj,

@@ -59,6 +59,43 @@ public class OpenAiTextService(HttpClient http, IConfiguration config)
         return (texto ?? string.Empty).Trim();
     }
 
+    /// <summary>Chat com instrução de sistema + mensagem do usuário, forçando resposta em JSON.
+    /// Retorna o conteúdo (string JSON) para o chamador desserializar.</summary>
+    public async Task<string> GerarChatJsonAsync(string systemPrompt, string userPrompt, CancellationToken ct = default)
+    {
+        var apiKey = config["OpenAI:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("Chave da API OpenAI não configurada (OpenAI:ApiKey).");
+
+        var payload = new
+        {
+            model = ModeloAtual,
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user",   content = userPrompt }
+            },
+            temperature = 0.3,
+            max_tokens = 600,
+            response_format = new { type = "json_object" }
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, Url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        req.Headers.Add("Authorization", $"Bearer {apiKey}");
+
+        using var resp = await http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Erro da OpenAI ({(int)resp.StatusCode}): {ExtrairErro(body)}");
+
+        using var doc = JsonDocument.Parse(body);
+        return (doc.RootElement.GetProperty("choices")[0]
+            .GetProperty("message").GetProperty("content").GetString() ?? "{}").Trim();
+    }
+
     private static string ExtrairErro(string body)
     {
         try

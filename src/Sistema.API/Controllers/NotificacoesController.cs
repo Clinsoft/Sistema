@@ -60,7 +60,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             tipo = "contas", quantidade = contasVencidas, cor = "red-darken-1", icone = "mdi-cash-clock",
             titulo = "Contas a pagar vencidas",
             texto = $"{contasVencidas} conta(s) a pagar em atraso.",
-            rota = "/financeiro/contas-pagar"
+            rota = "/financeiro/contas-pagar?vencidas=1"
         });
 
         return Ok(new { total = itens.Count, itens });

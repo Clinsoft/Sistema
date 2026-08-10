@@ -46,10 +46,10 @@ public class RecebivelCartao : Entity
         };
     }
 
-    public void MarcarRecebido()
+    public void MarcarRecebido(DateTime? data = null)
     {
         Status = StatusRecebivelCartao.Recebido;
-        DataRepasse = DateTime.UtcNow;
+        DataRepasse = data ?? DateTime.UtcNow;
     }
 
     public void MarcarAntecipado(decimal taxaAntecipacao)

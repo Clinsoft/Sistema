@@ -22,6 +22,11 @@ public class OperadoraCartao : Entity
     public string? Observacao { get; private set; }
     public bool Ativo { get; private set; } = true;
 
+    /// <summary>Operadora dedicada ao Pix da maquininha (taxa 0). Todo pagamento em
+    /// Pix no PDV é atribuído a ela na geração do recebível.</summary>
+    public bool EhPix { get; private set; }
+    public void DefinirEhPix(bool ehPix) => EhPix = ehPix;
+
     private OperadoraCartao() { }
 
     public static OperadoraCartao Criar(Guid empresaId, string nome,

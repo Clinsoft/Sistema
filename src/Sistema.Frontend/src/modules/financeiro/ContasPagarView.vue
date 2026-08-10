@@ -111,7 +111,7 @@
             {{ item.status }}
           </v-chip>
           <v-btn v-if="item.comprovanteUrl" :href="item.comprovanteUrl" target="_blank"
-            icon="mdi-file-pdf-box" size="x-small" color="red-darken-1" variant="text"
+            icon="mdi-file-eye-outline" size="x-small" color="red-darken-1" variant="text"
             title="Ver comprovante de pagamento" />
         </template>
         <template #item.valorOriginal="{ item }">R$ {{ fmt(item.valorOriginal) }}</template>
@@ -127,6 +127,8 @@
               title="Duplicar (mesmo valor, outro fornecedor)" @click="duplicarConta(item)" />
             <v-btn icon="mdi-refresh" size="x-small" color="warning" variant="text"
               title="Renegociar" @click="abrirRenegociar(item)" :disabled="item.status === 'Pago'" />
+            <v-btn icon="mdi-paperclip" size="x-small" color="teal" variant="text"
+              title="Anexar comprovante (imagem/PDF)" @click="anexarComprovante(item)" />
             <v-btn icon="mdi-cancel" size="x-small" color="error" variant="text"
               title="Cancelar título" @click="cancelarTitulo(item)" :disabled="item.status === 'Pago' || item.status === 'Cancelado'" />
           </template>
@@ -144,6 +146,8 @@
                   @click="duplicarConta(item)" />
                 <v-list-item prepend-icon="mdi-refresh" title="Renegociar"
                   :disabled="item.status === 'Pago'" @click="abrirRenegociar(item)" />
+                <v-list-item prepend-icon="mdi-paperclip" title="Anexar comprovante"
+                  @click="anexarComprovante(item)" />
                 <v-list-item prepend-icon="mdi-cancel" title="Cancelar título"
                   :disabled="item.status === 'Pago' || item.status === 'Cancelado'" @click="cancelarTitulo(item)" />
               </v-list>
@@ -152,6 +156,10 @@
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- Input oculto para anexar comprovante (imagem/PDF) direto na linha, só para guardar -->
+    <input ref="comprovanteInput" type="file" accept="image/*,application/pdf"
+      class="d-none" @change="onComprovanteSelecionado" />
 
     <!-- Dialog: Nova Conta a Pagar -->
     <v-dialog v-model="dialogNovo" max-width="560" persistent scrollable>
@@ -233,18 +241,29 @@
 
             <!-- Parcelar: divide o valor total em N parcelas -->
             <template v-if="form.modo === 'parcelar'">
-              <v-col cols="6">
-                <v-text-field v-model.number="form.quantas" label="Nº de parcelas"
-                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
-              </v-col>
-              <v-col cols="6">
+              <v-col :cols="form.periodo === 'prazos' ? 12 : 6">
                 <v-select v-model="form.periodo" label="Intervalo"
                   :items="periodos" item-title="label" item-value="value"
                   variant="outlined" density="compact" hide-details />
               </v-col>
+              <v-col v-if="form.periodo !== 'prazos'" cols="6">
+                <v-text-field v-model.number="form.quantas" label="Nº de parcelas"
+                  type="number" min="2" max="360" variant="outlined" density="compact" hide-details />
+              </v-col>
+              <!-- Prazos em dias: cada nº é os dias após a data-base (ex.: 21/28/35/42/49) -->
+              <v-col v-else cols="12">
+                <v-text-field v-model="form.prazos" label="Prazos em dias (ex.: 21/28/35/42/49)"
+                  variant="outlined" density="compact" hide-details
+                  hint="A 1ª parcela vence 'primeiro vencimento' + o 1º prazo, e assim por diante." persistent-hint />
+              </v-col>
               <v-col cols="12">
                 <v-alert type="info" variant="tonal" density="compact" class="text-caption">
-                  {{ form.quantas || 1 }}x de R$ {{ fmtParcela }} — total R$ {{ fmt(form.valorOriginal || 0) }}
+                  <template v-if="form.periodo === 'prazos'">
+                    {{ prazosPreview.length }}x de R$ {{ fmtParcelaN(prazosPreview.length) }} — vencimentos: {{ prazosVencs }}
+                  </template>
+                  <template v-else>
+                    {{ form.quantas || 1 }}x de R$ {{ fmtParcela }} — total R$ {{ fmt(form.valorOriginal || 0) }}
+                  </template>
                 </v-alert>
               </v-col>
             </template>
@@ -257,7 +276,7 @@
               </v-col>
               <v-col cols="6">
                 <v-select v-model="form.periodo" label="Periodicidade"
-                  :items="periodos" item-title="label" item-value="value"
+                  :items="periodosSemPrazos" item-title="label" item-value="value"
                   variant="outlined" density="compact" hide-details />
               </v-col>
               <v-col cols="12">
@@ -356,7 +375,7 @@
               </v-col>
               <v-col cols="6">
                 <v-select v-model="edicao.periodo" label="Intervalo"
-                  :items="periodos" item-title="label" item-value="value"
+                  :items="periodosSemPrazos" item-title="label" item-value="value"
                   variant="outlined" density="compact" hide-details />
               </v-col>
               <v-col cols="12">
@@ -373,7 +392,7 @@
               </v-col>
               <v-col cols="6">
                 <v-select v-model="edicao.periodo" label="Periodicidade"
-                  :items="periodos" item-title="label" item-value="value"
+                  :items="periodosSemPrazos" item-title="label" item-value="value"
                   variant="outlined" density="compact" hide-details />
               </v-col>
               <v-col cols="12">
@@ -614,6 +633,31 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+// Anexar comprovante (imagem/PDF) direto na linha — só guarda, não lê nada.
+const comprovanteInput = ref<HTMLInputElement | null>(null)
+const anexarItemId = ref<string | null>(null)
+function anexarComprovante(item: any) {
+  anexarItemId.value = item.id
+  comprovanteInput.value?.click()
+}
+async function onComprovanteSelecionado(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  const id = anexarItemId.value
+  if (file && id) {
+    const fd = new FormData()
+    fd.append('arquivo', file)
+    try {
+      await api.post(`/contas-pagar/${id}/comprovante`, fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } })
+      notif.ok('Comprovante anexado!')
+      await carregar()
+    } catch { notif.erro('Erro ao anexar o comprovante.') }
+  }
+  input.value = ''
+  anexarItemId.value = null
+}
 const { mobile } = useDisplay()
 const carregando = ref(false)
 
@@ -737,7 +781,7 @@ const fornecedores = ref<any[]>([])
 const edicao = ref({
   id: '', descricao: '', categoria: '', valorOriginal: 0,
   dataVencimento: '', observacao: '', fornecedorId: '' as string | null, _buscaForneced: '',
-  modo: 'unico' as 'unico' | 'parcelar' | 'repetir', quantas: 2, periodo: 'mensal',
+  modo: 'unico' as 'unico' | 'parcelar' | 'repetir', quantas: 2, periodo: 'mensal', prazos: '21/28/35/42/49',
 })
 const reneg = ref({ id: '', saldo: 0, novoValor: 0, novoVencimento: '', motivo: '' })
 
@@ -752,7 +796,19 @@ const periodos = [
   { label: 'Trimestral',  value: 'trimestral' },
   { label: 'Semestral',   value: 'semestral' },
   { label: 'Anual',       value: 'anual' },
+  { label: 'Prazos em dias (21/28/35/42/49)', value: 'prazos' },
 ]
+// "prazos" só faz sentido no modo Parcelar; demais selects usam esta lista.
+const periodosSemPrazos = periodos.filter(p => p.value !== 'prazos')
+
+// "21/28/35/42/49" (ou vírgula/espaço) → [21,28,35,42,49]
+function parsePrazos(s: string): number[] {
+  return (s || '').split(/[\/,;\s]+/).map(x => parseInt(x, 10)).filter(n => Number.isFinite(n) && n >= 0)
+}
+function addDias(base: string, dias: number): string {
+  const d = new Date(base + 'T12:00:00'); d.setDate(d.getDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
 
 const formPadrao = () => ({
   descricao: '', categoria: '', fornecedorId: null as string | null, _buscaForneced: '',
@@ -760,6 +816,7 @@ const formPadrao = () => ({
   modo: 'unico' as 'unico' | 'parcelar' | 'repetir',
   quantas: 2,
   periodo: 'mensal',
+  prazos: '21/28/35/42/49',
 })
 const form = ref(formPadrao())
 
@@ -769,6 +826,11 @@ const fmtParcela = computed(() =>
 const fmtTotalRepetir = computed(() =>
   fmt(Math.round((form.value.valorOriginal || 0) * (form.value.quantas || 1) * 100) / 100)
 )
+const prazosPreview = computed(() => parsePrazos(form.value.prazos))
+const fmtParcelaN = (n: number) => fmt(Math.round((form.value.valorOriginal || 0) / Math.max(1, n) * 100) / 100)
+const prazosVencs = computed(() => form.value.dataVencimento
+  ? prazosPreview.value.map(off => fmtData(addDias(form.value.dataVencimento, off))).join(' · ')
+  : prazosPreview.value.map(off => `+${off}d`).join(' · '))
 
 function proximaData(base: string, periodo: string, n: number): string {
   const d = new Date(base + 'T12:00:00')
@@ -995,6 +1057,22 @@ async function salvarNova(continuar = false) {
         ...base, valor: f.valorOriginal,
         primeiroVencimento: f.dataVencimento, totalParcelas: 1,
       })
+    } else if (f.modo === 'parcelar' && f.periodo === 'prazos') {
+      const offs = parsePrazos(f.prazos)
+      if (offs.length === 0) { notif.erro('Informe os prazos em dias (ex.: 21/28/35/42/49).'); return }
+      const n = offs.length
+      const valorParcela = Math.round(f.valorOriginal / n * 100) / 100
+      for (let i = 0; i < n; i++) {
+        await api.post('/contas-pagar', {
+          ...base,
+          descricao: `${f.descricao} ${i + 1}/${n}`,
+          valor: i === n - 1
+            ? Math.round((f.valorOriginal - valorParcela * (n - 1)) * 100) / 100
+            : valorParcela,
+          primeiroVencimento: addDias(f.dataVencimento, offs[i]),
+          totalParcelas: 1,
+        })
+      }
     } else if (f.modo === 'parcelar') {
       const n = Math.max(1, f.quantas || 1)
       const valorParcela = Math.round(f.valorOriginal / n * 100) / 100
@@ -1218,6 +1296,12 @@ onMounted(async () => {
     filtros.value.fim = data
     filtros.value.tudo = false
     filtros.value.status = 'Todos'
+    filtros.value.categoria = 'Todas'
+  }
+  // Vindo do sininho (?vencidas=1): mostra todas as vencidas, sem limitar ao mês.
+  if (route.query.vencidas) {
+    filtros.value.tudo = true
+    filtros.value.status = 'Vencido'
     filtros.value.categoria = 'Todas'
   }
   await carregar()

@@ -199,8 +199,28 @@
         </v-card>
 
         <v-card v-if="itensNota.length" rounded="xl" elevation="1">
+          <!-- Progresso persistente: onde parei / quanto falta (sobrevive a recarregar) -->
+          <div class="pa-3 pb-1">
+            <div class="d-flex align-center mb-1">
+              <v-icon :color="notaPendentes === 0 ? 'success' : 'primary'" class="mr-2">
+                {{ notaPendentes === 0 ? 'mdi-check-all' : 'mdi-progress-check' }}
+              </v-icon>
+              <span class="text-body-2 font-weight-bold">
+                {{ notaRegistrados }} de {{ itensNota.length }} registrados
+              </span>
+              <span v-if="notaPendentes > 0" class="text-body-2 text-warning ml-2">
+                · faltam {{ notaPendentes }}
+              </span>
+              <span v-else class="text-body-2 text-success ml-2">· tudo pronto! 🎉</span>
+              <v-spacer />
+              <v-switch v-model="soPendentes" color="primary" density="compact" hide-details
+                inset label="Só pendentes" class="flex-grow-0" />
+            </div>
+            <v-progress-linear :model-value="notaProgresso" height="8" rounded
+              :color="notaPendentes === 0 ? 'success' : 'primary'" />
+          </div>
           <v-list lines="two">
-            <template v-for="(it, idx) in itensNota" :key="it.itemId">
+            <template v-for="(it, idx) in itensNotaVisiveis" :key="it.itemId">
               <v-divider v-if="idx > 0" />
               <v-list-item :class="{ 'validade-destaque': it._destaque }">
                 <template #prepend>
@@ -265,7 +285,8 @@
           </v-list>
           <v-card-actions class="pa-3">
             <span class="text-caption text-medium-emphasis ml-2">
-              {{ itensNota.filter(i => i._salvo).length }}/{{ itensNota.length }} registrados
+              {{ notaRegistrados }}/{{ itensNota.length }} registrados
+              <span v-if="soPendentes && notaPendentes"> · mostrando só os {{ notaPendentes }} pendentes</span>
             </span>
             <v-spacer />
             <v-btn color="primary" variant="flat" :loading="salvandoTodos"
@@ -514,6 +535,10 @@
           </template>
           <template #item.custoUnitario="{ item }">R$ {{ fmt(item.custoUnitario) }}</template>
           <template #item.acoes="{ item }">
+            <v-btn v-if="item.quantidade > 0" icon size="small" variant="text" color="error"
+              title="Dar destino (descarte/devolução/uso interno)" @click="abrirDestino(item)">
+              <v-icon>mdi-delete-sweep-outline</v-icon>
+            </v-btn>
             <v-btn icon size="small" variant="text" color="primary"
               title="Editar lote" @click="editarLote(item)">
               <v-icon>mdi-pencil</v-icon>
@@ -544,6 +569,10 @@
             </v-chip>
           </template>
           <template #item.acoes="{ item }">
+            <v-btn v-if="item.quantidade > 0" icon size="small" variant="text" color="error"
+              title="Dar destino (descarte/devolução/uso interno)" @click="abrirDestino(item)">
+              <v-icon>mdi-delete-sweep-outline</v-icon>
+            </v-btn>
             <v-btn icon size="small" variant="text" color="primary"
               title="Transferir para filial" @click="abrirTransferencia(item)">
               <v-icon>mdi-transfer</v-icon>
@@ -552,6 +581,36 @@
         </v-data-table>
       </v-card>
     </div>
+
+    <!-- Dialog: dar destino ao lote (vencido) -->
+    <v-dialog v-model="dlgDestino" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-1 d-flex align-center">
+          <v-icon icon="mdi-delete-sweep-outline" color="error" class="mr-2" />
+          Dar destino ao lote
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-2 mb-3">
+            <b>{{ destino.descricao }}</b> · Lote {{ destino.numeroLote }}<br>
+            <span class="text-medium-emphasis">Em estoque: {{ destino.saldo }} · custo unit. R$ {{ fmt(destino.custoUnitario) }}</span>
+          </div>
+          <v-select v-model="destino.tipo" :items="destinos" item-title="label" item-value="value"
+            label="Destino *" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model.number="destino.quantidade" type="number" min="0" :max="destino.saldo"
+            label="Quantidade (vazio = tudo)" variant="outlined" density="compact" class="mb-2" />
+          <v-textarea v-model="destino.observacao" label="Observação (opcional)" rows="2"
+            variant="outlined" density="compact" auto-grow />
+          <v-alert v-if="destino.tipo === 'Descarte'" type="warning" variant="tonal" density="compact" class="mt-1">
+            Vai lançar como <b>perda</b>: R$ {{ fmt((destino.quantidade || destino.saldo) * destino.custoUnitario) }} (custo), que aparece no DRE.
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-3 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgDestino = false">Cancelar</v-btn>
+          <v-btn color="error" :loading="salvandoDestino" @click="confirmarDestino">Confirmar baixa</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Dialog novo lote -->
     <v-dialog v-model="dialogLote" max-width="600" persistent>
@@ -957,6 +1016,18 @@ const notaEmitente = ref('')
 const itensNota = ref<any[]>([])
 const barcodeNota = ref('')
 const salvandoTodos = ref(false)
+const soPendentes = ref(false)
+
+// Progresso persistente: quantos já foram registrados (sobrevive a recarregar a tela).
+const notaRegistrados = computed(() => itensNota.value.filter(i => i._salvo).length)
+const notaPendentes = computed(() => itensNota.value.length - notaRegistrados.value)
+const notaProgresso = computed(() =>
+  itensNota.value.length ? Math.round((notaRegistrados.value / itensNota.value.length) * 100) : 0)
+// Pendentes primeiro (retomar de onde parou); opcionalmente esconde os já feitos.
+const itensNotaVisiveis = computed(() => {
+  const base = soPendentes.value ? itensNota.value.filter(i => !i._salvo) : itensNota.value
+  return [...base].sort((a, b) => Number(a._salvo) - Number(b._salvo))
+})
 const fotoRefs = new Map<string, HTMLInputElement>()
 
 function setFotoRef(id: string, el: HTMLInputElement | null) {
@@ -977,7 +1048,9 @@ async function buscarNota() {
       ...i,
       _validade: i.validadeIso ?? '',
       _lote: i.numeroLote ?? '',
-      _salvo: false, _salvando: false,
+      _salvo: !!i.jaRegistrado,   // já registrado antes (persiste após recarregar/almoço)
+      _loteImagemUrl: i.loteImagemUrl ?? '',
+      _salvando: false,
       _ocr: false, _ocrLido: false, _ocrCandidatas: [] as string[],
       _destaque: false,
     }))
@@ -1065,6 +1138,7 @@ async function registrarItemNota(it: any) {
       numeroLote: it._lote || undefined,
       quantidade: it.quantidadeEstoque,
       imagemBase64: it._fotoBase64 || undefined,
+      itemEntradaId: it.itemId || undefined,   // marca o item da nota como concluído (persiste)
     })
     it._loteImagemUrl = data?.imagemUrl ?? it._fotoBase64
     it._salvo = true
@@ -1138,6 +1212,41 @@ const headersVenc = [
   { title: 'Status',  key: 'status', width: 110 },
   { title: '',        key: 'acoes', width: 50, sortable: false },
 ]
+
+// ── Dar destino ao lote (vencido) ─────────────────────────────────
+const dlgDestino = ref(false)
+const salvandoDestino = ref(false)
+const destinos = [
+  { label: 'Descarte / Perda', value: 'Descarte' },
+  { label: 'Devolução ao fornecedor', value: 'Devolucao' },
+  { label: 'Uso interno / reprocesso', value: 'UsoInterno' },
+]
+const destino = ref<any>({ id: '', descricao: '', numeroLote: '', saldo: 0, custoUnitario: 0, tipo: 'Descarte', quantidade: null, observacao: '' })
+
+function abrirDestino(item: any) {
+  destino.value = {
+    id: item.id, descricao: item.descricao ?? item.produtoDescricao ?? 'Produto',
+    numeroLote: item.numeroLote, saldo: item.quantidade, custoUnitario: item.custoUnitario ?? 0,
+    tipo: 'Descarte', quantidade: null, observacao: '',
+  }
+  dlgDestino.value = true
+}
+
+async function confirmarDestino() {
+  salvandoDestino.value = true
+  try {
+    await api.post(`/lotes/${destino.value.id}/dar-destino`, {
+      destino: destino.value.tipo,
+      quantidade: destino.value.quantidade || 0,
+      observacao: destino.value.observacao || null,
+    })
+    notif.ok('Baixa registrada — o lote saiu do controle de validade.')
+    dlgDestino.value = false
+    await Promise.all([listarLotes(), listarVencimentos(), carregarPainel()])
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao dar destino ao lote.')
+  } finally { salvandoDestino.value = false }
+}
 
 async function listarLotes() {
   carregandoLotes.value = true

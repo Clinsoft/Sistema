@@ -9,7 +9,7 @@ namespace Sistema.API.Controllers.Financeiro;
 /// <summary>Fluxo de Caixa — realizado e projetado.</summary>
 [ApiController]
 [Route("api/financeiro/fluxo-caixa")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class FluxoCaixaController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Fluxo realizado — movimentações efetivas (vendas e pagamentos) no período.</summary>

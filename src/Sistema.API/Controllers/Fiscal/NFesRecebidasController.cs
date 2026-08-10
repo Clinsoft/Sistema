@@ -74,7 +74,7 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
             query = query.Where(n => n.DataEmissao >= dataInicio.Value);
 
         if (dataFim.HasValue)
-            query = query.Where(n => n.DataEmissao <= dataFim.Value.AddDays(1));
+            query = query.Where(n => n.DataEmissao < dataFim.Value.AddDays(1));
 
         if (manifestacao.HasValue)
             query = query.Where(n => n.Manifestacao == manifestacao.Value);

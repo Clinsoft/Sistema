@@ -21,7 +21,7 @@ public class LivroFiscalController(SistemaDbContext db) : ControllerBase
         var movs = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId
                 && m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada
-                && m.CriadoEm >= inicio && m.CriadoEm <= fim.AddDays(1)
+                && m.CriadoEm >= inicio && m.CriadoEm < fim.AddDays(1)
                 && m.DocumentoOrigem != null)
             .Join(db.Produtos, m => m.ProdutoId, p => p.Id, (m, p) => new
             {
@@ -49,7 +49,7 @@ public class LivroFiscalController(SistemaDbContext db) : ControllerBase
     {
         var notas = await db.NotasFiscais.AsNoTracking()
             .Where(n => n.EmpresaId == empresaId
-                && n.DataEmissao >= inicio && n.DataEmissao <= fim.AddDays(1)
+                && n.DataEmissao >= inicio && n.DataEmissao < fim.AddDays(1)
                 && n.Status == StatusNF.Autorizada)
             .Include(n => n.Itens)
             .OrderBy(n => n.DataEmissao)
@@ -84,7 +84,7 @@ public class LivroFiscalController(SistemaDbContext db) : ControllerBase
         var entradas = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId
                 && m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada
-                && m.CriadoEm >= inicio && m.CriadoEm <= fim.AddDays(1))
+                && m.CriadoEm >= inicio && m.CriadoEm < fim.AddDays(1))
             .SumAsync(m => (decimal?)(m.Quantidade * m.CustoUnitario) ?? 0, ct);
 
         var saidas = await db.NotasFiscais.AsNoTracking()

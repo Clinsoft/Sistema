@@ -348,7 +348,16 @@
           </div>
         </div>
         <div class="pa-4">
+          <v-alert v-if="fiscal.emissaoNFCeAtiva === false" type="warning" variant="tonal"
+            density="compact" rounded="lg" class="mb-3">
+            Emissão de NFC-e <b>desligada</b> para esta unidade — as vendas no PDV <b>não emitem cupom fiscal</b>
+            (útil enquanto o CNPJ não está válido). Ligue quando o CNPJ definitivo e o certificado estiverem prontos.
+          </v-alert>
           <v-row dense>
+            <v-col cols="12">
+              <v-switch v-model="fiscal.emissaoNFCeAtiva" color="success"
+                label="Emitir NFC-e automaticamente nas vendas" density="compact" hide-details class="mb-2" />
+            </v-col>
             <v-col cols="6" sm="2">
               <v-text-field v-model.number="fiscal.serieNFCe" label="Série"
                 type="number" variant="outlined" density="compact"
@@ -922,7 +931,7 @@ const fiscalDefaults = {
   enviarEmailDestinatario: true, emailCopiaFixa: '',
   // NFC-e
   serieNFCe: 1, proximoNumeroNFCe: 1, cscIdNFCe: '', cscTokenNFCe: '',
-  tipoImpressaoNFCe: 'Termica80', imprimirAutomaticamenteNFCe: true,
+  tipoImpressaoNFCe: 'Termica80', imprimirAutomaticamenteNFCe: true, emissaoNFCeAtiva: true,
   // Tributação padrão
   csosnPadrao: '400', cstIcmsPadrao: '00', aliquotaIcmsPadrao: 0, aliquotaIcmsInterestadual: 0,
   origemPadrao: '0',

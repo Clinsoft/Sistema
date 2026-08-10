@@ -63,6 +63,20 @@
           </template>
         </v-list-item>
 
+        <!-- CMV (custo do que foi vendido) + Lucro Bruto -->
+        <v-list-item v-if="(dre.cmv ?? 0) > 0" class="dre-total-linha">
+          <template #title><span class="font-weight-bold">(-) CMV — custo das vendas</span></template>
+          <template #append>
+            <span class="font-weight-bold text-orange-darken-2 text-body-1">- R$ {{ fmt(dre.cmv) }}</span>
+          </template>
+        </v-list-item>
+        <v-list-item class="dre-total-linha">
+          <template #title><span class="font-weight-bold">(=) Lucro Bruto</span></template>
+          <template #append>
+            <span class="font-weight-bold text-body-1">R$ {{ fmt(dre.recebimentos - (dre.cmv ?? 0)) }}</span>
+          </template>
+        </v-list-item>
+
         <v-divider class="my-2" />
 
         <!-- DESPESAS ADMINISTRATIVAS -->
@@ -163,6 +177,35 @@
           </template>
         </v-list-item>
 
+        <!-- DESPESAS FINANCEIRAS (juros de empréstimos) -->
+        <template v-if="(dre.despesasFinanceiras ?? 0) > 0">
+          <v-divider class="my-1" />
+          <v-list-subheader class="dre-grupo-header text-brown">
+            <v-icon size="14" class="mr-1">mdi-bank-outline</v-icon>
+            DESPESAS FINANCEIRAS (JUROS)
+          </v-list-subheader>
+          <v-list-item v-for="sub in dre.subcategorias?.despesasFinanceiras ?? []" :key="sub.nome"
+            :title="sub.nome" class="dre-sublinha">
+            <template #append>
+              <span class="text-brown text-body-2">- R$ {{ fmt(sub.total) }}</span>
+            </template>
+          </v-list-item>
+          <v-list-item class="dre-total-linha">
+            <template #title><span class="font-weight-bold">(-) Despesas Financeiras (juros)</span></template>
+            <template #append>
+              <span class="font-weight-bold text-brown text-body-1">- R$ {{ fmt(dre.despesasFinanceiras) }}</span>
+            </template>
+          </v-list-item>
+        </template>
+
+        <!-- PERDAS (produtos vencidos descartados) -->
+        <v-list-item v-if="(dre.perdas ?? 0) > 0" class="dre-total-linha">
+          <template #title><span class="font-weight-bold">(-) Perdas (vencidos descartados)</span></template>
+          <template #append>
+            <span class="font-weight-bold text-brown-darken-2 text-body-1">- R$ {{ fmt(dre.perdas) }}</span>
+          </template>
+        </v-list-item>
+
         <v-divider class="my-2" style="border-width:2px" />
 
         <!-- RESULTADO LÍQUIDO -->
@@ -240,10 +283,12 @@ const cardsResumo = computed(() => {
   if (!dre.value) return []
   return [
     { label: 'Recebimentos',   valor: dre.value.recebimentos,            cor: 'success',     icon: 'mdi-arrow-down-circle-outline' },
+    { label: 'CMV (custo vendas)', valor: dre.value.cmv,                 cor: 'orange-darken-2', icon: 'mdi-package-variant' },
     { label: 'Desp. Administrativas', valor: dre.value.despesasAdministrativas, cor: 'deep-purple', icon: 'mdi-home-city-outline' },
     { label: 'Desp. Operacionais',    valor: dre.value.despesasOperacionais,    cor: 'teal',        icon: 'mdi-cog-outline' },
     { label: 'Pessoas',        valor: dre.value.pessoas,                 cor: 'blue',        icon: 'mdi-account-group-outline' },
     { label: 'Impostos',       valor: dre.value.impostos,                cor: 'error',       icon: 'mdi-gavel' },
+    { label: 'Juros (financ.)', valor: dre.value.despesasFinanceiras,    cor: 'brown',       icon: 'mdi-bank-outline' },
   ]
 })
 

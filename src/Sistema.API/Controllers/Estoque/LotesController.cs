@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Estoque.Interfaces;
@@ -25,6 +26,7 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         [FromQuery] string? q,
         CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var hoje = DateTime.Today;
         var query =
             from l in db.Lotes.AsNoTracking()
@@ -111,7 +113,118 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         await uow.SalvarAsync(ct);
         return NoContent();
     }
+
+    /// <summary>Dá destino ao lote (vencido): baixa a quantidade do estoque e registra o
+    /// motivo. "Descarte" conta como perda (custo). Sai do Controle de Validade ao zerar.</summary>
+    [HttpPost("{id:guid}/dar-destino")]
+    public async Task<IActionResult> DarDestino(Guid id, [FromBody] DarDestinoRequest req, CancellationToken ct)
+    {
+        var destinos = new[] { "Descarte", "Devolucao", "UsoInterno" };
+        if (!destinos.Contains(req.Destino))
+            return BadRequest(new { mensagem = "Destino inválido (Descarte, Devolucao ou UsoInterno)." });
+
+        var lote = await db.Lotes.FirstOrDefaultAsync(l => l.Id == id, ct)
+            ?? throw new KeyNotFoundException("Lote não encontrado.");
+        if (lote.Quantidade <= 0) return BadRequest(new { mensagem = "Lote sem quantidade." });
+
+        // Sem quantidade informada (ou maior que o saldo) = baixa tudo.
+        var qtd = req.Quantidade > 0 && req.Quantidade < lote.Quantidade ? req.Quantidade : lote.Quantidade;
+
+        var usuarioId = Guid.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid)
+            ? uid : (Guid?)null;
+
+        var mov = MovimentacaoEstoque.Criar(lote.EmpresaId, lote.ProdutoId, lote.LocalEstoqueId,
+            TipoMovimentacao.Saida, qtd, lote.CustoUnitario,
+            loteId: lote.Id, documentoOrigem: $"VENCIDO:{req.Destino}",
+            usuarioId: usuarioId, observacao: req.Observacao);
+        db.MovimentacoesEstoque.Add(mov);
+
+        var produto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == lote.ProdutoId, ct);
+        produto?.AjustarEstoque(-qtd);
+
+        lote.Baixar(qtd);
+        await uow.SalvarAsync(ct);
+
+        return Ok(new
+        {
+            loteId = id, baixado = qtd, restante = lote.Quantidade, destino = req.Destino,
+            perda = req.Destino == "Descarte" ? qtd * lote.CustoUnitario : 0m
+        });
+    }
+
+    /// <summary>Relatório de perdas/baixas por validade (movimentações "VENCIDO:*") no período.</summary>
+    [HttpGet("perdas")]
+    public async Task<IActionResult> Perdas([FromQuery] Guid empresaId,
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId, [FromQuery] string? destino, CancellationToken ct)
+    {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: só a própria loja
+        var fimExcl = fim.Date.AddDays(1);
+
+        var q = db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId
+                && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("VENCIDO:")
+                && m.CriadoEm >= inicio.Date && m.CriadoEm < fimExcl);
+        if (localEstoqueId.HasValue) q = q.Where(m => m.LocalEstoqueId == localEstoqueId);
+        if (!string.IsNullOrWhiteSpace(destino)) q = q.Where(m => m.DocumentoOrigem == "VENCIDO:" + destino);
+
+        var movs = await q.OrderByDescending(m => m.CriadoEm).ToListAsync(ct);
+
+        var prodIds = movs.Select(m => m.ProdutoId).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking().Where(p => prodIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => new { p.Codigo, p.Descricao }, ct);
+        var lojaIds = movs.Select(m => m.LocalEstoqueId).Distinct().ToList();
+        var lojas = await db.LocaisEstoque.AsNoTracking().Where(l => lojaIds.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+        var userIds = movs.Where(m => m.UsuarioId.HasValue).Select(m => m.UsuarioId!.Value).Distinct().ToList();
+        var usuarios = await db.Usuarios.AsNoTracking().Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Nome, ct);
+
+        static string DestNome(string sufixo) => sufixo switch
+        {
+            "Descarte" => "Descarte / Perda",
+            "Devolucao" => "Devolução ao fornecedor",
+            "UsoInterno" => "Uso interno / reprocesso",
+            _ => sufixo
+        };
+
+        var itens = movs.Select(m =>
+        {
+            var suf = m.DocumentoOrigem!.Replace("VENCIDO:", "");
+            return new
+            {
+                data = m.CriadoEm,
+                produto = produtos.TryGetValue(m.ProdutoId, out var p) ? p.Descricao : "Produto",
+                codigo = produtos.TryGetValue(m.ProdutoId, out var pc) ? pc.Codigo : null,
+                loja = lojas.GetValueOrDefault(m.LocalEstoqueId, "—"),
+                destino = suf,
+                destinoNome = DestNome(suf),
+                quantidade = m.Quantidade,
+                custoUnitario = m.CustoUnitario,
+                custoTotal = m.Quantidade * m.CustoUnitario,
+                usuario = m.UsuarioId.HasValue && usuarios.TryGetValue(m.UsuarioId.Value, out var un) ? un : null,
+                observacao = m.Observacao
+            };
+        }).ToList();
+
+        return Ok(new
+        {
+            itens,
+            resumo = new
+            {
+                total = itens.Sum(i => i.custoTotal),
+                perdaFinanceira = itens.Where(i => i.destino == "Descarte").Sum(i => i.custoTotal),
+                quantidade = itens.Sum(i => i.quantidade),
+                registros = itens.Count,
+                porDestino = itens.GroupBy(i => i.destinoNome)
+                    .Select(g => new { destino = g.Key, quantidade = g.Sum(x => x.quantidade), valor = g.Sum(x => x.custoTotal) })
+                    .OrderByDescending(x => x.valor).ToList()
+            }
+        });
+    }
 }
+
+public record DarDestinoRequest(string Destino, decimal Quantidade = 0, string? Observacao = null);
 
 public record CriarLoteRequest(
     Guid EmpresaId, Guid ProdutoId, Guid LocalEstoqueId,

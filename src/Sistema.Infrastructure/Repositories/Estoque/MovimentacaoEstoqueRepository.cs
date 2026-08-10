@@ -15,7 +15,7 @@ public class MovimentacaoEstoqueRepository(SistemaDbContext db) : BaseRepository
 
     public async Task<IReadOnlyList<MovimentacaoEstoque>> ListarPorPeriodoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct = default)
         => await _set.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId && m.CriadoEm >= inicio && m.CriadoEm <= fim)
+            .Where(m => m.EmpresaId == empresaId && m.CriadoEm >= inicio && m.CriadoEm < fim)
             .OrderByDescending(m => m.CriadoEm)
             .ToListAsync(ct);
 }

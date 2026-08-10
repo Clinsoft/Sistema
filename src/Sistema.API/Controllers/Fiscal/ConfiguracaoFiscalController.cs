@@ -18,7 +18,17 @@ public class ConfiguracaoFiscalController(
     public async Task<IActionResult> Obter([FromQuery] Guid empresaId, CancellationToken ct)
     {
         var config = await repo.ObterPorEmpresaAsync(empresaId, ct);
-        if (config is null) return NotFound("Configuração fiscal não encontrada.");
+        if (config is null)
+        {
+            // Toda empresa/filial precisa de uma config fiscal. Se ainda não existe
+            // (ex.: filial recém-criada), cria uma padrão com o regime da empresa —
+            // assim a filial já opera sem o erro "Configuração fiscal não encontrada".
+            var empresa = await db.Empresas.FindAsync([empresaId], ct);
+            if (empresa is null) return NotFound("Empresa não encontrada.");
+            config = ConfiguracaoFiscal.Criar(empresaId, MapearRegime(empresa.RegimeTributario));
+            await repo.AdicionarAsync(config, ct);
+            await uow.SalvarAsync(ct);
+        }
         // Projeta enums como string e corrige os nomes de campo esperados pelo frontend
         return Ok(new
         {
@@ -34,6 +44,7 @@ public class ConfiguracaoFiscalController(
             // Parâmetros gerais
             config.NaturezaOperacaoPadrao, config.ContingenciaPadrao,
             config.FormatoDanfe, config.TipoImpressaoNFCe, config.ImprimirAutomaticamenteNFCe,
+            config.EmissaoNFCeAtiva,
             // Tributação padrão
             config.CsosnPadrao, config.CstIcmsPadrao, config.AliquotaIcmsPadrao,
             config.AliquotaIcmsInterestadual, config.OrigemPadrao,
@@ -142,6 +153,10 @@ public class ConfiguracaoFiscalController(
             Str(body, "formatoDanfe"), Str(body, "tipoImpressaoNFCe"),
             Bool(body, "imprimirAutomaticamenteNFCe") ?? config.ImprimirAutomaticamenteNFCe);
 
+        // Interruptor de emissão de NFC-e (desligar p/ filial sem CNPJ válido)
+        var emissao = Bool(body, "emissaoNFCeAtiva");
+        if (emissao.HasValue) config.DefinirEmissaoNFCe(emissao.Value);
+
         // Tributação padrão de produtos
         config.DefinirTributacaoPadrao(
             Str(body, "csosnPadrao"), Str(body, "cstIcmsPadrao"),
@@ -173,6 +188,14 @@ public class ConfiguracaoFiscalController(
         await uow.SalvarAsync(ct);
         return NoContent();
     }
+
+    // Regime da Empresa é string ("SN"/"LP"/"LR"); mapeia para o enum fiscal.
+    private static RegimeTributario MapearRegime(string? regime) => (regime ?? "").ToUpperInvariant() switch
+    {
+        "LP" or "LUCROPRESUMIDO" => RegimeTributario.LucroPresumido,
+        "LR" or "LUCROREAL" => RegimeTributario.LucroReal,
+        _ => RegimeTributario.SimplesNacional,
+    };
 
     // Lê um inteiro do JSON (aceita number ou string numérica); null se ausente/ inválido.
     private static int? Int(System.Text.Json.JsonElement body, string nome)
@@ -307,9 +330,9 @@ public class ConfiguracaoFiscalController(
     {
         "SimplesNacional" => new
         {
-            csosnIcms = "400", cstIcms = (string?)null, aliquotaIcms = 0m,
+            csosnIcms = "102", cstIcms = (string?)null, aliquotaIcms = 0m,
             cstPisCofins = "07", aliquotaPis = 0m, aliquotaCofins = 0m, cfop = "5102",
-            descricao = "CSOSN 400 — Não tributado (SN). PIS/COFINS CST 07 — isento."
+            descricao = "CSOSN 102 — Tributada pelo Simples (CFOP 5102). ST usa CSOSN 500 (CFOP 5405). PIS/COFINS CST 07."
         },
         "LucroPresumido" => new
         {

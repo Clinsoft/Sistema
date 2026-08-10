@@ -478,6 +478,106 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         return Ok(item);
     }
 
+    /// <summary>
+    /// Corrige o PRODUTO de um item numa entrada JÁ PROCESSADA, sem estornar a nota toda:
+    /// reverte o estoque do produto errado, re-vincula ao produto certo, re-aplica o estoque
+    /// e conserta o de-para (código do fornecedor). Atômico; não mexe nos outros itens.
+    /// </summary>
+    [HttpPost("{id:guid}/itens/{itemId:guid}/corrigir-produto")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> CorrigirProdutoItem(
+        Guid id, Guid itemId, [FromBody] CorrigirProdutoItemRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+        if (entrada.Status != StatusEntradaNFe.Processada)
+            return BadRequest(new { mensagem = "Este ajuste é só para entradas já PROCESSADAS. Em 'Em Edição', use o editar item normal." });
+
+        var item = entrada.Itens.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new KeyNotFoundException("Item não encontrado.");
+        if (item.ProdutoId is null)
+            return BadRequest(new { mensagem = "Item sem produto vinculado." });
+
+        var novo = await db.Produtos.FirstOrDefaultAsync(p => p.Id == req.ProdutoId && p.EmpresaId == entrada.EmpresaId, ct);
+        if (novo is null) return NotFound(new { mensagem = "Produto de destino não encontrado." });
+
+        var mudaProduto = item.ProdutoId != novo.Id;
+        var mudaFator = req.FatorConversao.HasValue && req.FatorConversao.Value > 0
+                        && req.FatorConversao.Value != item.FatorConversao;
+        if (!mudaProduto && !mudaFator)
+            return Ok(new { mensagem = "Nada a alterar (mesmo produto e mesma quantidade)." });
+
+        var antigoId = item.ProdutoId.Value;
+
+        // 1) Reverte o estoque ATUAL do item (produto/qtd/custo de agora).
+        if (item.EstoqueMovimentado)
+        {
+            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+                entrada.EmpresaId, antigoId, entrada.LocalEstoqueId,
+                TipoMovimentacao.Saida, item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                documentoOrigem: entrada.ChaveAcesso,
+                observacao: $"Correção de item ({item.DescricaoXml})"));
+
+            var antigo = await db.Produtos.FindAsync([antigoId], ct);
+            antigo?.SaidaEstoque(item.QuantidadeEstoque);
+            if (mudaProduto && antigo is not null && !string.IsNullOrWhiteSpace(item.CodigoFornecedor)
+                && antigo.CodigoFornecedorPrincipal == item.CodigoFornecedor)
+                antigo.LimparReferenciaFornecedor();
+
+            if (item.LoteId is Guid loteAntigo)
+            {
+                var lote = await db.Lotes.FindAsync([loteAntigo], ct);
+                lote?.Baixar(item.QuantidadeEstoque);
+            }
+        }
+
+        // 2) Troca de produto (se pedido).
+        if (mudaProduto) item.VincularProduto(novo.Id, novo.Descricao);
+
+        // 3) Ajusta o fator/quantidade (se pedido) e recalcula o custo unitário.
+        if (mudaFator)
+        {
+            item.DefinirConversao(req.FatorConversao!.Value, item.UnidadeEstoque ?? item.UnidadeXml);
+            entrada.RatearFrete();   // recomputa CustoUnitarioFinal (total do item ÷ nova quantidade)
+        }
+
+        // Quantidade/custo já com produto e fator novos.
+        var qtd = item.QuantidadeEstoque;
+        var custo = item.CustoUnitarioFinal;
+
+        // 4) Aplica o estoque no produto de destino (espelha o Processar).
+        Guid? loteId = null;
+        if (!string.IsNullOrWhiteSpace(item.NumeroLote))
+        {
+            var novoLote = Lote.Criar(entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
+                item.NumeroLote!, qtd, custo, dataValidade: item.Validade);
+            db.Lotes.Add(novoLote);
+            await db.SaveChangesAsync(ct);
+            loteId = novoLote.Id;
+            item.DefinirLote(item.NumeroLote!, item.Validade, loteId);
+        }
+
+        db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+            entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
+            TipoMovimentacao.Entrada, qtd, custo, loteId: loteId,
+            documentoOrigem: entrada.ChaveAcesso));
+
+        novo.EntradaEstoque(qtd, custo);
+        if (item.PrecoVendaSugerido.HasValue && novo.PrecoVenda <= 0)
+            novo.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? novo.Markup);
+
+        // 5) Memoriza o de-para no produto de destino.
+        if (mudaProduto && entrada.FornecedorId is Guid fid && !string.IsNullOrWhiteSpace(item.CodigoFornecedor))
+            novo.VincularReferenciaFornecedor(fid, item.CodigoFornecedor);
+
+        item.MarcarEstoqueMovimentado();
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { mensagem = $"Item corrigido: '{novo.Descricao}', {qtd:0.##} un a R$ {custo:0.00}/un.",
+            quantidade = qtd, custoUnitario = custo, produtoAntigo = antigoId, produtoNovo = novo.Id });
+    }
+
     [HttpPatch("{id:guid}/local-estoque")]
     public async Task<IActionResult> DefinirLocalEstoque(
         Guid id, [FromBody] LocalEstoqueRequest req, CancellationToken ct)
@@ -1618,4 +1718,5 @@ public record ProcessarEntradaRequest(
     string? Categoria = null,        // categoria do contas a pagar
     string? FormaPagamento = null);  // forma de pagamento (informativo)
 public record EstornarRequest(string Motivo);
+public record CorrigirProdutoItemRequest(Guid ProdutoId, decimal? FatorConversao = null);
 public record DevolucaoEntradaRequest(List<Guid>? Itens);

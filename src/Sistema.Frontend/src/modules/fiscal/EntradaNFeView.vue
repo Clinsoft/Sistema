@@ -32,6 +32,9 @@
           <v-divider />
           <v-list-item prepend-icon="mdi-undo" title="Estornar" class="text-warning"
             @click="dlgEstorno = true" :disabled="entrada?.status !== 'Processada'" />
+          <v-list-item prepend-icon="mdi-swap-horizontal-bold" title="Corrigir produto de item"
+            subtitle="Troca o produto de um item sem estornar a nota toda"
+            @click="abrirCorrigir" :disabled="entrada?.status !== 'Processada'" />
           <v-list-item prepend-icon="mdi-delete-outline" title="Excluir" class="text-error"
             @click="excluir" :disabled="entrada?.status === 'Processada'" />
         </v-list>
@@ -936,6 +939,37 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Corrigir produto de item (entrada processada) -->
+    <v-dialog v-model="dlgCorrigir" max-width="560">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="primary">mdi-swap-horizontal-bold</v-icon>Corrigir produto de item
+        </v-card-title>
+        <v-card-text class="pa-4">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            Troca o produto de UM item sem estornar a nota inteira: reverte o estoque do produto errado,
+            aplica no produto certo e conserta o de-para. Não mexe nos outros itens.
+          </v-alert>
+          <v-select v-model="corrItemId" :items="itensParaCorrigir" item-title="rotulo" item-value="id"
+            label="Item da nota" variant="outlined" density="compact" class="mb-2" />
+          <v-autocomplete v-model="corrProdutoId" :items="produtos" item-title="descricao" item-value="id"
+            :custom-filter="filtrarPorPalavras" label="Produto correto" variant="outlined"
+            density="compact" clearable class="mb-2"
+            hint="Se o produto certo não existe, cadastre em Produtos antes." persistent-hint />
+          <v-text-field v-model.number="corrFator" type="number" min="0" step="1"
+            label="Quantidade por caixa (fator)" variant="outlined" density="compact" clearable
+            :hint="corrItemSel ? `Nota: ${corrItemSel.quantidadeXml} × fator = ${((corrItemSel.quantidadeXml||0)*(corrFator||0)).toFixed(0)} un no estoque` : 'Deixe como está se a quantidade estiver certa'"
+            persistent-hint />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgCorrigir = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="corrigindo" :disabled="!corrItemId || !corrProdutoId"
+            @click="confirmarCorrigir">Corrigir</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: Imprimir Etiquetas -->
     <v-dialog v-model="dlgEtiquetas" max-width="480">
       <v-card rounded="xl">
@@ -994,7 +1028,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -1496,6 +1530,46 @@ const itensEditaveis = ref<any[]>([])
 const salvandoTodos = ref(false)
 const salvandoFrete = ref(false)
 const markupGlobal = ref(150)
+
+// ─── Corrigir produto de item (entrada já processada) ───────────────────────
+const dlgCorrigir = ref(false)
+const corrItemId = ref<string | null>(null)
+const corrProdutoId = ref<string | null>(null)
+const corrFator = ref<number | null>(null)
+const corrigindo = ref(false)
+const itensParaCorrigir = computed(() => itensEditaveis.value.map((i: any) => ({
+  id: i.id,
+  rotulo: `${i.numeroItem}. ${i.descricaoXml} → atual: ${i.produtoDescricao ?? '(sem)'}`,
+})))
+const corrItemSel = computed(() => itensEditaveis.value.find((i: any) => i.id === corrItemId.value))
+// Ao escolher o item, já preenche o produto e o fator atuais (facilita ajuste só de quantidade).
+watch(corrItemId, () => {
+  const it = corrItemSel.value
+  corrProdutoId.value = it?._produtoId ?? null
+  corrFator.value = it?._fator ?? null
+})
+function abrirCorrigir() {
+  corrItemId.value = null
+  corrProdutoId.value = null
+  corrFator.value = null
+  dlgCorrigir.value = true
+}
+async function confirmarCorrigir() {
+  if (!corrItemId.value || !corrProdutoId.value) return
+  corrigindo.value = true
+  try {
+    const { data } = await api.post(
+      `/fiscal/entradas/${entradaId}/itens/${corrItemId.value}/corrigir-produto`,
+      { produtoId: corrProdutoId.value, fatorConversao: corrFator.value || undefined })
+    notif.ok(data?.mensagem || 'Item corrigido.')
+    dlgCorrigir.value = false
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao corrigir o item.')
+  } finally {
+    corrigindo.value = false
+  }
+}
 
 // O vínculo do item depende do tipo da nota: produto, material ou bem
 const itensSemProduto = computed(() => {

@@ -84,9 +84,10 @@ public class Venda : Entity
     public void Finalizar()
     {
         if (!_itens.Any()) throw new InvalidOperationException("Venda sem itens.");
-        // Tolerância de meio centavo: o front soma valores em ponto flutuante
-        // (ex.: 9,03 + 3,62 = 12,6499…) e o total do backend é decimal exato.
-        if (TotalPago < Total - 0.005m) throw new InvalidOperationException("Pagamento insuficiente.");
+        // Tolerância de arredondamento: o front soma em ponto flutuante (JS) e pode
+        // divergir do decimal do backend em até ~1 centavo POR ITEM (vendas por kg).
+        var tolerancia = Math.Max(0.005m, _itens.Count * 0.01m);
+        if (TotalPago < Total - tolerancia) throw new InvalidOperationException("Pagamento insuficiente.");
 
         Status = StatusVenda.Finalizada;
         DataHoraFechamento = DateTime.Now;
@@ -111,12 +112,13 @@ public class Venda : Entity
 
     private void RecalcularTotais()
     {
-        // Soma os itens JÁ ARREDONDADOS por linha (2 casas) — mesmo critério da NFC-e,
-        // pra o total da venda bater com o total do cupom fiscal (evita 1 centavo de
-        // diferença em vendas por kg com vários itens).
-        SubTotal = _itens.Sum(i => Math.Round(i.Quantidade * i.PrecoUnitario, 2, MidpointRounding.AwayFromZero));
+        // Usa o TOTAL JÁ ARREDONDADO de cada item (ItemVenda.Total) — mesma base do
+        // que aparece na tela, do cupom NFC-e (vProd) e do que o cliente paga. Antes o
+        // SubTotal rearredondava com outro critério (AwayFromZero) e dava 1 centavo a mais,
+        // gerando "pagamento insuficiente" em vendas por kg.
         TotalDesconto = _itens.Sum(i => i.TotalDesconto);
-        Total = SubTotal - TotalDesconto + TotalAcrescimo;
+        SubTotal = _itens.Sum(i => i.Total) + TotalDesconto;   // bruto = líquido dos itens + descontos
+        Total = _itens.Sum(i => i.Total) + TotalAcrescimo;     // = soma dos itens + acréscimo
     }
 }
 

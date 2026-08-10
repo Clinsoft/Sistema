@@ -44,6 +44,8 @@ const router = createRouter({
       meta: { titulo: 'Exportação para Balança' } },
     { path: '/estoque/validade', component: () => import('@/modules/estoque/ValidadeView.vue'),
       meta: { titulo: 'Controle de Validade' } },
+    { path: '/estoque/perdas-validade', component: () => import('@/modules/estoque/PerdasValidadeView.vue'),
+      meta: { titulo: 'Perdas por Validade' } },
     { path: '/auditoria', component: () => import('@/modules/auditoria/AuditoriaView.vue'),
       meta: { titulo: 'Auditoria' } },
     { path: '/estoque/materiais', component: () => import('@/modules/estoque/MateriaisConsumoView.vue'),
@@ -58,6 +60,9 @@ const router = createRouter({
     // Página pública (sem auth guard)
     { path: '/produto/:id', component: () => import('@/modules/publico/ProdutoPublicoView.vue'),
       meta: { publica: true, titulo: 'Produto' } },
+    // Vitrine pública (e-commerce) — cliente monta o pedido; cai na loja escolhida
+    { path: '/loja/:empresaId', component: () => import('@/modules/publico/VitrineView.vue'),
+      meta: { publica: true, titulo: 'Loja Online' } },
 
     // Compras
     { path: '/compras', component: () => import('@/modules/compras/ComprasView.vue'),
@@ -156,7 +161,7 @@ const ROTAS_ATENDENTE = [
   '/pdv', '/pdv/vendas', '/pdv/sessoes',
   '/cadastros/clientes',
   '/estoque/produtos',
-  '/estoque/etiquetas', '/estoque/validade', '/estoque/balanca',
+  '/estoque/etiquetas', '/estoque/validade', '/estoque/perdas-validade', '/estoque/balanca',
   '/whatsapp',
   '/marketing', '/marketing/clube',
 ]

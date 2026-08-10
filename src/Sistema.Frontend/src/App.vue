@@ -61,6 +61,8 @@
               to="/cadastros/clientes" value="/cadastros/clientes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-history" title="Auditoria (atividade)"
               to="/auditoria" value="/auditoria" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-cash-remove" title="Perdas por Validade"
+              to="/estoque/perdas-validade" value="/estoque/perdas-validade" color="error" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-account-tie-outline" title="Colaboradores"
               to="/cadastros/colaboradores" value="/cadastros/colaboradores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"

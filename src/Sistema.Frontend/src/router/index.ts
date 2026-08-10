@@ -44,6 +44,8 @@ const router = createRouter({
       meta: { titulo: 'Exportação para Balança' } },
     { path: '/estoque/validade', component: () => import('@/modules/estoque/ValidadeView.vue'),
       meta: { titulo: 'Controle de Validade' } },
+    { path: '/auditoria', component: () => import('@/modules/auditoria/AuditoriaView.vue'),
+      meta: { titulo: 'Auditoria' } },
     { path: '/estoque/materiais', component: () => import('@/modules/estoque/MateriaisConsumoView.vue'),
       meta: { titulo: 'Materiais de Consumo' } },
     { path: '/estoque/ativos', component: () => import('@/modules/estoque/AtivosImobilizadosView.vue'),

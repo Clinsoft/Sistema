@@ -5,6 +5,10 @@ using Sistema.API.Middleware;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+
+// Auditoria: usuário atual (via HttpContext) para o log de auditoria
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Sistema.Domain.Shared.Interfaces.ICurrentUser, Sistema.API.Auth.CurrentUser>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -155,6 +159,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
     "limpar-vendas-abertas",
     job => job.ExecutarAsync(),
     "0 * * * *", optsBR);   // de hora em hora — descarta vendas em aberto há +6h
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RetransmitirNotasPendentesJob>(
+    "nfce-retransmitir-pendentes",
+    job => job.ExecutarAsync(),
+    "*/30 * * * *", optsBR); // a cada 30 min — reenfileira NFC-e presas em 'Transmitindo' (SEFAZ fora)
 
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FolhaPagamentoJob>(
     "folha-previsao-mensal",

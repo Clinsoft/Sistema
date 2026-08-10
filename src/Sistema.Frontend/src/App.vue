@@ -59,6 +59,8 @@
               to="/cadastros/categorias" value="/cadastros/categorias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-account-group-outline" title="Clientes"
               to="/cadastros/clientes" value="/cadastros/clientes" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-history" title="Auditoria (atividade)"
+              to="/auditoria" value="/auditoria" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-account-tie-outline" title="Colaboradores"
               to="/cadastros/colaboradores" value="/cadastros/colaboradores" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-truck-delivery-outline" title="Fornecedores"
@@ -368,6 +370,7 @@ const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel'
 // Perfil "Atendente" só enxerga um conjunto reduzido de telas no menu.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const ehContador = computed(() => auth.usuario?.role === 'Contador')
+const ehGestor = computed(() => auth.usuario?.role === 'Administrador' || auth.usuario?.role === 'Gerente')
 
 // ── Sininho de notificações ──────────────────────────────────────
 const notificacoes = ref<any[]>([])

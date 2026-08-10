@@ -433,6 +433,35 @@
 
       <!-- Configuração -->
       <v-window-item value="config">
+        <!-- Vitrine / Loja Online (e-commerce próprio) -->
+        <v-card max-width="700" class="mb-4">
+          <v-card-title><v-icon icon="mdi-storefront" class="mr-2" />Vitrine / Loja Online</v-card-title>
+          <v-card-text>
+            <v-alert type="success" variant="tonal" density="comfortable" class="mb-4">
+              Sua <strong>loja online própria</strong>: o cliente navega os produtos, monta o carrinho
+              e envia o pedido. Os pedidos caem na aba <strong>Pedidos</strong> aqui do sistema.
+            </v-alert>
+            <div class="d-flex flex-column flex-sm-row gap-4 align-center">
+              <div class="text-center">
+                <canvas ref="qrVitrine" class="qr-vitrine" />
+                <div class="text-caption text-medium-emphasis">Aponte a câmera / imprima na loja</div>
+              </div>
+              <div class="flex-grow-1" style="width:100%">
+                <v-text-field :model-value="linkVitrine" label="Link da loja online" readonly
+                  density="compact" prepend-inner-icon="mdi-link-variant">
+                  <template #append-inner>
+                    <v-btn icon="mdi-content-copy" size="small" variant="text" @click="copiarLinkVitrine" title="Copiar link" />
+                    <v-btn icon="mdi-open-in-new" size="small" variant="text" :href="linkVitrine" target="_blank" title="Abrir loja" />
+                  </template>
+                </v-text-field>
+                <v-btn color="primary" variant="tonal" size="small" @click="baixarQrVitrine">
+                  <v-icon start>mdi-download</v-icon>Baixar QR code
+                </v-btn>
+              </div>
+            </div>
+          </v-card-text>
+        </v-card>
+
         <!-- Catálogo por feed (a Meta puxa sozinha) -->
         <v-card max-width="700" class="mb-4">
           <v-card-title>Catálogo (sincronização por feed)</v-card-title>
@@ -692,7 +721,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
@@ -703,6 +732,8 @@ const auth = useAuthStore()
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 
 const tab = ref('conversas')
+// Renderiza o QR da vitrine quando a aba Configuração é aberta (canvas só existe então).
+watch(tab, v => { if (v === 'config') renderQrVitrine() })
 
 // ─── Caixa de entrada (conversas) ───────────────────────────────
 const conversas = ref<any[]>([])
@@ -1021,6 +1052,35 @@ const headersPedidos = [
 const linkCatalogo = computed(() =>
   `https://wa.me/${config.value.numeroWhatsApp}?text=Quero+ver+o+catálogo`
 )
+
+// Vitrine / loja online própria (rota pública /loja/:empresaId — hash history).
+const linkVitrine = computed(() =>
+  `${window.location.origin}/#/loja/${auth.empresaId}`
+)
+const qrVitrine = ref<HTMLCanvasElement | null>(null)
+async function renderQrVitrine() {
+  await nextTick()
+  if (!qrVitrine.value) return
+  try {
+    const QRCode = (await import('qrcode')).default
+    await QRCode.toCanvas(qrVitrine.value, linkVitrine.value, { width: 150, margin: 1 })
+  } catch { /* qr opcional */ }
+}
+async function copiarLinkVitrine() {
+  try {
+    await navigator.clipboard.writeText(linkVitrine.value)
+    notif.ok('Link da loja online copiado!')
+  } catch {
+    notif.aviso('Copie manualmente o link exibido na tela.')
+  }
+}
+function baixarQrVitrine() {
+  if (!qrVitrine.value) return
+  const a = document.createElement('a')
+  a.href = qrVitrine.value.toDataURL('image/png')
+  a.download = 'loja-online-qrcode.png'
+  a.click()
+}
 
 // URL pública do feed do catálogo (a Meta baixa por agendamento).
 const feedUrl = computed(() =>
@@ -1498,6 +1558,13 @@ onUnmounted(pararPolling)
 </script>
 
 <style scoped>
+.qr-vitrine {
+  width: 150px;
+  height: 150px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+}
+.gap-4 { gap: 16px; }
 .msg-bolha {
   max-width: 75%;
   padding: 8px 12px;

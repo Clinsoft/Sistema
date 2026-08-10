@@ -53,6 +53,7 @@ public class PedidoWhatsApp : Entity
     public void RegistrarPagamento() { StatusPagamento = StatusPagamentoWhatsApp.Pago; DataPagamento = DateTime.UtcNow; }
     public void DefinirPix(string copiaCola) => PixCopiaCola = copiaCola;
     public void DefinirEndereco(string endereco) => EnderecoEntrega = endereco;
+    public void DefinirObservacao(string? obs) => Observacao = string.IsNullOrWhiteSpace(obs) ? null : obs.Trim();
 }
 
 public enum StatusPedidoWhatsApp { Novo, Confirmado, EmSeparacao, ProntoParaRetirada, Enviado, Entregue, Cancelado }

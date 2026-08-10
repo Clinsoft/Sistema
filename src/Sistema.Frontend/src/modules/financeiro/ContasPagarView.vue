@@ -93,10 +93,29 @@
 
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
+      <!-- Barra de baixa em lote (aparece ao selecionar contas) -->
+      <v-slide-y-transition>
+        <div v-if="selecionados.length" class="d-flex align-center ga-3 px-3 py-2 mb-2"
+          style="background:rgba(var(--v-theme-primary),0.08);border-radius:10px">
+          <v-icon icon="mdi-checkbox-multiple-marked-outline" color="primary" />
+          <span class="text-body-2">
+            <b>{{ qtdSelecionadasAbertas }}</b> conta(s) em aberto selecionada(s) —
+            total <b>R$ {{ fmt(totalSelecionado) }}</b>
+          </span>
+          <v-spacer />
+          <v-btn variant="text" size="small" @click="selecionados = []">Limpar</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-cash-multiple" :disabled="!qtdSelecionadasAbertas"
+            @click="abrirBaixaLote">Pagar em lote (1 boleto)</v-btn>
+        </div>
+      </v-slide-y-transition>
+
       <v-data-table
+        v-model="selecionados"
         :headers="headers"
         :items="lancamentosFiltrados"
         :loading="carregando"
+        item-value="id"
+        show-select
         density="compact"
         hover
       >
@@ -618,6 +637,38 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <!-- Baixa em lote: 1 pagamento/comprovante para várias contas -->
+    <v-dialog v-model="dlgLote" max-width="480" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-1 d-flex align-center">
+          <v-icon icon="mdi-cash-multiple" color="primary" class="mr-2" />
+          Pagar em lote
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+            <b>{{ qtdSelecionadasAbertas }}</b> conta(s) — total <b>R$ {{ fmt(totalSelecionado) }}</b>.
+            Confira se bate com o valor do boleto.
+          </v-alert>
+          <v-list density="compact" class="pa-0 mb-2" style="max-height:160px;overflow-y:auto">
+            <v-list-item v-for="l in abertasSelecionadas" :key="l.id" class="px-2" min-height="30">
+              <v-list-item-title class="text-caption">{{ l.descricao }}</v-list-item-title>
+              <template #append><span class="text-caption font-weight-medium">R$ {{ fmt(l.saldo ?? l.valorOriginal) }}</span></template>
+            </v-list-item>
+          </v-list>
+          <v-text-field v-model="lote.data" type="date" label="Data do pagamento" variant="outlined" density="compact" class="mb-2" />
+          <v-file-input v-model="lote.arquivo" accept="application/pdf,image/*" label="Comprovante / boleto (1 arquivo p/ todas)"
+            prepend-icon="mdi-paperclip" variant="outlined" density="compact" show-size hide-details />
+        </v-card-text>
+        <v-card-actions class="pa-3 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgLote = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvandoLote" :disabled="!qtdSelecionadasAbertas || !lote.data" @click="confirmarBaixaLote">
+            Confirmar baixa ({{ qtdSelecionadasAbertas }})
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -759,6 +810,41 @@ async function confirmarComprovantes() {
     notif.erro(e?.response?.data ?? 'Falha ao confirmar as baixas.')
   } finally { confirmandoComp.value = false }
 }
+// ── Baixa em lote (ex.: 1 boleto do Rápido 90 que junta vários CT-e) ──────
+const selecionados = ref<string[]>([])
+const abertasSelecionadas = computed(() => lancamentosFiltrados.value.filter((l: any) =>
+  selecionados.value.includes(l.id) && l.status !== 'Pago' && l.status !== 'Cancelado'
+  && (l.saldo ?? l.valorOriginal) > 0))
+const qtdSelecionadasAbertas = computed(() => abertasSelecionadas.value.length)
+const totalSelecionado = computed(() => abertasSelecionadas.value.reduce((s: number, l: any) => s + (l.saldo ?? l.valorOriginal), 0))
+
+const dlgLote = ref(false)
+const salvandoLote = ref(false)
+const lote = ref<any>({ data: new Date().toISOString().slice(0, 10), arquivo: null as File | File[] | null })
+function abrirBaixaLote() {
+  lote.value = { data: new Date().toISOString().slice(0, 10), arquivo: null }
+  dlgLote.value = true
+}
+async function confirmarBaixaLote() {
+  const ids = abertasSelecionadas.value.map((l: any) => l.id)
+  if (!ids.length) return
+  salvandoLote.value = true
+  try {
+    const fd = new FormData()
+    fd.append('ids', ids.join(','))
+    fd.append('dataPagamento', lote.value.data)
+    const f = Array.isArray(lote.value.arquivo) ? lote.value.arquivo[0] : lote.value.arquivo
+    if (f) fd.append('comprovante', f)
+    const { data } = await api.post('/contas-pagar/pagar-lote', fd)
+    notif.ok(`${data.pagas} conta(s) baixada(s) — R$ ${fmt(data.totalPago)}${data.comprovanteUrl ? ' (comprovante anexado)' : ''}.`)
+    dlgLote.value = false
+    selecionados.value = []
+    await carregar()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha na baixa em lote.')
+  } finally { salvandoLote.value = false }
+}
+
 const salvando = ref(false)
 const gerandoFolha = ref(false)
 const dlgDas = ref(false)

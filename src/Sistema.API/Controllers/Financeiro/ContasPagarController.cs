@@ -163,6 +163,57 @@ public class ContasPagarController(
         return NoContent();
     }
 
+    /// <summary>Baixa VÁRIAS contas de uma vez (ex.: um boleto do Rápido 90 que junta vários CT-e).
+    /// Paga o saldo de cada título selecionado com a mesma data/conta e anexa o MESMO comprovante a todas.</summary>
+    [HttpPost("pagar-lote")]
+    [RequestSizeLimit(25_000_000)]
+    public async Task<IActionResult> PagarLote(
+        [FromForm] string ids, [FromForm] DateTime dataPagamento,
+        [FromForm] Guid? contaBancariaId, IFormFile? comprovante, CancellationToken ct)
+    {
+        var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Guid.TryParse(s.Trim(), out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty).Distinct().ToList();
+        if (idList.Count == 0) return BadRequest(new { mensagem = "Selecione ao menos uma conta." });
+
+        // Salva o comprovante UMA vez (o boleto) e reusa a URL para todos.
+        string? comprovanteUrl = null;
+        if (comprovante is { Length: > 0 })
+        {
+            var ext = Path.GetExtension(comprovante.FileName).ToLowerInvariant();
+            var permitidas = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp" };
+            if (!permitidas.Contains(ext)) return BadRequest(new { mensagem = "Formato não suportado (use imagem ou PDF)." });
+            var dir = Path.Combine("wwwroot", "uploads", "comprovantes");
+            Directory.CreateDirectory(dir);
+            var nome = $"lote-{Guid.NewGuid():N}{ext}";
+            using (var s = System.IO.File.Create(Path.Combine(dir, nome))) await comprovante.CopyToAsync(s, ct);
+            comprovanteUrl = $"/uploads/comprovantes/{nome}";
+        }
+
+        decimal totalPago = 0m; var pagos = new List<Guid>();
+        foreach (var id in idList)
+        {
+            var l = await repo.ObterPorIdAsync(id, ct);
+            if (l is null || l.Status == StatusLancamento.Pago || l.Status == StatusLancamento.Cancelado) continue;
+            var saldo = l.ValorOriginal - l.ValorPago;
+            if (saldo <= 0) continue;
+            l.Baixar(saldo, dataPagamento, contaBancariaId);
+            if (comprovanteUrl is not null) l.AnexarComprovante(comprovanteUrl);
+            repo.Atualizar(l);
+            totalPago += saldo; pagos.Add(id);
+        }
+
+        // Debita a conta bancária uma vez, pelo total.
+        if (contaBancariaId.HasValue && totalPago > 0)
+        {
+            var conta = await contaRepo.ObterPorIdAsync(contaBancariaId.Value, ct);
+            if (conta is not null) { conta.Debitar(totalPago); contaRepo.Atualizar(conta); }
+        }
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { pagas = pagos.Count, totalPago, comprovanteUrl });
+    }
+
     /// <summary>Anexa um comprovante (imagem ou PDF) direto ao lançamento, só para guardar —
     /// NÃO lê/parseia nada. Substitui o comprovante anterior, se houver.</summary>
     [HttpPost("{id:guid}/comprovante")]

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Infrastructure.Data;
 using System.Globalization;
@@ -43,6 +44,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
         [FromQuery] Guid? localEstoqueId,
         CancellationToken ct = default)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var produtos = await ObterProdutosBalancaAsync(empresaId, localEstoqueId, ct);
 
         var (arquivos, familia) = modelo.ToUpperInvariant() switch
@@ -86,6 +88,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> Pendencias(
         [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var produtos = await db.Produtos.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.Ativo && p.BalancaDesatualizada
                      && (p.ProdutoBalanca || p.VendidoFracionado)
@@ -133,7 +136,7 @@ public class BalancaController(SistemaDbContext db) : ControllerBase
     [HttpGet("produtos")]
     public async Task<IActionResult> ProdutosParaExportar(
         [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
-        => Ok(await ObterProdutosBalancaAsync(empresaId, localEstoqueId, ct));
+        => Ok(await ObterProdutosBalancaAsync(empresaId, User.EscoparLoja(localEstoqueId), ct));
 
     // ─── Toledo (MGV5/6/7) e Ramuza (Atena) ─────────────────────────────────
     private static List<(string nome, string conteudo)> GerarToledoRamuza(

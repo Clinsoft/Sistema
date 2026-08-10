@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Vendas.Commands;
 using Sistema.Application.Vendas.Queries;
@@ -84,6 +85,13 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
 
         if (!string.IsNullOrEmpty(status))
             resultado = resultado.Where(v => v.Status == status);
+
+        // Atendente só enxerga as vendas da própria loja.
+        if (User.EhAtendente())
+        {
+            var lojaAtendente = User.LojaClaim() ?? Guid.Empty;
+            resultado = resultado.Where(v => v.LocalEstoqueId == lojaAtendente);
+        }
 
         var lista = resultado.ToList();
         var clienteIds = lista.Where(v => v.ClienteId.HasValue)

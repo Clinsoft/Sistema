@@ -74,9 +74,29 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function setLoja(id: string | null) {
+    // Atendente é preso à loja de origem — não pode trocar nem ver "todas as lojas".
+    if (usuario.value?.role === 'Atendente') {
+      const fixa = usuario.value.localEstoqueId ?? null
+      if (lojaAtualId.value !== fixa) {
+        lojaAtualId.value = fixa
+        localStorage.setItem('lojaAtualId', fixa ?? '')
+      }
+      return
+    }
     lojaAtualId.value = id
     localStorage.setItem('lojaAtualId', id ?? '')
     window.location.reload()   // recarrega para reaplicar o filtro em todas as telas
+  }
+
+  // Garante que o atendente sempre fique na própria loja (mesmo com localStorage antigo).
+  function fixarLojaAtendente() {
+    if (usuario.value?.role === 'Atendente') {
+      const fixa = usuario.value.localEstoqueId ?? null
+      if (lojaAtualId.value !== fixa) {
+        lojaAtualId.value = fixa
+        localStorage.setItem('lojaAtualId', fixa ?? '')
+      }
+    }
   }
 
   async function carregarFiliais() {
@@ -114,7 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token, usuario, empresaId, logado, iniciais,
     filiais, empresaAtual, temFiliais,
-    lojas, lojaAtualId, lojaAtual, carregarLojas, setLoja,
+    lojas, lojaAtualId, lojaAtual, carregarLojas, setLoja, fixarLojaAtendente,
     login, sair, carregarFiliais, trocarFilial,
   }
 })

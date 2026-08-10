@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Infrastructure.Data;
 
@@ -57,6 +58,7 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> PosicaoPorLoja([FromQuery] Guid empresaId,
         [FromQuery] Guid localEstoqueId, [FromQuery] bool somenteComSaldo = true, CancellationToken ct = default)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var saldos = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId && m.LocalEstoqueId == localEstoqueId)
             .GroupBy(m => m.ProdutoId)
@@ -118,6 +120,7 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
     [HttpGet("inventario")]
     public async Task<IActionResult> Inventario([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var query = db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Quantidade > 0);
 
@@ -144,6 +147,7 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
         [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId

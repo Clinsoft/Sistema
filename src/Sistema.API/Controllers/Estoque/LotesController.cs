@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Sistema.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Estoque.Interfaces;
@@ -25,6 +26,7 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         [FromQuery] string? q,
         CancellationToken ct)
     {
+        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
         var hoje = DateTime.Today;
         var query =
             from l in db.Lotes.AsNoTracking()

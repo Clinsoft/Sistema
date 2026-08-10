@@ -224,8 +224,16 @@
             </v-list>
           </v-menu>
 
+          <!-- Atendente: loja FIXA (loja de origem), sem poder trocar -->
+          <v-btn v-if="ehAtendente && auth.lojaAtual" variant="tonal" color="deep-orange" class="mr-2"
+            prepend-icon="mdi-storefront-outline" size="small" style="max-width:220px"
+            :ripple="false" title="Sua loja de origem">
+            <span class="text-truncate" style="max-width:150px">{{ auth.lojaAtual?.nome }}</span>
+            <v-icon icon="mdi-lock" size="14" class="ml-1" />
+          </v-btn>
+
           <!-- Seletor de LOJA/unidade (separa a operação: estoque, etiquetas, vendas) -->
-          <v-menu v-if="auth.lojas.length > 1" offset-y>
+          <v-menu v-else-if="auth.lojas.length > 1" offset-y>
             <template #activator="{ props }">
               <v-btn v-bind="props" variant="tonal" color="deep-orange" class="mr-2"
                 prepend-icon="mdi-storefront-outline" append-icon="mdi-chevron-down"
@@ -398,6 +406,7 @@ onMounted(() => {
   // Mantém a lista de lojas sempre fresca (reflete lojas ativadas/inativadas
   // sem precisar relogar). Sessões antigas também passam a ter o seletor.
   if (auth.logado) auth.carregarLojas()
+  auth.fixarLojaAtendente()   // atendente sempre preso à própria loja (corrige localStorage antigo)
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })
 // Reavalia a pendência ao entrar/sair da balança, produtos e alteração de preços.

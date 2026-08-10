@@ -653,11 +653,6 @@ const campos = ref({
   codBarras: true, validade: false, lote: false, ncm: false,
 })
 
-// Plaquinha (UN): já vem SEM código de barras (EAN) marcado por padrão.
-watch(template, (t) => {
-  if (t === 'plaquinha') campos.value.codBarras = false
-}, { immediate: true })
-
 const templates = [
   { id: 'ecogranel', nome: 'EcoGranel - Potes' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },

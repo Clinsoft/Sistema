@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Financeiro;
 
 [ApiController]
 [Route("api/financeiro/recebiveis-cartao")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class ReceiveisCartaoController(SistemaDbContext db) : ControllerBase
 {
     [HttpGet]

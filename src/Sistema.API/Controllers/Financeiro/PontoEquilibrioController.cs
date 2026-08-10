@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Financeiro;
 /// <summary>Ponto de Equilíbrio Financeiro.</summary>
 [ApiController]
 [Route("api/financeiro/ponto-equilibrio")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
 public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>

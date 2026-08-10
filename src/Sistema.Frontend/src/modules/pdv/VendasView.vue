@@ -2,10 +2,95 @@
   <div>
     <v-row align="center" class="mb-4">
       <v-col><h2 class="text-h5 font-weight-bold">Histórico de Vendas</h2></v-col>
-      <v-col cols="auto">
+      <v-col cols="auto" class="d-flex gap-2">
+        <v-btn v-if="ehAdmin" color="error" variant="tonal" prepend-icon="mdi-content-duplicate"
+          @click="abrirDuplicatas">Duplicatas</v-btn>
         <v-btn color="primary" prepend-icon="mdi-cash-register" to="/pdv">Ir ao PDV</v-btn>
       </v-col>
     </v-row>
+
+    <!-- Dialog: Cancelar vendas duplicadas -->
+    <v-dialog v-model="dupDlg" max-width="1000" scrollable>
+      <v-card rounded="lg">
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-content-duplicate" color="error" class="mr-2" />Vendas duplicadas
+        </v-card-title>
+        <v-divider />
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-3">
+            Cestas idênticas re-lançadas (bug de emissão). Cancelar <b>reverte estoque, recebível de cartão,
+            cupom fiscal e pontos</b>. A 1ª de cada grupo é mantida. <b>Comece testando 1 venda</b> e confira antes de cancelar o resto.
+          </v-alert>
+
+          <div class="d-flex flex-wrap align-center gap-2 mb-3">
+            <v-text-field v-model="dupInicio" type="date" label="De" variant="outlined" density="compact" hide-details style="max-width:170px" />
+            <v-text-field v-model="dupFim" type="date" label="Até" variant="outlined" density="compact" hide-details style="max-width:170px" />
+            <v-btn color="primary" :loading="dupCarregando" @click="buscarDuplicatas">Buscar</v-btn>
+            <v-spacer />
+            <v-chip v-if="dupResumo" size="small" color="error" variant="tonal">
+              {{ dupResumo.aCancelar }} a cancelar · R$ {{ (dupResumo.valorACancelar ?? 0).toFixed(2) }}
+              <span v-if="dupResumo.comNotaAutorizada"> · {{ dupResumo.comNotaAutorizada }} c/ cupom</span>
+            </v-chip>
+          </div>
+
+          <div v-if="dupItens.length" class="d-flex gap-2 mb-2">
+            <v-btn size="x-small" variant="text" @click="selecionar('alta')">Marcar só ALTA confiança</v-btn>
+            <v-btn size="x-small" variant="text" @click="selecionar('todas')">Marcar todas</v-btn>
+            <v-btn size="x-small" variant="text" @click="selecionar('nenhuma')">Limpar</v-btn>
+          </div>
+
+          <v-table v-if="dupItens.length" density="compact" class="border rounded" style="max-height:420px;overflow-y:auto">
+            <thead><tr>
+              <th></th><th>Venda</th><th>Data/Hora</th><th class="text-right">Total</th><th>Ação</th><th>Confiança</th><th>Cupom</th><th>Cesta</th>
+            </tr></thead>
+            <tbody>
+              <template v-for="it in dupItens" :key="it.vendaId">
+                <tr :class="{ 'bg-grey-lighten-4': it.acao === 'MANTER' }">
+                  <td>
+                    <v-checkbox v-if="it.acao === 'CANCELAR'" :model-value="sel.has(it.vendaId)"
+                      @update:model-value="toggle(it.vendaId)" density="compact" hide-details />
+                  </td>
+                  <td>{{ it.numero }}</td>
+                  <td class="text-caption">{{ it.dataHora }}</td>
+                  <td class="text-right">R$ {{ it.total.toFixed(2) }}</td>
+                  <td>
+                    <v-chip size="x-small" :color="it.acao === 'MANTER' ? 'success' : 'error'" variant="flat">{{ it.acao }}</v-chip>
+                  </td>
+                  <td>
+                    <v-chip v-if="it.acao === 'CANCELAR'" size="x-small"
+                      :color="it.confianca === 'ALTA' ? 'green' : 'orange'" variant="tonal">{{ it.confianca }}</v-chip>
+                  </td>
+                  <td><v-icon v-if="it.notaAutorizada" size="16" color="warning" title="Cupom autorizado — contador">mdi-receipt-text</v-icon></td>
+                  <td class="text-caption" style="max-width:320px">{{ it.cesta }}</td>
+                </tr>
+              </template>
+            </tbody>
+          </v-table>
+          <div v-else-if="dupBuscou" class="text-center py-8 text-medium-emphasis">Nenhuma duplicata no período. 🎉</div>
+
+          <v-alert v-if="dupResultado" :type="dupResultado.cancelados > 0 ? 'success' : 'info'" variant="tonal" density="compact" class="mt-3">
+            <b>{{ dupResultado.cancelados }}</b> venda(s) cancelada(s).
+            <span v-if="dupResultado.pulados?.length"> {{ dupResultado.pulados.length }} pulada(s).</span>
+            <span v-if="dupResultado.erros?.length"> {{ dupResultado.erros.length }} com erro.</span>
+            <div v-if="dupResultado.notasParaContador?.length" class="mt-1 text-caption">
+              ⚠️ {{ dupResultado.notasParaContador.length }} tinham cupom autorizado — leve ao contador para cancelar na SEFAZ.
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3">
+          <span class="text-caption text-medium-emphasis">{{ sel.size }} selecionada(s)</span>
+          <v-spacer />
+          <v-btn v-if="dupItens.length" variant="text" color="blue-grey" :loading="dupCancelando"
+            @click="dispensarDuplicatas" title="Some da lista; só reaparece se surgir duplicata nova">
+            Não são duplicatas — limpar lista
+          </v-btn>
+          <v-btn variant="text" @click="dupDlg = false">Fechar</v-btn>
+          <v-btn color="error" variant="flat" :loading="dupCancelando" :disabled="sel.size === 0"
+            @click="confirmarCancelarDuplicatas">Cancelar {{ sel.size }} venda(s)</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <GuiaPassos
       id="historico-vendas"
@@ -267,6 +352,91 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+// ─── Cancelar vendas duplicadas (admin) ─────────────────────────────────────
+const ehAdmin = computed(() => auth.usuario?.role === 'Administrador')
+const dupDlg = ref(false)
+const dupInicio = ref('2026-07-25')
+const dupFim = ref('2026-08-06')
+const dupCarregando = ref(false)
+const dupBuscou = ref(false)
+const dupItens = ref<any[]>([])
+const dupResumo = ref<any>(null)
+const dupResultado = ref<any>(null)
+const dupCancelando = ref(false)
+const sel = ref(new Set<string>())
+
+function abrirDuplicatas() {
+  dupResultado.value = null
+  dupDlg.value = true
+  if (!dupItens.value.length) buscarDuplicatas()
+}
+
+function selecionar(modo: 'alta' | 'todas' | 'nenhuma') {
+  const s = new Set<string>()
+  if (modo !== 'nenhuma') {
+    for (const it of dupItens.value)
+      if (it.acao === 'CANCELAR' && (modo === 'todas' || it.confianca === 'ALTA')) s.add(it.vendaId)
+  }
+  sel.value = s
+}
+function toggle(id: string) {
+  const s = new Set(sel.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  sel.value = s
+}
+
+async function buscarDuplicatas() {
+  dupCarregando.value = true; dupResultado.value = null
+  try {
+    const { data } = await api.get('/vendas/duplicatas', {
+      params: { empresaId: auth.empresaId, inicio: dupInicio.value, fim: dupFim.value },
+    })
+    dupItens.value = data.itens ?? []
+    dupResumo.value = data
+    selecionar('alta')   // pré-seleciona as de ALTA confiança
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao buscar duplicatas.')
+  } finally {
+    dupCarregando.value = false; dupBuscou.value = true
+  }
+}
+
+async function confirmarCancelarDuplicatas() {
+  if (sel.value.size === 0) return
+  if (!confirm(`Cancelar ${sel.value.size} venda(s)? Isso reverte estoque, recebíveis e cupom. Não dá pra desfazer em lote.`)) return
+  dupCancelando.value = true
+  try {
+    const { data } = await api.post('/vendas/cancelar-lote', {
+      vendaIds: [...sel.value],
+      motivo: 'Venda duplicada (bug de emissão)',
+    })
+    dupResultado.value = data
+    notif.ok(`${data.cancelados} venda(s) cancelada(s).`)
+    sel.value = new Set()
+    await buscarDuplicatas()   // atualiza a lista (canceladas somem)
+    await carregar()           // atualiza o histórico
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao cancelar.')
+  } finally {
+    dupCancelando.value = false
+  }
+}
+
+async function dispensarDuplicatas() {
+  if (!dupItens.value.length) return
+  if (!confirm('Marcar as duplicatas listadas como revisadas? Elas somem da lista e só voltam a aparecer se surgir duplicata NOVA.')) return
+  dupCancelando.value = true
+  try {
+    await api.post('/vendas/duplicatas/ignorar', { vendaIds: dupItens.value.map(i => i.vendaId) })
+    notif.ok('Lista limpa. Só vai mostrar duplicatas novas a partir de agora.')
+    await buscarDuplicatas()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Falha ao marcar como revisadas.')
+  } finally {
+    dupCancelando.value = false
+  }
+}
 const carregando = ref(false)
 const vendas = ref<any[]>([])
 const drawerDetalhe = ref(false)

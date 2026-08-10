@@ -583,10 +583,13 @@
           <template v-if="resultadosComp.length">
             <v-divider class="mb-3" />
             <div class="text-caption text-medium-emphasis mb-2">
-              Confira cada comprovante e a conta que receberá a baixa. Desmarque os que não quiser baixar.
+              Confira cada comprovante e a conta que receberá a baixa.
+              Os <b>verdes</b> vêm pré-marcados (valor e beneficiário batem); os <b>amarelos</b> são só sugestão
+              e entram <b>desmarcados</b> — confira antes de marcar.
             </div>
             <v-card v-for="(r, i) in resultadosComp" :key="i" variant="tonal"
-              :color="r.escolhaId ? 'success' : 'grey-lighten-3'" rounded="lg" class="mb-2">
+              :color="!r.escolhaId ? 'grey-lighten-3' : (r.sugestao?.confiancaAlta ? 'success' : 'warning')"
+              rounded="lg" class="mb-2">
               <v-card-text class="pa-3">
                 <div class="d-flex align-center mb-2">
                   <v-checkbox-btn v-model="r.selecionado" :disabled="!r.escolhaId" color="success" class="flex-grow-0 mr-1" />
@@ -600,6 +603,10 @@
                     {{ r.valorLido != null ? 'R$ ' + fmt(r.valorLido) : 'valor?' }}
                   </v-chip>
                   <v-chip size="small" label variant="text">{{ r.dataLida ? fmtData(r.dataLida) : 'data?' }}</v-chip>
+                  <v-chip v-if="r.escolhaId && r.escolhaId !== '__nova__' && !r.sugestao?.confiancaAlta"
+                    size="small" label color="warning" class="ml-1" prepend-icon="mdi-alert-outline">
+                    revisar (valor/beneficiário não batem)
+                  </v-chip>
                 </div>
                 <div class="text-caption text-medium-emphasis mb-1">
                   Beneficiário lido: <b>{{ r.beneficiarioLido || '—' }}</b>
@@ -716,6 +723,7 @@ const carregando = ref(false)
 interface CandidatoConta {
   lancamentoId: string; descricao: string; beneficiario: string
   valorOriginal: number; saldo: number; vencimento: string; score: number
+  confiancaAlta?: boolean; valorExato?: boolean
 }
 interface ResultadoComp {
   arquivo: string; comprovanteUrl: string
@@ -760,7 +768,9 @@ async function analisarComprovantes() {
     const rows: ResultadoComp[] = (r.data ?? []).map((x: any) => ({
       ...x,
       escolhaId: null,
-      selecionado: true,
+      // Só pré-marca para baixa quando a confiança é ALTA (valor igual + beneficiário/CNPJ bate).
+      // As demais entram DESMARCADAS, com aviso de "revisar" — evita baixa em conta errada.
+      selecionado: !!x.sugestao?.confiancaAlta,
       novaDescricao: String(x.beneficiarioLido || x.arquivo || 'Pagamento (comprovante)').slice(0, 120),
       novaCategoria: 'Despesas Variáveis',
     }))

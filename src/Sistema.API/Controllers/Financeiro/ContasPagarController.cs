@@ -336,26 +336,32 @@ public class ContasPagarController(
                 var ranqueadas = candidatas.Select(l =>
                 {
                     double score = 0;
+                    bool valorExato = false;
                     if (valor.HasValue)
                     {
                         var alvo = l.Saldo > 0 ? l.Saldo : l.ValorOriginal;
-                        if (Math.Abs(alvo - valor.Value) <= 0.01m) score += 100;
+                        if (Math.Abs(alvo - valor.Value) <= 0.01m) { score += 100; valorExato = true; }
                         else if (alvo > 0 && Math.Abs(alvo - valor.Value) <= alvo * 0.02m) score += 60;
                     }
                     var docConta = SomenteDigitos(DocBenef(l));
-                    if (docConta.Length >= 11 && docs.Contains(docConta)) score += 60;
+                    bool docBate = docConta.Length >= 11 && docs.Contains(docConta);
+                    if (docBate) score += 60;
                     var nome = NomeBenef(l);
+                    int nomeOverlap = 0;
                     if (benefTokens.Count > 0 && !string.IsNullOrWhiteSpace(nome))
                     {
                         var nt = Tokens(nome).ToHashSet();
-                        var overlap = benefTokens.Count(t => nt.Contains(t));
-                        if (overlap > 0) score += Math.Min(45, overlap * 15);
+                        nomeOverlap = benefTokens.Count(t => nt.Contains(t));
+                        if (nomeOverlap > 0) score += Math.Min(45, nomeOverlap * 15);
                     }
                     var descTokens = Tokens(l.Descricao).ToHashSet();
                     var descOverlap = benefTokens.Count(t => descTokens.Contains(t));
                     if (descOverlap > 0) score += Math.Min(20, descOverlap * 8);
                     if (venc.HasValue && l.DataVencimento.Date == venc.Value.Date) score += 12;
-                    return new { l, nome, score };
+                    // Confiança ALTA só quando o valor é IGUAL e o beneficiário/CNPJ corrobora
+                    // (evita casar 648 com 660 só por proximidade, como o POURA x NATURAL).
+                    bool confiancaAlta = valorExato && (docBate || nomeOverlap > 0);
+                    return new { l, nome, score, valorExato, confiancaAlta };
                 })
                 .Where(x => x.score > 0)
                 .OrderByDescending(x => x.score).ToList();
@@ -374,7 +380,8 @@ public class ContasPagarController(
                     {
                         lancamentoId = melhor.l.Id, descricao = melhor.l.Descricao, beneficiario = melhor.nome,
                         valorOriginal = melhor.l.ValorOriginal, saldo = melhor.l.Saldo,
-                        vencimento = melhor.l.DataVencimento, score = melhor.score
+                        vencimento = melhor.l.DataVencimento, score = melhor.score,
+                        confiancaAlta = melhor.confiancaAlta, valorExato = melhor.valorExato
                     },
                     candidatos = ranqueadas.Take(6).Select(x => new
                     {

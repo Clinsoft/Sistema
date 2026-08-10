@@ -39,11 +39,13 @@
       <!-- Painel esquerdo: configuração -->
       <v-col cols="12" md="4">
         <v-card rounded="xl" elevation="1" class="mb-4 pa-4">
-          <div class="text-body-2 font-weight-bold mb-3">Template</div>
-          <v-btn-toggle v-model="template" mandatory divided class="mb-4 flex-wrap" density="compact">
-            <v-btn v-for="t in templates" :key="t.id" :value="t.id" size="small">{{ t.nome }}</v-btn>
-          </v-btn-toggle>
+          <div class="text-body-2 font-weight-bold mb-2">Template</div>
+          <v-select v-model="template" :items="templates" item-title="nome" item-value="id"
+            variant="outlined" density="compact" class="mb-4" hide-details
+            prepend-inner-icon="mdi-tag-outline" />
 
+          <!-- Configurações de aparência do template — ocultas para o atendente -->
+          <div v-if="!ehAtendente">
           <!-- ── Gôndola Zebra ── -->
           <template v-if="isGondola">
             <div class="text-body-2 font-weight-bold mb-2">Tamanho</div>
@@ -205,6 +207,9 @@
 
           <!-- ── Templates padrão ── -->
           <template v-else>
+            <v-alert v-if="template === 'plaquinha'" type="info" variant="tonal" density="compact" class="mb-3">
+              <b>Plaquinha 5×3cm</b> — sai numa folha A4 (várias por página). Imprime <b>só produtos por unidade (UN)</b>; os produtos por peso (kg) ficam de fora automaticamente.
+            </v-alert>
             <div class="text-body-2 font-weight-bold mb-2">Campos visíveis</div>
             <v-checkbox v-model="campos.nome" label="Nome do produto" density="compact" hide-details />
             <v-checkbox v-model="campos.preco" label="Preço de venda" density="compact" hide-details />
@@ -214,15 +219,16 @@
             <v-checkbox v-model="campos.lote" label="Lote" density="compact" hide-details />
             <v-checkbox v-model="campos.ncm" label="NCM" density="compact" hide-details />
           </template>
+          </div>
 
           <v-divider class="my-3" />
           <v-text-field v-model.number="qtdEtiquetas" label="Qtd por produto" type="number"
             variant="outlined" density="compact" :min="1" :max="100" />
           <v-text-field v-model="validade" label="Validade" type="date"
             variant="outlined" density="compact" class="mt-2" />
-          <v-text-field v-if="!isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
+          <v-text-field v-if="!ehAtendente && !isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
             v-model="lote" label="Lote (p/ todos)" variant="outlined" density="compact" />
-          <v-text-field v-if="!isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
+          <v-text-field v-if="!ehAtendente && !isGondola && template !== 'pote9x9' && template !== 'ecogranel'"
             v-model.number="precoPromo" label="Preço Promocional (R$)"
             type="number" variant="outlined" density="compact" prefix="R$" />
         </v-card>
@@ -494,7 +500,11 @@ const qtdEtiquetas = ref(1)
 // Seleção por produto (checkbox) + regra: EcoGranel só imprime produtos por kg.
 const marcados = ref<Record<string, boolean>>({})
 function ehKg(p: any) { return !!p?.produtoBalanca || String(p?.unidadeSigla || '').toUpperCase() === 'KG' }
-function elegivel(p: any) { return template.value !== 'ecogranel' || ehKg(p) }
+function elegivel(p: any) {
+  if (template.value === 'ecogranel') return ehKg(p)   // EcoGranel: só produtos por peso
+  if (template.value === 'plaquinha') return !ehKg(p)  // Plaquinha: só produtos por unidade (UN)
+  return true
+}
 function vaiImprimir(p: any) { return marcados.value[p.id] !== false && elegivel(p) }
 const produtosParaImprimir = computed(() => produtosSel.value.filter(vaiImprimir))
 function marcarTodos(v: boolean) { produtosSel.value.forEach((p: any) => { if (elegivel(p)) marcados.value[p.id] = v }) }
@@ -643,9 +653,15 @@ const campos = ref({
   codBarras: true, validade: false, lote: false, ncm: false,
 })
 
+// Plaquinha (UN): já vem SEM código de barras (EAN) marcado por padrão.
+watch(template, (t) => {
+  if (t === 'plaquinha') campos.value.codBarras = false
+}, { immediate: true })
+
 const templates = [
-  { id: 'ecogranel', nome: 'EcoGranel' },
+  { id: 'ecogranel', nome: 'EcoGranel - Potes' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },
+  { id: 'plaquinha', nome: 'Plaquinha (UN)' },
   { id: 'pote9x9', nome: 'Pote 9×9cm' },
   { id: '40x25', nome: '40×25mm' },
   { id: '50x30', nome: '50×30mm' },
@@ -684,6 +700,7 @@ const gondolaCfg = computed(() => {
 const tplConfig: Record<string, any> = {
   '40x25':  { style: 'width:150px;height:94px;font-size:8px;padding:4px',  nomeStyle: 'font-size:8px;font-weight:bold;line-height:1.1', precoStyle: 'font-size:16px;font-weight:bold' },
   '50x30':  { style: 'width:189px;height:113px;font-size:9px;padding:5px', nomeStyle: 'font-size:9px;font-weight:bold', precoStyle: 'font-size:20px;font-weight:bold' },
+  'plaquinha': { style: 'width:189px;height:113px;font-size:10px;padding:6px;border:6px solid #2e7d32;border-radius:8px', nomeStyle: 'font-size:11px;font-weight:bold;line-height:1.15', precoStyle: 'font-size:26px;font-weight:bold' },
   '100x50': { style: 'width:378px;height:189px;font-size:11px;padding:8px',nomeStyle: 'font-size:12px;font-weight:bold', precoStyle: 'font-size:28px;font-weight:bold' },
   'grande': { style: 'width:283px;height:170px;font-size:10px;padding:8px',nomeStyle: 'font-size:11px;font-weight:bold', precoStyle: 'font-size:24px;font-weight:bold' },
 }

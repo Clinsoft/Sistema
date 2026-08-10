@@ -733,6 +733,90 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { atualizados = produtos.Count });
     }
 
+    /// <summary>
+    /// Limpa as descrições dos produtos: apara espaços no início/fim e colapsa espaços
+    /// repetidos. Espaço no fim do nome quebra a NFC-e (cStat 225 "Falha no Schema XML").
+    /// Detecta em C# (comparação ordinal) porque o SQL Server ignora espaço à direita.
+    /// </summary>
+    [HttpPost("limpar-descricoes")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> LimparDescricoes([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var produtos = await db.Produtos.Where(p => p.EmpresaId == empresaId).ToListAsync(ct);
+        var alterados = new List<string>();
+
+        foreach (var p in produtos)
+        {
+            var original = p.Descricao;
+            var limpo = LimparDescricao(original);
+            if (limpo.Length == 0 || string.Equals(limpo, original, StringComparison.Ordinal)) continue;
+
+            p.EditarGeral(limpo, p.Referencia, p.CategoriaId, p.MarcaId, p.UnidadeMedidaId,
+                p.FornecedorPrincipalId, p.TipoVariacao, p.ProdutoBalanca, p.CodigoPlu,
+                p.OcultarNasVendas, p.RequisitarVendedor, p.VendidoFracionado, p.Ativo,
+                p.ControlarLote, p.ControlarValidade, p.ValidadeEmDias, p.DescricaoComplementar);
+            alterados.Add($"{p.Codigo}: [{original}] → [{limpo}]");
+        }
+
+        if (alterados.Count > 0) await uow.SalvarAsync(ct);
+        return Ok(new { limpos = alterados.Count, exemplos = alterados.Take(30) });
+    }
+
+    private static string LimparDescricao(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var semControle = new string(s.Where(c => !char.IsControl(c)).ToArray());
+        return System.Text.RegularExpressions.Regex.Replace(semControle, @"\s+", " ").Trim();
+    }
+
+    /// <summary>
+    /// Importa uma lista de produtos (de planilha) reusando a criação padrão: gera código
+    /// automático, aplica os defaults e limpa o nome (sem espaço no fim → evita cStat 225).
+    /// Ignora nomes que já existem (na empresa ou repetidos na própria planilha).
+    /// </summary>
+    [HttpPost("importar")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> Importar([FromBody] ImportarProdutosRequest req, CancellationToken ct)
+    {
+        if (req.Itens is null || req.Itens.Count == 0)
+            return BadRequest(new { mensagem = "Nenhum produto para importar." });
+
+        var vistos = (await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == req.EmpresaId)
+            .Select(p => p.Descricao).ToListAsync(ct))
+            .Select(d => LimparDescricao(d).ToUpperInvariant())
+            .ToHashSet();
+
+        var criados = 0;
+        var ignorados = new List<string>();
+        var erros = new List<object>();
+
+        foreach (var item in req.Itens)
+        {
+            var nome = LimparDescricao(item.Descricao);
+            if (nome.Length == 0) continue;
+            if (!vistos.Add(nome.ToUpperInvariant())) { ignorados.Add(nome); continue; }
+
+            try
+            {
+                var digitos = new string((item.Ncm ?? "").Where(char.IsDigit).ToArray());
+                var ncm = digitos.Length == 0 ? null
+                        : digitos.Length >= 8 ? digitos[..8] : digitos.PadLeft(8, '0');
+
+                await mediator.Send(new CriarProdutoCommand(
+                    req.EmpresaId, null, nome, req.CategoriaId, req.MarcaId, req.UnidadeMedidaId,
+                    item.CustoUnitario ?? 0m, item.PrecoVenda, Ncm: ncm), ct);
+                criados++;
+            }
+            catch (Exception ex)
+            {
+                erros.Add(new { nome, erro = ex.Message });
+            }
+        }
+
+        return Ok(new { criados, ignorados, erros });
+    }
+
     [HttpPatch("{id:guid}/inativar")]
     public async Task<IActionResult> Inativar(Guid id, CancellationToken ct)
         => await DefinirAtivo(id, false, ct);
@@ -844,6 +928,9 @@ public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);
+public record ImportarProdutoItem(string Descricao, string? Ncm, decimal PrecoVenda, decimal? CustoUnitario = null);
+public record ImportarProdutosRequest(
+    Guid EmpresaId, Guid CategoriaId, Guid MarcaId, Guid UnidadeMedidaId, List<ImportarProdutoItem> Itens);
 
 public record UnificarProdutosRequest(Guid DestinoId, List<Guid> OrigemIds);
 

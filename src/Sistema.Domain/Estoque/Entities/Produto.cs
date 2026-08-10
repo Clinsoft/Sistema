@@ -171,6 +171,10 @@ public class Produto : Entity
             CodigoFornecedorPrincipal = codigoNoFornecedor;
     }
 
+    /// <summary>Remove o código do fornecedor (de-para) deste produto — usado quando o
+    /// código estava vinculado ao produto errado e foi movido para o correto.</summary>
+    public void LimparReferenciaFornecedor() => CodigoFornecedorPrincipal = null;
+
     public void EditarPrecos(decimal precoFornecedor, decimal custoUnitario,
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)

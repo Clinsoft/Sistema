@@ -101,6 +101,14 @@ public class Venda : Entity
         Observacao = motivo;
     }
 
+    /// <summary>Marca a venda como já revisada na tela de duplicatas (não é duplicata,
+    /// ou já tratada) para não reaparecer na detecção. Marcador discreto na observação.</summary>
+    public void MarcarDuplicataRevisada()
+    {
+        if (Observacao is null || !Observacao.Contains("[dup-ok]"))
+            Observacao = string.IsNullOrEmpty(Observacao) ? "[dup-ok]" : $"{Observacao} [dup-ok]";
+    }
+
     private void RecalcularTotais()
     {
         // Soma os itens JÁ ARREDONDADOS por linha (2 casas) — mesmo critério da NFC-e,

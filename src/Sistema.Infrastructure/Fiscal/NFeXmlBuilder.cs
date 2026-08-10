@@ -228,7 +228,7 @@ public static class NFeXmlBuilder
             w.WriteElementString("idEstrangeiro", doc[..Math.Min(20, doc.Length)]);
 
         if (!string.IsNullOrWhiteSpace(nota.NomeDestinatario))
-            w.WriteElementString("xNome", nota.NomeDestinatario[..Math.Min(60, nota.NomeDestinatario.Length)]);
+            w.WriteElementString("xNome", LimparTexto(nota.NomeDestinatario, 60));
 
         w.WriteElementString("indIEDest", "9"); // 9=não contribuinte
         if (!string.IsNullOrWhiteSpace(nota.EmailDestinatario))
@@ -258,7 +258,7 @@ public static class NFeXmlBuilder
             // Em homologação, o 1º item leva a frase obrigatória; os demais, a descrição real.
             var xProd = homologacao && primeiro
                 ? XProdHomologacao
-                : item.Descricao[..Math.Min(120, item.Descricao.Length)];
+                : LimparTexto(item.Descricao, 120);
             w.WriteElementString("xProd",    xProd);
             primeiro = false;
             w.WriteElementString("NCM",      ApenasDigitos(item.Ncm ?? "00000000").PadLeft(8, '0')[..8]);
@@ -554,6 +554,20 @@ public static class NFeXmlBuilder
 
     private static string ApenasDigitos(string s)
         => new(s.Where(char.IsDigit).ToArray());
+
+    /// <summary>
+    /// Limpa texto livre para o schema da NFe: remove caracteres de controle, colapsa
+    /// espaços repetidos e APARA as pontas. O schema rejeita espaço no início/fim do
+    /// xProd/xNome (restrição Pattern) → cStat 225 "Falha no Schema XML". Também trunca
+    /// ao tamanho máximo do campo.
+    /// </summary>
+    private static string LimparTexto(string? s, int maxLen)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var limpo = new string(s.Where(c => !char.IsControl(c)).ToArray());
+        limpo = System.Text.RegularExpressions.Regex.Replace(limpo, @"\s+", " ").Trim();
+        return limpo.Length > maxLen ? limpo[..maxLen].Trim() : limpo;
+    }
 
     private static int CalcularDV(string chave43)
     {

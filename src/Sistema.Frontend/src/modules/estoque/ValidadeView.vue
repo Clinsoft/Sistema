@@ -283,12 +283,18 @@
               </v-list-item>
             </template>
           </v-list>
-          <v-card-actions class="pa-3">
+          <v-card-actions class="pa-3 flex-wrap">
             <span class="text-caption text-medium-emphasis ml-2">
               {{ notaRegistrados }}/{{ itensNota.length }} registrados
               <span v-if="soPendentes && notaPendentes"> · mostrando só os {{ notaPendentes }} pendentes</span>
             </span>
             <v-spacer />
+            <v-btn variant="tonal" color="indigo" class="mr-2" :loading="preenchendoXml" @click="preencherDaNotaXml">
+              <v-icon start>mdi-file-xml-box</v-icon>Preencher da nota (XML)
+            </v-btn>
+            <v-btn variant="tonal" color="teal" class="mr-2" :loading="importandoPdf" @click="escolherPdfValidade">
+              <v-icon start>mdi-file-import-outline</v-icon>Importar do PDF
+            </v-btn>
             <v-btn color="primary" variant="flat" :loading="salvandoTodos"
               :disabled="!itensNota.some(i => i._validade)"
               @click="registrarTodosNota">
@@ -1150,6 +1156,59 @@ async function registrarItemNota(it: any) {
   } finally {
     it._salvando = false
   }
+}
+
+// Preenche Lote/Validade a partir do XML já guardado desta nota (mais confiável que o PDF).
+const preenchendoXml = ref(false)
+async function preencherDaNotaXml() {
+  const n = String(numeroNota.value).trim()
+  if (!n) return
+  preenchendoXml.value = true
+  try {
+    const { data } = await api.get('/validade/preencher-validades-nota', {
+      params: { empresaId: auth.empresaId, numeroNota: n },
+    })
+    let aplicados = 0
+    for (const r of (data.itens ?? [])) {
+      const it = itensNota.value.find((i: any) => i.itemId === r.itemId)
+      if (it) {
+        if (r.validadeIso) it._validade = r.validadeIso
+        if (r.lote && !it._lote) it._lote = r.lote
+        aplicados++
+      }
+    }
+    if (aplicados > 0) notif.ok(`${aplicados} validade(s) preenchida(s) da nota. Confira e clique em "Registrar todos".`)
+    else notif.aviso(data.aviso ?? 'A nota não trouxe lote/validade nos itens.')
+  } catch {
+    notif.erro('Falha ao ler o XML da nota.')
+  } finally { preenchendoXml.value = false }
+}
+
+// Importa Lote/Validade do PDF (DANFE) da nota e preenche os campos.
+const importandoPdf = ref(false)
+function escolherPdfValidade() {
+  const input = document.createElement('input')
+  input.type = 'file'; input.accept = 'application/pdf'
+  input.onchange = async () => {
+    const f = input.files?.[0]; if (!f) return
+    importandoPdf.value = true
+    try {
+      const fd = new FormData()
+      fd.append('empresaId', auth.empresaId as string)
+      fd.append('arquivo', f)
+      const { data } = await api.post('/validade/importar-validades-pdf', fd)
+      let aplicados = 0
+      for (const r of (data.itens ?? [])) {
+        const it = itensNota.value.find((i: any) => i.itemId === r.itemId)
+        if (it) { it._validade = r.validadeIso; if (r.lote && !it._lote) it._lote = r.lote; aplicados++ }
+      }
+      if (aplicados > 0) notif.ok(`${aplicados} validade(s) preenchida(s) do PDF. Confira e clique em "Registrar todos".`)
+      else notif.aviso(data.aviso ?? 'Nenhum item da nota casou com o PDF (confira se é o PDF desta NF).')
+    } catch {
+      notif.erro('Falha ao ler o PDF da nota.')
+    } finally { importandoPdf.value = false }
+  }
+  input.click()
 }
 
 async function registrarTodosNota() {

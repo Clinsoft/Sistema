@@ -1400,6 +1400,36 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
                 unidXml.StartsWith("FD") || unidXml.StartsWith("FK") || unidXml.StartsWith("BL")))
                 result.Avisos.Add($"Item {numItem} ({item.DescricaoXml[..Math.Min(30, item.DescricaoXml.Length)]}): unidade '{unidXml}' e do fornecedor - defina o fator de conversao.");
 
+            // Lote/Validade do XML: <rastro> (padrão oficial: nLote/dVal) ou, se não houver,
+            // o texto livre do infAdProd ("Lote: X Qtde: N Validade: DD/MM/YYYY"). Só PRÉ-PREENCHE
+            // (sem criar lote): o Controle de Validade confere e registra.
+            var rastro = prod.Element(ns + "rastro");
+            string? nLote = rastro?.Element(ns + "nLote")?.Value;
+            DateTime? dVal = DateTime.TryParse(rastro?.Element(ns + "dVal")?.Value, out var dvR) ? dvR : null;
+            if (nLote is null || dVal is null)
+            {
+                var infAd = det.Element(ns + "infAdProd")?.Value;
+                if (!string.IsNullOrWhiteSpace(infAd))
+                {
+                    if (nLote is null)
+                    {
+                        var mL = System.Text.RegularExpressions.Regex.Match(infAd,
+                            @"Lote:\s*(.+?)\s+(?:Qtde|Qtd|Validade|Val)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (mL.Success) nLote = mL.Groups[1].Value.Trim();
+                    }
+                    if (dVal is null)
+                    {
+                        var mV = System.Text.RegularExpressions.Regex.Match(infAd,
+                            @"Validade:\s*(\d{2}/\d{2}/\d{4})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (mV.Success && DateTime.TryParseExact(mV.Groups[1].Value, "dd/MM/yyyy",
+                                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dvV))
+                            dVal = dvV;
+                    }
+                }
+            }
+            if (nLote is not null || dVal is not null)
+                item.DefinirLote(nLote ?? "", dVal);   // pré-preenche (LoteId fica null = ainda não registrado)
+
             result.Itens.Add(item);
         }
 

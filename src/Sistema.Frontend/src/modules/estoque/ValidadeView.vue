@@ -260,10 +260,10 @@
                       </v-avatar>
                     </v-col>
                     <v-col cols="auto">
-                      <v-btn size="small" color="primary" :loading="it._salvando"
-                        :disabled="!it._validade || it._salvo" @click="registrarItemNota(it)">
-                        <v-icon start>mdi-content-save-outline</v-icon>
-                        {{ it._salvo ? 'Registrado' : 'Registrar' }}
+                      <v-btn size="small" :color="it._salvo ? 'success' : 'primary'" :loading="it._salvando"
+                        :disabled="!it._validade" @click="registrarItemNota(it)">
+                        <v-icon start>{{ it._salvo ? 'mdi-check' : 'mdi-content-save-outline' }}</v-icon>
+                        {{ it._salvo ? 'Atualizar' : 'Registrar' }}
                       </v-btn>
                     </v-col>
                   </v-row>
@@ -290,9 +290,9 @@
             </span>
             <v-spacer />
             <v-btn color="primary" variant="flat" :loading="salvandoTodos"
-              :disabled="!itensNota.some(i => i._validade && !i._salvo)"
+              :disabled="!itensNota.some(i => i._validade)"
               @click="registrarTodosNota">
-              <v-icon start>mdi-content-save-all</v-icon>Registrar todos com validade
+              <v-icon start>mdi-content-save-all</v-icon>Registrar/atualizar todos com validade
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -1139,6 +1139,7 @@ async function registrarItemNota(it: any) {
       quantidade: it.quantidadeEstoque,
       imagemBase64: it._fotoBase64 || undefined,
       itemEntradaId: it.itemId || undefined,   // marca o item da nota como concluído (persiste)
+      localEstoqueId: it.localEstoqueId ?? auth.lojaAtualId ?? undefined,  // grava na loja certa
     })
     it._loteImagemUrl = data?.imagemUrl ?? it._fotoBase64
     it._salvo = true
@@ -1152,13 +1153,14 @@ async function registrarItemNota(it: any) {
 }
 
 async function registrarTodosNota() {
-  const pendentes = itensNota.value.filter(i => i._validade && !i._salvo)
-  if (!pendentes.length) return
+  // Reprocessa TODOS com validade preenchida (registra os novos e atualiza os já registrados).
+  const aProcessar = itensNota.value.filter(i => i._validade)
+  if (!aProcessar.length) return
   salvandoTodos.value = true
   try {
-    for (const it of pendentes) await registrarItemNota(it)
+    for (const it of aProcessar) await registrarItemNota(it)
     const ok = itensNota.value.filter(i => i._salvo).length
-    notif.ok(`${ok} validade(s) registrada(s)!`)
+    notif.ok(`${ok} validade(s) registrada(s)/atualizada(s)!`)
     carregarPainel()
   } finally {
     salvandoTodos.value = false

@@ -195,16 +195,16 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             .Select(l => new { l.Id, l.ProdutoId, l.DataValidade, l.ImagemUrl, l.CriadoEm })
             .ToListAsync(ct);
         var loteById = lotes.ToDictionary(l => l.Id);
-        var lotePorProduto = lotes.GroupBy(l => l.ProdutoId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CriadoEm).First());
 
         var itens = entradas.SelectMany(e => e.Itens
                 .Where(i => i.ProdutoId.HasValue)
                 .Select(i =>
                 {
                     var pid = i.ProdutoId!.Value;
-                    var lote = (i.LoteId.HasValue && loteById.TryGetValue(i.LoteId.Value, out var lb)) ? lb
-                             : (lotePorProduto.TryGetValue(pid, out var lp) ? lp : null);
+                    // "Já registrado" é específico DESTE item: a validade do próprio item OU o lote
+                    // vinculado a ele. NÃO usa qualquer lote do produto (senão uma nota nova de um
+                    // produto que já tem lote antigo viria toda "registrada" e travava o registro).
+                    var lote = (i.LoteId.HasValue && loteById.TryGetValue(i.LoteId.Value, out var lb)) ? lb : null;
                     var validadeIso = i.Validade?.ToString("yyyy-MM-dd")
                                     ?? lote?.DataValidade?.ToString("yyyy-MM-dd");
                     return new
@@ -258,10 +258,12 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
             var produto = await db.Produtos.FindAsync([req.ProdutoId], ct);
             if (produto is null) return NotFound("Produto não encontrado.");
 
-            var localId = await db.LocaisEstoque.AsNoTracking()
-                .Where(l => l.EmpresaId == req.EmpresaId)
-                .Select(l => l.Id)
-                .FirstOrDefaultAsync(ct);
+            // Usa a loja informada (ativa/do atendente); só cai no 1º local se não vier nada.
+            var localId = req.LocalEstoqueId
+                ?? await db.LocaisEstoque.AsNoTracking()
+                    .Where(l => l.EmpresaId == req.EmpresaId)
+                    .Select(l => l.Id)
+                    .FirstOrDefaultAsync(ct);
 
             var numero = req.NumeroLote ?? $"L{DateTime.Today:yyyyMMdd}";
 
@@ -405,7 +407,7 @@ public class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : Controll
 public record RegistrarValidadeRequest(
     Guid EmpresaId, Guid ProdutoId, DateTime DataValidade,
     Guid? LoteId = null, string? NumeroLote = null, decimal? Quantidade = null,
-    string? ImagemBase64 = null, Guid? ItemEntradaId = null);
+    string? ImagemBase64 = null, Guid? ItemEntradaId = null, Guid? LocalEstoqueId = null);
 
 public record SalvarConfigRequest(
     int DiasAlertaAmarelo, int DiasAlertaVermelho, int DiasAlertaUrgente,

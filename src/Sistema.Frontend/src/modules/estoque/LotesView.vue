@@ -35,8 +35,10 @@
             label="Local de Estoque" variant="outlined" density="compact" hide-details clearable
             @update:model-value="listar" />
         </v-col>
-        <v-col cols="auto">
+        <v-col cols="auto" class="d-flex align-center">
           <v-btn color="primary" variant="tonal" @click="listar">Buscar</v-btn>
+          <v-switch v-model="incluirZerados" label="Mostrar baixados" color="primary"
+            density="compact" hide-details inset class="ml-3" @update:model-value="listar" />
         </v-col>
       </v-row>
     </v-card>
@@ -196,6 +198,7 @@ const produtosSugeridos = ref<any[]>([])
 
 const buscaProduto = ref('')
 const filtroLocal = ref<string | null>(null)
+const incluirZerados = ref(false)
 const formulario = ref<any>(null)
 
 const vencidos = computed(() => alertasVenc.value.filter(l => l.vencido).length)
@@ -277,6 +280,7 @@ async function listar() {
     const params: any = { empresaId: auth.empresaId }
     if (filtroLocal.value) params.localEstoqueId = filtroLocal.value
     if (buscaProduto.value) params.q = buscaProduto.value
+    if (incluirZerados.value) params.incluirZerados = true
     const r = await api.get('/lotes', { params })
     lotes.value = r.data
   } finally { carregando.value = false }

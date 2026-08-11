@@ -24,6 +24,7 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         [FromQuery] Guid empresaId,
         [FromQuery] Guid? localEstoqueId,
         [FromQuery] string? q,
+        [FromQuery] bool incluirZerados,
         CancellationToken ct)
     {
         localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
@@ -33,6 +34,10 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
             join p in db.Produtos.AsNoTracking() on l.ProdutoId equals p.Id
             where l.EmpresaId == empresaId
             select new { l, p.Descricao, p.Codigo };
+
+        // Lote já baixado/destinado (saldo 0) some da lista por padrão — só reaparece se pedido.
+        if (!incluirZerados)
+            query = query.Where(x => x.l.Quantidade > 0);
 
         if (localEstoqueId.HasValue)
             query = query.Where(x => x.l.LocalEstoqueId == localEstoqueId.Value);

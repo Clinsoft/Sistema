@@ -290,12 +290,24 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         if (!openai.Configurado && !gemini.Configurado)
             return StatusCode(503, new { mensagem = "IA não configurada no servidor. Defina OpenAI:ApiKey (ou Gemini:ApiKey)." });
 
+        // Contexto extra (categoria/marca) ajuda a IA a acertar os benefícios reais.
+        var categoria = req.CategoriaId is Guid cid
+            ? await db.Categorias.Where(c => c.Id == cid).Select(c => c.Nome).FirstOrDefaultAsync(ct) : null;
+        var marca = req.MarcaId is Guid mid
+            ? await db.Marcas.Where(m => m.Id == mid).Select(m => m.Nome).FirstOrDefaultAsync(ct) : null;
+        var contexto = "";
+        if (!string.IsNullOrWhiteSpace(categoria)) contexto += $" Categoria: {categoria}.";
+        if (!string.IsNullOrWhiteSpace(marca) && !string.Equals(marca, "Sem marca", StringComparison.OrdinalIgnoreCase))
+            contexto += $" Marca: {marca}.";
+
         var prompt =
             $"Você é um especialista em produtos naturais e saudáveis de uma loja brasileira. " +
-            $"Escreva uma descrição complementar curta (2 a 4 frases, em português do Brasil) destacando os " +
-            $"principais benefícios e sugestões de consumo do produto \"{req.Nome}\". " +
-            $"Escreva em tom informativo e comercial, sem inventar dados nutricionais específicos nem fazer " +
-            $"promessas de cura. Responda apenas com o texto, sem título, sem markdown e sem aspas.";
+            $"Escreva uma descrição complementar curta e atraente (2 a 4 frases, em português do Brasil) para o produto \"{req.Nome}\".{contexto} " +
+            $"DESTACANDO OS PRINCIPAIS BENEFÍCIOS reais e mais relevantes para a saúde e o bem-estar, e uma sugestão de como aproveitá-lo no dia a dia. " +
+            $"Comece pelo benefício mais forte e cite de 2 a 3 benefícios concretos. " +
+            $"Use linguagem comercial e apetitosa, porém honesta: não invente dados nutricionais específicos (números de calorias, vitaminas ou minerais) " +
+            $"nem faça promessas de cura, tratamento ou emagrecimento. " +
+            $"Responda apenas com o texto corrido, sem título, sem markdown, sem aspas e sem lista com marcadores.";
 
         try
         {
@@ -1024,7 +1036,7 @@ public record ImportarProdutosRequest(
 
 public record UnificarProdutosRequest(Guid DestinoId, List<Guid> OrigemIds);
 
-public record SugerirDescricaoRequest(string Nome);
+public record SugerirDescricaoRequest(string Nome, Guid? CategoriaId = null, Guid? MarcaId = null);
 
 public record ImagemPorCodigoBarrasRequest(string? CodigoBarras);
 

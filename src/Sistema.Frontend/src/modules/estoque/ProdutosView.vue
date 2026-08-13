@@ -1475,7 +1475,11 @@ async function sugerirDescricao() {
   if (!nome) { notif.aviso('Preencha a descrição do produto primeiro.'); return }
   sugerindoDesc.value = true
   try {
-    const { data } = await api.post('/produtos/sugerir-descricao', { nome })
+    const { data } = await api.post('/produtos/sugerir-descricao', {
+      nome,
+      categoriaId: form.value.categoriaId || undefined,
+      marcaId: form.value.marcaId || undefined,
+    })
     if (data?.texto) {
       form.value.descricaoComplementar = data.texto
       notif.ok('Sugestão gerada! Revise antes de salvar.')

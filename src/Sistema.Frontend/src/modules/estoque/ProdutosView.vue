@@ -19,6 +19,10 @@
           :loading="buscandoImagens" @click="buscarImagensLote"
           title="Busca a foto por código de barras (Cosmos + Open Food Facts) e salva cópia no sistema. Limite grátis: 20/dia — o resto entra automático todo dia às 03:00 até terminar.">
           Buscar fotos (20/dia)</v-btn>
+        <v-btn v-if="!ehAtendente" color="teal-darken-1" variant="tonal" prepend-icon="mdi-image-multiple-outline" :block="mobile"
+          :loading="buscandoGranel" @click="buscarImagensGranel"
+          title="Para produtos de granel/KG (sem EAN): busca foto genérica da commodity pelo nome, em imagens de licença livre (Openverse). Revise depois — é foto ilustrativa, não da embalagem.">
+          {{ buscandoGranel && progGranel ? progGranel : 'Fotos granel (nome)' }}</v-btn>
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
@@ -1077,6 +1081,44 @@ async function buscarImagensLote() {
     else notif.erro(e?.response?.data?.mensagem || 'Falha na busca de fotos.')
   } finally {
     buscandoImagens.value = false
+  }
+}
+
+// Fotos de granel/KG (sem EAN) pela semelhança do nome — Openverse (licença livre).
+// Roda em levas até terminar; para se o Openverse limitar (transiente).
+const buscandoGranel = ref(false)
+const progGranel = ref('')
+async function buscarImagensGranel() {
+  if (buscandoGranel.value) return
+  buscandoGranel.value = true
+  progGranel.value = ''
+  let preenchidos = 0, tentados = 0
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data } = await api.post('/produtos/preencher-imagens-granel', null, {
+        params: { empresaId: auth.empresaId, limite: 20 },
+      })
+      preenchidos += data.preenchidos ?? 0
+      tentados += data.tentados ?? 0
+      progGranel.value = `${preenchidos} fotos · faltam ${data.restantes ?? 0}`
+      if (data.transiente) {
+        notif.aviso(`Openverse limitou temporariamente. Parei em ${preenchidos} foto(s) — clique de novo em alguns minutos para continuar.`)
+        break
+      }
+      if ((data.tentados ?? 0) === 0 || (data.restantes ?? 0) <= 0) {
+        await listar()
+        notif.ok(`Granel concluído: ${preenchidos} foto(s) de ${tentados} tentativa(s). Revise — são fotos ilustrativas da commodity.`)
+        break
+      }
+    }
+  } catch (e: any) {
+    if (e?.response?.status === 403) notif.aviso('Só um Administrador pode buscar fotos.')
+    else notif.erro(`Parei em ${preenchidos} foto(s). ${e?.response?.data?.mensagem || 'Falha na busca de fotos de granel.'}`)
+    if (preenchidos > 0) await listar()
+  } finally {
+    buscandoGranel.value = false
+    progGranel.value = ''
   }
 }
 

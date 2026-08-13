@@ -129,9 +129,12 @@ public static class ServiceCollectionExtensions
             c.Timeout = TimeSpan.FromMinutes(3));
         // Branding — sobrepõe a logo oficial nas artes geradas por IA
         services.AddScoped<Sistema.Infrastructure.Services.ArteBrandingService>();
-        // Busca de imagem de produto por código de barras (Open Food Facts)
+        // Busca de imagem de produto por código de barras (Cosmos + Open Food Facts)
         services.AddHttpClient<Sistema.Infrastructure.Services.ImagemProdutoService>(c =>
             c.Timeout = TimeSpan.FromSeconds(20));
+        // Busca de imagem por semelhança do nome (granel/KG) — Openverse (licença livre)
+        services.AddHttpClient<Sistema.Infrastructure.Services.ImagemPorNomeService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(25));
         // Sincronização de produtos com o site público (ecogranel.com.br)
         services.AddHttpClient<Sistema.Infrastructure.Services.SiteSyncService>(c =>
             c.Timeout = TimeSpan.FromSeconds(60));

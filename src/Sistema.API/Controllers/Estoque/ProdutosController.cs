@@ -146,6 +146,73 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     }
 
     /// <summary>
+    /// Preenche fotos dos produtos de GRANEL/KG (que não têm EAN) pela semelhança do NOME,
+    /// usando imagens de licença livre (Openverse). Processa uma leva por chamada (o front
+    /// repete até acabar). Foto genérica da commodity — convém revisão. Marca cada produto
+    /// tentado (ImagemBuscadaEm) para não repetir.
+    /// </summary>
+    [HttpPost("preencher-imagens-granel")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> PreencherImagensGranel(
+        [FromQuery] Guid empresaId,
+        [FromServices] Sistema.Infrastructure.Services.ImagemPorNomeService porNome,
+        [FromQuery] int limite = 20, CancellationToken ct = default)
+    {
+        limite = Math.Clamp(limite, 1, 40);
+
+        var baseQuery = db.Produtos
+            .Where(p => p.EmpresaId == empresaId && p.Ativo
+                     && (p.ImagemUrl == null || p.ImagemUrl == "")
+                     && (p.ProdutoBalanca || p.VendidoFracionado
+                         || db.UnidadesMedida.Any(u => u.Id == p.UnidadeMedidaId
+                                                    && (u.Pesavel || u.Sigla == "KG")))
+                     // Quem tem EAN VÁLIDO fica para o Cosmos (foto do produto real), não aqui.
+                     && !(p.CodigoBarras != null
+                          && (p.CodigoBarras.Length == 8 || p.CodigoBarras.Length == 12
+                              || p.CodigoBarras.Length == 13 || p.CodigoBarras.Length == 14)
+                          && !EF.Functions.Like(p.CodigoBarras, "%[^0-9]%")));
+
+        var restantesTotal = await baseQuery.CountAsync(p => p.ImagemBuscadaEm == null, ct);
+        var leva = await baseQuery.Where(p => p.ImagemBuscadaEm == null)
+            .OrderBy(p => p.Codigo).Take(limite).ToListAsync(ct);
+        if (leva.Count == 0)
+            return Ok(new { tentados = 0, preenchidos = 0, restantes = 0, transiente = false });
+
+        var dir = Path.Combine("wwwroot", "uploads", "produtos");
+        Directory.CreateDirectory(dir);
+        var agora = DateTime.UtcNow;
+        int preenchidos = 0, tentados = 0;
+        bool transiente = false;
+
+        foreach (var produto in leva)
+        {
+            (byte[] Bytes, string Mime)? achado;
+            try { achado = await porNome.BuscarPorNomeAsync(produto.Descricao, ct); }
+            catch { transiente = true; break; } // erro de rede/limite: para e NÃO marca
+
+            tentados++;
+            if (achado is not null)
+            {
+                var (bytes, mime) = achado.Value;
+                var ext = mime switch { "image/png" => ".png", "image/webp" => ".webp", _ => ".jpg" };
+                var nomeArq = $"{produto.Id}{ext}";
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, nomeArq), bytes, ct);
+                produto.RegistrarTentativaImagem($"/uploads/produtos/{nomeArq}", agora);
+                preenchidos++;
+            }
+            else
+            {
+                produto.RegistrarTentativaImagem(null, agora); // não achou: marca p/ não repetir
+            }
+
+            await Task.Delay(500, ct);
+        }
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { tentados, preenchidos, restantes = restantesTotal - tentados, transiente });
+    }
+
+    /// <summary>
     /// Feed CSV do catálogo (formato Meta Commerce) — a Meta puxa por agendamento
     /// como "Arquivo de dados". Público (sem login) para a Meta acessar. Só produtos
     /// ativos, com preço e COM foto (a Meta exige image_link).

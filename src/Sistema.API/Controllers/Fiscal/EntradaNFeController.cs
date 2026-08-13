@@ -262,13 +262,18 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         foreach (var item in itens)
         {
             Domain.Estoque.Entities.Produto? prod = null;
-            // Só vincula automaticamente por EAN (cEAN) ou pelo de-para do PRÓPRIO
-            // emitente. NÃO casa o código do fornecedor com o código interno de um
-            // produto qualquer — isso causava colisão e vínculo errado.
+            // EAN (cEAN) é chave forte: casa direto. Já o de-para (código do fornecedor)
+            // só vale se a DESCRIÇÃO também bater — senão, quando o fornecedor reaproveita
+            // um código antigo, casaria no produto errado. Descrição diferente = fica pendente.
             if (item.CodigoBarras != null && produtosPorBarras.TryGetValue(item.CodigoBarras, out var pBarras))
                 prod = pBarras;
             else if (item.CodigoFornecedor != null && produtosPorDePara.TryGetValue(item.CodigoFornecedor, out var pDePara))
-                prod = pDePara;
+            {
+                if (DescricoesCompativeis(item.DescricaoXml, pDePara.Descricao))
+                    prod = pDePara;
+                else
+                    parsed.Avisos.Add($"Item {item.NumeroItem} ({item.DescricaoXml[..Math.Min(30, item.DescricaoXml.Length)]}): o código {item.CodigoFornecedor} do fornecedor aponta para '{pDePara.Descricao[..Math.Min(30, pDePara.Descricao.Length)]}', que é outro produto — deixei PENDENTE para você conferir.");
+            }
 
             if (prod is not null)
             {
@@ -1495,9 +1500,17 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         foreach (var item in pendentes)
         {
             Domain.Estoque.Entities.Produto? prod = null;
-            if (item.CodigoBarras != null && porBarras.TryGetValue(item.CodigoBarras, out var pB)) prod = pB;
-            else if (item.CodigoFornecedor != null && porDePara.TryGetValue(item.CodigoFornecedor, out var pD)) prod = pD;
-            else if (item.CodigoFornecedor != null && porCodigo.TryGetValue(item.CodigoFornecedor, out var pC)) prod = pC;
+            // 1) EAN: chave forte, casa direto. 2) de-para e 3) código interno: só casam
+            // se a DESCRIÇÃO também bater — blindagem contra reuso de código pelo fornecedor
+            // (que fazia casar no produto errado). Sem descrição parecida, o item fica pendente.
+            if (item.CodigoBarras != null && porBarras.TryGetValue(item.CodigoBarras, out var pB))
+                prod = pB;
+            else if (item.CodigoFornecedor != null && porDePara.TryGetValue(item.CodigoFornecedor, out var pD)
+                     && DescricoesCompativeis(item.DescricaoXml, pD.Descricao))
+                prod = pD;
+            else if (item.CodigoFornecedor != null && porCodigo.TryGetValue(item.CodigoFornecedor, out var pC)
+                     && DescricoesCompativeis(item.DescricaoXml, pC.Descricao))
+                prod = pC;
 
             if (prod is not null)
             {
@@ -1506,6 +1519,34 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             }
         }
         return vinculados;
+    }
+
+    // Palavras em comum entre a descrição do item da NF e a do produto cadastrado.
+    // Serve para NÃO casar por código quando o fornecedor reusa um código antigo:
+    // se as descrições não se parecem, o item fica pendente para conferência manual.
+    private static readonly char[] _tokSep = " /,.;:-()[]+*\t\r\n".ToCharArray();
+
+    private static HashSet<string> TokensDescricao(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return new HashSet<string>();
+        var semAcento = new string(s.ToUpperInvariant()
+            .Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                        != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .ToArray());
+        return semAcento.Split(_tokSep, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2)
+            .ToHashSet();
+    }
+
+    private static bool DescricoesCompativeis(string? nfDesc, string? produtoDesc)
+    {
+        var a = TokensDescricao(nfDesc);
+        var b = TokensDescricao(produtoDesc);
+        if (a.Count == 0 || b.Count == 0) return false;
+        var comuns = a.Count(b.Contains);
+        // Ao menos 2 palavras em comum, ou 1 que cubra ~1/3 da menor descrição.
+        return comuns >= 2 || (comuns >= 1 && comuns * 1.0 / System.Math.Min(a.Count, b.Count) >= 0.34);
     }
 
     /// <summary>

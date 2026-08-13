@@ -25,9 +25,14 @@ public class PreencherImagensProdutoJob(
     [AutomaticRetry(Attempts = 0)] // não reprocessa em falha — gastaria cota
     public async Task<ResultadoImagens> ExecutarAsync()
     {
+        // Só produtos com EAN VÁLIDO: apenas dígitos e tamanho de GTIN (8/12/13/14).
+        // Ignora quem não tem código de barras e códigos malformados (ex.: começam com '[').
         var candidatosQuery = db.Produtos
             .Where(p => p.Ativo
-                     && p.CodigoBarras != null && p.CodigoBarras != "" && p.CodigoBarras.Length >= 8
+                     && p.CodigoBarras != null && p.CodigoBarras != ""
+                     && (p.CodigoBarras.Length == 8 || p.CodigoBarras.Length == 12
+                         || p.CodigoBarras.Length == 13 || p.CodigoBarras.Length == 14)
+                     && !EF.Functions.Like(p.CodigoBarras, "%[^0-9]%")
                      && (p.ImagemUrl == null || p.ImagemUrl == "")
                      && p.ImagemBuscadaEm == null)
             .OrderBy(p => p.Codigo);

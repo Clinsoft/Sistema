@@ -139,6 +139,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Sistema.Infrastructure.Services.WhatsAppIaAtendenteService>();
         services.AddScoped<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.TaxaCartaoDespesaJob>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>();
 
         return services;
     }

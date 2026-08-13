@@ -150,6 +150,14 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ValidadeJob>(
     job => job.ExecutarAsync(),
     "0 8 * * *", optsBR);   // 08:00 BRT — verifica vencimentos e gera promoções
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>(
+    "produto-imagens-diaria",
+    job => job.ExecutarAsync(),
+    "0 3 * * *", optsBR);   // 03:00 BRT — até 20 fotos/dia (limite grátis do Cosmos)
+// Roda uma vez ao subir para começar já o preenchimento do dia.
+BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>(
+    job => job.ExecutarAsync());
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
     "whatsapp-disparos-automaticos",
     job => job.ExecutarAsync(),

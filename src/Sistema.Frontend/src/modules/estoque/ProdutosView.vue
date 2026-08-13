@@ -15,6 +15,10 @@
           :loading="sincronizandoSite" @click="sincronizarSite"
           title="Envia os produtos por kg (nome, descrição, foto, categoria e tabela nutricional) para o site ecogranel.com.br">
           Sincronizar site</v-btn>
+        <v-btn v-if="!ehAtendente" color="deep-purple" variant="tonal" prepend-icon="mdi-image-search-outline" :block="mobile"
+          :loading="buscandoImagens" @click="buscarImagensLote"
+          title="Busca a foto por código de barras (Cosmos + Open Food Facts) e salva cópia no sistema. Limite grátis: 20/dia — o resto entra automático todo dia às 03:00 até terminar.">
+          Buscar fotos (20/dia)</v-btn>
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
@@ -1049,6 +1053,32 @@ const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const carregando = ref(false)
 const salvando = ref(false)
 const sincronizandoSite = ref(false)
+
+// Busca fotos em lote (Open Food Facts, por EAN) e salva cópia local. Percorre em
+// páginas até terminar, mostrando progresso. Só produtos com código de barras e sem foto.
+// Roda a busca de fotos do DIA (Cosmos + fallback OFF). Limite grátis = 20 consultas/dia,
+// então processa até 20 por vez; o resto entra automático no job diário (03:00). Re-executável.
+const buscandoImagens = ref(false)
+async function buscarImagensLote() {
+  if (buscandoImagens.value) return
+  buscandoImagens.value = true
+  try {
+    const { data } = await api.post('/produtos/preencher-imagens-lote')
+    if (data.limiteDiarioAtingido) {
+      notif.aviso(`Cota de hoje (${data.maxPorDia}/dia) já usada. Continua amanhã automaticamente. Ainda faltam ${data.restantes} produto(s).`)
+    } else if (data.tentados === 0) {
+      notif.ok('Nenhum produto pendente — todos os que têm código de barras já foram tentados. 🎉')
+    } else {
+      await listar()
+      notif.ok(`${data.preenchidos} foto(s) adicionada(s) de ${data.tentados} tentativa(s). Faltam ${data.restantes} — o resto vem automático (${data.maxPorDia}/dia).`)
+    }
+  } catch (e: any) {
+    if (e?.response?.status === 403) notif.aviso('Só um Administrador pode buscar fotos.')
+    else notif.erro(e?.response?.data?.mensagem || 'Falha na busca de fotos.')
+  } finally {
+    buscandoImagens.value = false
+  }
+}
 
 // Sincroniza os produtos por kg (balança) com o site público ecogranel.com.br.
 async function sincronizarSite() {

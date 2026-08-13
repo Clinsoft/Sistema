@@ -123,6 +123,29 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     }
 
     /// <summary>
+    /// Roda AGORA a busca de fotos do dia (Cosmos + fallback Open Food Facts), respeitando
+    /// o teto de 20 consultas/dia (limite grátis do Cosmos). Consome da MESMA cota do job
+    /// diário automático — se já foram feitas 20 hoje, não faz nada. Cada produto é tentado
+    /// uma única vez (marcado em ImagemBuscadaEm), então roda dia após dia até acabar.
+    /// </summary>
+    [HttpPost("preencher-imagens-lote")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> PreencherImagensLote(
+        [FromServices] Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob job,
+        CancellationToken ct = default)
+    {
+        var r = await job.ExecutarAsync();
+        return Ok(new
+        {
+            preenchidos = r.Preenchidos,
+            tentados = r.Tentados,
+            restantes = r.RestantesCatalogo,
+            limiteDiarioAtingido = r.LimiteDiarioAtingido,
+            maxPorDia = Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob.MaxPorDia,
+        });
+    }
+
+    /// <summary>
     /// Feed CSV do catálogo (formato Meta Commerce) — a Meta puxa por agendamento
     /// como "Arquivo de dados". Público (sem login) para a Meta acessar. Só produtos
     /// ativos, com preço e COM foto (a Meta exige image_link).

@@ -88,6 +88,9 @@ public class Produto : Entity
 
     // Imagem e informações adicionais
     public string? ImagemUrl { get; private set; }
+    /// <summary>Quando o preenchimento automático de foto (por EAN) já tentou este produto.
+    /// Evita gastar a cota diária da API repetindo quem não tem imagem na fonte.</summary>
+    public DateTime? ImagemBuscadaEm { get; private set; }
     public string? FichaTecnicaUrl { get; private set; }
     public string? Marcador { get; private set; }
     public string? Tags { get; private set; }
@@ -225,6 +228,14 @@ public class Produto : Entity
         Marcador = marcador;
         Tags = tags;
         InformacaoAdicional = informacaoAdicional;
+    }
+
+    /// <summary>Marca que o preenchimento automático de foto tentou este produto. Se achou
+    /// imagem, grava a URL; se não, só marca a data (para não repetir e gastar cota).</summary>
+    public void RegistrarTentativaImagem(string? imagemUrl, DateTime quando)
+    {
+        if (!string.IsNullOrEmpty(imagemUrl)) ImagemUrl = imagemUrl;
+        ImagemBuscadaEm = quando;
     }
 
     public void DefinirFichaTecnica(string? url) => FichaTecnicaUrl = url;

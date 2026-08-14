@@ -429,9 +429,8 @@
               <div v-if="campos.preco" class="etq-preco" :style="tplAtual.precoStyle">
                 R$ {{ fmt(precoPromo || p.precoVenda) }}
               </div>
-              <div v-if="campos.codBarras && p.codigoBarras" class="etq-ean">
-                ||||||||||||| {{ p.codigoBarras }}
-              </div>
+              <div v-if="campos.codBarras && ean13Svg(p.codigoBarras)" class="etq-ean"
+                v-html="ean13Svg(p.codigoBarras, { moduleW: 1.5, height: 30 })"></div>
               <div class="etq-rodape">
                 <span v-if="campos.ncm && p.ncm">NCM: {{ p.ncm }}</span>
                 <span v-if="campos.lote && lote"> Lote: {{ lote }}</span>
@@ -475,6 +474,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { ean13Svg } from '@/utils/barcode'
 import QRCode from 'qrcode'
 import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import GuiaPassos from '@/components/GuiaPassos.vue'
@@ -886,8 +886,6 @@ function imprimirGondola() {
   const { w, h } = gondolaTamanhoAtual.value
   const cfg = gondolaCfg.value
   const c = camposGondola.value
-  const barras = Array.from({ length: 50 }, (_, i) =>
-    `<span style="width:${i % 3 === 0 ? 2 : 1}px;height:100%;display:inline-block;background:${i % 7 === 0 ? '#fff' : '#111'}"></span>`).join('')
 
   const labels = etiquetasExpandidas.value.map((p: any) => {
     const val = validadeProduto(p)
@@ -897,8 +895,8 @@ function imprimirGondola() {
     if (c.precoKg) partes.push(`<div class="g-kg">${escHtml(fmtPrecoKg(p))}</div>`)
     if (c.validade && val) partes.push(`<div class="g-val">Val: ${fmtData(val)}</div>`)
     if (c.codigoPlu && p.codigoPlu) partes.push(`<div class="g-plu">PLU: ${String(p.codigoPlu).padStart(6, '0')}</div>`)
-    const barcode = (c.codBarras && p.codigoBarras)
-      ? `<div class="g-bc"><div class="g-bars">${barras}</div><div class="g-bcnum">${escHtml(p.codigoBarras)}</div></div>` : ''
+    const svgBc = ean13Svg(p.codigoBarras ?? '', { moduleW: 1.3, height: 36 })
+    const barcode = (c.codBarras && svgBc) ? `<div class="g-bc">${svgBc}</div>` : ''
     return `<div class="g-etq">${barcode}${partes.join('')}</div>`
   }).join('')
 

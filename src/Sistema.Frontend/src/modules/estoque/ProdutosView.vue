@@ -2,31 +2,43 @@
   <div>
     <v-row align="center" class="mb-4">
       <v-col cols="12" sm=""><h2 class="text-h5 font-weight-bold">Produtos</h2></v-col>
-      <v-col cols="12" sm="auto" class="d-flex flex-wrap gap-2">
-        <v-btn v-if="!ehAtendente" color="warning" variant="tonal" prepend-icon="mdi-merge" :block="mobile"
-          @click="abrirUnificar">Unificar duplicados</v-btn>
-        <v-btn v-if="!ehAtendente" color="blue-grey" variant="tonal" prepend-icon="mdi-broom" :block="mobile"
-          :loading="limpandoDescricoes" @click="limparDescricoes"
-          title="Apara espaços no início/fim e colapsa espaços repetidos nos nomes dos produtos (espaço no fim quebra a NFC-e / cStat 225)">
-          Limpar descrições</v-btn>
-        <v-btn v-if="!ehAtendente" color="teal" variant="tonal" prepend-icon="mdi-file-import-outline" :block="mobile"
-          @click="abrirImportar">Importar planilha</v-btn>
-        <v-btn v-if="!ehAtendente" color="green-darken-1" variant="tonal" prepend-icon="mdi-cloud-sync-outline" :block="mobile"
-          :loading="sincronizandoSite" @click="sincronizarSite"
-          title="Envia os produtos por kg (nome, descrição, foto, categoria e tabela nutricional) para o site ecogranel.com.br">
-          Sincronizar site</v-btn>
-        <v-btn v-if="!ehAtendente" color="deep-purple" variant="tonal" prepend-icon="mdi-image-search-outline" :block="mobile"
-          :loading="buscandoImagens" @click="buscarImagensLote"
-          title="Busca a foto por código de barras (Cosmos + Open Food Facts) e salva cópia no sistema. Limite grátis: 20/dia — o resto entra automático todo dia às 03:00 até terminar.">
-          Buscar fotos (20/dia)</v-btn>
-        <v-btn v-if="!ehAtendente" color="teal-darken-1" variant="tonal" prepend-icon="mdi-image-multiple-outline" :block="mobile"
-          :loading="buscandoGranel" @click="buscarImagensGranel"
-          title="Para produtos de granel/KG (sem EAN): busca foto genérica da commodity pelo nome, em imagens de licença livre (Openverse). Revise depois — é foto ilustrativa, não da embalagem.">
-          {{ buscandoGranel && progGranel ? progGranel : 'Fotos granel (nome)' }}</v-btn>
-        <v-btn v-if="!ehAtendente" color="purple-darken-1" variant="tonal" prepend-icon="mdi-text-box-edit-outline" :block="mobile"
-          :loading="gerandoDesc" @click="gerarDescricoesLote"
-          title="Gera a descrição complementar (benefícios) por IA para TODOS os produtos, usando nome + categoria + marca. Reescreve as existentes e preenche as que faltam. Revise depois.">
-          {{ gerandoDesc && progDesc ? progDesc : 'Gerar descrições IA' }}</v-btn>
+      <v-col cols="12" sm="auto" class="d-flex ga-2 justify-end align-center flex-wrap">
+        <v-menu v-if="!ehAtendente" location="bottom end">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" color="blue-grey" variant="tonal" prepend-icon="mdi-tools"
+              append-icon="mdi-menu-down" :block="mobile"
+              :loading="limpandoDescricoes || sincronizandoSite || buscandoImagens || buscandoGranel || gerandoDesc">
+              Ferramentas
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="264" nav>
+            <v-list-item title="Unificar duplicados" @click="abrirUnificar">
+              <template #prepend><v-icon icon="mdi-merge" color="warning" /></template>
+            </v-list-item>
+            <v-list-item title="Limpar descrições" :disabled="limpandoDescricoes" @click="limparDescricoes">
+              <template #prepend><v-icon icon="mdi-broom" color="blue-grey" /></template>
+            </v-list-item>
+            <v-list-item title="Importar planilha" @click="abrirImportar">
+              <template #prepend><v-icon icon="mdi-file-import-outline" color="teal" /></template>
+            </v-list-item>
+            <v-list-item title="Sincronizar site" :disabled="sincronizandoSite" @click="sincronizarSite">
+              <template #prepend><v-icon icon="mdi-cloud-sync-outline" color="green-darken-1" /></template>
+            </v-list-item>
+            <v-divider class="my-1" />
+            <v-list-subheader>Imagens e IA</v-list-subheader>
+            <v-list-item title="Buscar fotos (20/dia)" :disabled="buscandoImagens" @click="buscarImagensLote">
+              <template #prepend><v-icon icon="mdi-image-search-outline" color="deep-purple" /></template>
+            </v-list-item>
+            <v-list-item :title="buscandoGranel && progGranel ? progGranel : 'Fotos granel (nome)'"
+              :disabled="buscandoGranel" @click="buscarImagensGranel">
+              <template #prepend><v-icon icon="mdi-image-multiple-outline" color="teal-darken-1" /></template>
+            </v-list-item>
+            <v-list-item :title="gerandoDesc && progDesc ? progDesc : 'Gerar descrições IA'"
+              :disabled="gerandoDesc" @click="gerarDescricoesLote">
+              <template #prepend><v-icon icon="mdi-text-box-edit-outline" color="purple-darken-1" /></template>
+            </v-list-item>
+          </v-list>
+        </v-menu>
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>

@@ -189,7 +189,12 @@
           <template #item.total="{ item }">R$ {{ item.total?.toFixed(2) }}</template>
           <template #item.acoes="{ item }">
             <v-btn-group density="compact" variant="tonal">
-              <v-btn size="small" @click="avancarStatus(item)">Avançar</v-btn>
+              <v-btn size="small" :disabled="!proximoStatusPedido(item)"
+                :color="proximoStatusPedido(item) ? 'primary' : undefined"
+                @click="avancarStatus(item)">{{ rotuloAvancar(item) }}</v-btn>
+              <v-btn v-if="item.status !== 'Cancelado' && item.status !== 'Entregue'"
+                size="small" icon="mdi-close-circle-outline" color="error"
+                title="Cancelar pedido" @click="cancelarPedido(item)" />
               <v-btn size="small" icon="mdi-whatsapp" color="success" @click="responderWhatsApp(item)" />
             </v-btn-group>
           </template>
@@ -1106,17 +1111,49 @@ async function listarPedidos() {
   }
 }
 
-async function avancarStatus(pedido: any) {
+// Próximo status do fluxo. Retirada vai para "ProntoParaRetirada"; entrega para "Enviado".
+// Cobre também "Confirmado" (status que o atendente de IA usa) — antes ficava de fora e o
+// botão não fazia nada. Retorna null quando o pedido já está no fim (Entregue/Cancelado).
+function proximoStatusPedido(pedido: any): string | null {
+  const retirada = pedido?.tipoEntrega === 'Retirada'
   const fluxo: Record<string, string> = {
-    Novo: 'EmSeparacao', EmSeparacao: 'Enviado', Enviado: 'Entregue'
+    Novo: 'Confirmado',
+    Confirmado: 'EmSeparacao',
+    EmSeparacao: retirada ? 'ProntoParaRetirada' : 'Enviado',
+    ProntoParaRetirada: 'Entregue',
+    Enviado: 'Entregue',
   }
-  const novoStatus = fluxo[pedido.status]
+  return fluxo[pedido?.status] ?? null
+}
+const rotuloStatusPedido: Record<string, string> = {
+  Confirmado: 'Confirmar', EmSeparacao: 'Separar', ProntoParaRetirada: 'Pronto p/ retirada',
+  Enviado: 'Enviar', Entregue: 'Marcar entregue',
+}
+function rotuloAvancar(pedido: any): string {
+  const p = proximoStatusPedido(pedido)
+  return p ? (rotuloStatusPedido[p] ?? 'Avançar') : 'Concluído'
+}
+
+async function avancarStatus(pedido: any) {
+  const novoStatus = proximoStatusPedido(pedido)
   if (!novoStatus) return
   try {
     await api.patch(`/whatsapp/pedidos/${pedido.id}/status`, { status: novoStatus })
     await listarPedidos()
+    notif.ok(`Pedido ${pedido.numero ?? ''} → ${novoStatus}`)
   } catch {
     notif.erro('Erro ao atualizar status.')
+  }
+}
+
+async function cancelarPedido(pedido: any) {
+  if (!confirm(`Cancelar o pedido ${pedido.numero ?? ''}?`)) return
+  try {
+    await api.patch(`/whatsapp/pedidos/${pedido.id}/status`, { status: 'Cancelado' })
+    await listarPedidos()
+    notif.ok(`Pedido ${pedido.numero ?? ''} cancelado.`)
+  } catch {
+    notif.erro('Erro ao cancelar o pedido.')
   }
 }
 

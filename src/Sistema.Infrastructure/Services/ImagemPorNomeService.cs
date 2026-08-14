@@ -41,7 +41,23 @@ public class ImagemPorNomeService(HttpClient http, IConfiguration config)
             var viaPexels = await BuscarPexelsAsync(kw, ct);
             if (viaPexels is not null) return viaPexels;
         }
+        if (!string.IsNullOrWhiteSpace(_unsplashKey))
+        {
+            var viaUnsplash = await BaixarPrimeiraAsync(await CandidatasUnsplashAsync(kw, ct), ct);
+            if (viaUnsplash is not null) return viaUnsplash;
+        }
         return await BuscarOpenverseAsync(kw, ct);
+    }
+
+    // Baixa a primeira candidata que funcionar (para a busca automática).
+    private async Task<(byte[], string)?> BaixarPrimeiraAsync(List<CandidataImagem> cands, CancellationToken ct)
+    {
+        foreach (var c in cands)
+        {
+            var b = await BaixarAsync(c.Url, ct);
+            if (b is not null) return b;
+        }
+        return null;
     }
 
     // ── Pexels (fotos grátis, uso comercial, sem atribuição) ──────────────────

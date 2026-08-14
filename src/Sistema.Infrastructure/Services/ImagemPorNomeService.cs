@@ -18,6 +18,8 @@ public class ImagemPorNomeService(HttpClient http, IConfiguration config)
         "https://api.pexels.com/v1/search?query={0}&per_page=3&locale=pt-BR";
 
     private readonly string? _pexelsKey = config["Pexels:ApiKey"];
+    private readonly string? _pixabayKey = config["Pixabay:ApiKey"];
+    private readonly string? _unsplashKey = config["Unsplash:AccessKey"];
     public bool UsaPexels => !string.IsNullOrWhiteSpace(_pexelsKey);
 
     // Palavras que não ajudam na busca (unidades, embalagem, conectivos).
@@ -99,6 +101,147 @@ public class ImagemPorNomeService(HttpClient http, IConfiguration config)
         return null;
     }
 
+    /// <summary>Baixa os bytes de uma URL de imagem escolhida pelo usuário (foto selecionada).</summary>
+    public Task<(byte[] Bytes, string Mime)?> BaixarUrlAsync(string imgUrl, CancellationToken ct = default)
+        => BaixarAsync(imgUrl, ct);
+
+    /// <summary>Retorna VÁRIAS opções de imagem para o termo (para o usuário escolher a certa).
+    /// Pexels primeiro (se configurado) e completa com Openverse. Não baixa — só as URLs.</summary>
+    public async Task<IReadOnlyList<CandidataImagem>> BuscarCandidatasAsync(string? termo, CancellationToken ct = default)
+    {
+        var q = (termo ?? "").Trim();
+        if (q.Length < 2) return Array.Empty<CandidataImagem>();
+
+        // Junta TODAS as fontes disponíveis e intercala (round-robin) para o usuário ver
+        // variedade — antes uma fonte dominante escondia as outras.
+        var fontes = new List<List<CandidataImagem>>();
+        if (UsaPexels) fontes.Add(await CandidatasPexelsAsync(q, ct));
+        if (!string.IsNullOrWhiteSpace(_pixabayKey)) fontes.Add(await CandidatasPixabayAsync(q, ct));
+        if (!string.IsNullOrWhiteSpace(_unsplashKey)) fontes.Add(await CandidatasUnsplashAsync(q, ct));
+        fontes.Add(await CandidatasOpenverseAsync(q, ct)); // sempre (grátis, sem chave)
+
+        var merged = new List<CandidataImagem>();
+        for (var i = 0; merged.Count < 60; i++)
+        {
+            var adicionou = false;
+            foreach (var f in fontes)
+                if (i < f.Count) { merged.Add(f[i]); adicionou = true; }
+            if (!adicionou) break;
+        }
+        return merged;
+    }
+
+    private async Task<List<CandidataImagem>> CandidatasPixabayAsync(string q, CancellationToken ct)
+    {
+        var res = new List<CandidataImagem>();
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"https://pixabay.com/api/?key={_pixabayKey}&q={Uri.EscapeDataString(q)}&image_type=photo&per_page=20&lang=pt&safesearch=true");
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return res;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("hits", out var hits)) return res;
+            foreach (var h in hits.EnumerateArray())
+            {
+                var url = (h.TryGetProperty("largeImageURL", out var lg) ? lg.GetString() : null)
+                       ?? (h.TryGetProperty("webformatURL", out var wf) ? wf.GetString() : null);
+                var thumb = (h.TryGetProperty("webformatURL", out var wf2) ? wf2.GetString() : null)
+                         ?? (h.TryGetProperty("previewURL", out var pv) ? pv.GetString() : null) ?? url;
+                var autor = h.TryGetProperty("user", out var us) ? us.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(url))
+                    res.Add(new CandidataImagem(url!, thumb ?? url!, "Pixabay", autor));
+            }
+        }
+        catch { /* ignora */ }
+        return res;
+    }
+
+    private async Task<List<CandidataImagem>> CandidatasUnsplashAsync(string q, CancellationToken ct)
+    {
+        var res = new List<CandidataImagem>();
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.unsplash.com/search/photos?query={Uri.EscapeDataString(q)}&per_page=20&content_filter=high");
+            req.Headers.TryAddWithoutValidation("Authorization", $"Client-ID {_unsplashKey}");
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return res;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("results", out var results)) return res;
+            foreach (var r in results.EnumerateArray())
+            {
+                if (!r.TryGetProperty("urls", out var urls)) continue;
+                var url = (urls.TryGetProperty("regular", out var rg) ? rg.GetString() : null)
+                       ?? (urls.TryGetProperty("small", out var sm) ? sm.GetString() : null);
+                var thumb = (urls.TryGetProperty("small", out var sm2) ? sm2.GetString() : null)
+                         ?? (urls.TryGetProperty("thumb", out var tb) ? tb.GetString() : null) ?? url;
+                string? autor = r.TryGetProperty("user", out var user) && user.TryGetProperty("name", out var nm)
+                    ? nm.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(url))
+                    res.Add(new CandidataImagem(url!, thumb ?? url!, "Unsplash", autor));
+            }
+        }
+        catch { /* ignora */ }
+        return res;
+    }
+
+    private async Task<List<CandidataImagem>> CandidatasPexelsAsync(string q, CancellationToken ct)
+    {
+        var res = new List<CandidataImagem>();
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.pexels.com/v1/search?query={Uri.EscapeDataString(q)}&per_page=15&locale=pt-BR");
+            req.Headers.TryAddWithoutValidation("Authorization", _pexelsKey);
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return res;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("photos", out var photos)) return res;
+            foreach (var ph in photos.EnumerateArray())
+            {
+                if (!ph.TryGetProperty("src", out var src)) continue;
+                var url = (src.TryGetProperty("large", out var lg) ? lg.GetString() : null)
+                       ?? (src.TryGetProperty("medium", out var md) ? md.GetString() : null);
+                var thumb = (src.TryGetProperty("medium", out var m2) ? m2.GetString() : null)
+                         ?? (src.TryGetProperty("small", out var sm) ? sm.GetString() : null) ?? url;
+                var autor = ph.TryGetProperty("photographer", out var pg) ? pg.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(url))
+                    res.Add(new CandidataImagem(url!, thumb ?? url!, "Pexels", autor));
+            }
+        }
+        catch { /* ignora */ }
+        return res;
+    }
+
+    private async Task<List<CandidataImagem>> CandidatasOpenverseAsync(string q, CancellationToken ct)
+    {
+        var res = new List<CandidataImagem>();
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.openverse.org/v1/images/?q={Uri.EscapeDataString(q)}&license=cc0,pdm&mature=false&page_size=15");
+            req.Headers.UserAgent.ParseAdd("EcoGranel/1.0 (+https://ecogranel.com.br)");
+            req.Headers.Accept.ParseAdd("application/json");
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return res;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("results", out var results)) return res;
+            foreach (var r in results.EnumerateArray())
+            {
+                var url = r.TryGetProperty("url", out var u) ? u.GetString() : null;
+                var thumb = (r.TryGetProperty("thumbnail", out var th) ? th.GetString() : null) ?? url;
+                var autor = r.TryGetProperty("creator", out var cr) ? cr.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(thumb))
+                    res.Add(new CandidataImagem(url ?? thumb!, thumb!, "Openverse", autor));
+            }
+        }
+        catch { /* ignora */ }
+        return res;
+    }
+
     private async Task<(byte[], string)?> BaixarAsync(string imgUrl, CancellationToken ct)
     {
         try
@@ -139,3 +282,6 @@ public class ImagemPorNomeService(HttpClient http, IConfiguration config)
         return string.Join(' ', tokens).Trim();
     }
 }
+
+/// <summary>Uma opção de imagem para o usuário escolher (não baixada ainda).</summary>
+public record CandidataImagem(string Url, string Thumb, string Fonte, string? Autor);

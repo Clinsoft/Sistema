@@ -212,6 +212,63 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { tentados, preenchidos, restantes = restantesTotal - tentados, transiente });
     }
 
+    /// <summary>Lista os produtos de granel/KG com a foto atual (para a tela de revisão).</summary>
+    [HttpGet("granel")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> ListarGranel([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var itens = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo
+                     && (p.ProdutoBalanca || p.VendidoFracionado
+                         || db.UnidadesMedida.Any(u => u.Id == p.UnidadeMedidaId
+                                                    && (u.Pesavel || u.Sigla == "KG"))))
+            .OrderBy(p => p.Descricao)
+            .Select(p => new { p.Id, p.Codigo, p.Descricao, p.ImagemUrl })
+            .ToListAsync(ct);
+        return Ok(itens);
+    }
+
+    /// <summary>Opções de imagem (Pexels/Openverse) para um termo — o usuário escolhe a certa.</summary>
+    [HttpGet("imagens-candidatas")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> ImagensCandidatas([FromQuery] string q,
+        [FromServices] Sistema.Infrastructure.Services.ImagemPorNomeService porNome, CancellationToken ct)
+    {
+        var cands = await porNome.BuscarCandidatasAsync(q, ct);
+        return Ok(cands);
+    }
+
+    /// <summary>Define a foto do produto a partir de uma URL escolhida (baixa e salva cópia local).</summary>
+    [HttpPost("{id:guid}/imagem-de-url")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> ImagemDeUrl(Guid id, [FromBody] ImagemDeUrlRequest req,
+        [FromServices] Sistema.Infrastructure.Services.ImagemPorNomeService porNome, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Url)) return BadRequest(new { mensagem = "URL da imagem vazia." });
+        var produto = await db.Produtos.FindAsync([id], ct);
+        if (produto is null) return NotFound(new { mensagem = "Produto não encontrado." });
+
+        var baixado = await porNome.BaixarUrlAsync(req.Url, ct);
+        if (baixado is null) return BadRequest(new { mensagem = "Não consegui baixar essa imagem. Tente outra." });
+
+        var (bytes, mime) = baixado.Value;
+        var ext = mime switch { "image/png" => ".png", "image/webp" => ".webp", _ => ".jpg" };
+
+        var dir = Path.Combine("wwwroot", "uploads", "produtos");
+        Directory.CreateDirectory(dir);
+        if (!string.IsNullOrEmpty(produto.ImagemUrl))
+        {
+            var old = Path.Combine("wwwroot", produto.ImagemUrl.TrimStart('/'));
+            if (System.IO.File.Exists(old)) System.IO.File.Delete(old);
+        }
+        var nomeArq = $"{id}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, nomeArq), bytes, ct);
+        var url = $"/uploads/produtos/{nomeArq}";
+        produto.RegistrarTentativaImagem(url, DateTime.UtcNow);
+        await uow.SalvarAsync(ct);
+        return Ok(new { url });
+    }
+
     /// <summary>
     /// Feed CSV do catálogo (formato Meta Commerce) — a Meta puxa por agendamento
     /// como "Arquivo de dados". Público (sem login) para a Meta acessar. Só produtos
@@ -1123,6 +1180,7 @@ public record ImportarProdutosRequest(
 public record UnificarProdutosRequest(Guid DestinoId, List<Guid> OrigemIds);
 
 public record SugerirDescricaoRequest(string Nome, Guid? CategoriaId = null, Guid? MarcaId = null);
+public record ImagemDeUrlRequest(string Url);
 
 public record ImagemPorCodigoBarrasRequest(string? CodigoBarras);
 

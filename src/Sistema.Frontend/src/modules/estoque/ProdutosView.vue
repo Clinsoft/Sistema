@@ -37,11 +37,84 @@
               :disabled="gerandoDesc" @click="gerarDescricoesLote">
               <template #prepend><v-icon icon="mdi-text-box-edit-outline" color="purple-darken-1" /></template>
             </v-list-item>
+            <v-list-item title="Revisar fotos de granel" @click="abrirRevisarGranel">
+              <template #prepend><v-icon icon="mdi-image-edit-outline" color="cyan-darken-1" /></template>
+            </v-list-item>
           </v-list>
         </v-menu>
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
+
+    <!-- Dialog: Revisar fotos de granel (grade) -->
+    <v-dialog v-model="dlgRevisar" fullscreen scrollable transition="dialog-bottom-transition">
+      <v-card>
+        <v-toolbar color="primary" density="comfortable">
+          <v-btn icon="mdi-close" @click="dlgRevisar = false" />
+          <v-toolbar-title>Revisar fotos — granel ({{ granelFiltrado.length }})</v-toolbar-title>
+          <v-spacer />
+          <v-text-field v-model="buscaGranel" placeholder="Filtrar produto…" density="compact" hide-details
+            prepend-inner-icon="mdi-magnify" variant="solo-inverted" flat class="mr-3" style="max-width:340px" />
+        </v-toolbar>
+        <v-card-text>
+          <div v-if="carregandoGranelRev" class="text-center py-10"><v-progress-circular indeterminate /></div>
+          <v-row v-else dense>
+            <v-col v-for="p in granelFiltrado" :key="p.id" cols="6" sm="4" md="3" lg="2">
+              <v-card variant="tonal" class="pa-2" style="cursor:pointer" @click="abrirPicker(p)"
+                :title="'Clique para trocar a foto de ' + p.descricao">
+                <v-img :src="p.imagemUrl || ''" height="130" cover class="rounded mb-1 bg-grey-lighten-3">
+                  <template #placeholder>
+                    <div class="d-flex align-center justify-center fill-height text-medium-emphasis">
+                      <v-icon>mdi-image-off-outline</v-icon>
+                    </div>
+                  </template>
+                </v-img>
+                <div class="text-caption text-truncate">{{ p.descricao }}</div>
+              </v-card>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: escolher foto do produto -->
+    <v-dialog v-model="dlgPicker" max-width="920" scrollable>
+      <v-card v-if="produtoRev">
+        <v-card-title class="d-flex align-center">
+          <v-icon start color="primary">mdi-image-search-outline</v-icon>
+          <span class="text-truncate">{{ produtoRev.descricao }}</span>
+        </v-card-title>
+        <v-divider />
+        <v-card-text>
+          <div class="d-flex ga-2 mb-3 flex-wrap align-center">
+            <v-text-field v-model="termoRev" label="Buscar imagem" density="compact" hide-details
+              style="min-width:220px" @keyup.enter="buscarCandidatas" />
+            <v-btn color="primary" :loading="carregandoCand" @click="buscarCandidatas">Buscar</v-btn>
+            <v-btn variant="tonal" prepend-icon="mdi-upload" @click="inputRevImg?.click()">Minha foto</v-btn>
+            <input ref="inputRevImg" type="file" accept="image/*" hidden @change="uploadRev" />
+            <v-btn variant="text" color="error" prepend-icon="mdi-delete-outline" @click="removerRev">Remover</v-btn>
+          </div>
+          <div v-if="carregandoCand" class="text-center py-8"><v-progress-circular indeterminate /></div>
+          <v-row v-else dense>
+            <v-col v-for="(c, i) in candidatas" :key="i" cols="4" sm="3" md="2">
+              <v-img :src="c.thumb" height="120" cover class="rounded" style="cursor:pointer"
+                @click="escolherFoto(c)" :title="'Fonte: ' + c.fonte + (c.autor ? ' · ' + c.autor : '')">
+                <template #placeholder>
+                  <div class="d-flex align-center justify-center fill-height"><v-progress-circular size="20" indeterminate /></div>
+                </template>
+              </v-img>
+              <div class="text-caption text-truncate text-medium-emphasis">{{ c.fonte }}</div>
+            </v-col>
+          </v-row>
+          <div v-if="!carregandoCand && candidatas.length === 0" class="text-center text-medium-emphasis py-6">
+            Nenhuma opção. Ajuste o termo e clique em Buscar, ou suba a sua foto.
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer /><v-btn variant="text" @click="dlgPicker = false">Fechar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Dialog: Importar planilha de produtos -->
     <v-dialog v-model="dlgImportar" max-width="820" scrollable>
@@ -1171,6 +1244,84 @@ async function gerarDescricoesLote() {
     gerandoDesc.value = false
     progDesc.value = ''
   }
+}
+
+// ── Revisar fotos de granel (escolher a foto certa) ─────────────────────────
+const dlgRevisar = ref(false)
+const granelItens = ref<any[]>([])
+const buscaGranel = ref('')
+const carregandoGranelRev = ref(false)
+const granelFiltrado = computed(() => {
+  const t = buscaGranel.value.trim().toLowerCase()
+  return t ? granelItens.value.filter(p => (p.descricao || '').toLowerCase().includes(t)) : granelItens.value
+})
+async function abrirRevisarGranel() {
+  dlgRevisar.value = true
+  carregandoGranelRev.value = true
+  try {
+    const { data } = await api.get('/produtos/granel', { params: { empresaId: auth.empresaId } })
+    granelItens.value = (data as any[]).map(p => ({
+      ...p, imagemUrl: p.imagemUrl ? p.imagemUrl + '?t=' + Date.now() : null,
+    }))
+  } catch { notif.erro('Erro ao carregar os produtos de granel.') }
+  finally { carregandoGranelRev.value = false }
+}
+
+const dlgPicker = ref(false)
+const produtoRev = ref<any>(null)
+const termoRev = ref('')
+const candidatas = ref<any[]>([])
+const carregandoCand = ref(false)
+const inputRevImg = ref<HTMLInputElement | null>(null)
+function abrirPicker(p: any) {
+  produtoRev.value = p
+  termoRev.value = p.descricao || ''
+  candidatas.value = []
+  dlgPicker.value = true
+  buscarCandidatas()
+}
+async function buscarCandidatas() {
+  if (!termoRev.value.trim()) return
+  carregandoCand.value = true
+  try {
+    const { data } = await api.get('/produtos/imagens-candidatas', { params: { q: termoRev.value.trim() } })
+    candidatas.value = data as any[]
+  } catch { notif.erro('Erro ao buscar imagens.') }
+  finally { carregandoCand.value = false }
+}
+function atualizaThumbRev(url: string | null) {
+  const nova = url ? url + '?t=' + Date.now() : null
+  const p = granelItens.value.find(x => x.id === produtoRev.value?.id)
+  if (p) p.imagemUrl = nova
+  if (produtoRev.value) produtoRev.value.imagemUrl = nova
+}
+async function escolherFoto(c: any) {
+  try {
+    const { data } = await api.post(`/produtos/${produtoRev.value.id}/imagem-de-url`, { url: c.url })
+    atualizaThumbRev(data.url)
+    notif.ok('Foto atualizada!')
+    dlgPicker.value = false
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem || 'Não consegui usar essa imagem.') }
+}
+async function uploadRev(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file || !produtoRev.value) return
+  const fd = new FormData(); fd.append('arquivo', file)
+  try {
+    const { data } = await api.post(`/produtos/${produtoRev.value.id}/imagem`, fd)
+    atualizaThumbRev(data.url)
+    notif.ok('Foto enviada!')
+    dlgPicker.value = false
+  } catch { notif.erro('Erro ao enviar a foto.') }
+}
+async function removerRev() {
+  if (!produtoRev.value) return
+  try {
+    await api.delete(`/produtos/${produtoRev.value.id}/imagem`)
+    atualizaThumbRev(null)
+    notif.ok('Foto removida.')
+    dlgPicker.value = false
+  } catch { notif.erro('Erro ao remover a foto.') }
 }
 
 // Sincroniza os produtos por kg (balança) com o site público ecogranel.com.br.

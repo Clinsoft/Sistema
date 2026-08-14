@@ -137,9 +137,9 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     if (!string.IsNullOrWhiteSpace(vendedor))
                         col.Item().AlignCenter().Text($"Vendedor: {vendedor}").FontSize(7);
                     col.Item().AlignCenter().Text(empresa.NomeFantasia).FontSize(7);
-                    col.Item().AlignCenter().Text("Trib aprox: Sem parametros p/ calculo").FontSize(7);
-                    col.Item().AlignCenter().Text($"Numero: {nota.Numero}  Serie: {nota.Serie}").FontSize(7);
-                    col.Item().AlignCenter().Text($"Emissao: {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}").FontSize(7);
+                    col.Item().AlignCenter().Text("Trib aprox: Sem parâmetros p/ cálculo").FontSize(7);
+                    col.Item().AlignCenter().Text($"Número: {nota.Numero}  Série: {nota.Serie}").FontSize(7);
+                    col.Item().AlignCenter().Text($"Emissão: {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}").FontSize(7);
                     col.Item().AlignCenter().Text("Via consumidor").FontSize(7);
                     col.Item().PaddingTop(2).AlignCenter().Text("Consulte pela chave de acesso em").FontSize(7);
                     if (!string.IsNullOrEmpty(nota.UrlConsultaQrCode))
@@ -147,11 +147,11 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().PaddingTop(2).AlignCenter().Text("CHAVE DE ACESSO").Bold().FontSize(7);
                     col.Item().AlignCenter().Text(chaveFmt).FontSize(7);
                     col.Item().PaddingTop(2).AlignCenter().Text(
-                        string.IsNullOrWhiteSpace(doc) ? "Consumidor nao identificado" : $"Consumidor: {doc}").FontSize(7);
+                        string.IsNullOrWhiteSpace(doc) ? "Consumidor não identificado" : $"Consumidor: {doc}").FontSize(7);
                     if (!string.IsNullOrEmpty(nota.Protocolo))
                     {
                         col.Item().Text(traco);
-                        col.Item().AlignCenter().Text("Protocolo de Autorizacao").FontSize(7);
+                        col.Item().AlignCenter().Text("Protocolo de Autorização").FontSize(7);
                         col.Item().AlignCenter().Text(
                             $"{nota.Protocolo}  {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}").FontSize(7);
                     }
@@ -292,8 +292,8 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                     col.Item().Text(Linha("Dinheiro", M(dinheiro)));
                     if (troco > 0) col.Item().Text(Linha("(-) Troco", "-" + M(troco))).FontSize(7);
                     col.Item().Text(Linha("Pix", M(pix)));
-                    col.Item().Text(Linha("Cartao Credito", M(credito)));
-                    col.Item().Text(Linha("Cartao Debito", M(debito)));
+                    col.Item().Text(Linha("Cartão Crédito", M(credito)));
+                    col.Item().Text(Linha("Cartão Débito", M(debito)));
                     if (crediario > 0) col.Item().Text(Linha("Crediario (a receber)", M(crediario)));
                     col.Item().Text(traco);
 
@@ -310,7 +310,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                         col.Item().Text($"Obs: {s.ObservacaoFechamento}").FontSize(7);
                         col.Item().Text(traco);
                     }
-                    col.Item().PaddingTop(2).AlignCenter().Text("Conferencia de caixa - sem valor fiscal").FontSize(7);
+                    col.Item().PaddingTop(2).AlignCenter().Text("Conferência de caixa - sem valor fiscal").FontSize(7);
                 });
             });
         });
@@ -459,7 +459,7 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                         col.Item().Text(Linha("Troco", venda.Troco.ToString("N2", brl)));
 
                     col.Item().Text(traco);
-                    col.Item().PaddingTop(4).AlignCenter().Text("Obrigado pela preferencia!").Italic().FontSize(8);
+                    col.Item().PaddingTop(4).AlignCenter().Text("Obrigado pela preferência!").Italic().FontSize(8);
                     col.Item().AlignCenter().Text("Documento sem valor fiscal").FontSize(7);
                 });
             });

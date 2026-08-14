@@ -4,6 +4,7 @@ import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
+import { pt } from 'vuetify/locale'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 import './styles/responsive.css'
@@ -14,6 +15,7 @@ import router from './router'
 const vuetify = createVuetify({
   components,
   directives,
+  locale: { locale: 'pt', fallback: 'en', messages: { pt } },  // rótulos dos componentes em pt-BR
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   theme: {
     defaultTheme: 'ecoGranelLight',

@@ -78,7 +78,7 @@
         </template>
         <template #item.status="{ item }">
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">
-            {{ item.status }}
+            {{ rotuloStatus(item.status) }}
           </v-chip>
         </template>
         <template #item.valorOriginal="{ item }">R$ {{ fmt(item.valorOriginal) }}</template>
@@ -264,6 +264,7 @@
 </template>
 
 <script setup lang="ts">
+import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'

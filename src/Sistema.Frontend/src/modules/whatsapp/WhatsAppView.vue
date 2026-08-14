@@ -184,7 +184,7 @@
 
         <v-data-table :headers="headersPedidos" :items="pedidos" :loading="carregandoPedidos">
           <template #item.status="{ item }">
-            <v-chip :color="corStatusPedido(item.status)" size="small">{{ item.status }}</v-chip>
+            <v-chip :color="corStatusPedido(item.status)" size="small">{{ rotuloStatus(item.status) }}</v-chip>
           </template>
           <template #item.total="{ item }">R$ {{ item.total?.toFixed(2) }}</template>
           <template #item.acoes="{ item }">
@@ -727,6 +727,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { rotuloStatus } from '@/utils/status'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'

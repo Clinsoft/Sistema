@@ -127,7 +127,7 @@
         </template>
         <template #item.status="{ item }">
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">
-            {{ item.status }}
+            {{ rotuloStatus(item.status) }}
           </v-chip>
           <v-btn v-if="item.comprovanteUrl" :href="item.comprovanteUrl" target="_blank"
             icon="mdi-file-eye-outline" size="x-small" color="red-darken-1" variant="text"
@@ -680,6 +680,7 @@
 </template>
 
 <script setup lang="ts">
+import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted } from 'vue'

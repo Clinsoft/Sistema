@@ -23,6 +23,10 @@
           :loading="buscandoGranel" @click="buscarImagensGranel"
           title="Para produtos de granel/KG (sem EAN): busca foto genérica da commodity pelo nome, em imagens de licença livre (Openverse). Revise depois — é foto ilustrativa, não da embalagem.">
           {{ buscandoGranel && progGranel ? progGranel : 'Fotos granel (nome)' }}</v-btn>
+        <v-btn v-if="!ehAtendente" color="purple-darken-1" variant="tonal" prepend-icon="mdi-text-box-edit-outline" :block="mobile"
+          :loading="gerandoDesc" @click="gerarDescricoesLote"
+          title="Gera a descrição complementar (benefícios) por IA para TODOS os produtos, usando nome + categoria + marca. Reescreve as existentes e preenche as que faltam. Revise depois.">
+          {{ gerandoDesc && progDesc ? progDesc : 'Gerar descrições IA' }}</v-btn>
         <v-btn v-if="!ehAtendente" color="primary" prepend-icon="mdi-plus" :block="mobile" @click="abrirNovo">Novo Produto</v-btn>
       </v-col>
     </v-row>
@@ -1119,6 +1123,41 @@ async function buscarImagensGranel() {
   } finally {
     buscandoGranel.value = false
     progGranel.value = ''
+  }
+}
+
+// Gera a descrição complementar (benefícios) por IA em lote para TODOS os produtos.
+// Roda em páginas até terminar, com progresso. Reescreve as existentes e preenche as vazias.
+const gerandoDesc = ref(false)
+const progDesc = ref('')
+async function gerarDescricoesLote() {
+  if (gerandoDesc.value) return
+  if (!confirm('Gerar a descrição por IA para TODOS os produtos? Isso reescreve as descrições complementares existentes.')) return
+  gerandoDesc.value = true
+  progDesc.value = ''
+  let offset = 0, gerados = 0, falhas = 0, total = 0
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data } = await api.post('/produtos/gerar-descricoes-lote', null, {
+        params: { empresaId: auth.empresaId, offset, limite: 12, substituir: true },
+      })
+      total = data.total ?? 0
+      gerados += data.gerados ?? 0
+      falhas += data.falhas ?? 0
+      offset = data.proximoOffset ?? (offset + 12)
+      progDesc.value = `${Math.min(offset, total)}/${total} · ${gerados} feitas`
+      if (data.concluido) break
+    }
+    await listar()
+    notif.ok(`Descrições geradas: ${gerados}${falhas ? ` (${falhas} falha(s))` : ''}. Revise antes de publicar.`)
+  } catch (e: any) {
+    if (e?.response?.status === 403) notif.aviso('Só um Administrador pode gerar descrições em lote.')
+    else if (e?.response?.status === 503) notif.aviso('IA não configurada no servidor.')
+    else notif.erro(`Parei em ${gerados} descrição(ões). ${e?.response?.data?.mensagem || 'Falha ao gerar descrições.'}`)
+  } finally {
+    gerandoDesc.value = false
+    progDesc.value = ''
   }
 }
 

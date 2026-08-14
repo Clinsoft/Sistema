@@ -240,6 +240,9 @@ public class Produto : Entity
 
     public void DefinirFichaTecnica(string? url) => FichaTecnicaUrl = url;
 
+    /// <summary>Define só a descrição complementar (ex.: texto gerado por IA em lote).</summary>
+    public void DefinirDescricaoComplementar(string? texto) => DescricaoComplementar = texto;
+
     // Compatibilidade com chamadas legadas
     public void Editar(string descricao, Guid categoriaId, Guid marcaId, Guid unidadeMedidaId,
         string? codigoBarras, string? ncm, decimal estoqueMinimo, bool ativo)

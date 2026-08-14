@@ -295,6 +295,21 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             ? await db.Categorias.Where(c => c.Id == cid).Select(c => c.Nome).FirstOrDefaultAsync(ct) : null;
         var marca = req.MarcaId is Guid mid
             ? await db.Marcas.Where(m => m.Id == mid).Select(m => m.Nome).FirstOrDefaultAsync(ct) : null;
+
+        try
+        {
+            var texto = await GerarDescricaoIaAsync(req.Nome, categoria, marca, ct);
+            return Ok(new { texto });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { mensagem = ex.Message });
+        }
+    }
+
+    /// <summary>Monta o prompt (com foco nos melhores benefícios + contexto) e chama a IA.</summary>
+    private async Task<string> GerarDescricaoIaAsync(string nome, string? categoria, string? marca, CancellationToken ct)
+    {
         var contexto = "";
         if (!string.IsNullOrWhiteSpace(categoria)) contexto += $" Categoria: {categoria}.";
         if (!string.IsNullOrWhiteSpace(marca) && !string.Equals(marca, "Sem marca", StringComparison.OrdinalIgnoreCase))
@@ -302,24 +317,95 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
 
         var prompt =
             $"Você é um especialista em produtos naturais e saudáveis de uma loja brasileira. " +
-            $"Escreva uma descrição complementar curta e atraente (2 a 4 frases, em português do Brasil) para o produto \"{req.Nome}\".{contexto} " +
-            $"DESTACANDO OS PRINCIPAIS BENEFÍCIOS reais e mais relevantes para a saúde e o bem-estar, e uma sugestão de como aproveitá-lo no dia a dia. " +
-            $"Comece pelo benefício mais forte e cite de 2 a 3 benefícios concretos. " +
-            $"Use linguagem comercial e apetitosa, porém honesta: não invente dados nutricionais específicos (números de calorias, vitaminas ou minerais) " +
-            $"nem faça promessas de cura, tratamento ou emagrecimento. " +
-            $"Responda apenas com o texto corrido, sem título, sem markdown, sem aspas e sem lista com marcadores.";
+            $"Escreva uma descrição complementar CURTA E OBJETIVA (1 a 2 frases, no máximo 300 caracteres, em português do Brasil) para o produto \"{nome}\".{contexto} " +
+            $"Destaque os 2 principais benefícios reais para a saúde/bem-estar. Direto ao ponto, sem enrolação. " +
+            $"Linguagem comercial e honesta: não invente números nutricionais nem prometa cura, tratamento ou emagrecimento. " +
+            $"Responda apenas com o texto corrido, sem título, sem markdown, sem aspas e sem lista.";
 
-        try
+        var texto = openai.Configurado
+            ? await openai.GerarTextoAsync(prompt, ct)
+            : await gemini.GerarTextoAsync(prompt, ct);
+        return LimitarTexto(texto, 490); // curto e cabe na coluna (nvarchar 500)
+    }
+
+    /// <summary>Corta o texto no limite, tentando terminar numa frase (ponto final).</summary>
+    private static string LimitarTexto(string? s, int max)
+    {
+        s = (s ?? "").Trim();
+        if (s.Length <= max) return s;
+        var corte = s[..max];
+        var ultimoPonto = corte.LastIndexOf('.');
+        return ultimoPonto > max * 0.6 ? corte[..(ultimoPonto + 1)] : corte.TrimEnd();
+    }
+
+    /// <summary>
+    /// Gera a descrição complementar por IA em LOTE (paginado por 'offset'; o front repete
+    /// até acabar). 'substituir=true' refaz todas; false só preenche as vazias. Cada item usa
+    /// nome + categoria + marca no prompt. As chamadas da página vão em paralelo.
+    /// </summary>
+    [HttpPost("gerar-descricoes-lote")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> GerarDescricoesLote(
+        [FromQuery] Guid empresaId, [FromQuery] int offset = 0,
+        [FromQuery] int limite = 12, [FromQuery] bool substituir = true,
+        CancellationToken ct = default)
+    {
+        if (!openai.Configurado && !gemini.Configurado)
+            return StatusCode(503, new { mensagem = "IA não configurada no servidor (OpenAI:ApiKey ou Gemini:ApiKey)." });
+        limite = Math.Clamp(limite, 1, 20);
+
+        var baseQuery = db.Produtos.Where(p => p.EmpresaId == empresaId && p.Ativo).OrderBy(p => p.Codigo);
+        var total = await baseQuery.CountAsync(ct);
+
+        var pagina = await (
+            from p in baseQuery.Skip(offset).Take(limite)
+            join c in db.Categorias on p.CategoriaId equals c.Id into cj
+            from c in cj.DefaultIfEmpty()
+            join m in db.Marcas on p.MarcaId equals m.Id into mj
+            from m in mj.DefaultIfEmpty()
+            select new
+            {
+                p.Id, p.Descricao,
+                Categoria = c != null ? c.Nome : null,
+                Marca = m != null ? m.Nome : null,
+                p.DescricaoComplementar
+            }).ToListAsync(ct);
+
+        var alvo = substituir
+            ? pagina
+            : pagina.Where(x => string.IsNullOrWhiteSpace(x.DescricaoComplementar)).ToList();
+        var jaTinham = pagina.Count - alvo.Count;
+
+        // IA em paralelo (não toca no banco); o db só é usado antes (carregar) e depois (salvar).
+        var resultados = await Task.WhenAll(alvo.Select(async x =>
         {
-            var texto = openai.Configurado
-                ? await openai.GerarTextoAsync(prompt, ct)
-                : await gemini.GerarTextoAsync(prompt, ct);
-            return Ok(new { texto });
-        }
-        catch (Exception ex)
+            try
+            {
+                var t = await GerarDescricaoIaAsync(x.Descricao, x.Categoria, x.Marca, ct);
+                return (x.Id, Texto: string.IsNullOrWhiteSpace(t) ? null : t.Trim());
+            }
+            catch { return (x.Id, Texto: (string?)null); }
+        }));
+
+        int gerados = 0, falhas = 0;
+        foreach (var r in resultados)
         {
-            return StatusCode(502, new { mensagem = ex.Message });
+            if (r.Texto is null) { falhas++; continue; }
+            var prod = await db.Produtos.FindAsync([r.Id], ct);
+            if (prod is null) { falhas++; continue; }
+            prod.DefinirDescricaoComplementar(r.Texto);
+            gerados++;
         }
+        if (gerados > 0) await uow.SalvarAsync(ct);
+
+        var proximoOffset = offset + pagina.Count;
+        return Ok(new
+        {
+            total, processados = pagina.Count,
+            gerados, jaTinham, falhas,
+            proximoOffset,
+            concluido = proximoOffset >= total || pagina.Count == 0,
+        });
     }
 
     [HttpGet]

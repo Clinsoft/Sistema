@@ -272,8 +272,12 @@
           <div class="text-body-2 text-medium-emphasis mb-5">
             {{ new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) }}
           </div>
-          <v-select v-model="abertura.localEstoqueId" :items="locais" item-title="nome" item-value="id"
+          <v-select v-model="abertura.localEstoqueId" :items="locaisAbertura" item-title="nome" item-value="id"
             label="Local de Estoque *" variant="outlined" density="comfortable" class="mb-3 text-left"
+            :readonly="!podeEscolherLocal" :disabled="!podeEscolherLocal"
+            :hint="!podeEscolherLocal ? 'Sua unidade — definida pelo cadastro' : undefined"
+            :persistent-hint="!podeEscolherLocal"
+            :menu-icon="podeEscolherLocal ? undefined : ''"
             :rules="[r => !!r || 'Obrigatório']" />
           <v-text-field v-model.number="abertura.saldoAbertura" label="Fundo de troco inicial (R$)"
             type="number" variant="outlined" density="comfortable" prefix="R$" class="mb-4"
@@ -412,6 +416,16 @@ const caixasAbertos = ref<any[]>([])
 // Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
 const podeSupervisionar = computed(() =>
   ['Administrador', 'Gerente'].includes(auth.usuario?.role ?? ''))
+
+// Escolher a loja ao abrir o caixa: só supervisores, ou quem não tem unidade
+// fixa. Colaborador com vínculo abre SEMPRE na própria unidade (não escolhe).
+const podeEscolherLocal = computed(() =>
+  podeSupervisionar.value || !auth.usuario?.localEstoqueId)
+// Itens do seletor de local na abertura: travado → só a unidade do colaborador.
+const locaisAbertura = computed(() =>
+  podeEscolherLocal.value
+    ? locais.value
+    : locais.value.filter((l: any) => l.id === auth.usuario?.localEstoqueId))
 // Atendente: só o próprio caixa e só do dia (sem histórico nem filtro de período).
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 

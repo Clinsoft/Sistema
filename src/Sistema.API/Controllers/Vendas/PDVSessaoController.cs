@@ -28,6 +28,17 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         if (cmd.UsuarioId == Guid.Empty)
             return BadRequest(new { mensagem = "Usuário não identificado. Faça login novamente." });
 
+        // Colaborador com unidade fixa NÃO escolhe a loja: abre o caixa sempre na
+        // própria unidade. Só supervisores (Administrador/Gerente) podem abrir em
+        // qualquer loja. Vale mesmo que o cliente envie outro localEstoqueId.
+        var vinculo = await db.Usuarios
+            .Where(u => u.Id == cmd.UsuarioId)
+            .Select(u => new { u.Perfil, u.LocalEstoqueId })
+            .FirstOrDefaultAsync(ct);
+        var supervisor = vinculo?.Perfil is "Administrador" or "Gerente";
+        if (vinculo?.LocalEstoqueId is Guid unidade && !supervisor && cmd.LocalEstoqueId != unidade)
+            cmd = cmd with { LocalEstoqueId = unidade };
+
         var id = await mediator.Send(cmd, ct);
         return Ok(new { id });
     }

@@ -569,7 +569,7 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             documentoOrigem: entrada.ChaveAcesso));
 
         novo.EntradaEstoque(qtd, custo);
-        if (item.PrecoVendaSugerido.HasValue && novo.PrecoVenda <= 0)
+        if (item.PrecoVendaSugerido.HasValue)
             novo.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? novo.Markup);
 
         // 5) Memoriza o de-para no produto de destino.
@@ -988,10 +988,11 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             if (produto is not null)
             {
                 produto.EntradaEstoque(item.QuantidadeEstoque, item.CustoUnitarioFinal);
-                // Só define o preço de venda quando o produto ainda NÃO tem preço (novo/sem preço).
-                // Não sobrescreve o preço de produto já cadastrado — senão a escrituração de uma
-                // entrada (ex.: de Rio Claro) mexeria no preço/balança de produtos vendidos em Ipanema.
-                if (item.PrecoVendaSugerido.HasValue && produto.PrecoVenda <= 0)
+                // A etapa "Custos e Preços" é autoritativa: aplica o "Novo preço" (por unidade,
+                // já com o fator de conversão) sempre que o item foi precificado nesta entrada.
+                // Para NÃO reprecificar um produto, use "Manter preço atual" no menu Markup em lote
+                // (ele iguala o markup ao preço salvo, resultando no mesmo preço → sem alteração).
+                if (item.PrecoVendaSugerido.HasValue)
                     produto.AtualizarPrecoEMarkup(item.PrecoVendaSugerido.Value, item.MarkupSugerido ?? produto.Markup);
             }
 

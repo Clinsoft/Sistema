@@ -347,18 +347,18 @@
                 Markup em lote
               </v-btn>
             </template>
-            <v-list density="compact" min-width="320">
+            <v-list density="compact" min-width="340">
               <v-list-subheader>Aplicar a todos os itens vinculados</v-list-subheader>
-              <v-list-item prepend-icon="mdi-tag-outline"
-                title="Manter markup atual de cada produto"
-                subtitle="Preço = custo × (1 + markup% / 100) do cadastro"
-                @click="aplicarModoMarkup('manter_markup')" />
-              <v-list-item prepend-icon="mdi-currency-usd"
-                title="Manter preço atual de cada produto"
-                subtitle="Markup = preço salvo ÷ custo do XML"
+              <v-list-item prepend-icon="mdi-currency-usd-off"
+                title="Manter o preço atual"
+                subtitle="Não mexe no preço de venda de cada produto"
                 @click="aplicarModoMarkup('manter_preco')" />
+              <v-list-item prepend-icon="mdi-tag-outline"
+                title="Manter o markup atual de cada produto"
+                subtitle="Preço = custo desta entrada × markup do cadastro"
+                @click="aplicarModoMarkup('manter_markup')" />
               <v-divider class="my-1" />
-              <v-list-subheader>Markup único para todos</v-list-subheader>
+              <v-list-subheader>Definir um markup para todos os produtos</v-list-subheader>
               <v-list-item>
                 <div class="d-flex align-center gap-2 py-1">
                   <v-text-field v-model.number="markupGlobal" type="number" min="0" step="5"
@@ -1494,6 +1494,19 @@ const pedidosCompra = ref<any[]>([])
 const produtos = ref<any[]>([])
 const templatesEtiqueta = ref<any[]>([])
 
+// Padrões para o cadastro de produto novo a partir da entrada: marca "Sem marca"
+// e categoria "Diversos" (cai na primeira existente se esses nomes não existirem).
+const marcaPadraoId = computed(() =>
+  marcas.value.find((m: any) => (m.nome ?? '').trim().toLowerCase() === 'sem marca')?.id
+  ?? marcas.value[0]?.id ?? '')
+const categoriaPadraoId = computed(() =>
+  categorias.value.find((c: any) => (c.nome ?? '').trim().toLowerCase() === 'diversos')?.id
+  ?? categorias.value[0]?.id ?? '')
+/** Sigla da unidade de medida a partir do id (para levar ao passo de conversão). */
+function siglaUnidade(unidadeMedidaId: string): string | undefined {
+  return unidadesMedida.value.find((u: any) => u.id === unidadeMedidaId)?.sigla
+}
+
 // Dialog criar produto a partir do XML
 const dlgCriarProduto = ref(false)
 const itemCriando = ref<any>(null)
@@ -1865,14 +1878,14 @@ async function criarProdutoDoItem(item: any) {
     }
   }
 
-  // Garante categoria/marca/unidade
-  let categoriaId = sugerirCategoria(item.descricaoXml ?? '') ?? categorias.value[0]?.id
+  // Garante categoria/marca/unidade (padrões: categoria "Diversos", marca "Sem marca")
+  let categoriaId = sugerirCategoria(item.descricaoXml ?? '') ?? categoriaPadraoId.value
   if (!categoriaId) {
-    const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Geral' })
+    const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Diversos' })
     categorias.value = [...categorias.value, rc.data]
     categoriaId = rc.data.id
   }
-  let marcaId = marcas.value[0]?.id
+  let marcaId = marcaPadraoId.value
   if (!marcaId) {
     const rm = await api.post('/marcas', { empresaId: auth.empresaId, nome: 'Sem marca' })
     marcas.value = [...marcas.value, rm.data]
@@ -1930,6 +1943,9 @@ async function criarProdutoDoItem(item: any) {
   // Vincula ao item e adiciona à lista local
   item._produtoId = novoId
   item._produtoDescricao = item.descricaoXml
+  // Unidade de medida usada na criação → passo de conversão (fator)
+  const siglaCriada = siglaUnidade(unidadeMedidaId)
+  if (siglaCriada) item._unidade = siglaCriada
   item._alterado = true
   if (!produtos.value.find((p: any) => p.id === novoId))
     produtos.value = [...produtos.value, { id: novoId, descricao: item.descricaoXml, codigo: r.data.codigo ?? '' }]
@@ -1959,8 +1975,8 @@ async function abrirCriarProduto(item: any) {
     codigoBarras: item.codigoBarras ?? '',
     unidadeMedidaId: unidadesMedida.value.find((u: any) =>
       u.sigla === item._unidade || u.sigla === item.unidadeXml)?.id ?? '',
-    categoriaId: sugerirCategoria(item.descricaoXml ?? '') ?? categorias.value[0]?.id ?? '',
-    marcaId: marcas.value[0]?.id ?? '',
+    categoriaId: sugerirCategoria(item.descricaoXml ?? '') ?? categoriaPadraoId.value,
+    marcaId: marcaPadraoId.value,
     custoUnitario: Math.round(custo * 100) / 100,
     precoVenda: Math.round(custo * (1 + (item._markup || 150) / 100) * 100) / 100,
     // Fiscal — herdado da Configuração Fiscal (tributação padrão do cadastro base)
@@ -1981,22 +1997,22 @@ async function salvarNovoProduto() {
     return
   }
 
-  // Garantir categoria
+  // Garantir categoria (padrão "Diversos")
   if (!np.categoriaId) {
     if (!categorias.value.length) {
-      const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Geral' }).catch(() => null)
+      const rc = await api.post('/categorias', { empresaId: auth.empresaId, nome: 'Diversos' }).catch(() => null)
       if (rc) { categorias.value = [rc.data]; np.categoriaId = rc.data.id }
     } else {
-      np.categoriaId = categorias.value[0].id
+      np.categoriaId = categoriaPadraoId.value
     }
   }
-  // Garantir marca
+  // Garantir marca (padrão "Sem marca")
   if (!np.marcaId) {
     if (!marcas.value.length) {
       const rm = await api.post('/marcas', { empresaId: auth.empresaId, nome: 'Sem marca' }).catch(() => null)
       if (rm) { marcas.value = [rm.data]; np.marcaId = rm.data.id }
     } else {
-      np.marcaId = marcas.value[0].id
+      np.marcaId = marcaPadraoId.value
     }
   }
   if (!np.categoriaId || !np.marcaId) {
@@ -2037,6 +2053,9 @@ async function salvarNovoProduto() {
         if (itemCriando.value) {
           itemCriando.value._produtoId = existente.id
           itemCriando.value._produtoDescricao = existente.descricao
+          // Unidade de estoque do produto → passo de conversão (usa a do cadastro existente)
+          const sigla = existente.unidadeSigla ?? existente.unidadeMedida ?? siglaUnidade(np.unidadeMedidaId)
+          if (sigla) itemCriando.value._unidade = sigla
           itemCriando.value._alterado = true
         }
         dlgCriarProduto.value = false
@@ -2073,6 +2092,9 @@ async function salvarNovoProduto() {
     if (itemCriando.value) {
       itemCriando.value._produtoId = novoProdId
       itemCriando.value._produtoDescricao = np.descricao
+      // Unidade de medida escolhida no cadastro → passo de conversão (fator)
+      const sigla = siglaUnidade(np.unidadeMedidaId)
+      if (sigla) itemCriando.value._unidade = sigla
       itemCriando.value._alterado = true
     }
     dlgCriarProduto.value = false
@@ -2134,23 +2156,29 @@ function aplicarMarkupGlobal() {
   if (!markupGlobal.value || markupGlobal.value <= 0) return
   itensEditaveis.value.forEach(item => {
     item._markup = markupGlobal.value   // já em %
-    item._alterado = true
+    onMarkupChange(item)                 // recalcula o "Novo preço" e marca _alterado
   })
 }
 
 function aplicarModoMarkup(modo: 'manter_markup' | 'manter_preco') {
   itensEditaveis.value.forEach(item => {
-    const custo = item.custoUnitarioFinal || item.valorUnitarioXml || 0
+    // Custo por UNIDADE desta entrada (já com o fator) — base para casar preço/markup.
+    const custo = custoUnitario(item)
     if (custo <= 0 || !item._produtoId) return
     const prod = produtos.value.find((p: any) => p.id === item._produtoId)
     if (!prod) return
     if (modo === 'manter_markup') {
       // prod.markup é multiplicador (ex: 3.9253); converter para %
       const mkp = prod.markup ?? prod.markupVenda ?? 0
-      if (mkp > 0) { item._markup = Math.round((mkp - 1) * 10000) / 100; item._alterado = true }
+      if (mkp > 0) { item._markup = Math.round((mkp - 1) * 10000) / 100; onMarkupChange(item) }
     } else {
+      // Manter o preço atual: markup = preço salvo ÷ custo/un → preço sugerido = preço atual.
       const preco = prod.precoVenda ?? prod.preco ?? 0
-      if (preco > 0) { item._markup = Math.round((preco / custo - 1) * 10000) / 100; item._alterado = true }
+      if (preco > 0) {
+        item._markup = Math.round((preco / custo - 1) * 10000) / 100
+        item._precoVenda = Math.round(preco * 100) / 100   // preserva o preço atual exato
+        item._alterado = true
+      }
     }
   })
 }

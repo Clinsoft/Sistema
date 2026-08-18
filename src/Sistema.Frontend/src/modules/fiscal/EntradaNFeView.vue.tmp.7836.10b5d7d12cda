@@ -296,10 +296,13 @@
         style="background:#1e1e2e; border:1px solid rgba(255,255,255,0.08)">
 
         <span class="text-body-2" style="color:rgba(255,255,255,0.7); white-space:nowrap">
-          <v-icon size="14" class="mr-1" color="white">mdi-alert-circle-outline</v-icon>
-          {{ itensSemProduto }} sem vínculo
-          <span v-if="itensAlterados > 0" style="color:#ffa726" class="ml-2 font-weight-medium">
-            · {{ itensAlterados }} alterado(s)
+          <template v-if="itensSemProduto > 0">
+            <v-icon size="14" class="mr-1" color="white">mdi-alert-circle-outline</v-icon>
+            {{ itensSemProduto }} sem vínculo
+          </template>
+          <span v-if="itensAlterados > 0" style="color:#ffa726" class="font-weight-medium"
+            :class="{ 'ml-2': itensSemProduto > 0 }">
+            {{ itensSemProduto > 0 ? '· ' : '' }}{{ itensAlterados }} alterado(s)
           </span>
         </span>
 

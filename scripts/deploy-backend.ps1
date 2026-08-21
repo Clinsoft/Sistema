@@ -1,7 +1,10 @@
 # Deploy do backend (.NET 8) para o VPS.
-# Publica a API em Release e envia os 4 Sistema.*.dll JUNTOS para /api, depois
-# reinicia o serviço. Enviar os 4 juntos evita BadImageFormatException por
-# mistura de versões (o erro real fica mascarado). Versão PowerShell.
+# Publica a API em Release e envia TODAS as DLLs + metadados (.deps.json /
+# .runtimeconfig.json) para /api, depois reinicia o serviço. Enviar tudo junto
+# evita dois problemas: BadImageFormatException por mistura de versões dos
+# Sistema.*.dll, e dependência (ex.: Newtonsoft, ImageSharp) que muda de versão
+# e ficaria com o DLL antigo no runtime. NÃO remove nada (sem --delete), então
+# o appsettings.Production.json no servidor fica intacto. Versão PowerShell.
 #
 # Uso:  .\scripts\deploy-backend.ps1
 #   ou: powershell -ExecutionPolicy Bypass -File scripts\deploy-backend.ps1
@@ -30,17 +33,28 @@ Write-Host "> Publicando backend (Release)..." -ForegroundColor Cyan
 & dotnet publish $Csproj -c Release -o $PubDir --nologo -v q
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish falhou (exit $LASTEXITCODE)" }
 
-# Confere que os 4 DLLs existem antes de enviar.
-$paths = foreach ($d in $Dlls) {
-    $p = Join-Path $PubDir $d
-    if (-not (Test-Path $p)) { throw "DLL nao encontrada apos publish: $d" }
-    $p
+# Sanidade: os 4 Sistema.*.dll precisam existir no publish (BadImageFormatException
+# se subir so parte deles). Eles vao junto com o resto abaixo.
+foreach ($d in $Dlls) {
+    if (-not (Test-Path (Join-Path $PubDir $d))) { throw "DLL nao encontrada apos publish: $d" }
 }
 
-# ── 2. Envia os 4 DLLs juntos ────────────────────────────────────────
-Write-Host "> Enviando os 4 Sistema.*.dll para $ApiDir ..." -ForegroundColor Cyan
-& scp @ScpArgs @paths "${Host_}:$ApiDir/"
-if ($LASTEXITCODE -ne 0) { throw "Falha no scp dos DLLs (exit $LASTEXITCODE)" }
+# ── 2. Envia TODAS as DLLs + metadados do publish ────────────────────
+# Copiar so os 4 Sistema.*.dll quebra quando uma DEPENDENCIA muda de versao
+# (ex.: Newtonsoft.Json 11->13): o runtime ficaria com o DLL antigo. Enviamos
+# todos os *.dll e os metadados (.deps.json / .runtimeconfig.json), que
+# descrevem as versoes resolvidas. NAO usamos --delete e nao tocamos em
+# appsettings.Production.json (nao e .dll nem metadado do publish).
+Write-Host "> Enviando todas as DLLs + metadados para $ApiDir ..." -ForegroundColor Cyan
+$envios = @()
+$envios += (Get-ChildItem -Path $PubDir -Filter '*.dll' | Select-Object -ExpandProperty FullName)
+foreach ($meta in @('Sistema.API.deps.json', 'Sistema.API.runtimeconfig.json')) {
+    $mp = Join-Path $PubDir $meta
+    if (Test-Path $mp) { $envios += $mp }
+}
+& scp @ScpArgs @envios "${Host_}:$ApiDir/"
+if ($LASTEXITCODE -ne 0) { throw "Falha no scp dos binarios (exit $LASTEXITCODE)" }
+Write-Host "  ($($envios.Count) arquivos enviados)"
 
 # ── 3. Reinicia o serviço e confere ──────────────────────────────────
 Write-Host "> Reiniciando o servico $Service ..." -ForegroundColor Cyan

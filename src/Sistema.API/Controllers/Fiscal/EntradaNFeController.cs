@@ -1471,11 +1471,15 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         var codsBarras = pendentes.Where(i => i.CodigoBarras != null).Select(i => i.CodigoBarras!).Distinct().ToList();
         var codsForn = pendentes.Where(i => i.CodigoFornecedor != null).Select(i => i.CodigoFornecedor!).Distinct().ToList();
 
+        // Agrupa por chave (ILookup): o MESMO código pode existir em mais de um
+        // produto (código de fornecedor reusado / código interno duplicado). Um
+        // ToDictionary estouraria com "same key" — aqui guardamos todos os
+        // candidatos e escolhemos no laço o que tem descrição compatível.
         var porBarras = codsBarras.Count > 0
-            ? await db.Produtos.AsNoTracking()
+            ? (await db.Produtos.AsNoTracking()
                 .Where(p => p.EmpresaId == empresaId && p.CodigoBarras != null && codsBarras.Contains(p.CodigoBarras))
-                .ToDictionaryAsync(p => p.CodigoBarras!, ct)
-            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+                .ToListAsync(ct)).ToLookup(p => p.CodigoBarras!)
+            : Enumerable.Empty<Domain.Estoque.Entities.Produto>().ToLookup(p => p.CodigoBarras!);
 
         // De-para: produtos que já memorizaram o código deste emitente
         var cnpjEmitente = CnpjRaw(entrada.EmitenteCnpj);
@@ -1483,34 +1487,36 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(f => f.EmpresaId == empresaId && f.Cnpj == cnpjEmitente, ct);
 
         var porDePara = fornecedor is not null && codsForn.Count > 0
-            ? await db.Produtos.AsNoTracking()
+            ? (await db.Produtos.AsNoTracking()
                 .Where(p => p.EmpresaId == empresaId
                          && p.FornecedorPrincipalId == fornecedor.Id
                          && p.CodigoFornecedorPrincipal != null
                          && codsForn.Contains(p.CodigoFornecedorPrincipal))
-                .ToDictionaryAsync(p => p.CodigoFornecedorPrincipal!, ct)
-            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+                .ToListAsync(ct)).ToLookup(p => p.CodigoFornecedorPrincipal!)
+            : Enumerable.Empty<Domain.Estoque.Entities.Produto>().ToLookup(p => p.CodigoFornecedorPrincipal!);
 
         var porCodigo = codsForn.Count > 0
-            ? await db.Produtos.AsNoTracking()
+            ? (await db.Produtos.AsNoTracking()
                 .Where(p => p.EmpresaId == empresaId && codsForn.Contains(p.Codigo))
-                .ToDictionaryAsync(p => p.Codigo, ct)
-            : new Dictionary<string, Domain.Estoque.Entities.Produto>();
+                .ToListAsync(ct)).ToLookup(p => p.Codigo)
+            : Enumerable.Empty<Domain.Estoque.Entities.Produto>().ToLookup(p => p.Codigo);
 
         int vinculados = 0;
         foreach (var item in pendentes)
         {
             Domain.Estoque.Entities.Produto? prod = null;
-            // 1) EAN: chave forte, casa direto. 2) de-para e 3) código interno: só casam
-            // se a DESCRIÇÃO também bater — blindagem contra reuso de código pelo fornecedor
-            // (que fazia casar no produto errado). Sem descrição parecida, o item fica pendente.
-            if (item.CodigoBarras != null && porBarras.TryGetValue(item.CodigoBarras, out var pB))
+            // 1) EAN: chave forte, casa direto (se houver mais de um, pega o 1º).
+            // 2) de-para e 3) código interno: só casam se a DESCRIÇÃO também bater —
+            // blindagem contra reuso de código pelo fornecedor (que fazia casar no
+            // produto errado). Com vários candidatos, escolhe o de descrição
+            // compatível; sem nenhum, o item fica pendente para conferência manual.
+            if (item.CodigoBarras != null && porBarras[item.CodigoBarras].FirstOrDefault() is { } pB)
                 prod = pB;
-            else if (item.CodigoFornecedor != null && porDePara.TryGetValue(item.CodigoFornecedor, out var pD)
-                     && DescricoesCompativeis(item.DescricaoXml, pD.Descricao))
+            else if (item.CodigoFornecedor != null
+                     && porDePara[item.CodigoFornecedor].FirstOrDefault(p => DescricoesCompativeis(item.DescricaoXml, p.Descricao)) is { } pD)
                 prod = pD;
-            else if (item.CodigoFornecedor != null && porCodigo.TryGetValue(item.CodigoFornecedor, out var pC)
-                     && DescricoesCompativeis(item.DescricaoXml, pC.Descricao))
+            else if (item.CodigoFornecedor != null
+                     && porCodigo[item.CodigoFornecedor].FirstOrDefault(p => DescricoesCompativeis(item.DescricaoXml, p.Descricao)) is { } pC)
                 prod = pC;
 
             if (prod is not null)

@@ -1386,13 +1386,15 @@ function beneficiarioPayload(id: string | null) {
 const route = useRoute()
 
 onMounted(async () => {
-  // Vindo do Dashboard (calendário) com ?data=YYYY-MM-DD: filtra só aquele dia.
+  // Vindo do Dashboard (calendário de contas a pagar) com ?data=YYYY-MM-DD:
+  // filtra aquele dia e mostra só o que falta pagar (em aberto), não as pagas —
+  // o calendário é a agenda do que ainda há a pagar no dia.
   const data = route.query.data
   if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data)) {
     filtros.value.inicio = data
     filtros.value.fim = data
     filtros.value.tudo = false
-    filtros.value.status = 'Todos'
+    filtros.value.status = 'EmAberto'
     filtros.value.categoria = 'Todas'
   }
   // Vindo do sininho (?vencidas=1): mostra todas as vencidas, sem limitar ao mês.

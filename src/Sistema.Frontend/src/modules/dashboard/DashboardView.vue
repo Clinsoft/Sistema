@@ -210,12 +210,18 @@
                 <v-list density="compact" class="pa-0" style="max-height: 120px; overflow-y: auto">
                   <v-list-item v-for="c in contasDoDia" :key="c.id" class="px-2" min-height="34">
                     <template #prepend>
-                      <v-icon :icon="c.vencido ? 'mdi-alert-circle' : 'mdi-clock-outline'"
-                        :color="c.vencido ? 'error' : 'warning'" size="16" class="mr-1" />
+                      <v-icon
+                        :icon="c.status === 'Pago' ? 'mdi-check-circle'
+                          : (c.vencido ? 'mdi-alert-circle' : 'mdi-clock-outline')"
+                        :color="c.status === 'Pago' ? 'success' : (c.vencido ? 'error' : 'warning')"
+                        size="16" class="mr-1" />
                     </template>
                     <v-list-item-title class="text-caption">{{ c.descricao }}</v-list-item-title>
                     <template #append>
-                      <span class="text-caption font-weight-bold text-error">{{ fmt(c.saldo) }}</span>
+                      <span class="text-caption font-weight-bold"
+                        :class="c.status === 'Pago' ? 'text-success' : 'text-error'">
+                        {{ c.status === 'Pago' ? fmt(c.valorOriginal) : fmt(c.saldo) }}
+                      </span>
                     </template>
                   </v-list-item>
                 </v-list>
@@ -1048,7 +1054,7 @@ function renderizarGraficoPe() {
 
 // ── Contas a Pagar — Agenda do mês ───────────────────────────────────────────
 interface ContaPagar {
-  id: string; descricao: string; saldo: number; dataVencimento: string
+  id: string; descricao: string; saldo: number; valorOriginal: number; dataVencimento: string
   status: string; parcela: number; totalParcelas: number; vencido: boolean
 }
 const contasMes = ref<ContaPagar[]>([])
@@ -1125,8 +1131,11 @@ async function carregarContasMes() {
     const res = await api.get<ContaPagar[]>('/contas-pagar', {
       params: { empresaId: auth.empresaId, inicio, fim }
     })
-    // Só o que ainda falta pagar (em aberto / parcial), não cancelado nem quitado.
-    contasMes.value = (res.data ?? []).filter(c => c.status !== 'Pago' && c.status !== 'Cancelado')
+    // Todas as contas do dia (abertas, parciais E pagas) — só descarta as que não
+    // representam pagamento real (cancelado/estornado/renegociado). As pagas têm
+    // saldo 0, então NÃO inflam o total "a pagar" da célula; aparecem no dia.
+    contasMes.value = (res.data ?? []).filter(c =>
+      c.status !== 'Cancelado' && c.status !== 'Estornado' && c.status !== 'Renegociado')
   } catch { contasMes.value = [] } finally { carregandoCP.value = false }
 }
 

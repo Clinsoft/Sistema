@@ -603,9 +603,16 @@ public class WhatsAppMensagemController(
         if (cfg?.PhoneNumberId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "WhatsApp não configurado." });
 
+        // Variáveis: usa as enviadas; senão resolve pelo mapeamento (VariaveisJson) do
+        // template a partir do nome do contato — evita o erro 132000 (nº de params)
+        // em templates com {{1}} (ex.: "Ola {{1}}, tudo bem?") ao iniciar conversa.
+        var variaveis = req.Variaveis?.ToList() is { Count: > 0 } vs
+            ? vs
+            : await ResolverVariaveisTemplateAsync(req.EmpresaId, req.TemplateName, req.Nome, telefone, ct);
+
         var (sucesso, wamId, erro) = await whatsAppService.EnviarTemplate(
             cfg.PhoneNumberId, cfg.AccessToken, telefone, req.TemplateName,
-            req.Idioma ?? "pt_BR", req.Variaveis ?? []);
+            req.Idioma ?? "pt_BR", variaveis);
         if (!sucesso)
             return StatusCode(502, new { mensagem = $"Falha ao enviar template: {erro}" });
 
@@ -616,6 +623,46 @@ public class WhatsAppMensagemController(
             req.EmpresaId, telefone, nome, $"📋 Template: {req.TemplateName}", wamId, localEstoqueId: req.LocalEstoqueId));
         await uow.SalvarAsync(ct);
         return Ok(new { wamId });
+    }
+
+    private static readonly JsonSerializerOptions _jsonVarsCI = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>
+    /// Resolve as variáveis de um template (pelo mapeamento VariaveisJson) a partir do
+    /// nome do contato, quando o chamador não as informou. Assim um template com {{1}}
+    /// (ex.: primeiro nome) recebe o valor certo e não estoura o erro 132000 da Meta.
+    /// </summary>
+    private async Task<List<string>> ResolverVariaveisTemplateAsync(
+        Guid empresaId, string templateName, string? nome, string telefone, CancellationToken ct)
+    {
+        var varsJson = await db.TemplatesWhatsAppMensagem.AsNoTracking()
+            .Where(t => t.EmpresaId == empresaId && t.NomeMeta == templateName)
+            .Select(t => t.VariaveisJson).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(varsJson)) return [];
+
+        // Nome de contexto: informado > salvo nas mensagens > "cliente".
+        var nomeCtx = nome;
+        if (string.IsNullOrWhiteSpace(nomeCtx))
+            nomeCtx = await db.MensagensWhatsApp
+                .Where(m => m.Telefone == telefone && m.NomeContato != null)
+                .Select(m => m.NomeContato).FirstOrDefaultAsync(ct);
+        nomeCtx = string.IsNullOrWhiteSpace(nomeCtx) ? "cliente" : nomeCtx.Trim();
+        var primeiro = nomeCtx.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? nomeCtx;
+
+        var ctx = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["nome"] = nomeCtx, ["nome_completo"] = nomeCtx, ["primeiro_nome"] = primeiro,
+        };
+        try
+        {
+            var maps = JsonSerializer.Deserialize<List<VariavelMapDto>>(varsJson, _jsonVarsCI) ?? [];
+            // Campo desconhecido cai no primeiro nome (valor não-vazio; a Meta rejeita param vazio).
+            return maps.OrderBy(v => v.Posicao)
+                .Select(v => v.Campo is not null && ctx.TryGetValue(v.Campo, out var val)
+                             && !string.IsNullOrWhiteSpace(val) ? val : primeiro)
+                .ToList();
+        }
+        catch { return []; }
     }
 
     /// <summary>Envia a mensagem interativa de catálogo (catálogo conectado ao número).</summary>
@@ -888,3 +935,6 @@ public record ResponderRequest(Guid EmpresaId, string Texto, Guid? LocalEstoqueI
 public record ResponderTemplateRequest(
     Guid EmpresaId, string TemplateName, string? Idioma = "pt_BR",
     IEnumerable<string>? Variaveis = null, string? Nome = null, Guid? LocalEstoqueId = null);
+
+// Mapeamento posição→campo do VariaveisJson do template (ex.: {"posicao":1,"campo":"primeiro_nome"}).
+public record VariavelMapDto(int Posicao, string? Campo);

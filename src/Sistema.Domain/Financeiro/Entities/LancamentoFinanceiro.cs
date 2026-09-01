@@ -69,6 +69,27 @@ public class LancamentoFinanceiro : Entity
 
     public void AnexarComprovante(string url) => ComprovanteUrl = url;
 
+    /// <summary>
+    /// Desfaz a baixa (pagamento): volta o título para Em Aberto, zera o valor pago,
+    /// a data de pagamento e remove o comprovante. Retorna a conta bancária e o valor
+    /// que haviam sido debitados, para o chamador creditar de volta (se havia).
+    /// Usado quando o pagamento foi lançado errado (ex.: comprovante trocado).
+    /// </summary>
+    public (Guid? contaBancariaId, decimal valorEstornado) EstornarPagamento()
+    {
+        if (Status != StatusLancamento.Pago && Status != StatusLancamento.PagoParcialmente)
+            throw new InvalidOperationException("Só é possível estornar o pagamento de um título pago.");
+
+        var contaBancaria = ContaBancariaId;
+        var valor = ValorPago;
+        ValorPago = 0;
+        DataPagamento = null;
+        ContaBancariaId = null;
+        ComprovanteUrl = null;
+        Status = StatusLancamento.EmAberto;
+        return (contaBancaria, valor);
+    }
+
     /// <summary>Define a parte de juro embutida na parcela (o restante do valor é amortização do principal).</summary>
     public void DefinirJuros(decimal? valorJuros) => ValorJuros = valorJuros;
 

@@ -163,6 +163,33 @@ public class ContasPagarController(
         return NoContent();
     }
 
+    /// <summary>Estorna o pagamento de um título (volta para Em Aberto, remove o
+    /// comprovante e credita de volta a conta bancária, se havia). Usado quando o
+    /// pagamento foi lançado errado (ex.: comprovante trocado).</summary>
+    [HttpPost("{id:guid}/estornar-pagamento")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> EstornarPagamento(Guid id, CancellationToken ct)
+    {
+        var lancamento = await repo.ObterPorIdAsync(id, ct)
+            ?? throw new KeyNotFoundException("Lançamento não encontrado.");
+
+        if (lancamento.Status != StatusLancamento.Pago && lancamento.Status != StatusLancamento.PagoParcialmente)
+            return BadRequest(new { mensagem = "Só é possível estornar um título pago." });
+
+        var (contaBancariaId, valor) = lancamento.EstornarPagamento();
+
+        // Credita de volta na conta bancária, se o pagamento havia debitado uma.
+        if (contaBancariaId.HasValue && valor > 0)
+        {
+            var conta = await contaRepo.ObterPorIdAsync(contaBancariaId.Value, ct);
+            if (conta is not null) { conta.Creditar(valor); contaRepo.Atualizar(conta); }
+        }
+
+        repo.Atualizar(lancamento);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     /// <summary>Baixa VÁRIAS contas de uma vez (ex.: um boleto do Rápido 90 que junta vários CT-e).
     /// Paga o saldo de cada título selecionado com a mesma data/conta e anexa o MESMO comprovante a todas.</summary>
     [HttpPost("pagar-lote")]

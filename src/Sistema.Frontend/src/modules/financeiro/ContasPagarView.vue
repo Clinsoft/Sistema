@@ -140,6 +140,10 @@
           <template v-if="!mobile">
             <v-btn icon="mdi-cash-check" size="x-small" color="success" variant="text"
               title="Pagar" @click="abrirPagamento(item)" :disabled="item.status === 'Pago'" />
+            <v-btn v-if="item.status === 'Pago' || item.status === 'PagoParcialmente'"
+              icon="mdi-cash-refund" size="x-small" color="deep-orange" variant="text"
+              title="Estornar pagamento (volta para Em Aberto e remove o comprovante)"
+              @click="estornarPagamento(item)" />
             <v-btn icon="mdi-pencil-outline" size="x-small" color="primary" variant="text"
               title="Editar" @click="abrirEditar(item)" :disabled="item.status === 'Pago'" />
             <v-btn icon="mdi-content-copy" size="x-small" color="indigo" variant="text"
@@ -159,7 +163,10 @@
                 <v-btn icon="mdi-dots-vertical" size="small" variant="text" v-bind="props" />
               </template>
               <v-list density="compact">
-                <v-list-item prepend-icon="mdi-pencil-outline" title="Editar"
+                <v-list-item v-if="item.status === 'Pago' || item.status === 'PagoParcialmente'"
+                  prepend-icon="mdi-cash-refund" title="Estornar pagamento"
+                  @click="estornarPagamento(item)" />
+              <v-list-item prepend-icon="mdi-pencil-outline" title="Editar"
                   :disabled="item.status === 'Pago'" @click="abrirEditar(item)" />
                 <v-list-item prepend-icon="mdi-content-copy" title="Duplicar"
                   @click="duplicarConta(item)" />
@@ -1308,6 +1315,16 @@ async function cancelarTitulo(item: any) {
     notif.ok('Título cancelado.')
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar título.') }
+}
+
+async function estornarPagamento(item: any) {
+  if (!confirm(`Estornar o pagamento de "${item.descricao}" (R$ ${fmt(item.valorPago || item.valorOriginal)})?\n\n`
+    + `O título volta para EM ABERTO, o comprovante é removido e, se o pagamento debitou uma conta bancária, o valor é creditado de volta.`)) return
+  try {
+    await api.post(`/contas-pagar/${item.id}/estornar-pagamento`, {})
+    notif.ok('Pagamento estornado — título voltou para Em Aberto.')
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao estornar o pagamento.') }
 }
 
 // ── Cadastro rápido de fornecedor/beneficiário (sem sair da conta a pagar) ──

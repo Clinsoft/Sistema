@@ -363,6 +363,10 @@
                 <v-list-item v-else-if="item.entradaStatus"
                   prepend-icon="mdi-file-eye-outline" title="Ver escrituração"
                   @click="abrirEscrituracaoDaNota(item)" />
+                <v-list-item v-else-if="notaHistorica(item)"
+                  prepend-icon="mdi-history" title="Anterior ao início do sistema"
+                  subtitle="Nota histórica (antes de 25/07/2026) — não escriturar"
+                  disabled />
                 <v-list-item v-else
                   prepend-icon="mdi-file-import-outline" title="Escriturar Entrada"
                   subtitle="Lançar no estoque e financeiro"
@@ -1173,6 +1177,11 @@ const qtdNaoFinalizadas = computed(() =>
 // Data de início do uso do sistema: notas de compra anteriores são histórico e
 // NÃO devem ser escrituradas (bagunçariam estoque/financeiro de antes).
 const INICIO_ESCRITURACAO = '2026-07-25'
+
+// Nota anterior ao início do sistema = histórico (não deve ser escriturada).
+function notaHistorica(item: any) {
+  return !!item?.dataEmissao && String(item.dataEmissao).slice(0, 10) < INICIO_ESCRITURACAO
+}
 
 // Mostra as NF-e a escriturar desde o início do sistema (elas costumam estar
 // paradas há semanas; o filtro padrão do mês esconderia as anteriores).

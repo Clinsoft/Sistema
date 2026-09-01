@@ -15,6 +15,11 @@ namespace Sistema.API.Controllers.Fiscal;
 [Authorize]
 public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 {
+    /// <summary>Início do uso do sistema: notas de compra anteriores a esta data são
+    /// histórico e NÃO devem ser importadas nem escrituradas (bagunçariam estoque/
+    /// financeiro de antes do sistema).</summary>
+    private static readonly DateTime InicioEscrituracao = new(2026, 7, 25);
+
     // ──────────────────────────────────────────────────────────────────
     // LISTAGEM
     // ──────────────────────────────────────────────────────────────────
@@ -159,6 +164,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         NFeParseResult parsed;
         try { parsed = ParsearNFeXml(xml); }
         catch (Exception ex) { return BadRequest(new { mensagem = $"Erro ao interpretar XML: {ex.Message}" }); }
+
+        // Corte de início do sistema: não importa notas antigas (histórico).
+        if (parsed.DataEmissao.Date < InicioEscrituracao)
+            return BadRequest(new { mensagem =
+                $"NF-e de {parsed.DataEmissao:dd/MM/yyyy} é anterior ao início do uso do sistema "
+                + $"({InicioEscrituracao:dd/MM/yyyy}). Notas antigas não devem ser importadas — são histórico." });
 
         // Evitar duplicata
         var entradaExistente = await db.EntradasNFe
@@ -313,6 +324,12 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         var nota = await db.NotasFiscaisRecebidas
             .FirstOrDefaultAsync(n => n.Id == notaId && n.EmpresaId == req.EmpresaId, ct)
             ?? throw new KeyNotFoundException("NF-e não encontrada.");
+
+        // Corte de início do sistema: não escritura notas anteriores (histórico).
+        if (nota.DataEmissao.Date < InicioEscrituracao)
+            return BadRequest(new { mensagem =
+                $"NF-e de {nota.DataEmissao:dd/MM/yyyy} é anterior ao início do uso do sistema "
+                + $"({InicioEscrituracao:dd/MM/yyyy}) — não deve ser escriturada (é histórico)." });
 
         // A nota fica na empresa que a recebeu (ex.: matriz), mas os PRODUTOS,
         // estoque e financeiro podem ir para OUTRA loja do grupo (ex.: filial),

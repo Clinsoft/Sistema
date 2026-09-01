@@ -32,6 +32,8 @@ const router = createRouter({
       meta: { titulo: 'Movimentações de Estoque' } },
     { path: '/estoque/posicao', component: () => import('@/modules/estoque/PosicaoEstoqueView.vue'),
       meta: { titulo: 'Posição de Estoque' } },
+    { path: '/estoque/curva-abc', component: () => import('@/modules/estoque/CurvaAbcProdutosView.vue'),
+      meta: { titulo: 'Curva ABC de Produtos' } },
     { path: '/estoque/lotes', component: () => import('@/modules/estoque/LotesView.vue'),
       meta: { titulo: 'Lotes e Validades' } },
     { path: '/estoque/transferencias', component: () => import('@/modules/estoque/TransferenciasView.vue'),

@@ -125,6 +125,8 @@
               to="/estoque/movimentacoes" value="/estoque/movimentacoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-list-status" title="Posição de Estoque"
               to="/estoque/posicao" value="/estoque/posicao" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-chart-bar-stacked" title="Curva ABC de Produtos"
+              to="/estoque/curva-abc" value="/estoque/curva-abc" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-transfer" title="Transferências"
               to="/estoque/transferencias" value="/estoque/transferencias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tune-vertical" title="Ajuste de Estoque"

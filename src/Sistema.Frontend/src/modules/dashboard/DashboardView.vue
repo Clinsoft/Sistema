@@ -77,7 +77,7 @@
 
       <!-- Curva ABC — card pequeno -->
       <v-col cols="12" md="4">
-        <v-card rounded="xl" elevation="1" to="/estoque/posicao">
+        <v-card rounded="xl" elevation="1" to="/estoque/curva-abc">
           <v-card-text class="d-flex align-center pa-4">
             <v-avatar color="deep-orange" size="48" class="mr-3">
               <v-icon icon="mdi-chart-bar-stacked" color="white" size="26" />

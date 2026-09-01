@@ -371,15 +371,20 @@ public class WhatsAppDisparoJob(
         return (sucesso, wamId, erro);
     }
 
+    // O VariaveisJson usa chaves minúsculas ("posicao"/"campo"); sem case-insensitive,
+    // o record (Posicao/Campo) desserializava com Campo=null e o disparo saía com 0
+    // variáveis → Meta 132000. Case-insensitive + guarda de null resolvem.
+    private static readonly JsonSerializerOptions _jsonVarsCI = new() { PropertyNameCaseInsensitive = true };
+
     private static IEnumerable<string> ResolverVariaveis(string? variaveisJson, Dictionary<string, string> ctx)
     {
         if (string.IsNullOrEmpty(variaveisJson)) return [];
         try
         {
-            var mapeamentos = JsonSerializer.Deserialize<List<VariavelMap>>(variaveisJson) ?? [];
+            var mapeamentos = JsonSerializer.Deserialize<List<VariavelMap>>(variaveisJson, _jsonVarsCI) ?? [];
             return mapeamentos
                 .OrderBy(v => v.Posicao)
-                .Select(v => ctx.TryGetValue(v.Campo, out var val) ? val : "")
+                .Select(v => v.Campo is not null && ctx.TryGetValue(v.Campo, out var val) ? val : "")
                 .ToList();
         }
         catch { return []; }
@@ -397,4 +402,4 @@ public class WhatsAppDisparoJob(
 }
 
 internal record ClienteInfo(Guid Id, string Nome, string Telefone, DateTime? DataNascimento = null);
-internal record VariavelMap(int Posicao, string Campo);
+internal record VariavelMap(int Posicao, string? Campo);

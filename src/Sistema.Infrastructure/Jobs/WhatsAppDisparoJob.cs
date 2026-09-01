@@ -46,21 +46,23 @@ public class WhatsAppDisparoJob(
 
         foreach (var cfg in configs)
         {
-            // Só a config matriz de cada empresa dispara campanhas (evita duplicidade).
-            if (matrizPorEmpresa[cfg.EmpresaId] != cfg.Id)
-                continue;
+            // Cada loja dispara para os SEUS clientes (Cliente.LocalEstoqueId), do seu
+            // próprio número. A config "matriz" (a sem loja, ou a mais antiga) também
+            // cobre os clientes SEM loja definida — assim ninguém fica sem receber e
+            // não há envio duplicado.
+            var ehMatriz = matrizPorEmpresa[cfg.EmpresaId] == cfg.Id;
 
             var nomeEmpresa = nomes.TryGetValue(cfg.EmpresaId, out var n) ? n : "";
             var localEstoqueId = cfg.LocalEstoqueId;
 
             if (cfg.EnviarAniversario)
-                await DispararAniversariantes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId);
+                await DispararAniversariantes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
             if (cfg.EnviarPromocoes)
-                await DispararPromocoes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId);
+                await DispararPromocoes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
             if (cfg.EnviarNovidades)
-                await DispararNovidades(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId);
+                await DispararNovidades(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
         }
     }
 
@@ -80,7 +82,7 @@ public class WhatsAppDisparoJob(
     // ─── Aniversariantes ─────────────────────────────────────────────────────
 
     private async Task DispararAniversariantes(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Aniversario);
         if (template is null)
@@ -96,7 +98,10 @@ public class WhatsAppDisparoJob(
                      && c.DataNascimento.HasValue
                      && c.DataNascimento.Value.Month == hoje.Month
                      && c.DataNascimento.Value.Day   == hoje.Day
-                     && !string.IsNullOrEmpty(c.Telefone))
+                     && !string.IsNullOrEmpty(c.Telefone)
+                     && (localEstoqueId == null
+                         || c.LocalEstoqueId == localEstoqueId
+                         || (ehMatriz && c.LocalEstoqueId == null)))
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
@@ -123,7 +128,7 @@ public class WhatsAppDisparoJob(
     /// Para evitar spam: no máximo 1 disparo de promoção por dia para o mesmo cliente.
     /// </summary>
     private async Task DispararPromocoes(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Promocao);
         if (template is null)
@@ -174,7 +179,10 @@ public class WhatsAppDisparoJob(
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
                      && !string.IsNullOrEmpty(c.Telefone)
-                     && !jaEnviados.Contains(c.Id))
+                     && !jaEnviados.Contains(c.Id)
+                     && (localEstoqueId == null
+                         || c.LocalEstoqueId == localEstoqueId
+                         || (ehMatriz && c.LocalEstoqueId == null)))
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
@@ -207,7 +215,7 @@ public class WhatsAppDisparoJob(
     /// Para evitar spam: só envia se não houve disparo de novidade há menos de 7 dias.
     /// </summary>
     private async Task DispararNovidades(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Novidade);
         if (template is null)
@@ -233,7 +241,10 @@ public class WhatsAppDisparoJob(
         var clientes = await db.Clientes.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
-                     && !string.IsNullOrEmpty(c.Telefone))
+                     && !string.IsNullOrEmpty(c.Telefone)
+                     && (localEstoqueId == null
+                         || c.LocalEstoqueId == localEstoqueId
+                         || (ehMatriz && c.LocalEstoqueId == null)))
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
@@ -251,7 +262,7 @@ public class WhatsAppDisparoJob(
 
     /// <summary>Igual a DispararNovidades mas sem a proteção de 7 dias (disparo manual).</summary>
     private async Task DispararNovidadesManual(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Novidade);
         if (template is null)
@@ -263,7 +274,10 @@ public class WhatsAppDisparoJob(
         var clientes = await db.Clientes.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
-                     && !string.IsNullOrEmpty(c.Telefone))
+                     && !string.IsNullOrEmpty(c.Telefone)
+                     && (localEstoqueId == null
+                         || c.LocalEstoqueId == localEstoqueId
+                         || (ehMatriz && c.LocalEstoqueId == null)))
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 

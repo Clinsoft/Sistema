@@ -225,6 +225,34 @@
         </v-alert>
       </v-card>
 
+      <!-- NF-e de mercadoria recebidas e ainda NÃO escrituradas (desde o início do
+           sistema) — a fila que gera estoque negativo e custo errado se ficar parada. -->
+      <v-alert v-if="resumoRecebidas.naoEscrituradas > 0 && !filtrosRec.soNaoEscrituradas"
+        type="error" variant="tonal" density="compact" class="mb-3">
+        <div class="d-flex align-center flex-wrap gap-2">
+          <span>
+            <b>{{ resumoRecebidas.naoEscrituradas }}</b> nota(s) de mercadoria
+            <b>recebida(s) e ainda não escriturada(s)</b> — total
+            <b>R$ {{ fmt(resumoRecebidas.valorNaoEscriturado) }}</b>.
+            <template v-if="resumoRecebidas.diasNaoEscrituradaMax > 15">
+              Há uma parada há <b>{{ resumoRecebidas.diasNaoEscrituradaMax }} dias</b>.
+            </template>
+            Escriturar mantém o estoque e o custo corretos.
+          </span>
+          <v-spacer />
+          <v-btn size="small" color="error" variant="flat" @click="verNaoEscrituradas">
+            Ver as {{ resumoRecebidas.naoEscrituradas }} a escriturar
+          </v-btn>
+        </div>
+      </v-alert>
+      <v-alert v-if="filtrosRec.soNaoEscrituradas" type="info" variant="tonal"
+        density="compact" class="mb-3">
+        Mostrando só as <b>não escrituradas</b> (desde 25/07/2026).
+        <v-btn size="small" variant="text" @click="filtrosRec.soNaoEscrituradas = false; carregarRecebidas()">
+          Mostrar todas
+        </v-btn>
+      </v-alert>
+
       <!-- Escriturações iniciadas e não finalizadas -->
       <v-alert v-if="qtdNaoFinalizadas > 0" type="warning" variant="tonal"
         density="compact" class="mb-3">
@@ -1104,6 +1132,7 @@ const justificativaNaoRealizada = ref('')
 const resumoRecebidas = ref({
   total: 0, semManifestacao: 0, confirmadas: 0,
   ciencia: 0, desconhecidas: 0, naoRealizadas: 0, valorTotal: 0,
+  naoEscrituradas: 0, valorNaoEscriturado: 0, diasNaoEscrituradaMax: 0,
 })
 
 const filtrosRec = ref({
@@ -1112,6 +1141,7 @@ const filtrosRec = ref({
   dataFim: new Date().toISOString().slice(0, 10),
   manifestacao: null as string | null,
   soNaoFinalizadas: false,
+  soNaoEscrituradas: false,
 })
 
 const opcoesManifestacaoFiltro = [
@@ -1131,11 +1161,29 @@ const notasRecebidasExibidas = computed(() => {
   // Só as escriturações iniciadas e não finalizadas
   if (filtrosRec.value.soNaoFinalizadas)
     r = r.filter((n: any) => n.entradaStatus === 'EmEdicao')
+  // Só as NF-e de mercadoria (mod. 55) ainda NÃO escrituradas (sem entrada)
+  if (filtrosRec.value.soNaoEscrituradas)
+    r = r.filter((n: any) => n.modelo === '55' && !n.entradaId)
   return r
 })
 
 const qtdNaoFinalizadas = computed(() =>
   notasRecebidas.value.filter((n: any) => n.entradaStatus === 'EmEdicao').length)
+
+// Data de início do uso do sistema: notas de compra anteriores são histórico e
+// NÃO devem ser escrituradas (bagunçariam estoque/financeiro de antes).
+const INICIO_ESCRITURACAO = '2026-07-25'
+
+// Mostra as NF-e a escriturar desde o início do sistema (elas costumam estar
+// paradas há semanas; o filtro padrão do mês esconderia as anteriores).
+function verNaoEscrituradas() {
+  filtrosRec.value.dataInicio = INICIO_ESCRITURACAO
+  filtrosRec.value.dataFim = new Date().toISOString().slice(0, 10)
+  filtrosRec.value.soNaoEscrituradas = true
+  filtrosRec.value.soNaoFinalizadas = false
+  filtrosRec.value.manifestacao = null
+  carregarRecebidas()
+}
 
 const headersRecebidas = [
   { title: 'Emitente', key: 'emitente', sortable: false },

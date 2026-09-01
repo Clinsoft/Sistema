@@ -15,6 +15,10 @@ namespace Sistema.API.Controllers.Fiscal;
 [Authorize]
 public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, IDistribuicaoDFeService dfe) : ControllerBase
 {
+    /// <summary>Início do uso do sistema: notas de compra anteriores a esta data são
+    /// histórico e NÃO entram na fila de escrituração (não devem ser importadas).</summary>
+    private static readonly DateTime InicioEscrituracao = new(2026, 7, 25);
+
     /// <summary>Importa um documento (CT-e/NF-e) pela chave de acesso, direto na SEFAZ (consChNFe).</summary>
     [HttpPost("buscar-por-chave")]
     public async Task<IActionResult> BuscarPorChave(
@@ -279,6 +283,18 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
         var escrituracaoEmAberto = await db.EntradasNFe.AsNoTracking()
             .CountAsync(e => e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.EmEdicao, ct);
 
+        // NF-e de MERCADORIA (mod. 55) recebidas que NUNCA foram escrituradas (sem
+        // entrada) — a fila que gera estoque negativo e custo errado se ficar parada.
+        // Só a partir do início do uso do sistema: notas anteriores são histórico e
+        // NÃO devem ser escrituradas (bagunçariam estoque/financeiro de antes).
+        var comEntrada = (await db.EntradasNFe.AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId)
+            .Select(e => e.NotaFiscalRecebidaId)
+            .ToListAsync(ct)).ToHashSet();
+        var naoEscrituradas = notas.Where(n => n.Modelo == "55"
+            && n.DataEmissao.Date >= InicioEscrituracao
+            && !comEntrada.Contains(n.Id)).ToList();
+
         return Ok(new
         {
             Total = notas.Count,
@@ -289,6 +305,10 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
             NaoRealizadas = notas.Count(n => n.Manifestacao == ManifestacaoTipo.OperacaoNaoRealizada),
             ValorTotal = notas.Sum(n => n.ValorTotal),
             EscrituracaoEmAberto = escrituracaoEmAberto,
+            NaoEscrituradas = naoEscrituradas.Count,
+            ValorNaoEscriturado = naoEscrituradas.Sum(n => n.ValorTotal),
+            DiasNaoEscrituradaMax = naoEscrituradas.Count == 0 ? 0
+                : naoEscrituradas.Max(n => (int)(DateTime.Today - n.DataEmissao.Date).TotalDays),
         });
     }
 }

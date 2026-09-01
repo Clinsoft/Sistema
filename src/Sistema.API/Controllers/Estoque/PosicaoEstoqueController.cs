@@ -167,19 +167,35 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
 
         if (!itens.Any()) return Ok(new { itens, totalGeral = 0m });
 
+        // Custo e estoque atuais do produto (o item de venda não guarda custo):
+        // margem estimada = venda − custo atual × qtd vendida.
+        var prodIds = itens.Select(i => i.ProdutoId).Distinct().ToList();
+        var infoProduto = await db.Produtos.AsNoTracking()
+            .Where(p => prodIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.CustoUnitario, p.EstoqueAtual })
+            .ToDictionaryAsync(p => p.Id, ct);
+
         var totalGeral = itens.Sum(i => i.TotalVendido);
         var acumulado = 0m;
         var resultado = itens.Select((item, idx) =>
         {
             acumulado += item.TotalVendido;
             var pct = totalGeral > 0 ? acumulado / totalGeral * 100 : 0;
+            infoProduto.TryGetValue(item.ProdutoId, out var p);
+            var custoUnit = p?.CustoUnitario ?? 0m;
+            var custoVendido = custoUnit * item.QtdVendida;
+            var margemValor = item.TotalVendido - custoVendido;
             return new
             {
                 item.ProdutoId, item.Descricao,
                 item.TotalVendido, item.QtdVendida,
                 Participacao = totalGeral > 0 ? item.TotalVendido / totalGeral * 100 : 0,
                 ParticipacaoAcumulada = pct,
-                Curva = pct <= 80 ? "A" : pct <= 95 ? "B" : "C"
+                Curva = pct <= 80 ? "A" : pct <= 95 ? "B" : "C",
+                EstoqueAtual = p?.EstoqueAtual ?? 0m,
+                CustoUnitario = custoUnit,
+                MargemValor = margemValor,
+                MargemPct = item.TotalVendido > 0 ? margemValor / item.TotalVendido * 100 : 0
             };
         });
 

@@ -9,6 +9,7 @@
       <b class="text-success">A</b> = os poucos itens que somam até <b>80%</b> do faturamento (os mais importantes) ·
       <b class="text-warning">B</b> = os próximos até <b>95%</b> ·
       <b class="text-error">C</b> = a cauda (95–100%), muitos itens que faturam pouco.
+      <div class="text-caption mt-1">A <b>margem</b> é estimada (venda − custo <i>atual</i> do produto × qtd vendida); o <b>estoque atual</b> é o saldo de agora.</div>
     </v-alert>
 
     <!-- Filtros -->
@@ -90,6 +91,13 @@
         <template #item.posicao="{ index }">{{ index + 1 }}</template>
         <template #item.totalVendido="{ item }">R$ {{ fmt(item.totalVendido) }}</template>
         <template #item.qtdVendida="{ item }">{{ fmtQtd(item.qtdVendida) }}</template>
+        <template #item.margemValor="{ item }">
+          <span :class="item.margemValor >= 0 ? 'text-success' : 'text-error'">
+            R$ {{ fmt(item.margemValor) }}
+            <span class="text-caption">({{ (item.margemPct ?? 0).toFixed(1) }}%)</span>
+          </span>
+        </template>
+        <template #item.estoqueAtual="{ item }">{{ fmtQtd(item.estoqueAtual) }}</template>
         <template #item.participacao="{ item }">{{ (item.participacao ?? 0).toFixed(2) }}%</template>
         <template #item.participacaoAcumulada="{ item }">{{ (item.participacaoAcumulada ?? 0).toFixed(2) }}%</template>
         <template #item.curva="{ item }">
@@ -114,6 +122,7 @@ const auth = useAuthStore()
 interface AbcItem {
   produtoId: string; descricao: string; totalVendido: number; qtdVendida: number
   participacao: number; participacaoAcumulada: number; curva: string
+  estoqueAtual: number; custoUnitario: number; margemValor: number; margemPct: number
 }
 
 const carregando = ref(true)
@@ -133,6 +142,8 @@ const headers = [
   { title: 'Produto', key: 'descricao' },
   { title: 'Qtd vendida', key: 'qtdVendida', align: 'end' as const },
   { title: 'Total vendido', key: 'totalVendido', align: 'end' as const },
+  { title: 'Margem', key: 'margemValor', align: 'end' as const },
+  { title: 'Estoque atual', key: 'estoqueAtual', align: 'end' as const },
   { title: 'Participação', key: 'participacao', align: 'end' as const },
   { title: '% acumulada', key: 'participacaoAcumulada', align: 'end' as const },
   { title: 'Classe', key: 'curva', width: 90, align: 'center' as const },

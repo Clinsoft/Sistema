@@ -13,7 +13,9 @@ public class ProdutoConfiguration : IEntityTypeConfiguration<Produto>
         b.Property(p => p.Codigo).HasMaxLength(30).IsRequired();
         b.HasIndex(p => new { p.EmpresaId, p.Codigo }).IsUnique();
         b.Property(p => p.CodigoBarras).HasMaxLength(30);
-        b.HasIndex(p => new { p.EmpresaId, p.CodigoBarras }).HasFilter("[CodigoBarras] IS NOT NULL");
+        // Único por empresa: um código de barras não pode se repetir em dois produtos
+        // (evita estoque negativo e de-para ambíguo no PDV). NULL é ignorado pelo filtro.
+        b.HasIndex(p => new { p.EmpresaId, p.CodigoBarras }).IsUnique().HasFilter("[CodigoBarras] IS NOT NULL");
         b.Property(p => p.CodigoFornecedorPrincipal).HasMaxLength(60);
         b.HasIndex(p => new { p.EmpresaId, p.FornecedorPrincipalId, p.CodigoFornecedorPrincipal })
             .HasFilter("[CodigoFornecedorPrincipal] IS NOT NULL");

@@ -142,6 +142,29 @@ public class PosicaoEstoqueController(SistemaDbContext db) : ControllerBase
     }
 
     /// <summary>Curva ABC de produtos por valor de venda no período.</summary>
+    /// <summary>Produtos com estoque NEGATIVO — em geral venda sem entrada escriturada
+    /// (ou produto duplicado). Marca os que nunca tiveram item de entrada de NF-e.</summary>
+    [HttpGet("negativos")]
+    public async Task<IActionResult> Negativos([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var itens = await (
+            from p in db.Produtos.AsNoTracking()
+            join u in db.UnidadesMedida.AsNoTracking() on p.UnidadeMedidaId equals u.Id into uj
+            from u in uj.DefaultIfEmpty()
+            where p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual < 0
+            orderby p.EstoqueAtual
+            select new
+            {
+                p.Id, p.Codigo, p.Descricao,
+                p.EstoqueAtual, p.PrecoVenda, p.CodigoBarras,
+                UnidadeSigla = u != null ? u.Sigla : "",
+                Pesavel = u != null && u.Pesavel,
+                TemEntrada = db.ItensEntradaNFe.Any(i => i.ProdutoId == p.Id)
+            }).ToListAsync(ct);
+
+        return Ok(new { itens, total = itens.Count });
+    }
+
     [HttpGet("curva-abc")]
     public async Task<IActionResult> CurvaAbc([FromQuery] Guid empresaId,
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim,

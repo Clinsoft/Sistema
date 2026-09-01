@@ -59,7 +59,7 @@
       <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
         <v-row dense>
           <v-col cols="12" sm="3">
-            <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
+            <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregarEmitidas() }" />
           </v-col>
           <v-col cols="12" sm="3">
             <v-text-field v-model="filtros.inicio" label="Início" type="date"
@@ -192,7 +192,7 @@
               prepend-inner-icon="mdi-magnify" />
           </v-col>
           <v-col cols="12" sm="2">
-            <FiltroMes @selecionar="(i, f) => { filtrosRec.dataInicio = i; filtrosRec.dataFim = f }" />
+            <FiltroMes @selecionar="(i, f) => { filtrosRec.dataInicio = i; filtrosRec.dataFim = f; carregarRecebidas() }" />
           </v-col>
           <v-col cols="12" sm="2">
             <v-text-field v-model="filtrosRec.dataInicio" label="De" type="date"
@@ -363,7 +363,7 @@
       <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
         <v-row dense align="center">
           <v-col cols="12" sm="2">
-            <FiltroMes @selecionar="(i, f) => { filtrosEnt.dataInicio = i; filtrosEnt.dataFim = f }" />
+            <FiltroMes @selecionar="(i, f) => { filtrosEnt.dataInicio = i; filtrosEnt.dataFim = f; carregarEntradas() }" />
           </v-col>
           <v-col cols="12" sm="2">
             <v-text-field v-model="filtrosEnt.dataInicio" label="De" type="date"

@@ -18,6 +18,13 @@ public class EditarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow) : IR
         var produto = await repo.ObterPorIdAsync(cmd.ProdutoId, ct)
             ?? throw new KeyNotFoundException($"Produto {cmd.ProdutoId} não encontrado.");
 
+        // Código de barras é único por empresa: impede duplicar o EAN em OUTRO produto
+        // (causa de estoque negativo e de-para ambíguo — o PDV não sabe qual escolher).
+        if (!string.IsNullOrWhiteSpace(cmd.CodigoBarras) &&
+            await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId
+                && p.Id != cmd.ProdutoId && p.CodigoBarras == cmd.CodigoBarras, ct))
+            throw new InvalidOperationException($"Já existe outro produto com o código de barras '{cmd.CodigoBarras}'.");
+
         produto.Editar(cmd.Descricao, cmd.CategoriaId, cmd.MarcaId, cmd.UnidadeMedidaId,
             cmd.CodigoBarras, cmd.Ncm, cmd.EstoqueMinimo, cmd.Ativo);
 

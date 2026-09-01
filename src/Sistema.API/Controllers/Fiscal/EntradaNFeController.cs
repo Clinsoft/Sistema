@@ -371,6 +371,31 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         // (código de barras → de-para do fornecedor → código interno)
         await VincularProdutosAutomaticamenteAsync(entrada, ct);
 
+        // Frete a pagar: pré-preenche com o valor do(s) CT-e(s) recebido(s) que
+        // transportam esta NF-e (Modelo 57, vTPrest = ValorTotal). Se um CT-e cobre
+        // várias NF-es, rateia por quantidade de chaves. Ignora CT-e cancelado.
+        // Fica editável na conferência.
+        try
+        {
+            var ctes = await db.NotasFiscaisRecebidas.AsNoTracking()
+                .Where(c => c.EmpresaId == req.EmpresaId && c.Modelo == "57"
+                         && c.Situacao != SituacaoNFeRecebida.Cancelada
+                         && c.ChavesReferenciadas != null
+                         && c.ChavesReferenciadas.Contains(nota.ChaveAcesso))
+                .Select(c => new { c.ValorTotal, c.ChavesReferenciadas })
+                .ToListAsync(ct);
+
+            decimal frete = 0m;
+            foreach (var c in ctes)
+            {
+                var qtdNfes = c.ChavesReferenciadas!
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries).Length;
+                frete += qtdNfes > 0 ? c.ValorTotal / qtdNfes : c.ValorTotal;
+            }
+            if (frete > 0) entrada.DefinirFreteManual(Math.Round(frete, 2));
+        }
+        catch { /* sem CT-e ou erro → frete manual fica 0; usuário informa */ }
+
         db.EntradasNFe.Add(entrada);
         await db.SaveChangesAsync(ct);
 

@@ -224,6 +224,7 @@
             density="compact"
             hide-details
             clearable
+            no-filter
             placeholder="Nome, CPF ou telefone..."
             class="mb-2"
             :loading="buscandoCliente"

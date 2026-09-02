@@ -270,14 +270,48 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
             .Select(p => new { p.Id, p.Codigo, p.Descricao, p.EstoqueAtual, p.CustoUnitario })
             .ToListAsync(ct);
 
+        // Saldo por loja, reconstruído do histórico de movimentações (mesma regra da
+        // Posição por Loja). Dicionário (produtoId, localId) → saldo.
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .Select(l => new { l.Id, l.Nome })
+            .ToListAsync(ct);
+
+        var saldoLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId)
+            .GroupBy(m => new { m.ProdutoId, m.LocalEstoqueId })
+            .Select(g => new
+            {
+                g.Key.ProdutoId, g.Key.LocalEstoqueId,
+                Saldo = g.Sum(m =>
+                    m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            })
+            .ToListAsync(ct))
+            .Where(x => x.LocalEstoqueId != Guid.Empty)
+            .ToDictionary(x => (x.ProdutoId, x.LocalEstoqueId), x => x.Saldo);
+
         var hoje = DateTime.Today;
         var itens = produtos
             .Where(p => !vendeuNoPeriodo.Contains(p.Id))   // vendeu no período → não está parado
             .Select(p =>
             {
                 DateTime? ult = ultimaVenda.TryGetValue(p.Id, out var u) ? u : null;
+                var porLoja = lojas.Select(l => new
+                {
+                    localEstoqueId = l.Id, nome = l.Nome,
+                    saldo = saldoLoja.TryGetValue((p.Id, l.Id), out var s) ? s : 0m
+                }).ToList();
                 return new
                 {
+                    porLoja,
                     p.Id, p.Codigo, p.Descricao,
                     estoqueAtual = p.EstoqueAtual,
                     custoUnitario = p.CustoUnitario,

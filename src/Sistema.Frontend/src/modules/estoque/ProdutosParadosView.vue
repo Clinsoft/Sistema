@@ -51,7 +51,13 @@
         density="compact" hover items-per-page="50"
         :sort-by="[{ key: 'valorEstoque', order: 'desc' }]"
         no-data-text="Nenhum produto parado nesse período. 🎉">
-        <template #item.estoqueAtual="{ item }">{{ fmtQtd(item.estoqueAtual) }}</template>
+        <template #item.estoqueAtual="{ item }">
+          <div v-for="l in item.porLoja" :key="l.localEstoqueId" class="text-caption text-end"
+            :class="l.saldo < 0 ? 'text-error' : ''">
+            {{ l.nome }}: <b>{{ fmtQtd(l.saldo) }}</b>
+          </div>
+          <div class="text-caption text-medium-emphasis text-end">Total: {{ fmtQtd(item.estoqueAtual) }}</div>
+        </template>
         <template #item.valorEstoque="{ item }">R$ {{ fmt(item.valorEstoque) }}</template>
         <template #item.ultimaVenda="{ item }">
           <span v-if="item.nuncaVendeu" class="text-error">nunca vendeu</span>
@@ -78,6 +84,7 @@ const auth = useAuthStore()
 interface Item {
   id: string; codigo: string; descricao: string; estoqueAtual: number; custoUnitario: number
   valorEstoque: number; ultimaVenda: string | null; diasSemVender: number | null; nuncaVendeu: boolean
+  porLoja: { localEstoqueId: string; nome: string; saldo: number }[]
 }
 
 const carregando = ref(true)
@@ -90,7 +97,7 @@ const busca = ref('')
 const headers = [
   { title: 'Cód', key: 'codigo', width: 80 },
   { title: 'Produto', key: 'descricao' },
-  { title: 'Estoque', key: 'estoqueAtual', align: 'end' as const },
+  { title: 'Estoque por loja', key: 'estoqueAtual', align: 'end' as const, width: 180 },
   { title: 'Valor em estoque', key: 'valorEstoque', align: 'end' as const },
   { title: 'Última venda', key: 'ultimaVenda', width: 130 },
   { title: 'Parado há', key: 'diasSemVender', width: 110, align: 'end' as const },

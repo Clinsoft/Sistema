@@ -85,13 +85,23 @@
       <!-- ── COLUNA ESQUERDA: Itens ─────────────────────────── -->
       <div class="pdv-col-itens">
 
-        <!-- Faixa fixa do SORTEIO (lembrete sempre visível p/ atendente e cliente) -->
-        <div v-for="s in sorteios" :key="s.id" class="pdv-sorteio-bar">
+        <!-- Faixa fixa do SORTEIO (lembrete sempre visível + progresso ao vivo) -->
+        <div v-for="s in sorteios" :key="s.id" class="pdv-sorteio-bar"
+          :class="{ 'pdv-sorteio-bar--ok': total > 0 && total >= s.valorMinimoPedido }">
           <v-icon size="20" class="mr-2">mdi-ticket-confirmation-outline</v-icon>
           <span>
             <strong>SORTEIO:</strong> compras a partir de
             <strong>R$ {{ fmt(s.valorMinimoPedido) }}</strong> concorrem a
-            <strong>{{ s.nome }}</strong> — ofereça o cupom ao cliente!
+            <strong>{{ s.nome }}</strong>.
+            <template v-if="total > 0 && total < s.valorMinimoPedido">
+              Faltam <strong>R$ {{ fmt(s.valorMinimoPedido - total) }}</strong> para o cliente concorrer — ofereça mais um item!
+            </template>
+            <template v-else-if="total > 0 && total >= s.valorMinimoPedido">
+              ✅ Cliente <strong>JÁ concorre</strong> — gere o cupom ao finalizar!
+            </template>
+            <template v-else>
+              Ofereça o cupom ao cliente!
+            </template>
           </span>
         </div>
 
@@ -2840,6 +2850,11 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .pdv-sorteio-bar strong { font-weight: 800; }
+.pdv-sorteio-bar--ok {
+  background: linear-gradient(90deg, #15803d 0%, #16a34a 50%, #15803d 100%);
+  border-bottom-color: #14532d;
+  box-shadow: 0 2px 6px rgba(21,128,61,.35);
+}
 .pdv-promo-bar {
   display: flex;
   align-items: center;

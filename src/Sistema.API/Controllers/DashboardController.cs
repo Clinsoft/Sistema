@@ -128,6 +128,54 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
         return Ok(new { periodoDias = dias, lojas });
     }
 
+    /// <summary>Projeção da meta de vendas do mês: meta × realizado até hoje × projeção
+    /// pelo ritmo atual, com quanto falta e quanto vender por dia nos dias restantes.</summary>
+    [HttpGet("projecao-meta")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> ProjecaoMeta([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+    {
+        var hoje = DateTime.Today;
+        var a = ano ?? hoje.Year;
+        var m = mes ?? hoje.Month;
+        var inicioMes = new DateTime(a, m, 1);
+        var fimMesEx = inicioMes.AddMonths(1);
+        var diasNoMes = (fimMesEx - inicioMes).Days;
+
+        // dias decorridos: se for o mês corrente, até hoje; se mês passado, o mês todo
+        var ehMesCorrente = a == hoje.Year && m == hoje.Month;
+        var diasDecorridos = ehMesCorrente ? hoje.Day : diasNoMes;
+        var diasRestantes = Math.Max(0, diasNoMes - diasDecorridos);
+
+        var realizado = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                     && v.DataHora >= inicioMes && v.DataHora < fimMesEx)
+            .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
+
+        var meta = await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m)
+            .Select(x => (decimal?)x.Valor).FirstOrDefaultAsync(ct);
+
+        var mediaDia = diasDecorridos > 0 ? realizado / diasDecorridos : 0m;
+        var projecao = Math.Round(mediaDia * diasNoMes, 2);
+        var falta = meta.HasValue ? Math.Max(0m, meta.Value - realizado) : (decimal?)null;
+
+        return Ok(new
+        {
+            ano = a, mes = m,
+            meta,                                   // null = meta não definida
+            realizado = Math.Round(realizado, 2),
+            diasNoMes, diasDecorridos, diasRestantes,
+            mediaDiaria = Math.Round(mediaDia, 2),
+            projecao,
+            pctAtingido = meta is > 0 ? Math.Round(realizado / meta.Value * 100, 1) : (decimal?)null,
+            pctProjetado = meta is > 0 ? Math.Round(projecao / meta.Value * 100, 1) : (decimal?)null,
+            faltaParaMeta = falta,
+            metaDiariaRestante = (falta.HasValue && diasRestantes > 0) ? Math.Round(falta.Value / diasRestantes, 2) : (decimal?)null,
+            noRitmoBatiMeta = meta is > 0 ? projecao >= meta.Value : (bool?)null
+        });
+    }
+
     /// <summary>Clientes que compravam mas sumiram: última compra há mais de `diasSem`
     /// dias, com total já gasto e telefone — para reativar (ex.: WhatsApp).</summary>
     [HttpGet("clientes-sumidos")]

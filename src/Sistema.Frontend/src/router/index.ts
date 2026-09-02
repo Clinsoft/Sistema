@@ -157,6 +157,8 @@ const router = createRouter({
       meta: { titulo: 'Clientes Sumidos' } },
     { path: '/relatorios/rentabilidade-categoria', component: () => import('@/modules/relatorios/RentabilidadeCategoriaView.vue'),
       meta: { titulo: 'Rentabilidade por Categoria' } },
+    { path: '/relatorios/projecao-meta', component: () => import('@/modules/relatorios/ProjecaoMetaView.vue'),
+      meta: { titulo: 'Projeção de Meta' } },
     { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
       meta: { titulo: 'Planejamento Anual de Vendas' } },
     { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),

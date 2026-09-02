@@ -110,6 +110,8 @@
             to="/relatorios/clientes-sumidos" value="/relatorios/clientes-sumidos" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-finance" title="Rentabilidade por Categoria"
             to="/relatorios/rentabilidade-categoria" value="/relatorios/rentabilidade-categoria" color="primary" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-target" title="Projeção de Meta"
+            to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" />
 
           <!-- Restante em ordem alfabética -->
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"

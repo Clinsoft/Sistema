@@ -75,15 +75,25 @@
               variant="outlined" density="compact" hide-details />
           </v-col>
         </v-row>
+        <v-row dense class="mt-1">
+          <v-col cols="12">
+            <v-text-field v-model="buscaEmitidas" label="Buscar (nº da venda, nº da nota, cliente, valor, chave)"
+              prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable />
+          </v-col>
+        </v-row>
         <div class="d-flex justify-end mt-2">
           <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregando" @click="carregarEmitidas">
-            Buscar
+            Buscar período
           </v-btn>
         </div>
       </v-card>
 
       <v-card rounded="xl" elevation="1">
-        <v-data-table :headers="headersEmitidas" :items="notas" :loading="carregando" density="compact" hover>
+        <v-data-table :headers="headersEmitidas" :items="notasFiltradas" :loading="carregando" density="compact" hover>
+          <template #item.vendaNumero="{ item }">
+            <span v-if="item.vendaNumero" class="font-weight-medium">{{ item.vendaNumero }}</span>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
           <template #item.modelo="{ item }">
             <v-chip size="small" :color="item.modelo===55?'primary':'secondary'" variant="tonal">
               {{ item.modelo===55?'NF-e':'NFC-e' }}
@@ -1116,9 +1126,24 @@ const cardsEmitidas = computed(() => [
 
 const headersEmitidas = [
   { title: 'Modelo', key: 'modelo' }, { title: 'Série', key: 'serie' }, { title: 'Nº', key: 'numero' },
+  { title: 'Venda', key: 'vendaNumero' },
   { title: 'Destinatário', key: 'nomeDestinatario' }, { title: 'Emissão', key: 'dataEmissao' },
   { title: 'Total', key: 'totalNota' }, { title: 'Status', key: 'status' }, { title: '', key: 'actions', sortable: false },
 ]
+
+const buscaEmitidas = ref('')
+const notasFiltradas = computed(() => {
+  const q = buscaEmitidas.value?.trim().toLowerCase()
+  if (!q) return notas.value
+  const qn = q.replace(/\D/g, '')
+  return notas.value.filter((n: any) =>
+    String(n.numero ?? '').includes(q) ||
+    (n.vendaNumero ?? '').toLowerCase().includes(q) ||
+    (qn && (n.vendaNumero ?? '').replace(/\D/g, '').includes(qn)) ||
+    (n.nomeDestinatario ?? '').toLowerCase().includes(q) ||
+    (n.chaveAcesso ?? '').includes(q) ||
+    fmt(n.totalNota).includes(q))
+})
 
 // ── Recebidas ──
 const carregandoRec = ref(false)

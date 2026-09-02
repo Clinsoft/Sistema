@@ -24,11 +24,18 @@ public class NotasFiscaisController(
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
     {
         var notas = await repo.ListarPorPeriodoAsync(empresaId, inicio, fim, ct);
+        // Número da venda de origem (para localizar a nota pelo cupom do PDV).
+        var vendaIds = notas.Where(n => n.VendaId.HasValue).Select(n => n.VendaId!.Value).Distinct().ToList();
+        var vendaNumeros = await db.Vendas.AsNoTracking()
+            .Where(v => vendaIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.Numero })
+            .ToDictionaryAsync(v => v.Id, v => v.Numero, ct);
         return Ok(notas.Select(n => new
         {
             n.Id, n.Modelo, n.Serie, n.Numero, n.ChaveAcesso,
             Status = n.Status.ToString(),
-            n.DataEmissao, n.NomeDestinatario, n.TotalNota
+            n.DataEmissao, n.NomeDestinatario, n.TotalNota,
+            vendaNumero = n.VendaId.HasValue && vendaNumeros.TryGetValue(n.VendaId.Value, out var vn) ? vn : null
         }));
     }
 

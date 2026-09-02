@@ -149,6 +149,8 @@ const router = createRouter({
       meta: { titulo: 'Relatórios' } },
     { path: '/relatorios/comparativo-lojas', component: () => import('@/modules/relatorios/ComparativoLojasView.vue'),
       meta: { titulo: 'Comparativo entre Lojas' } },
+    { path: '/relatorios/clientes-sumidos', component: () => import('@/modules/relatorios/ClientesSumidosView.vue'),
+      meta: { titulo: 'Clientes Sumidos' } },
     { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
       meta: { titulo: 'Planejamento Anual de Vendas' } },
     { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),

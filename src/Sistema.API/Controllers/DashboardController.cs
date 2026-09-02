@@ -128,6 +128,60 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
         return Ok(new { periodoDias = dias, lojas });
     }
 
+    /// <summary>Clientes que compravam mas sumiram: última compra há mais de `diasSem`
+    /// dias, com total já gasto e telefone — para reativar (ex.: WhatsApp).</summary>
+    [HttpGet("clientes-sumidos")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> ClientesSumidos([FromQuery] Guid empresaId,
+        [FromQuery] int diasSem = 60, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
+    {
+        if (diasSem < 1) diasSem = 60;
+        var corte = DateTime.Today.AddDays(-diasSem);
+
+        var porCliente = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada && v.ClienteId != null)
+            .GroupBy(v => v.ClienteId!.Value)
+            .Select(g => new { ClienteId = g.Key, Ultima = g.Max(v => v.DataHora), Total = g.Sum(v => v.Total), Qtd = g.Count() })
+            .ToListAsync(ct))
+            .Where(x => x.Ultima < corte)
+            .ToDictionary(x => x.ClienteId);
+
+        var ids = porCliente.Keys.ToList();
+        if (ids.Count == 0) return Ok(new { diasSem, itens = Array.Empty<object>() });
+
+        var nomesLoja = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        var clientes = await db.Clientes.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo && ids.Contains(c.Id)
+                     && (c.Celular != null || c.Telefone != null)
+                     && (localEstoqueId == null || c.LocalEstoqueId == localEstoqueId))
+            .Select(c => new { c.Id, c.Nome, c.Celular, c.Telefone, c.LocalEstoqueId })
+            .ToListAsync(ct);
+
+        var hoje = DateTime.Today;
+        var itens = clientes.Select(c =>
+        {
+            var d = porCliente[c.Id];
+            return new
+            {
+                c.Id, c.Nome,
+                telefone = string.IsNullOrWhiteSpace(c.Celular) ? c.Telefone : c.Celular,
+                loja = c.LocalEstoqueId.HasValue && nomesLoja.TryGetValue(c.LocalEstoqueId.Value, out var ln) ? ln : "—",
+                ultimaCompra = d.Ultima,
+                diasSemComprar = (int)(hoje - d.Ultima.Date).TotalDays,
+                totalGasto = d.Total,
+                numeroCompras = d.Qtd,
+                ticketMedio = d.Qtd > 0 ? d.Total / d.Qtd : 0m
+            };
+        })
+        .OrderByDescending(x => x.totalGasto)
+        .ToList();
+
+        return Ok(new { diasSem, itens });
+    }
+
     /// <summary>Comparativo gerencial entre lojas no período: faturamento, nº de vendas,
     /// ticket médio, margem e crescimento vs período anterior + top produtos por loja.</summary>
     [HttpGet("comparativo-lojas")]

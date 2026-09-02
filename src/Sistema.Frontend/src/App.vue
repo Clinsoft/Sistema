@@ -104,6 +104,8 @@
             to="/relatorios" value="/relatorios" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-scale-balance" title="Comparativo entre Lojas"
             to="/relatorios/comparativo-lojas" value="/relatorios/comparativo-lojas" color="primary" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-account-clock-outline" title="Clientes Sumidos"
+            to="/relatorios/clientes-sumidos" value="/relatorios/clientes-sumidos" color="primary" rounded="lg" />
 
           <!-- Restante em ordem alfabética -->
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"

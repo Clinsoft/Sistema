@@ -60,17 +60,17 @@
           {{ horaAtual }}
         </div>
         <v-btn icon="mdi-pause-circle-outline" size="small" variant="text" color="rgba(255,255,255,.75)"
-          :disabled="!itens.length" title="Colocar venda em espera" @click="suspenderVenda" />
+          :disabled="!itens.length" title="Colocar venda em espera (Ctrl+E)" @click="suspenderVenda" />
         <v-btn size="small" variant="text" color="rgba(255,255,255,.75)"
-          title="Vendas em espera" @click="dialogEspera = true">
+          title="Vendas em espera (Ctrl+L)" @click="dialogEspera = true">
           <v-badge :content="vendasEmEspera.length" :model-value="vendasEmEspera.length > 0" color="warning">
             <v-icon>mdi-play-circle-outline</v-icon>
           </v-badge>
         </v-btn>
         <v-btn icon="mdi-printer-outline" size="small" variant="text" color="rgba(255,255,255,.75)"
-          :disabled="!ultimaVendaId" title="Reimprimir último cupom" @click="reimprimirUltimo" />
+          :disabled="!ultimaVendaId" title="Reimprimir último cupom (Ctrl+P)" @click="reimprimirUltimo" />
         <v-btn icon="mdi-cash-register" size="small" variant="text" color="rgba(255,255,255,.75)"
-          :disabled="!sessaoAtual" title="Sangria / Reforço de caixa" @click="abrirCaixaMov" />
+          :disabled="!sessaoAtual" title="Sangria / Reforço de caixa (Ctrl+M)" @click="abrirCaixaMov" />
         <v-btn v-if="!mobile" :icon="emTelaCheia ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
           size="small" variant="text" color="rgba(255,255,255,.6)"
           :title="emTelaCheia ? 'Sair da tela cheia' : 'Tela cheia'" @click="alternarTelaCheia" />
@@ -1164,6 +1164,10 @@ const atalhos = [
   { key: '↑ / ↓',  descricao: 'Navegar entre itens da venda' },
   { key: 'Delete', descricao: 'Remover item selecionado' },
   { key: '+ / −',  descricao: 'Aumentar / diminuir quantidade do item selecionado' },
+  { key: 'Ctrl+E', descricao: 'Colocar venda em espera' },
+  { key: 'Ctrl+L', descricao: 'Abrir lista de vendas em espera' },
+  { key: 'Ctrl+P', descricao: 'Reimprimir último cupom (2ª via)' },
+  { key: 'Ctrl+M', descricao: 'Sangria / Reforço de caixa' },
   { key: 'ESC',    descricao: 'Cancelar venda / fechar diálogo' },
 ]
 
@@ -2031,6 +2035,16 @@ async function carregarColaboradores() {
 function onKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   const emInput = ['INPUT', 'TEXTAREA'].includes(tag)
+
+  // Atalhos com Ctrl (funcionam mesmo digitando no campo de código).
+  if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+    switch (e.key.toLowerCase()) {
+      case 'e': e.preventDefault(); suspenderVenda(); return          // Espera
+      case 'l': e.preventDefault(); dialogEspera.value = true; return // Lista de espera
+      case 'p': e.preventDefault(); reimprimirUltimo(); return        // imPrimir 2a via
+      case 'm': e.preventDefault(); abrirCaixaMov(); return           // Movimentacao de caixa
+    }
+  }
 
   switch (e.key) {
     case 'F1':

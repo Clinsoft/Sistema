@@ -43,6 +43,8 @@ public class WhatsAppMensagemController(
             cfg.EnviarNovidades,
             cfg.HoraDisparo,
             cfg.IaAtendimentoAtiva,
+            cfg.EnviarResumoDiario,
+            cfg.TelefoneResumoDiario,
         });
     }
 
@@ -73,6 +75,7 @@ public class WhatsAppMensagemController(
             req.Ativo, req.EnviarAniversario, req.EnviarPromocoes, req.EnviarNovidades,
             req.HoraDisparo);
         cfg.DefinirIaAtendimento(req.IaAtendimentoAtiva);
+        cfg.DefinirResumoDiario(req.EnviarResumoDiario, req.TelefoneResumoDiario);
 
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -903,7 +906,8 @@ public record SalvarConfigWhatsAppRequest(
     string? PhoneNumberId, string? AccessToken, string? BusinessAccountId,
     string? WebhookVerifyToken, string? AppId, bool Ativo,
     bool EnviarAniversario, bool EnviarPromocoes, bool EnviarNovidades,
-    int HoraDisparo = 8, bool IaAtendimentoAtiva = false);
+    int HoraDisparo = 8, bool IaAtendimentoAtiva = false,
+    bool EnviarResumoDiario = false, string? TelefoneResumoDiario = null);
 
 public record SalvarConfigCatalogoRequest(
     Guid EmpresaId, string? PhoneNumberId, string? AccessToken,

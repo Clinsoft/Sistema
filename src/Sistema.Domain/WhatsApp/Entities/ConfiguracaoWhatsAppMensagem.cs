@@ -34,7 +34,17 @@ public class ConfiguracaoWhatsAppMensagem : Entity
     public bool   EnviarNovidades     { get; private set; } = false;
     public int    HoraDisparo         { get; private set; } = 8;   // hora do dia (0-23)
 
+    // Resumo diário para o gestor (enviado ~20h via template aprovado)
+    public bool     EnviarResumoDiario   { get; private set; } = false;
+    public string?  TelefoneResumoDiario { get; private set; }   // número(s) que recebem o resumo
+
     private ConfiguracaoWhatsAppMensagem() { }
+
+    public void DefinirResumoDiario(bool ativo, string? telefone)
+    {
+        EnviarResumoDiario = ativo;
+        TelefoneResumoDiario = string.IsNullOrWhiteSpace(telefone) ? null : telefone.Trim();
+    }
 
     public static ConfiguracaoWhatsAppMensagem Criar(Guid empresaId, Guid? localEstoqueId = null)
         => new() { EmpresaId = empresaId, LocalEstoqueId = localEstoqueId };

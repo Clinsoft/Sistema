@@ -257,6 +257,21 @@
                 </v-slider>
               </v-card-text>
             </v-card>
+
+            <v-card variant="outlined" class="mt-4">
+              <v-card-text>
+                <v-switch v-model="cfgMsg.enviarResumoDiario" color="success" density="compact"
+                  hide-details label="Enviar resumo do dia (20h) para o gestor"
+                  @update:model-value="salvarCfgMsg" />
+                <v-text-field v-model="cfgMsg.telefoneResumoDiario" label="WhatsApp do gestor (com DDD)"
+                  variant="outlined" density="compact" class="mt-2" hide-details
+                  hint="Ex.: 18999998888. Vários números: separe por vírgula." persistent-hint
+                  :disabled="!cfgMsg.enviarResumoDiario" @blur="salvarCfgMsg" />
+                <div class="text-caption text-medium-emphasis mt-2">
+                  Requer o template <b>resumo_diario_gestor</b> aprovado na Meta.
+                </div>
+              </v-card-text>
+            </v-card>
           </v-col>
 
           <!-- Disparo de campanhas -->
@@ -1199,6 +1214,7 @@ const cfgMsg = ref({
   webhookVerifyToken: '', appId: '',
   ativo: false, enviarAniversario: true, enviarPromocoes: true,
   enviarNovidades: false, horaDisparo: 8, iaAtendimentoAtiva: false,
+  enviarResumoDiario: false, telefoneResumoDiario: '',
 })
 const mostrarToken = ref(false)
 

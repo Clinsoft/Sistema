@@ -177,6 +177,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
     job => job.ExecutarAsync(),
     "0 8 * * *", optsBR);   // 08:00 BRT — aniversariantes, promoções, novidades
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ResumoDiarioJob>(
+    "whatsapp-resumo-diario-gestor",
+    job => job.ExecutarAsync(),
+    "0 20 * * *", optsBR);  // 20:00 BRT — resumo do dia para o gestor
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
     "limpar-vendas-abertas",
     job => job.ExecutarAsync(),

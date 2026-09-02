@@ -109,4 +109,47 @@ public class LancamentoFinanceiroTests
         l.Baixar(100m, DateTime.Today);
         l.Saldo.Should().Be(300m);
     }
+
+    // ── Estorno de pagamento (comprovante/baixa errada) ──────────────────────
+
+    [Fact]
+    public void EstornarPagamento_DeveVoltarParaEmAberto_E_ZerarPago()
+    {
+        var l = CriarLancamento(1000m);
+        var conta = Guid.NewGuid();
+        l.Baixar(1000m, DateTime.Today, conta);
+        l.AnexarComprovante("/uploads/comprovantes/x.pdf");
+
+        var (contaBancariaId, valorEstornado) = l.EstornarPagamento();
+
+        l.Status.Should().Be(StatusLancamento.EmAberto);
+        l.ValorPago.Should().Be(0);
+        l.DataPagamento.Should().BeNull();
+        l.ComprovanteUrl.Should().BeNull();
+        l.Saldo.Should().Be(1000m);
+        // devolve o que foi debitado para o chamador creditar de volta no banco
+        contaBancariaId.Should().Be(conta);
+        valorEstornado.Should().Be(1000m);
+    }
+
+    [Fact]
+    public void EstornarPagamento_DeChamadoParcial_DeveVoltarParaEmAberto()
+    {
+        var l = CriarLancamento(400m);
+        l.Baixar(100m, DateTime.Today);   // PagoParcialmente
+        l.Status.Should().Be(StatusLancamento.PagoParcialmente);
+
+        l.EstornarPagamento();
+
+        l.Status.Should().Be(StatusLancamento.EmAberto);
+        l.ValorPago.Should().Be(0);
+    }
+
+    [Fact]
+    public void EstornarPagamento_SemPagamento_DeveLancarExcecao()
+    {
+        var l = CriarLancamento();   // Em Aberto, nunca pago
+        var acao = () => l.EstornarPagamento();
+        acao.Should().Throw<InvalidOperationException>();
+    }
 }

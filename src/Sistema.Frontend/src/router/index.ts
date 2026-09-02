@@ -155,6 +155,8 @@ const router = createRouter({
       meta: { titulo: 'Configurações' } },
     { path: '/configuracoes/filiais', component: () => import('@/modules/configuracoes/FiliaisView.vue'),
       meta: { titulo: 'Unidades / Filiais' } },
+    { path: '/configuracoes/saude-jobs', component: () => import('@/modules/configuracoes/SaudeJobsView.vue'),
+      meta: { titulo: 'Saúde dos Jobs' } },
 
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ]

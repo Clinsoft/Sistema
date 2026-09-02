@@ -179,6 +179,8 @@
               to="/configuracoes" color="primary" rounded="lg" />
             <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-store-outline" title="Filiais / Unidades"
               to="/configuracoes/filiais" color="primary" rounded="lg" />
+            <v-list-item v-if="ehAdmin" prepend-icon="mdi-heart-pulse" title="Saúde dos Jobs"
+              to="/configuracoes/saude-jobs" color="primary" rounded="lg" />
             <v-list-item prepend-icon="mdi-logout" title="Sair"
               @click="auth.sair()" color="error" rounded="lg" />
           </v-list>
@@ -377,6 +379,7 @@ const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel'
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const ehContador = computed(() => auth.usuario?.role === 'Contador')
 const ehGestor = computed(() => auth.usuario?.role === 'Administrador' || auth.usuario?.role === 'Gerente')
+const ehAdmin = computed(() => auth.usuario?.role === 'Administrador')
 
 // ── Sininho de notificações ──────────────────────────────────────
 const notificacoes = ref<any[]>([])

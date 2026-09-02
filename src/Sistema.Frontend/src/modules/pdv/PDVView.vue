@@ -2154,10 +2154,14 @@ async function carregarPromocoes() {
       params: { empresaId: auth.empresaId, status: 'Ativa' }
     })
     const promos: any[] = r.data ?? []
-    const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null
-    // Só as desta loja (ou de todas as lojas). Se a loja ainda não é conhecida,
-    // não filtra por loja (evita esconder o aviso por corrida de carregamento).
-    const daLoja = promos.filter((p: any) => !p.localEstoqueId || !loja || p.localEstoqueId === loja)
+    // Loja do PDV = a do CAIXA aberto (onde a venda acontece). Sem caixa aberto
+    // (ex.: preview do admin), a loja é desconhecida → mostra todos os sorteios.
+    const loja = (sessaoAtual.value && sessaoAtual.value.id !== 'dev')
+      ? (sessaoAtual.value.localEstoqueId ?? null) : null
+    const norm = (v: any) => (v == null ? null : String(v).toLowerCase())
+    const lojaN = norm(loja)
+    // Só as desta loja (ou de todas as lojas); comparação sem case.
+    const daLoja = promos.filter((p: any) => !p.localEstoqueId || !lojaN || norm(p.localEstoqueId) === lojaN)
     // Sorteios ativos desta loja (para o aviso e a geração do cupom).
     sorteios.value = daLoja.filter((p: any) => p.tipo === 'Sorteio')
     const nomes = daLoja.filter((p: any) => p.tipo !== 'Sorteio').map((p: any) => {

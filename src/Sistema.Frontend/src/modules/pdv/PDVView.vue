@@ -477,8 +477,11 @@
             class="mb-3" :error-messages="ncTelefone && !telefoneOk ? 'Telefone incompleto' : ''"
             @update:model-value="ncTelefone = mascararTelefone($event)" @keyup.enter="salvarNovoCliente" />
           <v-text-field v-model="ncCpf" label="CPF (opcional)" placeholder="000.000.000-00"
-            inputmode="numeric" variant="outlined" density="compact"
+            inputmode="numeric" variant="outlined" density="compact" class="mb-3"
             @update:model-value="ncCpf = formatarCpf($event)" @keyup.enter="salvarNovoCliente" />
+          <v-text-field v-model="ncNascimento" label="Data de nascimento (opcional)" type="date"
+            variant="outlined" density="compact" hide-details
+            hint="Ativa a mensagem de aniversário no WhatsApp" persistent-hint />
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -1441,6 +1444,7 @@ const inputNovoTel = ref()
 const ncNome = ref('')
 const ncTelefone = ref('')
 const ncCpf = ref('')
+const ncNascimento = ref('')
 const salvandoCliente = ref(false)
 const telefoneOk = computed(() => ncTelefone.value.replace(/\D/g, '').length >= 10)
 
@@ -1451,6 +1455,7 @@ function cadastrarClienteRapido(nome: string) {
   ncNome.value = nome
   ncTelefone.value = ''
   ncCpf.value = ''
+  ncNascimento.value = ''
   dialogNovoCliente.value = true
 }
 
@@ -1467,6 +1472,7 @@ async function salvarNovoCliente() {
       tipoPessoa: doc.length === 14 ? 'Juridica' : 'Fisica',
       telefone,
       cpfCnpj: doc || null,
+      dataNascimento: ncNascimento.value || null,
       localEstoqueId: sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null,
     })
     const novo: Cliente = { id: r.data.id ?? r.data, nome, telefone, cpfCnpj: doc || null }

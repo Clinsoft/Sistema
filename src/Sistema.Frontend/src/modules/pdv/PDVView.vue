@@ -545,6 +545,9 @@
             placeholder="(00) 00000-0000" inputmode="tel" variant="outlined" density="compact" class="mb-3"
             :error-messages="scTelefone && !scTelefoneOk ? 'Telefone incompleto' : ''"
             @update:model-value="scTelefone = mascararTelefone($event)" />
+          <v-text-field v-model="scCpf" label="CPF (opcional)" placeholder="000.000.000-00"
+            inputmode="numeric" variant="outlined" density="compact" class="mb-3"
+            @update:model-value="scCpf = formatarCpf($event)" />
           <v-text-field v-model="scNascimento" label="Data de nascimento (opcional)" type="date"
             variant="outlined" density="compact" hide-details
             hint="Ativa a mensagem de aniversário no WhatsApp" persistent-hint />
@@ -1647,6 +1650,7 @@ const sorteioAtivo = ref<any>(null)
 const scNome = ref('')
 const scTelefone = ref('')
 const scNascimento = ref('')
+const scCpf = ref('')
 const scClienteId = ref<string | null>(null)
 const scVendaId = ref('')
 const scValor = ref(0)
@@ -1669,6 +1673,8 @@ function checarSorteio(vendaId: string, totalVenda: number) {
   scNome.value = c?.nome ?? clienteSelecionadoNome.value ?? ''
   scTelefone.value = c?.celular || c?.telefone ? mascararTelefone(String(c.celular || c.telefone)) : ''
   scNascimento.value = ''
+  scCpf.value = (clientes.value.find(x => x.id === clienteId.value) as any)?.cpfCnpj
+    ? formatarCpf(String((clientes.value.find(x => x.id === clienteId.value) as any).cpfCnpj)) : ''
   // Não abre agora (ficaria atrás do comprovante). Abre ao fechar o comprovante (Nova Venda).
   sorteioPendente.value = true
 }
@@ -1679,11 +1685,13 @@ async function gerarCupomSorteio() {
   try {
     const telefone = scTelefone.value.replace(/\D/g, '')
     let cid = scClienteId.value
-    // Sem cliente vinculado → cadastra (nome + telefone + nascimento) na loja atual.
+    const doc = scCpf.value.replace(/\D/g, '')
+    // Sem cliente vinculado → cadastra (nome + telefone + nascimento + CPF) na loja atual.
     if (!cid) {
       const rc = await api.post('/clientes', {
-        empresaId: auth.empresaId, nome: scNome.value.trim(), tipoPessoa: 'Fisica',
-        telefone, dataNascimento: scNascimento.value || null,
+        empresaId: auth.empresaId, nome: scNome.value.trim(),
+        tipoPessoa: doc.length === 14 ? 'Juridica' : 'Fisica',
+        telefone, cpfCnpj: doc || null, dataNascimento: scNascimento.value || null,
         localEstoqueId: sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null,
       })
       cid = rc.data.id ?? rc.data

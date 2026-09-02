@@ -36,6 +36,8 @@ const router = createRouter({
       meta: { titulo: 'Curva ABC de Produtos' } },
     { path: '/estoque/negativos', component: () => import('@/modules/estoque/EstoqueNegativoView.vue'),
       meta: { titulo: 'Estoque Negativo' } },
+    { path: '/estoque/sugestao-compra', component: () => import('@/modules/estoque/SugestaoCompraView.vue'),
+      meta: { titulo: 'Sugestão de Compra' } },
     { path: '/estoque/lotes', component: () => import('@/modules/estoque/LotesView.vue'),
       meta: { titulo: 'Lotes e Validades' } },
     { path: '/estoque/transferencias', component: () => import('@/modules/estoque/TransferenciasView.vue'),

@@ -158,4 +158,81 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
             totalEstoqueEmReais = resultado.Sum(r => r.estoqueEmReais)
         });
     }
+
+    /// <summary>Sugestão de compra: produtos abaixo do mínimo ou com cobertura baixa
+    /// (dias de estoque) frente à venda média, com quantidade sugerida e agrupados
+    /// por fornecedor. `dias` = janela de análise; `diasAlvo` = cobertura desejada.</summary>
+    [HttpGet("sugestao-compra")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> SugestaoCompra([FromQuery] Guid empresaId,
+        [FromQuery] int dias = 30, [FromQuery] int diasAlvo = 30, CancellationToken ct = default)
+    {
+        if (dias < 1) dias = 30;
+        if (diasAlvo < 1) diasAlvo = 30;
+        var desde = DateTime.Today.AddDays(-dias);
+
+        var vendas = (await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= desde)
+            .GroupBy(x => x.i.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Qtd = g.Sum(x => x.i.Quantidade) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.ProdutoId, x => x.Qtd);
+
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo)
+            .Select(p => new
+            {
+                p.Id, p.Codigo, p.Descricao, p.EstoqueAtual, p.EstoqueMinimo,
+                p.EstoqueMaximo, p.CustoUnitario, p.FornecedorPrincipalId
+            })
+            .ToListAsync(ct);
+
+        var fornecedores = await db.Fornecedores.AsNoTracking()
+            .Where(f => f.EmpresaId == empresaId)
+            .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct);
+
+        var itens = new List<object>();
+        decimal custoTotal = 0m;
+        foreach (var p in produtos)
+        {
+            var vendaPeriodo = vendas.TryGetValue(p.Id, out var q) ? q : 0m;
+            var vendaDia = vendaPeriodo / dias;
+            var abaixoMinimo = p.EstoqueMinimo > 0 && p.EstoqueAtual <= p.EstoqueMinimo;
+            var coberturaDias = vendaDia > 0 ? (double)(p.EstoqueAtual / vendaDia) : (p.EstoqueAtual > 0 ? 9999 : 0);
+
+            // Sugere quando está abaixo do mínimo, OU vende e a cobertura é menor que o alvo.
+            var precisa = abaixoMinimo || (vendaDia > 0 && coberturaDias < diasAlvo);
+            if (!precisa) continue;
+
+            var alvoQtd = p.EstoqueMaximo > 0
+                ? p.EstoqueMaximo
+                : Math.Max(p.EstoqueMinimo, Math.Ceiling(vendaDia * diasAlvo));
+            var sugerida = Math.Ceiling(alvoQtd - p.EstoqueAtual);
+            if (sugerida <= 0) continue;
+
+            var custoSug = Math.Round(sugerida * p.CustoUnitario, 2);
+            custoTotal += custoSug;
+            itens.Add(new
+            {
+                p.Id, p.Codigo, p.Descricao,
+                estoqueAtual = p.EstoqueAtual,
+                estoqueMinimo = p.EstoqueMinimo,
+                vendaDia = Math.Round(vendaDia, 2),
+                coberturaDias = coberturaDias >= 9999 ? (double?)null : Math.Round(coberturaDias, 1),
+                abaixoMinimo,
+                quantidadeSugerida = sugerida,
+                custoUnitario = p.CustoUnitario,
+                custoSugerido = custoSug,
+                fornecedorId = p.FornecedorPrincipalId,
+                fornecedor = p.FornecedorPrincipalId.HasValue
+                    && fornecedores.TryGetValue(p.FornecedorPrincipalId.Value, out var fn)
+                    ? fn : "(sem fornecedor)"
+            });
+        }
+
+        return Ok(new { dias, diasAlvo, itens, custoTotal });
+    }
 }

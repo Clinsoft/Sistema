@@ -135,6 +135,8 @@
               to="/estoque/ajuste" value="/estoque/ajuste" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-alert-octagon-outline" title="Estoque Negativo"
               to="/estoque/negativos" value="/estoque/negativos" color="error" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
+              to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tag-outline" title="Etiquetas"
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"

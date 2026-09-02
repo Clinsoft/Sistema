@@ -65,8 +65,37 @@
           </v-chip>
         </template>
         <template #item.codigoBarras="{ item }">{{ item.codigoBarras || '—' }}</template>
+        <template #item.acoes="{ item }">
+          <v-btn icon="mdi-tune-vertical" size="x-small" color="primary" variant="text"
+            title="Ajustar estoque pela contagem física" @click="abrirAjuste(item)" />
+        </template>
       </v-data-table>
     </v-card>
+
+    <!-- Dialog: ajuste por contagem física -->
+    <v-dialog v-model="dlgAjuste" max-width="440">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold">Ajustar estoque</v-card-title>
+        <v-card-text>
+          <div class="text-body-2 font-weight-medium mb-1">{{ ajuste.produtoNome }}</div>
+          <div class="text-caption text-medium-emphasis mb-3">
+            Estoque atual: <b class="text-error">{{ fmtQtd(ajuste.estoqueAtual) }} {{ ajuste.unidade }}</b>
+          </div>
+          <v-select v-model="ajuste.localEstoqueId" :items="locais" item-title="nome" item-value="id"
+            label="Loja / local *" variant="outlined" density="compact" class="mb-3"
+            :rules="[r => !!r || 'Obrigatório']" />
+          <v-text-field v-model.number="ajuste.quantidadeContada" label="Quantidade contada (física) *"
+            type="number" min="0" step="0.001" variant="outlined" density="compact"
+            hint="Quanto tem de verdade na prateleira agora" persistent-hint />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgAjuste = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="salvando" :disabled="!ajuste.localEstoqueId"
+            @click="confirmarAjuste">Aplicar ajuste</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -74,8 +103,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 
 interface NegItem {
   id: string; codigo: string; descricao: string; estoqueAtual: number
@@ -95,6 +126,7 @@ const headers = [
   { title: 'Tipo', key: 'tipo', width: 90, align: 'center' as const },
   { title: 'Teve entrada?', key: 'temEntrada', width: 120, align: 'center' as const },
   { title: 'EAN', key: 'codigoBarras', width: 150 },
+  { title: 'Ajustar', key: 'acoes', width: 96, align: 'center' as const, sortable: false },
 ]
 
 const fmtQtd = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
@@ -122,5 +154,53 @@ async function carregar() {
   } catch { itens.value = [] } finally { carregando.value = false }
 }
 
-onMounted(carregar)
+// ── Ajuste inline por contagem física ────────────────────────────────
+const locais = ref<any[]>([])
+const dlgAjuste = ref(false)
+const salvando = ref(false)
+const ajuste = ref({
+  produtoId: '' as string, produtoNome: '', unidade: '',
+  estoqueAtual: 0, localEstoqueId: (auth.lojaAtualId || null) as string | null,
+  quantidadeContada: 0,
+})
+
+function abrirAjuste(item: NegItem) {
+  ajuste.value = {
+    produtoId: item.id, produtoNome: `${item.codigo} — ${item.descricao}`,
+    unidade: item.unidadeSigla, estoqueAtual: item.estoqueAtual,
+    localEstoqueId: auth.lojaAtualId || locais.value[0]?.id || null,
+    quantidadeContada: 0,
+  }
+  dlgAjuste.value = true
+}
+
+async function confirmarAjuste() {
+  if (!ajuste.value.localEstoqueId) return
+  salvando.value = true
+  try {
+    const r = await api.post('/ajuste-estoque/unitario', {
+      empresaId: auth.empresaId,
+      produtoId: ajuste.value.produtoId,
+      localEstoqueId: ajuste.value.localEstoqueId,
+      quantidadeContada: ajuste.value.quantidadeContada,
+      usuarioId: auth.usuario?.id,
+      observacao: 'Ajuste pela tela de Estoque Negativo (contagem física)',
+    })
+    const d = r.data
+    if (!d) notif.aviso('Sem diferença — nada a ajustar.')
+    else notif.ok(`Ajuste aplicado! Diferença: ${d.diferenca > 0 ? '+' : ''}${d.diferenca}`)
+    dlgAjuste.value = false
+    await carregar()   // o item some da lista se deixou de ser negativo
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.detalhe ?? 'Erro ao ajustar.')
+  } finally { salvando.value = false }
+}
+
+onMounted(async () => {
+  await carregar()
+  try {
+    const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
+    locais.value = r.data ?? []
+  } catch { locais.value = [] }
+})
 </script>

@@ -119,8 +119,16 @@
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"
             to="/contabilidade" value="/contabilidade" color="primary" rounded="lg" />
 
-          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-truck-delivery-outline" title="Compras"
-            to="/compras" value="/compras" color="primary" rounded="lg" />
+          <v-list-group v-if="!ehAtendente && !ehContador" value="compras">
+            <template #activator="{ props }">
+              <v-list-item v-bind="props" prepend-icon="mdi-truck-delivery-outline"
+                title="Compras" color="primary" rounded="lg" />
+            </template>
+            <v-list-item prepend-icon="mdi-clipboard-list-outline" title="Pedido de Compra"
+              to="/compras" value="/compras" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
+              to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
+          </v-list-group>
 
           <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-account-multiple-outline" title="Crediário"
             to="/crediario" value="/crediario" color="primary" rounded="lg" />
@@ -145,8 +153,6 @@
               to="/estoque/ajuste" value="/estoque/ajuste" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-alert-octagon-outline" title="Estoque Negativo"
               to="/estoque/negativos" value="/estoque/negativos" color="error" rounded="lg" class="pl-4" />
-            <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
-              to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-timer-sand-empty" title="Produtos Parados"
               to="/estoque/produtos-parados" value="/estoque/produtos-parados" color="warning" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tag-outline" title="Etiquetas"

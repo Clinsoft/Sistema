@@ -19,6 +19,11 @@
           <v-text-field v-model.number="diasAlvo" label="Cobertura desejada (dias)" type="number" min="1"
             variant="outlined" density="compact" hide-details />
         </v-col>
+        <v-col cols="6" sm="3">
+          <v-select v-model="lojaFiltro" :items="lojasOpcoes" item-title="nome" item-value="id"
+            label="Falta na loja" variant="outlined" density="compact" hide-details clearable
+            hint="Só itens zerados/negativos nessa loja" />
+        </v-col>
         <v-col cols="12" sm="3">
           <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregando" @click="carregar">Calcular</v-btn>
         </v-col>
@@ -52,12 +57,13 @@
       </v-card-title>
       <v-data-table :headers="headers" :items="grupo.itens" density="compact" hide-default-footer
         :items-per-page="-1">
+        <template v-for="l in lojas" :key="l.localEstoqueId" #[`item.loja_${l.localEstoqueId}`]="{ item }">
+          <span :class="lojaSaldo(item, l.localEstoqueId) < 0 ? 'text-error font-weight-bold' : 'font-weight-medium'">
+            {{ fmtQtd(lojaSaldo(item, l.localEstoqueId)) }}
+          </span>
+        </template>
         <template #item.estoqueAtual="{ item }">
-          <div v-for="l in item.porLoja" :key="l.localEstoqueId" class="text-caption text-end"
-            :class="l.saldo < 0 ? 'text-error' : ''">
-            {{ l.nome }}: <b>{{ fmtQtd(l.saldo) }}</b>
-          </div>
-          <div class="text-caption text-medium-emphasis text-end">Total: {{ fmtQtd(item.estoqueAtual) }}</div>
+          <span class="text-medium-emphasis">{{ fmtQtd(item.estoqueAtual) }}</span>
         </template>
         <template #item.vendaDia="{ item }">{{ fmtQtd(item.vendaDia) }}</template>
         <template #item.coberturaDias="{ item }">
@@ -98,24 +104,36 @@ const itens = ref<Item[]>([])
 const custoTotal = ref(0)
 const dias = ref(30)
 const diasAlvo = ref(30)
+const lojaFiltro = ref<string | null>(null)
 
-const headers = [
+const lojas = computed(() => itens.value[0]?.porLoja ?? [])
+const lojasOpcoes = computed(() => lojas.value.map(l => ({ id: l.localEstoqueId, nome: l.nome })))
+
+const headers = computed(() => [
   { title: 'Cód', key: 'codigo', width: 80 },
   { title: 'Produto', key: 'descricao' },
-  { title: 'Estoque por loja', key: 'estoqueAtual', align: 'end' as const, width: 170 },
+  ...lojas.value.map(l => ({ title: l.nome, key: `loja_${l.localEstoqueId}`, align: 'end' as const, sortable: false })),
+  { title: 'Total', key: 'estoqueAtual', align: 'end' as const, width: 80 },
   { title: 'Venda/dia', key: 'vendaDia', align: 'end' as const },
   { title: 'Cobertura', key: 'coberturaDias', align: 'end' as const },
   { title: 'Situação', key: 'abaixoMinimo', width: 110, align: 'center' as const },
   { title: 'Comprar', key: 'quantidadeSugerida', align: 'end' as const },
   { title: 'Custo est.', key: 'custoSugerido', align: 'end' as const },
-]
+])
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQtd = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
+const lojaSaldo = (item: Item, localId: string) =>
+  item.porLoja.find(l => l.localEstoqueId === localId)?.saldo ?? 0
+
+const itensFiltrados = computed(() =>
+  lojaFiltro.value
+    ? itens.value.filter(i => lojaSaldo(i, lojaFiltro.value!) <= 0)   // falta nessa loja
+    : itens.value)
 
 const porFornecedor = computed(() => {
   const map = new Map<string, { fornecedor: string; itens: Item[]; custo: number }>()
-  for (const it of itens.value) {
+  for (const it of itensFiltrados.value) {
     const g = map.get(it.fornecedor) ?? { fornecedor: it.fornecedor, itens: [], custo: 0 }
     g.itens.push(it); g.custo += it.custoSugerido
     map.set(it.fornecedor, g)

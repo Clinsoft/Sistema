@@ -50,13 +50,24 @@
     </div>
 
     <v-card v-for="grupo in porFornecedor" :key="grupo.fornecedor" rounded="xl" elevation="1" class="mb-3">
-      <v-card-title class="text-body-1 font-weight-bold d-flex align-center py-2">
-        <v-icon icon="mdi-truck-outline" class="mr-2" size="20" /> {{ grupo.fornecedor }}
+      <v-card-title class="text-body-1 font-weight-bold d-flex align-center py-2 flex-wrap ga-2">
+        <v-checkbox-btn :model-value="grupoTodos(grupo)" :indeterminate="grupoAlguns(grupo)"
+          density="compact" hide-details class="flex-grow-0" @update:model-value="v => toggleGrupo(grupo, !!v)" />
+        <v-icon icon="mdi-truck-outline" class="mr-1" size="20" /> {{ grupo.fornecedor }}
         <v-spacer />
-        <span class="text-body-2">{{ grupo.itens.length }} item(ns) · R$ {{ fmt(grupo.custo) }}</span>
+        <span class="text-body-2 mr-2">{{ grupoSelecionados(grupo).length }}/{{ grupo.itens.length }} sel. · R$ {{ fmt(grupoCustoSel(grupo)) }}</span>
+        <v-btn size="small" color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-cart-plus"
+          :loading="gerando === grupo.fornecedor" :disabled="!grupoSelecionados(grupo).length"
+          @click="gerarPedido(grupo)">Gerar pedido</v-btn>
       </v-card-title>
+      <v-alert v-if="!grupo.fornecedorId" type="warning" variant="tonal" density="compact" class="mx-3 mb-2">
+        Sem fornecedor vinculado — vincule um fornecedor no cadastro do produto para gerar o pedido.
+      </v-alert>
       <v-data-table :headers="headers" :items="grupo.itens" density="compact" hide-default-footer
         :items-per-page="-1">
+        <template #item.sel="{ item }">
+          <v-checkbox-btn v-model="sel[item.id]" density="compact" hide-details />
+        </template>
         <template v-for="l in lojas" :key="l.localEstoqueId" #[`item.loja_${l.localEstoqueId}`]="{ item }">
           <span :class="lojaSaldo(item, l.localEstoqueId) < 0 ? 'text-error font-weight-bold' : 'font-weight-medium'">
             {{ fmtQtd(lojaSaldo(item, l.localEstoqueId)) }}
@@ -75,9 +86,11 @@
           </span>
         </template>
         <template #item.quantidadeSugerida="{ item }">
-          <span class="font-weight-bold">{{ fmtQtd(item.quantidadeSugerida) }}</span>
+          <v-text-field v-model.number="item.quantidadeSugerida" type="number" min="0"
+            variant="outlined" density="compact" hide-details style="width:96px"
+            @update:model-value="() => recalcCusto(item)" />
         </template>
-        <template #item.custoSugerido="{ item }">R$ {{ fmt(item.custoSugerido) }}</template>
+        <template #item.custoSugerido="{ item }">R$ {{ fmt(item.quantidadeSugerida * item.custoUnitario) }}</template>
         <template #item.abaixoMinimo="{ item }">
           <v-chip v-if="item.abaixoMinimo" size="x-small" color="error" variant="tonal" label>abaixo do mín.</v-chip>
           <span v-else class="text-caption text-medium-emphasis">giro</span>
@@ -91,8 +104,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 
 interface Item {
   id: string; codigo: string; descricao: string; estoqueAtual: number; estoqueMinimo: number
@@ -119,6 +134,7 @@ const semLoja = (item: Item) => item.estoqueAtual - somaLojas(item)
 const temSemLoja = computed(() => itens.value.some(i => Math.abs(semLoja(i)) > 0.001))
 
 const headers = computed(() => [
+  { title: '', key: 'sel', sortable: false, width: 48 },
   { title: 'Cód', key: 'codigo', width: 80 },
   { title: 'Produto', key: 'descricao' },
   ...lojas.value.map(l => ({ title: l.nome, key: `loja_${l.localEstoqueId}`, align: 'end' as const, sortable: false })),
@@ -141,15 +157,53 @@ const itensFiltrados = computed(() =>
     ? itens.value.filter(i => lojaSaldo(i, lojaFiltro.value!) <= 0)   // falta nessa loja
     : itens.value)
 
-const porFornecedor = computed(() => {
-  const map = new Map<string, { fornecedor: string; itens: Item[]; custo: number }>()
+interface Grupo { fornecedor: string; fornecedorId: string | null; itens: Item[]; custo: number }
+const porFornecedor = computed<Grupo[]>(() => {
+  const map = new Map<string, Grupo>()
   for (const it of itensFiltrados.value) {
-    const g = map.get(it.fornecedor) ?? { fornecedor: it.fornecedor, itens: [], custo: 0 }
+    const g = map.get(it.fornecedor) ?? { fornecedor: it.fornecedor, fornecedorId: it.fornecedorId, itens: [], custo: 0 }
     g.itens.push(it); g.custo += it.custoSugerido
     map.set(it.fornecedor, g)
   }
   return [...map.values()].sort((a, b) => b.custo - a.custo)
 })
+
+// ── Seleção de itens e geração de pedido por fornecedor ──────────────
+const sel = ref<Record<string, boolean>>({})
+const gerando = ref<string | null>(null)
+
+const recalcCusto = (item: Item) => { item.custoSugerido = (item.quantidadeSugerida || 0) * item.custoUnitario }
+
+const grupoSelecionados = (g: Grupo) => g.itens.filter(i => sel.value[i.id])
+const grupoCustoSel = (g: Grupo) => grupoSelecionados(g).reduce((s, i) => s + i.quantidadeSugerida * i.custoUnitario, 0)
+const grupoTodos = (g: Grupo) => g.itens.length > 0 && g.itens.every(i => sel.value[i.id])
+const grupoAlguns = (g: Grupo) => g.itens.some(i => sel.value[i.id]) && !grupoTodos(g)
+const toggleGrupo = (g: Grupo, val: boolean) => g.itens.forEach(i => { sel.value[i.id] = val })
+
+async function gerarPedido(g: Grupo) {
+  const itensSel = grupoSelecionados(g)
+  if (!itensSel.length) return
+  if (!g.fornecedorId) { notif.aviso('Este grupo não tem fornecedor vinculado. Vincule um fornecedor no cadastro do produto.'); return }
+  if (itensSel.some(i => !i.quantidadeSugerida || i.quantidadeSugerida <= 0)) {
+    notif.aviso('Há itens selecionados com quantidade zerada. Ajuste antes de gerar.'); return
+  }
+  gerando.value = g.fornecedor
+  try {
+    await api.post('/pedidos-compra', {
+      empresaId: auth.empresaId,
+      fornecedorId: g.fornecedorId,
+      usuarioId: auth.usuario?.id,
+      itens: itensSel.map(i => ({
+        produtoId: i.id, descricao: i.descricao,
+        quantidade: i.quantidadeSugerida, precoUnitario: i.custoUnitario,
+      })),
+    })
+    notif.ok(`Pedido criado para ${g.fornecedor} com ${itensSel.length} item(ns). Veja em Compras › Pedido de Compra.`)
+    itensSel.forEach(i => { sel.value[i.id] = false })
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o pedido de compra.')
+  } finally { gerando.value = null }
+}
 
 async function carregar() {
   if (!auth.empresaId) { carregando.value = false; return }

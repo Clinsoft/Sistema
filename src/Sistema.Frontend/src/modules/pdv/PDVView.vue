@@ -224,17 +224,21 @@
             density="compact"
             hide-details
             clearable
-            placeholder="Buscar cliente..."
+            placeholder="Nome, CPF ou telefone..."
             class="mb-2"
             :loading="buscandoCliente"
             @update:search="pesquisarCliente"
           >
+            <template #item="{ props, item }">
+              <v-list-item v-bind="props" :title="item.raw.nome" prepend-icon="mdi-account-outline"
+                :subtitle="clienteSubtitulo(item.raw)" />
+            </template>
             <template #no-data>
               <v-list-item v-if="buscaCliente && buscaCliente.trim().length >= 2"
                 :title="'Cadastrar cliente: ' + buscaCliente.trim()"
                 prepend-icon="mdi-account-plus-outline"
                 @click="cadastrarClienteRapido(buscaCliente.trim())" />
-              <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
+              <v-list-item v-else title="Digite nome, CPF ou telefone para buscar ou cadastrar" disabled />
             </template>
           </v-autocomplete>
           <div class="d-flex align-center ga-2">
@@ -454,6 +458,33 @@
           <v-btn color="primary" rounded="lg" :disabled="!cartaoBandeiraSel" @click="confirmarCartao">
             Adicionar pagamento
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: cadastro rápido de cliente (nome + telefone) -->
+    <v-dialog v-model="dialogNovoCliente" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="primary">mdi-account-plus-outline</v-icon>
+          Cadastrar cliente
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-text-field v-model="ncNome" label="Nome *" variant="outlined" density="compact"
+            class="mb-3" autofocus @keyup.enter="focarTelefone" />
+          <v-text-field ref="inputNovoTel" v-model="ncTelefone" label="Telefone / WhatsApp *"
+            placeholder="(00) 00000-0000" inputmode="tel" variant="outlined" density="compact"
+            class="mb-3" :error-messages="ncTelefone && !telefoneOk ? 'Telefone incompleto' : ''"
+            @update:model-value="ncTelefone = mascararTelefone($event)" @keyup.enter="salvarNovoCliente" />
+          <v-text-field v-model="ncCpf" label="CPF (opcional)" placeholder="000.000.000-00"
+            inputmode="numeric" variant="outlined" density="compact"
+            @update:model-value="ncCpf = formatarCpf($event)" @keyup.enter="salvarNovoCliente" />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogNovoCliente = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoCliente"
+            :disabled="!ncNome.trim() || !telefoneOk" @click="salvarNovoCliente">Salvar e selecionar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -812,7 +843,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import { useUiStore } from '@/stores/ui'
 import QRCode from 'qrcode'
-import { formatarCpf, maskCnpj, cpfRaw, cnpjRaw } from '@/utils/documento'
+import { formatarCpf, maskCnpj, cpfRaw, cnpjRaw, formatarCpfCnpj } from '@/utils/documento'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 
 const auth = useAuthStore()
@@ -851,7 +882,7 @@ interface Produto {
   id: string; descricao: string; codigo: string; precoVenda: number
   unidadeSigla: string; vendidoFracionado?: boolean; codigoPlu?: number | null
 }
-interface Cliente { id: string; nome: string }
+interface Cliente { id: string; nome: string; cpfCnpj?: string | null; telefone?: string | null; celular?: string | null }
 interface Colaborador { id: string; nome: string; perfil: string; localEstoqueId?: string | null }
 
 // ── Refs ─────────────────────────────────────────────────────────
@@ -1386,18 +1417,67 @@ async function pesquisarCliente(q: string) {
   } finally { buscandoCliente.value = false }
 }
 
-/** Cadastra um cliente só com o nome e já seleciona na venda. */
-async function cadastrarClienteRapido(nome: string) {
+// Subtítulo do resultado da busca: mostra telefone e/ou CPF para diferenciar homônimos.
+function clienteSubtitulo(c: Cliente): string {
+  const partes: string[] = []
+  const tel = c.celular || c.telefone
+  if (tel) partes.push('📱 ' + mascararTelefone(String(tel)))
+  if (c.cpfCnpj) partes.push('CPF ' + formatarCpfCnpj(String(c.cpfCnpj)))
+  return partes.join('  ·  ')
+}
+
+// Máscara de telefone BR: (00) 0000-0000 ou (00) 00000-0000
+function mascararTelefone(v: string): string {
+  const d = String(v ?? '').replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 2) return d.length ? `(${d}` : ''
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+}
+
+// ── Cadastro rápido de cliente (nome + telefone) ──────────────────
+const dialogNovoCliente = ref(false)
+const inputNovoTel = ref()
+const ncNome = ref('')
+const ncTelefone = ref('')
+const ncCpf = ref('')
+const salvandoCliente = ref(false)
+const telefoneOk = computed(() => ncTelefone.value.replace(/\D/g, '').length >= 10)
+
+function focarTelefone() { inputNovoTel.value?.focus?.() }
+
+/** Abre o dialog de cadastro já com o nome digitado. */
+function cadastrarClienteRapido(nome: string) {
+  ncNome.value = nome
+  ncTelefone.value = ''
+  ncCpf.value = ''
+  dialogNovoCliente.value = true
+}
+
+async function salvarNovoCliente() {
+  const nome = ncNome.value.trim()
+  if (!nome || !telefoneOk.value) return
+  salvandoCliente.value = true
   try {
-    const r = await api.post('/clientes', { empresaId: auth.empresaId, nome, tipoPessoa: 'Fisica' })
-    const novo: Cliente = { id: r.data.id ?? r.data, nome }
+    const telefone = ncTelefone.value.replace(/\D/g, '')
+    const doc = ncCpf.value.replace(/\D/g, '')
+    const r = await api.post('/clientes', {
+      empresaId: auth.empresaId,
+      nome,
+      tipoPessoa: doc.length === 14 ? 'Juridica' : 'Fisica',
+      telefone,
+      cpfCnpj: doc || null,
+      localEstoqueId: sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null,
+    })
+    const novo: Cliente = { id: r.data.id ?? r.data, nome, telefone, cpfCnpj: doc || null }
     clientes.value = [novo, ...clientes.value]
     clienteId.value = novo.id
     buscaCliente.value = ''
+    dialogNovoCliente.value = false
     notif.ok(`Cliente "${nome}" cadastrado e selecionado.`)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao cadastrar cliente.')
-  }
+  } finally { salvandoCliente.value = false }
 }
 
 // ── Finalizar ─────────────────────────────────────────────────────

@@ -85,6 +85,16 @@
       <!-- ── COLUNA ESQUERDA: Itens ─────────────────────────── -->
       <div class="pdv-col-itens">
 
+        <!-- Faixa fixa do SORTEIO (lembrete sempre visível p/ atendente e cliente) -->
+        <div v-for="s in sorteios" :key="s.id" class="pdv-sorteio-bar">
+          <v-icon size="20" class="mr-2">mdi-ticket-confirmation-outline</v-icon>
+          <span>
+            <strong>SORTEIO:</strong> compras a partir de
+            <strong>R$ {{ fmt(s.valorMinimoPedido) }}</strong> concorrem a
+            <strong>{{ s.nome }}</strong> — ofereça o cupom ao cliente!
+          </span>
+        </div>
+
         <!-- Faixa de promoções ativas (banner rotativo automático) -->
         <transition name="pdv-promo-slide">
           <div v-if="promoAtiva && !promoDismissed" class="pdv-promo-bar">
@@ -2170,10 +2180,8 @@ async function carregarPromocoes() {
         : `${Number(p.desconto).toFixed(0)}% OFF`
       return `${p.nome} — ${desc}`
     })
-    // Aviso do sorteio entra na rotação do banner (lembrete pro atendente/cliente).
-    const avisosSorteio = sorteios.value.map((s: any) =>
-      `🎟️ SORTEIO: compras a partir de R$ ${Number(s.valorMinimoPedido).toFixed(2)} concorrem a ${s.nome} — ofereça o cupom!`)
-    todasPromocoes.value = [...avisosSorteio, ...nomes]
+    // Sorteio tem faixa fixa própria (abaixo), fora da rotação de ofertas.
+    todasPromocoes.value = nomes
     iniciarRotacaoPromo()
   } catch { /* silencioso */ }
 }
@@ -2819,6 +2827,19 @@ onUnmounted(() => {
 }
 
 /* ── Faixa de promoções ── */
+.pdv-sorteio-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  min-height: 44px;
+  color: #fff;
+  font-size: 14px;
+  background: linear-gradient(90deg, #7e22ce 0%, #9333ea 50%, #6d28d9 100%);
+  border-bottom: 2px solid #581c87;
+  box-shadow: 0 2px 6px rgba(126,34,206,.35);
+  flex-shrink: 0;
+}
+.pdv-sorteio-bar strong { font-weight: 800; }
 .pdv-promo-bar {
   display: flex;
   align-items: center;

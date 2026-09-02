@@ -59,6 +59,18 @@
           <v-icon size="13">mdi-clock-outline</v-icon>
           {{ horaAtual }}
         </div>
+        <v-btn icon="mdi-pause-circle-outline" size="small" variant="text" color="rgba(255,255,255,.75)"
+          :disabled="!itens.length" title="Colocar venda em espera" @click="suspenderVenda" />
+        <v-btn size="small" variant="text" color="rgba(255,255,255,.75)"
+          title="Vendas em espera" @click="dialogEspera = true">
+          <v-badge :content="vendasEmEspera.length" :model-value="vendasEmEspera.length > 0" color="warning">
+            <v-icon>mdi-play-circle-outline</v-icon>
+          </v-badge>
+        </v-btn>
+        <v-btn icon="mdi-printer-outline" size="small" variant="text" color="rgba(255,255,255,.75)"
+          :disabled="!ultimaVendaId" title="Reimprimir último cupom" @click="reimprimirUltimo" />
+        <v-btn icon="mdi-cash-register" size="small" variant="text" color="rgba(255,255,255,.75)"
+          :disabled="!sessaoAtual" title="Sangria / Reforço de caixa" @click="abrirCaixaMov" />
         <v-btn v-if="!mobile" :icon="emTelaCheia ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"
           size="small" variant="text" color="rgba(255,255,255,.6)"
           :title="emTelaCheia ? 'Sair da tela cheia' : 'Tela cheia'" @click="alternarTelaCheia" />
@@ -491,6 +503,69 @@
           <v-btn variant="text" @click="dialogNovoCliente = false">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :loading="salvandoCliente"
             :disabled="!ncNome.trim() || !telefoneOk" @click="salvarNovoCliente">Salvar e selecionar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: vendas em espera -->
+    <v-dialog v-model="dialogEspera" max-width="520">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="warning">mdi-pause-circle-outline</v-icon>
+          Vendas em espera <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="dialogEspera = false" />
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <div v-if="!vendasEmEspera.length" class="text-center text-medium-emphasis pa-4">
+            Nenhuma venda em espera. Use ⏸ para guardar a venda atual e atender outro cliente.
+          </div>
+          <v-list v-else density="compact">
+            <v-list-item v-for="v in vendasEmEspera" :key="v.id" rounded="lg" class="mb-1"
+              @click="retomarVenda(v.id)">
+              <template #prepend><v-icon color="warning">mdi-cart-outline</v-icon></template>
+              <v-list-item-title class="font-weight-medium">
+                {{ v.clienteNome || 'Sem cliente' }} — {{ v.itens.length }} item(ns)
+              </v-list-item-title>
+              <v-list-item-subtitle>
+                R$ {{ fmt(v.totalResumo) }} · {{ new Date(v.criadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}
+              </v-list-item-subtitle>
+              <template #append>
+                <v-btn icon="mdi-play" size="small" variant="text" color="success"
+                  title="Retomar" @click.stop="retomarVenda(v.id)" />
+                <v-btn icon="mdi-delete-outline" size="small" variant="text" color="error"
+                  title="Descartar" @click.stop="descartarEspera(v.id)" />
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: sangria / reforço de caixa -->
+    <v-dialog v-model="dialogCaixaMov" max-width="420" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="deep-purple">mdi-cash-register</v-icon>
+          Movimentação de caixa
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-btn-toggle v-model="caixaMovTipo" mandatory density="compact" variant="outlined"
+            rounded="lg" class="mb-3 d-flex">
+            <v-btn value="sangria" class="flex-grow-1"><v-icon start>mdi-cash-minus</v-icon>Sangria</v-btn>
+            <v-btn value="reforco" class="flex-grow-1"><v-icon start>mdi-cash-plus</v-icon>Reforço</v-btn>
+          </v-btn-toggle>
+          <v-text-field v-model.number="caixaMovValor" label="Valor (R$) *" type="number" min="0"
+            prefix="R$" variant="outlined" density="compact" class="mb-3" autofocus
+            @keyup.enter="confirmarCaixaMov" />
+          <v-text-field v-model="caixaMovDescricao"
+            :label="caixaMovTipo === 'sangria' ? 'Motivo (ex.: retirada p/ cofre)' : 'Motivo (ex.: troco inicial)'"
+            variant="outlined" density="compact" @keyup.enter="confirmarCaixaMov" />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogCaixaMov = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="salvandoCaixaMov"
+            :disabled="!caixaMovValor || caixaMovValor <= 0" @click="confirmarCaixaMov">Confirmar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1075,6 +1150,7 @@ const mapaFormaPagamento: Record<string, string> = {
 // ── Atalhos ───────────────────────────────────────────────────────
 const atalhos = [
   { key: 'Enter',  descricao: 'Buscar produto pelo código' },
+  { key: 'N * cód', descricao: 'Multiplicar quantidade (ex.: 3*7891234 lança 3 un.)' },
   { key: 'F1',     descricao: 'Abrir/fechar lista de atalhos' },
   { key: 'F2',     descricao: 'Focar no campo de desconto' },
   { key: 'F3',     descricao: 'Focar na busca de cliente' },
@@ -1301,8 +1377,12 @@ function parseCodigoBalanca(codigo: string): { plu: number; valor: number } | nu
 }
 
 async function buscarProduto() {
-  const codigo = codigoDigitado.value.trim()
+  let codigo = codigoDigitado.value.trim()
   if (!codigo) { inputCodigo.value?.focus(); return }
+  // Multiplicador de quantidade: "3*codigo" ou "3x codigo" lança 3 unidades.
+  let multiplicador = 1
+  const mult = codigo.match(/^(\d+)\s*[*xX]\s*(.+)$/)
+  if (mult) { multiplicador = Math.max(1, parseInt(mult[1], 10)); codigo = mult[2].trim() }
   const bal = parseCodigoBalanca(codigo)
   try {
     const res = await api.get<Produto[]>('/produtos/buscar', {
@@ -1317,7 +1397,7 @@ async function buscarProduto() {
     }
     if (lista.length === 1) {
       if (bal) adicionarProdutoBalanca(lista[0], bal)
-      else adicionarProduto(lista[0])
+      else adicionarProduto(lista[0], multiplicador)
     } else if (lista.length > 1) {
       produtosBusca.value = lista
       dialogProdutos.value = true
@@ -1359,20 +1439,21 @@ function ehPorPeso(p: { vendidoFracionado?: boolean; unidadeSigla?: string }) {
   return p.vendidoFracionado === true || (p.unidadeSigla || '').toUpperCase() === 'KG'
 }
 
-function adicionarProduto(p: Produto) {
+function adicionarProduto(p: Produto, qtd = 1) {
   dialogProdutos.value = false
   // Produto por peso → abre o diálogo de gramas em vez de somar 1 unidade
   if (ehPorPeso(p)) { abrirPeso(p); return }
 
+  const q = Math.max(1, Math.floor(qtd) || 1)
   const existe = itens.value.find(i => i.produtoId === p.id)
   if (existe) {
-    existe.quantidade++
+    existe.quantidade += q
     existe.total = Math.round((existe.quantidade * existe.precoUnitario - existe.desconto) * 100) / 100
   } else {
     itens.value.push({
       produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
-      precoUnitario: p.precoVenda, quantidade: 1,
-      total: p.precoVenda, unidade: p.unidadeSigla, desconto: 0
+      precoUnitario: p.precoVenda, quantidade: q,
+      total: Math.round(q * p.precoVenda * 100) / 100, unidade: p.unidadeSigla, desconto: 0
     })
     itemSelecionado.value = itens.value.length - 1
   }
@@ -1569,6 +1650,7 @@ async function finalizar() {
 
     ultimaVendaId.value = vendaId
     ultimaVendaNumero.value = res.data.numero
+    persistirUltimaVenda()
     ultimaVendaTotal.value = res.data.total
     ultimaVendaTroco.value = res.data.troco
     ultimaVendaQrCode.value = res.data.qrCode ?? null
@@ -1613,6 +1695,122 @@ function cancelar() {
     itemSelecionado.value = null
     nextTick(() => inputCodigo.value?.focus())
   }
+}
+
+// ── Venda em espera (suspender/retomar) ───────────────────────────
+interface VendaEspera {
+  id: string; criadoEm: string; totalResumo: number
+  itens: ItemVenda[]; clienteId: string | null; clienteNome: string
+  colaboradorId: string; cpfConsumidor: string; tipoDocConsumidor: 'cpf' | 'cnpj'
+  desconto: number; descontoReais: number; descontoPct: number
+}
+const dialogEspera = ref(false)
+const vendasEmEspera = ref<VendaEspera[]>([])
+const CHAVE_ESPERA = 'pdv_vendas_espera'
+
+function carregarEspera() {
+  try { vendasEmEspera.value = JSON.parse(localStorage.getItem(CHAVE_ESPERA) || '[]') }
+  catch { vendasEmEspera.value = [] }
+}
+function persistirEspera() {
+  try { localStorage.setItem(CHAVE_ESPERA, JSON.stringify(vendasEmEspera.value)) } catch { /* ignora */ }
+}
+function limparVendaAtual() {
+  itens.value = []; pagamentos.value = []
+  desconto.value = 0; descontoReais.value = 0; descontoPct.value = 0
+  clienteId.value = null; cpfConsumidor.value = ''; tipoDocConsumidor.value = 'cpf'
+  itemSelecionado.value = null
+}
+function suspenderVenda() {
+  if (!itens.value.length) return
+  vendasEmEspera.value.unshift({
+    id: (crypto?.randomUUID?.() ?? String(Date.now())),
+    criadoEm: new Date().toISOString(),
+    totalResumo: total.value,
+    itens: JSON.parse(JSON.stringify(itens.value)),
+    clienteId: clienteId.value,
+    clienteNome: clienteSelecionadoNome.value,
+    colaboradorId: colaboradorId.value || '',
+    cpfConsumidor: cpfConsumidor.value,
+    tipoDocConsumidor: tipoDocConsumidor.value,
+    desconto: desconto.value, descontoReais: descontoReais.value, descontoPct: descontoPct.value,
+  })
+  persistirEspera()
+  limparVendaAtual()
+  notif.ok('Venda colocada em espera.')
+  nextTick(() => inputCodigo.value?.focus())
+}
+function retomarVenda(id: string) {
+  const v = vendasEmEspera.value.find(x => x.id === id)
+  if (!v) return
+  // Se há venda em andamento, guarda-a antes de retomar (não perde nada).
+  if (itens.value.length) suspenderVenda()
+  itens.value = JSON.parse(JSON.stringify(v.itens))
+  clienteId.value = v.clienteId
+  if (v.clienteId) clientes.value = [{ id: v.clienteId, nome: v.clienteNome }, ...clientes.value]
+  colaboradorId.value = v.colaboradorId || colaboradorId.value
+  cpfConsumidor.value = v.cpfConsumidor
+  tipoDocConsumidor.value = v.tipoDocConsumidor
+  desconto.value = v.desconto; descontoReais.value = v.descontoReais; descontoPct.value = v.descontoPct
+  itemSelecionado.value = itens.value.length ? 0 : null
+  vendasEmEspera.value = vendasEmEspera.value.filter(x => x.id !== id)
+  persistirEspera()
+  dialogEspera.value = false
+  nextTick(() => inputCodigo.value?.focus())
+}
+function descartarEspera(id: string) {
+  if (!confirm('Descartar esta venda em espera?')) return
+  vendasEmEspera.value = vendasEmEspera.value.filter(x => x.id !== id)
+  persistirEspera()
+}
+
+// ── Reimprimir último cupom ───────────────────────────────────────
+const CHAVE_ULTIMA = 'pdv_ultima_venda'
+function persistirUltimaVenda() {
+  try { localStorage.setItem(CHAVE_ULTIMA, JSON.stringify({ id: ultimaVendaId.value, numero: ultimaVendaNumero.value })) }
+  catch { /* ignora */ }
+}
+function carregarUltimaVenda() {
+  try {
+    const u = JSON.parse(localStorage.getItem(CHAVE_ULTIMA) || 'null')
+    if (u?.id) { ultimaVendaId.value = u.id; ultimaVendaNumero.value = u.numero ?? '' }
+  } catch { /* ignora */ }
+}
+async function reimprimirUltimo() {
+  if (!ultimaVendaId.value) { notif.aviso('Nenhuma venda recente neste caixa para reimprimir.'); return }
+  try { await imprimirComprovante(); notif.ok(`2ª via do cupom Nº ${ultimaVendaNumero.value} enviada à impressora.`) }
+  catch { notif.erro('Não foi possível reimprimir o cupom.') }
+}
+
+// ── Sangria / Reforço de caixa ────────────────────────────────────
+const dialogCaixaMov = ref(false)
+const caixaMovTipo = ref<'sangria' | 'reforco'>('sangria')
+const caixaMovValor = ref<number | null>(null)
+const caixaMovDescricao = ref('')
+const salvandoCaixaMov = ref(false)
+function abrirCaixaMov() {
+  if (!sessaoAtual.value) { notif.aviso('Abra o caixa primeiro.'); return }
+  caixaMovTipo.value = 'sangria'; caixaMovValor.value = null; caixaMovDescricao.value = ''
+  dialogCaixaMov.value = true
+}
+async function confirmarCaixaMov() {
+  const valor = Number(caixaMovValor.value)
+  if (!sessaoAtual.value || !valor || valor <= 0) return
+  if (sessaoAtual.value.id === 'dev') { notif.aviso('Caixa de teste — operação não registrada.'); dialogCaixaMov.value = false; return }
+  salvandoCaixaMov.value = true
+  try {
+    const rota = caixaMovTipo.value === 'sangria' ? 'sangria' : 'suprimento'
+    await api.post(`/caixa/sessoes/${sessaoAtual.value.id}/${rota}`, {
+      valor, descricao: caixaMovDescricao.value || null,
+    })
+    notif.ok(caixaMovTipo.value === 'sangria'
+      ? `Sangria de R$ ${fmt(valor)} registrada.`
+      : `Reforço de R$ ${fmt(valor)} registrado.`)
+    dialogCaixaMov.value = false
+    nextTick(() => inputCodigo.value?.focus())
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao registrar a movimentação de caixa.')
+  } finally { salvandoCaixaMov.value = false }
 }
 
 async function imprimirComprovante() {
@@ -1915,6 +2113,8 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   atualizarHora()
+  carregarEspera()
+  carregarUltimaVenda()
   clockTimer = setInterval(atualizarHora, 30000)
   document.addEventListener('keydown', onKeydown, true)
   document.addEventListener('fullscreenchange', onFullscreenChange)

@@ -2155,8 +2155,9 @@ async function carregarPromocoes() {
     })
     const promos: any[] = r.data ?? []
     const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null
-    // Só as desta loja (ou de todas as lojas).
-    const daLoja = promos.filter((p: any) => !p.localEstoqueId || p.localEstoqueId === loja)
+    // Só as desta loja (ou de todas as lojas). Se a loja ainda não é conhecida,
+    // não filtra por loja (evita esconder o aviso por corrida de carregamento).
+    const daLoja = promos.filter((p: any) => !p.localEstoqueId || !loja || p.localEstoqueId === loja)
     // Sorteios ativos desta loja (para o aviso e a geração do cupom).
     sorteios.value = daLoja.filter((p: any) => p.tipo === 'Sorteio')
     const nomes = daLoja.filter((p: any) => p.tipo !== 'Sorteio').map((p: any) => {
@@ -2286,7 +2287,10 @@ onMounted(async () => {
   clockTimer = setInterval(atualizarHora, 30000)
   document.addEventListener('keydown', onKeydown, true)
   document.addEventListener('fullscreenchange', onFullscreenChange)
-  await Promise.all([carregarColaboradores(), verificarSessaoCaixa(), carregarPromocoes(), carregarOperadoras()])
+  // A sessão do caixa define a loja; carrega antes das promoções para o
+  // filtro por loja funcionar (aviso de sorteio da loja certa).
+  await verificarSessaoCaixa()
+  await Promise.all([carregarColaboradores(), carregarPromocoes(), carregarOperadoras()])
 })
 
 async function carregarOperadoras() {

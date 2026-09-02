@@ -235,4 +235,61 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
 
         return Ok(new { dias, diasAlvo, itens, custoTotal });
     }
+
+    /// <summary>Produtos parados: têm estoque mas NÃO venderam nos últimos `dias` dias
+    /// (capital travado na prateleira). Ordenados pelo valor em estoque (custo).</summary>
+    [HttpGet("produtos-parados")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> ProdutosParados([FromQuery] Guid empresaId,
+        [FromQuery] int dias = 90, CancellationToken ct = default)
+    {
+        if (dias < 1) dias = 90;
+        var desde = DateTime.Today.AddDays(-dias);
+
+        // Produtos que venderam algo no período (não estão parados)
+        var vendeuNoPeriodo = (await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= desde)
+            .Select(x => x.i.ProdutoId)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
+        // Última venda (qualquer data) por produto — para mostrar há quanto tempo parou
+        var ultimaVenda = (await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i.ProdutoId, v.DataHora, v.Status, v.EmpresaId })
+            .Where(x => x.EmpresaId == empresaId && x.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
+            .GroupBy(x => x.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Ultima = g.Max(x => x.DataHora) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.ProdutoId, x => x.Ultima);
+
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0)
+            .Select(p => new { p.Id, p.Codigo, p.Descricao, p.EstoqueAtual, p.CustoUnitario })
+            .ToListAsync(ct);
+
+        var hoje = DateTime.Today;
+        var itens = produtos
+            .Where(p => !vendeuNoPeriodo.Contains(p.Id))   // vendeu no período → não está parado
+            .Select(p =>
+            {
+                DateTime? ult = ultimaVenda.TryGetValue(p.Id, out var u) ? u : null;
+                return new
+                {
+                    p.Id, p.Codigo, p.Descricao,
+                    estoqueAtual = p.EstoqueAtual,
+                    custoUnitario = p.CustoUnitario,
+                    valorEstoque = Math.Round(p.EstoqueAtual * p.CustoUnitario, 2),
+                    ultimaVenda = ult,
+                    diasSemVender = ult.HasValue ? (int?)(hoje - ult.Value.Date).TotalDays : null,
+                    nuncaVendeu = !ult.HasValue
+                };
+            })
+            .OrderByDescending(x => x.valorEstoque)
+            .ToList();
+
+        return Ok(new { dias, capitalParado = itens.Sum(x => x.valorEstoque), itens });
+    }
 }

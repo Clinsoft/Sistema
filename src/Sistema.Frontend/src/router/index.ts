@@ -38,6 +38,8 @@ const router = createRouter({
       meta: { titulo: 'Estoque Negativo' } },
     { path: '/estoque/sugestao-compra', component: () => import('@/modules/estoque/SugestaoCompraView.vue'),
       meta: { titulo: 'Sugestão de Compra' } },
+    { path: '/estoque/produtos-parados', component: () => import('@/modules/estoque/ProdutosParadosView.vue'),
+      meta: { titulo: 'Produtos Parados' } },
     { path: '/estoque/lotes', component: () => import('@/modules/estoque/LotesView.vue'),
       meta: { titulo: 'Lotes e Validades' } },
     { path: '/estoque/transferencias', component: () => import('@/modules/estoque/TransferenciasView.vue'),

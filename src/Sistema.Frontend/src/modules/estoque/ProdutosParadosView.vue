@@ -59,6 +59,9 @@
             {{ fmtQtd(lojaSaldo(item, l.localEstoqueId)) }}
           </span>
         </template>
+        <template #item.semLoja="{ item }">
+          <span class="text-medium-emphasis font-italic">{{ fmtQtd(semLoja(item)) }}</span>
+        </template>
         <template #item.estoqueAtual="{ item }">
           <span class="text-medium-emphasis">{{ fmtQtd(item.estoqueAtual) }}</span>
         </template>
@@ -103,10 +106,17 @@ const lojaFiltro = ref<string | null>(null)
 const lojas = computed(() => itens.value[0]?.porLoja ?? [])
 const lojasOpcoes = computed(() => lojas.value.map(l => ({ id: l.localEstoqueId, nome: l.nome })))
 
+// Resíduo sem loja: saldo do cadastro que não está atribuído a nenhuma loja
+// (ex.: saldo inicial importado sem movimentação). Assim as colunas fecham com o Total.
+const somaLojas = (item: Item) => item.porLoja.reduce((s, l) => s + (l.saldo ?? 0), 0)
+const semLoja = (item: Item) => item.estoqueAtual - somaLojas(item)
+const temSemLoja = computed(() => itens.value.some(i => Math.abs(semLoja(i)) > 0.001))
+
 const headers = computed(() => [
   { title: 'Cód', key: 'codigo', width: 80 },
   { title: 'Produto', key: 'descricao' },
   ...lojas.value.map(l => ({ title: l.nome, key: `loja_${l.localEstoqueId}`, align: 'end' as const, sortable: false })),
+  ...(temSemLoja.value ? [{ title: 'Sem loja', key: 'semLoja', align: 'end' as const, sortable: false, width: 90 }] : []),
   { title: 'Total', key: 'estoqueAtual', align: 'end' as const, width: 90 },
   { title: 'Valor em estoque', key: 'valorEstoque', align: 'end' as const },
   { title: 'Última venda', key: 'ultimaVenda', width: 130 },

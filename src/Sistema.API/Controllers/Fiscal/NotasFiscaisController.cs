@@ -219,11 +219,51 @@ public class NotasFiscaisController(
         if (nota.Status != StatusNF.Autorizada)
             throw new InvalidOperationException("Apenas notas autorizadas podem ser canceladas.");
 
-        // TODO Fase 2: transmitir evento de cancelamento à SEFAZ
-        nota.Cancelar(req.Justificativa);
+        var justificativa = (req.Justificativa ?? "").Trim();
+        if (justificativa.Length < 15 || justificativa.Length > 255)
+            return BadRequest(new { mensagem = "A justificativa do cancelamento deve ter entre 15 e 255 caracteres." });
+
+        if (string.IsNullOrWhiteSpace(nota.ChaveAcesso) || string.IsNullOrWhiteSpace(nota.Protocolo))
+            return BadRequest(new { mensagem = "Nota sem chave/protocolo de autorização — não é possível cancelar." });
+
+        var config = await configRepo.ObterPorEmpresaAsync(nota.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada.");
+        if (config.CertificadoPfxBase64 is null)
+            return BadRequest(new { mensagem = "Certificado digital A1 não configurado." });
+
+        var empresa = await db.Empresas.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == nota.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
+
+        var cUF = (empresa.CodMunicipio ?? "").Length >= 2 ? empresa.CodMunicipio![..2] : "35";
+        var tpAmb = config.Ambiente == Sistema.Domain.Fiscal.Entities.AmbienteFiscal.Producao ? "1" : "2";
+        var cnpj = new string((empresa.Cnpj ?? "").Where(char.IsDigit).ToArray());
+        var isNFCe = nota.Modelo == ModeloNF.NFCe;
+
+        // 1. Monta e assina o evento de cancelamento (110111).
+        var evento = NFeXmlBuilder.GerarEventoCancelamentoAssinado(
+            nota.ChaveAcesso!, cnpj, cUF, tpAmb, nota.Protocolo!, justificativa, config);
+
+        // 2. Transmite à SEFAZ (recepção de eventos).
+        var resultado = await transmissaoService.CancelarAsync(evento, config, isNFCe, ct);
+
+        if (!resultado.Autorizada)
+            return UnprocessableEntity(new
+            {
+                mensagem = $"Cancelamento não homologado pela SEFAZ: {resultado.MotivoRejeicao}",
+                sefaz = resultado.MotivoRejeicao
+            });
+
+        nota.Cancelar(resultado.Protocolo ?? "", justificativa);
         repo.Atualizar(nota);
         await uow.SalvarAsync(ct);
-        return NoContent();
+
+        return Ok(new
+        {
+            nota.Id, Status = nota.Status.ToString(),
+            protocoloCancelamento = resultado.Protocolo,
+            mensagem = "NFC-e cancelada na SEFAZ com sucesso."
+        });
     }
     /// <summary>
     /// Inutiliza faixa de numeração não utilizada na SEFAZ.

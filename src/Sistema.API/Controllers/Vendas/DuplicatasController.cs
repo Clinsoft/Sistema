@@ -118,7 +118,7 @@ FROM fin ORDER BY Grupo, rn;";
                     if (nota is not null && nota.Status != StatusNF.Cancelada)
                     {
                         var eraAutorizada = nota.Status == StatusNF.Autorizada;
-                        nota.Cancelar("DUPLICADA");   // Protocolo é nvarchar(20) — texto curto
+                        nota.Cancelar("DUPLICADA", "Venda duplicada - cancelamento interno");
                         if (eraAutorizada)
                             notasParaContador.Add(new { venda.Numero, chave = nota.ChaveAcesso, nota.Protocolo });
                     }

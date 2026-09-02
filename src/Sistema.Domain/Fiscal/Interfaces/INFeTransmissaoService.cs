@@ -12,6 +12,16 @@ public interface INFeTransmissaoService
         string xmlAssinado,
         ConfiguracaoFiscal config,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Transmite um evento de cancelamento (110111) já assinado para o webservice
+    /// de recepção de eventos da SEFAZ. `isNFCe` escolhe o host correto.
+    /// </summary>
+    Task<ResultadoTransmissao> CancelarAsync(
+        string eventoXmlAssinado,
+        ConfiguracaoFiscal config,
+        bool isNFCe,
+        CancellationToken ct = default);
 }
 
 /// <param name="Autorizada">true quando cStat == 100 ou 150.</param>

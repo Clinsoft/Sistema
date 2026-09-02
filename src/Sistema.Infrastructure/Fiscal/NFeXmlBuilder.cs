@@ -491,6 +491,100 @@ public static class NFeXmlBuilder
     // Assinatura digital (RSA-SHA1, XmlDsig)
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Evento de cancelamento (110111)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Monta e assina o &lt;evento&gt; de cancelamento (tpEvento 110111) de uma NF-e/NFC-e
+    /// autorizada. A assinatura referencia o Id do infEvento (padrão da SEFAZ).
+    /// </summary>
+    public static string GerarEventoCancelamentoAssinado(
+        string chave44, string cnpjEmitente, string cUF, string tpAmb,
+        string protocoloAutorizacao, string justificativa,
+        ConfiguracaoFiscal config, int nSeqEvento = 1)
+    {
+        var seq = nSeqEvento.ToString("00");
+        var id = $"ID110111{chave44}{seq}";
+        // dhEvento no fuso -03:00 (Brasília).
+        var dh = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(-3))
+            .ToString("yyyy-MM-ddTHH:mm:sszzz");
+
+        var sb = new StringBuilder();
+        using (var w = XmlWriter.Create(sb, new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true, Indent = false, Encoding = new UTF8Encoding(false)
+        }))
+        {
+            w.WriteStartElement("evento", NsNfe);
+            w.WriteAttributeString("versao", "1.00");
+            w.WriteStartElement("infEvento");
+            w.WriteAttributeString("Id", id);
+            w.WriteElementString("cOrgao", cUF);
+            w.WriteElementString("tpAmb", tpAmb);
+            w.WriteElementString("CNPJ", cnpjEmitente);
+            w.WriteElementString("chNFe", chave44);
+            w.WriteElementString("dhEvento", dh);
+            w.WriteElementString("tpEvento", "110111");
+            w.WriteElementString("nSeqEvento", nSeqEvento.ToString());
+            w.WriteElementString("verEvento", "1.00");
+            w.WriteStartElement("detEvento");
+            w.WriteAttributeString("versao", "1.00");
+            w.WriteElementString("descEvento", "Cancelamento");
+            w.WriteElementString("nProt", protocoloAutorizacao);
+            w.WriteElementString("xJust", justificativa);
+            w.WriteEndElement(); // detEvento
+            w.WriteEndElement(); // infEvento
+            w.WriteEndElement(); // evento
+        }
+        return AssinarComReferencia(sb.ToString(), id, config);
+    }
+
+    /// <summary>Assina um XML referenciando um Id arbitrário (usado por eventos).</summary>
+    private static string AssinarComReferencia(string xml, string referenceId, ConfiguracaoFiscal config)
+    {
+        if (config.CertificadoPfxBase64 is null)
+            throw new InvalidOperationException("Certificado digital não configurado.");
+
+        var bytes = Convert.FromBase64String(config.CertificadoPfxBase64);
+        var flags = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Linux)
+            ? X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet
+            : X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet;
+
+        using var cert = new X509Certificate2(bytes, config.CertificadoSenha, flags);
+
+        var doc = new XmlDocument { PreserveWhitespace = false };
+        doc.LoadXml(xml);
+
+        var signedXml = new SignedXml(doc) { SigningKey = cert.GetRSAPrivateKey() };
+        signedXml.SignedInfo.SignatureMethod        = SignedXml.XmlDsigRSASHA1Url;
+        signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigC14NTransformUrl;
+
+        var reference = new Reference($"#{referenceId}");
+        reference.DigestMethod = SignedXml.XmlDsigSHA1Url;
+        reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
+        reference.AddTransform(new XmlDsigC14NTransform());
+        signedXml.AddReference(reference);
+
+        var keyInfo = new KeyInfo();
+        keyInfo.AddClause(new KeyInfoX509Data(cert));
+        signedXml.KeyInfo = keyInfo;
+
+        signedXml.ComputeSignature();
+        // Signature é irmã do infEvento, dentro de <evento>.
+        doc.DocumentElement!.AppendChild(doc.ImportNode(signedXml.GetXml(), true));
+
+        using var ms = new MemoryStream();
+        using var xw = XmlWriter.Create(ms, new XmlWriterSettings
+        {
+            Encoding = new UTF8Encoding(false), Indent = false, OmitXmlDeclaration = true
+        });
+        doc.WriteTo(xw);
+        xw.Flush();
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     private static string Assinar(string xmlNFe, string chave44, ConfiguracaoFiscal config)
     {
         if (config.CertificadoPfxBase64 is null)

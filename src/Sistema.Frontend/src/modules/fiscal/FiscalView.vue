@@ -1396,11 +1396,11 @@ async function cancelar(nota: any) {
     return
   }
   try {
-    await api.post(`/fiscal/notas/${nota.id}/cancelar`, { justificativa: justificativa.trim() })
-    notif.ok('NF-e cancelada.')
+    const r = await api.post(`/fiscal/notas/${nota.id}/cancelar`, { justificativa: justificativa.trim() })
+    notif.ok(r.data?.mensagem ?? 'Nota cancelada na SEFAZ.')
     await carregarEmitidas()
   } catch (e: any) {
-    notif.erro(e.response?.data?.mensagem ?? e.response?.data?.detalhe ?? 'Erro ao cancelar NF-e.')
+    notif.erro(e.response?.data?.mensagem ?? e.response?.data?.detalhe ?? 'Erro ao cancelar a nota na SEFAZ.')
   }
 }
 

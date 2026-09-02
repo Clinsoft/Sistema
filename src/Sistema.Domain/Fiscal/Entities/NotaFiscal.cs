@@ -112,10 +112,18 @@ public class NotaFiscal : Entity
         Status = StatusNF.Rejeitada;
     }
 
-    public void Cancelar(string protocolo)
+    public string? ProtocoloCancelamento { get; private set; }
+    public string? JustificativaCancelamento { get; private set; }
+    public DateTime? DataCancelamento { get; private set; }
+
+    /// <summary>Cancelamento efetivado na SEFAZ (evento 110111): mantém o protocolo de
+    /// autorização e registra o protocolo/justificativa do cancelamento.</summary>
+    public void Cancelar(string protocoloCancelamento, string justificativa)
     {
         Status = StatusNF.Cancelada;
-        Protocolo = protocolo;
+        ProtocoloCancelamento = protocoloCancelamento;
+        JustificativaCancelamento = justificativa;
+        DataCancelamento = DateTime.UtcNow;
     }
 
     public void Inutilizar(string justificativa)

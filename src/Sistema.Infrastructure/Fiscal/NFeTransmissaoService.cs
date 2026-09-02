@@ -28,6 +28,14 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
     private const string ActionNFe  = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4/nfeAutorizacaoLote";
     private const string ActionNFCe = ActionNFe;
 
+    // ── Recepção de eventos (cancelamento 110111) ──────────────────────────────
+    private const string UrlEventoNFeProducao     = "https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
+    private const string UrlEventoNFeHomologacao  = "https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx";
+    private const string UrlEventoNFCeProducao    = "https://nfce.fazenda.sp.gov.br/ws/NFeRecepcaoEvento4.asmx";
+    private const string UrlEventoNFCeHomologacao = "https://homologacao.nfce.fazenda.sp.gov.br/ws/NFeRecepcaoEvento4.asmx";
+    private const string ActionEvento = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento";
+    private const string WsdlNsEvento = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4";
+
     public async Task<ResultadoTransmissao> TransmitirAsync(
         string xmlAssinado,
         ConfiguracaoFiscal config,
@@ -67,6 +75,100 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
         {
             logger.LogError(ex, "Erro ao transmitir NF-e para SEFAZ");
             return new ResultadoTransmissao(false, null, $"Erro de comunicação: {ex.Message}", null);
+        }
+    }
+
+    public async Task<ResultadoTransmissao> CancelarAsync(
+        string eventoXmlAssinado,
+        ConfiguracaoFiscal config,
+        bool isNFCe,
+        CancellationToken ct = default)
+    {
+        var url = (isNFCe, config.Ambiente) switch
+        {
+            (true,  AmbienteFiscal.Producao) => UrlEventoNFCeProducao,
+            (true,  _)                        => UrlEventoNFCeHomologacao,
+            (false, AmbienteFiscal.Producao) => UrlEventoNFeProducao,
+            (false, _)                        => UrlEventoNFeHomologacao
+        };
+        try
+        {
+            var cert = CarregarCertificado(config);
+            if (cert is null)
+                return new ResultadoTransmissao(false, null, "Certificado digital não configurado.", null);
+
+            var idLote = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+            // cUF do próprio evento (cOrgao).
+            var cUF = "35";
+            var mCUF = System.Text.RegularExpressions.Regex.Match(eventoXmlAssinado, @"<cOrgao>(\d+)</cOrgao>");
+            if (mCUF.Success) cUF = mCUF.Groups[1].Value;
+
+            var envEvento = $"<envEvento versao=\"1.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">"
+                          + $"<idLote>{idLote}</idLote>{eventoXmlAssinado}</envEvento>";
+
+            var envelope = $"""
+                <?xml version="1.0" encoding="utf-8"?>
+                <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+                  <soap12:Header>
+                    <nfeCabecMsg xmlns="{WsdlNsEvento}">
+                      <cUF>{cUF}</cUF>
+                      <versaoDados>1.00</versaoDados>
+                    </nfeCabecMsg>
+                  </soap12:Header>
+                  <soap12:Body>
+                    <nfeDadosMsg xmlns="{WsdlNsEvento}">{envEvento}</nfeDadosMsg>
+                  </soap12:Body>
+                </soap12:Envelope>
+                """;
+            envelope = System.Text.RegularExpressions.Regex.Replace(envelope, @">\s+<", "><").Trim();
+
+            logger.LogInformation("Transmitindo evento de cancelamento para SEFAZ: {Url}", url);
+            var responseXml = await EnviarSOAPAsync(url, ActionEvento, envelope, cert, ct);
+            logger.LogInformation("Resposta cancelamento SEFAZ: {Response}",
+                responseXml[..Math.Min(600, responseXml.Length)]);
+
+            return ParsearRespostaEvento(responseXml);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao cancelar NF-e/NFC-e na SEFAZ");
+            return new ResultadoTransmissao(false, null, $"Erro de comunicação: {ex.Message}", null);
+        }
+    }
+
+    private static ResultadoTransmissao ParsearRespostaEvento(string xml)
+    {
+        try
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var ns = new XmlNamespaceManager(doc.NameTable);
+            ns.AddNamespace("nfe", "http://www.portalfiscal.inf.br/nfe");
+
+            var fault = doc.SelectSingleNode("//*[local-name()='Fault']");
+            if (fault != null)
+            {
+                var m = fault.SelectSingleNode("*[local-name()='Text']")?.InnerText ?? "Erro SOAP SEFAZ";
+                return new ResultadoTransmissao(false, null, m, xml);
+            }
+
+            // O resultado do evento está em retEvento/infEvento.
+            var inf = doc.SelectSingleNode("//nfe:retEvento/nfe:infEvento", ns);
+            var cStat = inf?.SelectSingleNode("nfe:cStat", ns)?.InnerText
+                     ?? doc.SelectSingleNode("//nfe:cStat", ns)?.InnerText ?? "";
+            var xMot  = inf?.SelectSingleNode("nfe:xMotivo", ns)?.InnerText
+                     ?? doc.SelectSingleNode("//nfe:xMotivo", ns)?.InnerText ?? "";
+            var nProt = inf?.SelectSingleNode("nfe:nProt", ns)?.InnerText;
+
+            // 135 = evento registrado e vinculado; 155 = registrado fora do prazo.
+            var ok = cStat is "135" or "155";
+            return ok
+                ? new ResultadoTransmissao(true, nProt, null, xml)
+                : new ResultadoTransmissao(false, null, $"SEFAZ {cStat}: {xMot}", xml);
+        }
+        catch (Exception ex)
+        {
+            return new ResultadoTransmissao(false, null, $"Erro ao parsear resposta: {ex.Message}", xml);
         }
     }
 

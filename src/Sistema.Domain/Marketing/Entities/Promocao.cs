@@ -9,7 +9,8 @@ public class Promocao : Entity
 {
     public Guid EmpresaId { get; private set; }
     public string Nome { get; private set; } = null!;
-    public string Tipo { get; private set; } = "Desconto";          // Desconto | LeveXPagueY | DescontoProgressivo | Combo | Pix | Aniversariante
+    public string Tipo { get; private set; } = "Desconto";          // Desconto | LeveXPagueY | DescontoProgressivo | Combo | Pix | Aniversariante | Sorteio
+    public Guid? LocalEstoqueId { get; private set; }                // null = todas as lojas da empresa
     public string TipoDesconto { get; private set; } = "Percentual"; // Percentual | ValorFixo
     public decimal Desconto { get; private set; }
 
@@ -37,12 +38,13 @@ public class Promocao : Entity
         decimal desconto, DateTime dataInicio, DateTime? dataFim,
         string aplicaEm, Guid? referenciaId,
         int qtdeLeve, int qtdePague, decimal valorMinimoPedido, int limiteUso,
-        bool apenasClube, bool cumulativo)
+        bool apenasClube, bool cumulativo, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId,
             Nome = nome,
             Tipo = tipo,
+            LocalEstoqueId = localEstoqueId,
             TipoDesconto = tipoDesconto,
             Desconto = desconto,
             DataInicio = dataInicio,
@@ -61,10 +63,11 @@ public class Promocao : Entity
     public void Editar(string nome, string tipo, string tipoDesconto, decimal desconto,
         DateTime dataInicio, DateTime? dataFim, string aplicaEm, Guid? referenciaId,
         int qtdeLeve, int qtdePague, decimal valorMinimoPedido, int limiteUso,
-        bool apenasClube, bool cumulativo)
+        bool apenasClube, bool cumulativo, Guid? localEstoqueId = null)
     {
         Nome = nome;
         Tipo = tipo;
+        LocalEstoqueId = localEstoqueId;
         TipoDesconto = tipoDesconto;
         Desconto = desconto;
         DataInicio = dataInicio;

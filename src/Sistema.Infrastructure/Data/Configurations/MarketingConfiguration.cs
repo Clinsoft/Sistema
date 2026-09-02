@@ -51,6 +51,20 @@ public class PromocaoConfiguration : IEntityTypeConfiguration<Promocao>
     }
 }
 
+public class CupomSorteioConfiguration : IEntityTypeConfiguration<CupomSorteio>
+{
+    public void Configure(EntityTypeBuilder<CupomSorteio> b)
+    {
+        b.ToTable("CuponsSorteio");
+        b.HasKey(c => c.Id);
+        b.HasIndex(c => new { c.PromocaoId, c.Numero });
+        b.HasIndex(c => new { c.EmpresaId, c.PromocaoId });
+        b.Property(c => c.NomeCliente).HasMaxLength(150).IsRequired();
+        b.Property(c => c.Telefone).HasMaxLength(20);
+        b.Property(c => c.ValorCompra).HasPrecision(18, 2);
+    }
+}
+
 public class MembroClubeConfiguration : IEntityTypeConfiguration<MembroClube>
 {
     public void Configure(EntityTypeBuilder<MembroClube> b)

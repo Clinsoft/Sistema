@@ -34,7 +34,7 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
             p.Id, p.Nome, p.Tipo, p.TipoDesconto, p.Desconto,
             p.DataInicio, p.DataFim, p.AplicaEm, p.ReferenciaId,
             p.QtdeLeve, p.QtdePague, p.ValorMinimoPedido, p.LimiteUso,
-            p.ApenasClube, p.Cumulativo, p.QtdeUsada,
+            p.ApenasClube, p.Cumulativo, p.QtdeUsada, p.LocalEstoqueId,
             status = p.StatusCalculado(),
         });
 
@@ -101,7 +101,7 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
             req.Desconto, ParseData(req.DataInicio) ?? DateTime.Today, ParseData(req.DataFim),
             req.AplicaEm ?? "Todos", req.ReferenciaId,
             req.QtdeLeve, req.QtdePague, req.ValorMinimoPedido, req.LimiteUso,
-            req.ApenasClube, req.Cumulativo);
+            req.ApenasClube, req.Cumulativo, req.LocalEstoqueId);
 
         db.Promocoes.Add(promo);
         await db.SaveChangesAsync(ct);
@@ -119,7 +119,7 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
             ParseData(req.DataInicio) ?? promo.DataInicio, ParseData(req.DataFim),
             req.AplicaEm ?? "Todos", req.ReferenciaId,
             req.QtdeLeve, req.QtdePague, req.ValorMinimoPedido, req.LimiteUso,
-            req.ApenasClube, req.Cumulativo);
+            req.ApenasClube, req.Cumulativo, req.LocalEstoqueId);
 
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -166,6 +166,7 @@ public record PromocaoRequest(
     decimal ValorMinimoPedido = 0,
     int LimiteUso = 0,
     bool ApenasClube = false,
-    bool Cumulativo = false);
+    bool Cumulativo = false,
+    Guid? LocalEstoqueId = null);
 
 public record StatusRequest(string Status);

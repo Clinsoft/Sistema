@@ -45,13 +45,19 @@
           <div class="font-weight-medium">{{ item.nome }}</div>
           <div class="d-flex align-center gap-1 mt-1">
             <v-chip :color="corTipo(item.tipo)" size="x-small" variant="tonal">{{ labelTipo(item.tipo) }}</v-chip>
+            <v-chip size="x-small" variant="tonal" :color="item.localEstoqueId ? 'blue-grey' : 'grey'">
+              <v-icon size="x-small" class="mr-1">mdi-store-outline</v-icon>{{ nomeLoja(item.localEstoqueId) }}
+            </v-chip>
             <v-chip v-if="item.apenasClube" color="purple" size="x-small" variant="tonal">
               <v-icon size="x-small" class="mr-1">mdi-star</v-icon>Clube
             </v-chip>
           </div>
         </template>
         <template #item.desconto="{ item }">
-          <span class="font-weight-bold text-error">
+          <span v-if="item.tipo === 'Sorteio'" class="font-weight-bold text-deep-purple">
+            cupom ≥ R$ {{ fmt(item.valorMinimoPedido) }}
+          </span>
+          <span v-else class="font-weight-bold text-error">
             {{ item.tipoDesconto === 'Percentual' ? item.desconto + '%' : 'R$ ' + fmt(item.desconto) }}
           </span>
         </template>
@@ -130,17 +136,17 @@
                     <v-text-field v-model="form.nome" label="Nome da Promoção *"
                       variant="outlined" density="compact" :rules="[r => !!r || 'Obrigatório']" />
                   </v-col>
-                  <v-col cols="12" md="4">
+                  <v-col cols="12" md="4" v-if="form.tipo !== 'Sorteio'">
                     <v-select v-model="form.tipoDesconto"
                       :items="[{title:'Percentual (%)',value:'Percentual'},{title:'Valor fixo (R$)',value:'ValorFixo'}]"
                       label="Tipo de desconto" variant="outlined" density="compact" />
                   </v-col>
-                  <v-col cols="12" md="4">
+                  <v-col cols="12" md="4" v-if="form.tipo !== 'Sorteio'">
                     <v-text-field v-model.number="form.desconto" label="Desconto *"
                       type="number" :suffix="form.tipoDesconto === 'Percentual' ? '%' : 'R$'"
                       variant="outlined" density="compact" />
                   </v-col>
-                  <v-col cols="12" md="4">
+                  <v-col cols="12" md="4" v-if="form.tipo !== 'Sorteio'">
                     <v-text-field v-model.number="form.limiteUso" label="Limite de usos (0 = ilimitado)"
                       type="number" variant="outlined" density="compact" />
                   </v-col>
@@ -185,11 +191,36 @@
               </div>
             </div>
 
+            <div class="cad-secao" v-if="form.tipo === 'Sorteio'">
+              <div class="cad-secao-header"><v-icon size="14">mdi-ticket-confirmation-outline</v-icon> Sorteio</div>
+              <div class="cad-secao-body">
+                <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-text-field v-model.number="form.valorMinimoPedido"
+                      label="Valor mínimo da compra p/ ganhar cupom (R$)"
+                      type="number" prefix="R$" variant="outlined" density="compact"
+                      hint="Ex.: 30 = a cada compra de R$30 o cliente ganha 1 cupom" persistent-hint />
+                  </v-col>
+                </v-row>
+                <div class="text-caption text-medium-emphasis mt-2">
+                  O <b>nome da promoção</b> é o prêmio (ex.: "Cesta Básica de Aniversário"). No PDV, ao
+                  atingir o valor mínimo, aparece o aviso para preencher os dados do cliente e imprimir o cupom.
+                </div>
+              </div>
+            </div>
+
             <!-- Aplicação -->
             <div class="cad-secao">
               <div class="cad-secao-header"><v-icon size="14">mdi-filter-outline</v-icon> Aplicação</div>
               <div class="cad-secao-body">
                 <v-row dense>
+                  <v-col cols="12" md="6">
+                    <v-select v-model="form.localEstoqueId"
+                      :items="[{ id: null, nome: 'Todas as lojas' }, ...locais]"
+                      item-title="nome" item-value="id"
+                      label="Loja" variant="outlined" density="compact"
+                      hint="Onde esta promoção vale" persistent-hint />
+                  </v-col>
                   <v-col cols="12" md="6">
                     <v-select v-model="form.aplicaEm"
                       :items="[{title:'Todos os produtos',value:'Todos'},{title:'Categoria específica',value:'Categoria'},{title:'Marca específica',value:'Marca'},{title:'Produto específico',value:'Produto'}]"
@@ -341,7 +372,10 @@ const tiposPromocao = [
   { value: 'Combo',                label: 'Combo / Kit',             icon: 'mdi-package-variant',       cor: 'teal'        },
   { value: 'Pix',                  label: 'Desconto Pix',            icon: 'mdi-qrcode',                cor: 'green'       },
   { value: 'Aniversariante',       label: 'Aniversariante',          icon: 'mdi-cake-variant-outline',  cor: 'pink'        },
+  { value: 'Sorteio',              label: 'Sorteio (cupom)',         icon: 'mdi-ticket-confirmation-outline', cor: 'deep-purple' },
 ]
+
+const locais = ref<any[]>([])
 
 const formPadrao = () => ({
   nome: '', tipo: 'Desconto', tipoDesconto: 'Percentual', desconto: 0,
@@ -349,6 +383,7 @@ const formPadrao = () => ({
   aplicaEm: 'Todos', referenciaId: null as string | null,
   qtdeLeve: 3, qtdePague: 2, valorMinimoPedido: 0, limiteUso: 0,
   apenasClube: false, cumulativo: false,
+  localEstoqueId: null as string | null,
 })
 const form = ref(formPadrao())
 
@@ -528,7 +563,15 @@ async function excluir(id: string) {
   } catch { notif.erro('Erro ao remover.') }
 }
 
-onMounted(carregar)
+async function carregarLocais() {
+  try {
+    const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
+    locais.value = r.data ?? []
+  } catch { locais.value = [] }
+}
+const nomeLoja = (id: string | null) => id ? (locais.value.find(l => l.id === id)?.nome ?? '—') : 'Todas as lojas'
+
+onMounted(() => { carregar(); carregarLocais() })
 </script>
 
 <style scoped>

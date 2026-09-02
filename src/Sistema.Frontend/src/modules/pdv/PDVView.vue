@@ -507,6 +507,39 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: cupom de sorteio -->
+    <v-dialog v-model="dialogSorteio" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="deep-purple">mdi-ticket-confirmation-outline</v-icon>
+          Cliente concorre ao sorteio!
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+            Compra de <b>R$ {{ fmt(scValor) }}</b> — concorre a <b>{{ sorteioAtivo?.nome }}</b>.
+            Preencha os dados para gerar o cupom.
+          </v-alert>
+          <v-text-field v-model="scNome" label="Nome *" variant="outlined" density="compact"
+            class="mb-3" autofocus />
+          <v-text-field v-model="scTelefone" label="Telefone / WhatsApp *"
+            placeholder="(00) 00000-0000" inputmode="tel" variant="outlined" density="compact" class="mb-3"
+            :error-messages="scTelefone && !scTelefoneOk ? 'Telefone incompleto' : ''"
+            @update:model-value="scTelefone = mascararTelefone($event)" />
+          <v-text-field v-model="scNascimento" label="Data de nascimento (opcional)" type="date"
+            variant="outlined" density="compact" hide-details
+            hint="Ativa a mensagem de aniversário no WhatsApp" persistent-hint />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogSorteio = false">Agora não</v-btn>
+          <v-btn color="deep-purple" rounded="lg" :loading="gerandoCupom"
+            :disabled="!scNome.trim() || !scTelefoneOk" @click="gerarCupomSorteio">
+            Gerar e imprimir cupom
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: vendas em espera -->
     <v-dialog v-model="dialogEspera" max-width="520">
       <v-card rounded="xl">
@@ -1583,6 +1616,115 @@ async function salvarNovoCliente() {
   } finally { salvandoCliente.value = false }
 }
 
+// ── Sorteio (cupom por compra) ────────────────────────────────────
+const dialogSorteio = ref(false)
+const sorteioAtivo = ref<any>(null)
+const scNome = ref('')
+const scTelefone = ref('')
+const scNascimento = ref('')
+const scClienteId = ref<string | null>(null)
+const scVendaId = ref('')
+const scValor = ref(0)
+const gerandoCupom = ref(false)
+const scTelefoneOk = computed(() => scTelefone.value.replace(/\D/g, '').length >= 10)
+
+function checarSorteio(vendaId: string, totalVenda: number) {
+  // Elegíveis: sorteios cuja compra mínima foi atingida (pega o de maior faixa).
+  const elegiveis = sorteios.value
+    .filter(s => totalVenda >= Number(s.valorMinimoPedido || 0))
+    .sort((a, b) => Number(b.valorMinimoPedido) - Number(a.valorMinimoPedido))
+  if (!elegiveis.length) return
+  sorteioAtivo.value = elegiveis[0]
+  scVendaId.value = vendaId
+  scValor.value = totalVenda
+  // Prefill com o cliente da venda, se houver.
+  scClienteId.value = clienteId.value
+  const c = clientes.value.find(x => x.id === clienteId.value) as any
+  scNome.value = c?.nome ?? clienteSelecionadoNome.value ?? ''
+  scTelefone.value = c?.celular || c?.telefone ? mascararTelefone(String(c.celular || c.telefone)) : ''
+  scNascimento.value = ''
+  dialogSorteio.value = true
+}
+
+async function gerarCupomSorteio() {
+  if (!sorteioAtivo.value || !scNome.value.trim() || !scTelefoneOk.value) return
+  gerandoCupom.value = true
+  try {
+    const telefone = scTelefone.value.replace(/\D/g, '')
+    let cid = scClienteId.value
+    // Sem cliente vinculado → cadastra (nome + telefone + nascimento) na loja atual.
+    if (!cid) {
+      const rc = await api.post('/clientes', {
+        empresaId: auth.empresaId, nome: scNome.value.trim(), tipoPessoa: 'Fisica',
+        telefone, dataNascimento: scNascimento.value || null,
+        localEstoqueId: sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null,
+      })
+      cid = rc.data.id ?? rc.data
+    }
+    const r = await api.post('/cupons-sorteio', {
+      empresaId: auth.empresaId,
+      promocaoId: sorteioAtivo.value.id,
+      localEstoqueId: sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null,
+      clienteId: cid,
+      nomeCliente: scNome.value.trim(),
+      telefone,
+      vendaId: scVendaId.value,
+      valorCompra: scValor.value,
+    })
+    imprimirCupomSorteio({
+      numero: r.data.numero, premio: r.data.premio,
+      nome: scNome.value.trim(), telefone,
+    })
+    notif.ok(`Cupom nº ${r.data.numero} gerado para o sorteio "${r.data.premio}".`)
+    dialogSorteio.value = false
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o cupom do sorteio.')
+  } finally { gerandoCupom.value = false }
+}
+
+// Imprime o cupom do sorteio na impressora térmica (via iframe oculto).
+function imprimirCupomSorteio(c: { numero: number; premio: string; nome: string; telefone: string }) {
+  const dt = new Date().toLocaleString('pt-BR')
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: 80mm auto; margin: 4mm; }
+    * { font-family: 'Segoe UI', Arial, sans-serif; }
+    body { width: 72mm; margin: 0; color: #000; }
+    .c { text-align: center; }
+    .num { font-size: 30px; font-weight: 800; letter-spacing: 1px; margin: 6px 0; }
+    .premio { font-size: 15px; font-weight: 700; margin: 4px 0; }
+    .lin { border-top: 1px dashed #000; margin: 8px 0; }
+    .lbl { font-size: 11px; color: #333; }
+    .val { font-size: 14px; font-weight: 600; }
+    .small { font-size: 10px; color: #444; }
+  </style></head><body>
+    <div class="c premio">🎟️ CUPOM DE SORTEIO</div>
+    <div class="c premio">${c.premio}</div>
+    <div class="lin"></div>
+    <div class="c lbl">Cupom nº</div>
+    <div class="c num">${String(c.numero).padStart(5, '0')}</div>
+    <div class="lin"></div>
+    <div class="lbl">Nome</div>
+    <div class="val">${c.nome}</div>
+    <div class="lbl" style="margin-top:4px">Telefone</div>
+    <div class="val">${mascararTelefone(c.telefone)}</div>
+    <div class="lin"></div>
+    <div class="c small">${dt}</div>
+    <div class="c small">Boa sorte! Guarde este cupom.</div>
+  </body></html>`
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+  document.body.appendChild(iframe)
+  const doc = iframe.contentWindow?.document
+  if (!doc) return
+  doc.open(); doc.write(html); doc.close()
+  iframe.onload = () => {
+    setTimeout(() => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { /* ignora */ }
+      setTimeout(() => iframe.remove(), 60000)
+    }, 200)
+  }
+}
+
 // ── Finalizar ─────────────────────────────────────────────────────
 async function finalizar() {
   if (finalizando.value || !podeFinalizarVenda.value) return
@@ -1674,6 +1816,9 @@ async function finalizar() {
     if (res.data.nfceAutorizada && res.data.imprimirAutomatico) {
       imprimirComprovante()
     }
+
+    // Sorteio: se a venda atingiu o valor mínimo de algum sorteio ativo, oferece o cupom.
+    checarSorteio(vendaId, res.data.total)
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao finalizar venda.')
   } finally {
@@ -1981,6 +2126,7 @@ async function lerFoto(e: Event) {
 
 // ── Promoções ativas ───────────────────────────────────────────────
 const todasPromocoes = ref<string[]>([])
+const sorteios = ref<any[]>([])
 const promoIdx = ref(0)
 const promoDismissed = ref(false)
 const promoAtiva = computed(() => todasPromocoes.value[promoIdx.value] ?? null)
@@ -2008,13 +2154,21 @@ async function carregarPromocoes() {
       params: { empresaId: auth.empresaId, status: 'Ativa' }
     })
     const promos: any[] = r.data ?? []
-    const nomes = promos.map((p: any) => {
+    const loja = sessaoAtual.value?.localEstoqueId ?? auth.lojaAtualId ?? null
+    // Só as desta loja (ou de todas as lojas).
+    const daLoja = promos.filter((p: any) => !p.localEstoqueId || p.localEstoqueId === loja)
+    // Sorteios ativos desta loja (para o aviso e a geração do cupom).
+    sorteios.value = daLoja.filter((p: any) => p.tipo === 'Sorteio')
+    const nomes = daLoja.filter((p: any) => p.tipo !== 'Sorteio').map((p: any) => {
       const desc = p.tipoDesconto === 'ValorFixo'
         ? `R$ ${Number(p.desconto).toFixed(2)} OFF`
         : `${Number(p.desconto).toFixed(0)}% OFF`
       return `${p.nome} — ${desc}`
-    }).filter(Boolean)
-    todasPromocoes.value = nomes
+    })
+    // Aviso do sorteio entra na rotação do banner (lembrete pro atendente/cliente).
+    const avisosSorteio = sorteios.value.map((s: any) =>
+      `🎟️ SORTEIO: compras a partir de R$ ${Number(s.valorMinimoPedido).toFixed(2)} concorrem a ${s.nome} — ofereça o cupom!`)
+    todasPromocoes.value = [...avisosSorteio, ...nomes]
     iniciarRotacaoPromo()
   } catch { /* silencioso */ }
 }

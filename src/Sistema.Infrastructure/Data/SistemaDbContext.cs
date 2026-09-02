@@ -99,6 +99,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<ArteMarketing> ArtesMarketing => Set<ArteMarketing>();
     public DbSet<AgendamentoPublicacao> AgendamentosPublicacao => Set<AgendamentoPublicacao>();
     public DbSet<Promocao> Promocoes => Set<Promocao>();
+    public DbSet<CupomSorteio> CuponsSorteio => Set<CupomSorteio>();
     public DbSet<MembroClube> MembrosClube => Set<MembroClube>();
     public DbSet<MovimentoCashback> MovimentosCashback => Set<MovimentoCashback>();
     public DbSet<ConfiguracaoClube> ConfiguracoesClube => Set<ConfiguracaoClube>();

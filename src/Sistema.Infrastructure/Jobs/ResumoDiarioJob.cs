@@ -10,7 +10,7 @@ namespace Sistema.Infrastructure.Jobs;
 /// <summary>
 /// Envia o RESUMO DO DIA para o WhatsApp do gestor (número configurado), via
 /// template aprovado "resumo_diario_gestor" (6 parâmetros curtos, sem quebra de
-/// linha — regra da Meta). Roda ~20h. Só age nas configs com o resumo ligado.
+/// linha — regra da Meta). Roda ~19h. Só age nas configs com o resumo ligado.
 /// </summary>
 public class ResumoDiarioJob(
     SistemaDbContext db,

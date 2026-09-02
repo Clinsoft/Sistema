@@ -261,7 +261,7 @@
             <v-card variant="outlined" class="mt-4">
               <v-card-text>
                 <v-switch v-model="cfgMsg.enviarResumoDiario" color="success" density="compact"
-                  hide-details label="Enviar resumo do dia (20h) para o gestor"
+                  hide-details label="Enviar resumo do dia (19h) para o gestor"
                   @update:model-value="salvarCfgMsg" />
                 <v-text-field v-model="cfgMsg.telefoneResumoDiario" label="WhatsApp do gestor (com DDD)"
                   variant="outlined" density="compact" class="mt-2" hide-details

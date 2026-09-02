@@ -59,6 +59,20 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
+
+// Comprovantes de pagamento são dados sensíveis: bloqueia o acesso direto por URL
+// pública (wwwroot/uploads/comprovantes). Só via endpoint autenticado
+// /api/contas-pagar/comprovante-arquivo. Os demais uploads (fotos etc.) seguem públicos.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/uploads/comprovantes"))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();

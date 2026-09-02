@@ -266,6 +266,29 @@ public class ContasPagarController(
         return Ok(new { comprovanteUrl = lancamento.ComprovanteUrl });
     }
 
+    /// <summary>Serve um comprovante de pagamento de forma AUTENTICADA (o acesso direto
+    /// por URL pública é bloqueado). Recebe só o nome do arquivo (sem caminho).</summary>
+    [HttpGet("comprovante-arquivo")]
+    public async Task<IActionResult> ComprovanteArquivo([FromQuery] string nome, CancellationToken ct)
+    {
+        // Só o nome do arquivo — bloqueia path traversal (../, subpastas).
+        if (string.IsNullOrWhiteSpace(nome) || nome.Contains('/') || nome.Contains('\\') || nome.Contains(".."))
+            return BadRequest();
+
+        var caminho = Path.Combine("wwwroot", "uploads", "comprovantes", nome);
+        if (!System.IO.File.Exists(caminho)) return NotFound();
+
+        var ext = Path.GetExtension(nome).ToLowerInvariant();
+        var mime = ext == ".pdf" ? "application/pdf"
+                 : ext is ".jpg" or ".jpeg" ? "image/jpeg"
+                 : ext == ".png" ? "image/png"
+                 : ext == ".webp" ? "image/webp"
+                 : ext == ".gif" ? "image/gif"
+                 : "application/octet-stream";
+        var bytes = await System.IO.File.ReadAllBytesAsync(caminho, ct);
+        return File(bytes, mime);
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Editar(Guid id, [FromBody] EditarLancamentoRequest req, CancellationToken ct)
     {

@@ -129,7 +129,7 @@
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">
             {{ rotuloStatus(item.status) }}
           </v-chip>
-          <v-btn v-if="item.comprovanteUrl" :href="item.comprovanteUrl" target="_blank"
+          <v-btn v-if="item.comprovanteUrl" @click="verComprovante(item.comprovanteUrl)"
             icon="mdi-file-eye-outline" size="x-small" color="red-darken-1" variant="text"
             title="Ver comprovante de pagamento" />
         </template>
@@ -601,7 +601,8 @@
                 <div class="d-flex align-center mb-2">
                   <v-checkbox-btn v-model="r.selecionado" :disabled="!r.escolhaId" color="success" class="flex-grow-0 mr-1" />
                   <v-icon icon="mdi-file-pdf-box" color="red-darken-1" class="mr-1" />
-                  <a :href="r.comprovanteUrl" target="_blank" class="text-body-2 font-weight-medium text-truncate" style="max-width:220px">
+                  <a @click.prevent="verComprovante(r.comprovanteUrl)" href="#"
+                    class="text-body-2 font-weight-medium text-truncate" style="max-width:220px; cursor:pointer">
                     {{ r.arquivo }}
                   </a>
                   <v-spacer />
@@ -699,6 +700,20 @@ import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+
+// Abre o comprovante de forma AUTENTICADA (URL direta é bloqueada no servidor):
+// baixa o arquivo com o token e abre num blob, em vez de linkar a URL pública.
+async function verComprovante(url: string) {
+  if (!url) return
+  const nome = url.split('/').pop()
+  try {
+    const res = await api.get('/contas-pagar/comprovante-arquivo',
+      { params: { nome }, responseType: 'blob' })
+    const blobUrl = URL.createObjectURL(res.data as Blob)
+    window.open(blobUrl, '_blank')
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+  } catch { notif.erro('Erro ao abrir o comprovante.') }
+}
 
 // Anexar comprovante (imagem/PDF) direto na linha — só guarda, não lê nada.
 const comprovanteInput = ref<HTMLInputElement | null>(null)

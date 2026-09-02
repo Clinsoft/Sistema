@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Estoque;
 
 [ApiController]
 [Route("api/precos")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]   // alterar preços não é para Atendente
 public class AtualizacaoPrecoController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     /// <summary>Atualiza preços em lote por percentual (positivo=aumento, negativo=redução).</summary>

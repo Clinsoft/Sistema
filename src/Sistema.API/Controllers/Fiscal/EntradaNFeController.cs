@@ -12,7 +12,7 @@ namespace Sistema.API.Controllers.Fiscal;
 
 [ApiController]
 [Route("api/fiscal/entradas")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]   // escrituração não é para Atendente (estorno/processar têm gates próprios)
 public class EntradaNFeController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Início do uso do sistema: notas de compra anteriores a esta data são

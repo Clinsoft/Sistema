@@ -10,7 +10,7 @@ namespace Sistema.API.Controllers.Estoque;
 
 [ApiController]
 [Route("api/transferencias")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]   // transferência de estoque não é para Atendente
 public class TransferenciaEstoqueController(
     IProdutoRepository produtoRepo,
     IMovimentacaoEstoqueRepository movRepo,

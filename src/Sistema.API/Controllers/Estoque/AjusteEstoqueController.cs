@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Estoque;
 
 [ApiController]
 [Route("api/ajuste-estoque")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]   // ajuste de estoque não é para Atendente
 public class AjusteEstoqueController(
     IProdutoRepository produtoRepo,
     IMovimentacaoEstoqueRepository movRepo,

@@ -8,7 +8,7 @@ namespace Sistema.API.Controllers.Fiscal;
 
 [ApiController]
 [Route("api/fiscal/certificado")]
-[Authorize]
+[Authorize(Roles = "Administrador,Contador")]   // certificado digital A1 é a identidade fiscal — só admin/contador
 public class CertificadoDigitalController(SistemaDbContext db, IWebHostEnvironment env) : ControllerBase
 {
     private string CertDir => Path.Combine(env.ContentRootPath, "certificados");

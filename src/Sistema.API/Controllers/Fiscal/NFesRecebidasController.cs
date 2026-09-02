@@ -12,7 +12,7 @@ namespace Sistema.API.Controllers.Fiscal;
 
 [ApiController]
 [Route("api/fiscal/nfes-recebidas")]
-[Authorize]
+[Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]   // NF-e recebidas/manifestação não é para Atendente
 public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, IDistribuicaoDFeService dfe) : ControllerBase
 {
     /// <summary>Início do uso do sistema: notas de compra anteriores a esta data são

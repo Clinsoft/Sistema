@@ -229,6 +229,8 @@
             class="mb-2"
             :loading="buscandoCliente"
             @update:search="pesquisarCliente"
+            @keydown.tab="selecionarPrimeiroCliente"
+            @keydown.enter="selecionarPrimeiroCliente"
           >
             <template #item="{ props, item }">
               <v-list-item v-bind="props" :title="item.raw.nome" prepend-icon="mdi-account-outline"
@@ -1419,6 +1421,15 @@ async function pesquisarCliente(q: string) {
     })
     clientes.value = res.data
   } finally { buscandoCliente.value = false }
+}
+
+// Tab/Enter na busca: seleciona o primeiro resultado sem precisar clicar.
+// Não impede o Tab de seguir para o próximo campo (fluxo natural do caixa).
+function selecionarPrimeiroCliente() {
+  if (!clienteId.value && clientes.value.length > 0) {
+    clienteId.value = clientes.value[0].id
+    buscaCliente.value = ''
+  }
 }
 
 // Subtítulo do resultado da busca: mostra telefone e/ou CPF para diferenciar homônimos.

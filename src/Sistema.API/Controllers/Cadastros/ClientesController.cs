@@ -140,11 +140,20 @@ public class ClientesController(IMediator mediator, IClienteRepository repo,
         if (User.IsInRole("Atendente"))
         {
             var loja = Guid.TryParse(User.FindFirst("localEstoqueId")?.Value, out var lid) ? lid : Guid.Empty;
+            var dig = Sistema.Infrastructure.Repositories.Cadastros.ClienteRepository.SomenteDigitos(q);
+            var buscaDig = dig.Length >= 3;
             var itens = await db.Clientes.AsNoTracking()
                 .Where(c => c.EmpresaId == empresaId && c.Ativo && c.LocalEstoqueId == loja
                     && (string.IsNullOrWhiteSpace(q) || c.Nome.Contains(q)
                         || (c.CpfCnpj != null && c.CpfCnpj.Contains(q))
-                        || (c.Telefone != null && c.Telefone.Contains(q))))
+                        || (c.Telefone != null && c.Telefone.Contains(q))
+                        || (c.Celular != null && c.Celular.Contains(q))
+                        || (buscaDig && c.CpfCnpj != null &&
+                            c.CpfCnpj.Replace("(", "").Replace(")", "").Replace("-", "").Replace(" ", "").Replace(".", "").Replace("/", "").Contains(dig))
+                        || (buscaDig && c.Telefone != null &&
+                            c.Telefone.Replace("(", "").Replace(")", "").Replace("-", "").Replace(" ", "").Replace(".", "").Replace("/", "").Contains(dig))
+                        || (buscaDig && c.Celular != null &&
+                            c.Celular.Replace("(", "").Replace(")", "").Replace("-", "").Replace(" ", "").Replace(".", "").Replace("/", "").Contains(dig))))
                 .OrderBy(c => c.Nome).Take(20)
                 .Select(c => new { c.Id, c.Nome, c.CpfCnpj, c.Telefone, c.Celular, c.LocalEstoqueId })
                 .ToListAsync(ct);

@@ -178,6 +178,9 @@ public class Produto : Entity
     /// código estava vinculado ao produto errado e foi movido para o correto.</summary>
     public void LimparReferenciaFornecedor() => CodigoFornecedorPrincipal = null;
 
+    /// <summary>Define (ou limpa) apenas o fornecedor principal, sem tocar no resto do cadastro.</summary>
+    public void DefinirFornecedorPrincipal(Guid? fornecedorId) => FornecedorPrincipalId = fornecedorId;
+
     public void EditarPrecos(decimal precoFornecedor, decimal custoUnitario,
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)

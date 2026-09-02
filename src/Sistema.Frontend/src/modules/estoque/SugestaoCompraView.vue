@@ -60,9 +60,18 @@
           :loading="gerando === grupo.fornecedor" :disabled="!grupoSelecionados(grupo).length"
           @click="gerarPedido(grupo)">Gerar pedido</v-btn>
       </v-card-title>
-      <v-alert v-if="!grupo.fornecedorId" type="warning" variant="tonal" density="compact" class="mx-3 mb-2">
-        Sem fornecedor vinculado — vincule um fornecedor no cadastro do produto para gerar o pedido.
-      </v-alert>
+      <v-sheet v-if="!grupo.fornecedorId" color="warning" rounded="lg" variant="tonal"
+        class="mx-3 mb-2 pa-2 d-flex align-center flex-wrap ga-2">
+        <v-icon icon="mdi-link-variant-plus" size="18" />
+        <span class="text-caption">Sem fornecedor. Marque os itens, escolha o fornecedor e vincule:</span>
+        <v-spacer />
+        <v-autocomplete v-model="vincForn" :items="forns" item-title="razaoSocial" item-value="id"
+          label="Fornecedor" variant="outlined" density="compact" hide-details auto-select-first clearable
+          style="min-width:260px" />
+        <v-btn size="small" color="primary" variant="flat" rounded="lg" prepend-icon="mdi-check"
+          :loading="vinculando" :disabled="!vincForn || !grupoSelecionados(grupo).length"
+          @click="vincularFornecedor(grupo)">Vincular aos selecionados</v-btn>
+      </v-sheet>
       <v-data-table :headers="headers" :items="grupo.itens" density="compact" hide-default-footer
         :items-per-page="-1">
         <template #item.sel="{ item }">
@@ -172,6 +181,35 @@ const porFornecedor = computed<Grupo[]>(() => {
 const sel = ref<Record<string, boolean>>({})
 const gerando = ref<string | null>(null)
 
+// ── Vincular fornecedor a produtos sem fornecedor ────────────────────
+const forns = ref<any[]>([])
+const vincForn = ref<string | null>(null)
+const vinculando = ref(false)
+
+async function carregarFornecedores() {
+  try {
+    const r = await api.get('/fornecedores', { params: { empresaId: auth.empresaId, ativo: true } })
+    forns.value = Array.isArray(r.data) ? r.data : (r.data.itens ?? [])
+  } catch { forns.value = [] }
+}
+
+async function vincularFornecedor(g: Grupo) {
+  const itensSel = grupoSelecionados(g)
+  if (!vincForn.value || !itensSel.length) return
+  vinculando.value = true
+  try {
+    await Promise.all(itensSel.map(i =>
+      api.patch(`/produtos/${i.id}/fornecedor`, { fornecedorId: vincForn.value })))
+    const nome = forns.value.find(f => f.id === vincForn.value)?.razaoSocial ?? 'fornecedor'
+    notif.ok(`${itensSel.length} produto(s) vinculado(s) a ${nome}.`)
+    itensSel.forEach(i => { sel.value[i.id] = false })
+    vincForn.value = null
+    await carregar()   // recarrega para reagrupar sob o novo fornecedor
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao vincular o fornecedor.')
+  } finally { vinculando.value = false }
+}
+
 const recalcCusto = (item: Item) => { item.custoSugerido = (item.quantidadeSugerida || 0) * item.custoUnitario }
 
 const grupoSelecionados = (g: Grupo) => g.itens.filter(i => sel.value[i.id])
@@ -217,5 +255,5 @@ async function carregar() {
   } catch { itens.value = []; custoTotal.value = 0 } finally { carregando.value = false }
 }
 
-onMounted(carregar)
+onMounted(() => { carregar(); carregarFornecedores() })
 </script>

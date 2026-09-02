@@ -580,6 +580,20 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return NoContent();
     }
 
+    // Vincula (ou limpa) apenas o fornecedor principal do produto — usado pela
+    // ferramenta de "vincular fornecedor" na Sugestão de Compra.
+    [HttpPatch("{id:guid}/fornecedor")]
+    public async Task<IActionResult> DefinirFornecedor(Guid id,
+        [FromBody] DefinirFornecedorRequest req, CancellationToken ct)
+    {
+        var produto = await db.Produtos.FindAsync([id], ct)
+            ?? throw new KeyNotFoundException("Produto não encontrado.");
+        produto.DefinirFornecedorPrincipal(req.FornecedorId);
+        db.Produtos.Update(produto);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     // Mantém compatibilidade com a versão anterior (PATCH de preço)
     [HttpPatch("{id:guid}/preco")]
     public async Task<IActionResult> AtualizarPreco(Guid id, [FromBody] AtualizarPrecoRequest req,
@@ -1171,6 +1185,7 @@ public record AlterarPrecoItemRequest(
 public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
+public record DefinirFornecedorRequest(Guid? FornecedorId);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);
 public record ImportarProdutoItem(string Descricao, string? Ncm, decimal PrecoVenda, decimal? CustoUnitario = null);

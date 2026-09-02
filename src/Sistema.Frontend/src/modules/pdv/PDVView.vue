@@ -899,6 +899,11 @@
             Cupom fiscal (NFC-e) não emitido para esta venda.
           </v-alert>
 
+          <v-alert v-if="sorteioPendente" type="success" variant="tonal" density="compact" class="mb-4" rounded="lg"
+            icon="mdi-ticket-confirmation-outline">
+            Cliente <b>concorre ao sorteio</b>! Ao clicar em <b>Nova Venda</b> abre o cupom para preencher.
+          </v-alert>
+
           <v-row dense>
             <v-col cols="6">
               <v-btn block color="primary" variant="outlined" rounded="lg"
@@ -1646,6 +1651,7 @@ const scClienteId = ref<string | null>(null)
 const scVendaId = ref('')
 const scValor = ref(0)
 const gerandoCupom = ref(false)
+const sorteioPendente = ref(false)
 const scTelefoneOk = computed(() => scTelefone.value.replace(/\D/g, '').length >= 10)
 
 function checarSorteio(vendaId: string, totalVenda: number) {
@@ -1663,7 +1669,8 @@ function checarSorteio(vendaId: string, totalVenda: number) {
   scNome.value = c?.nome ?? clienteSelecionadoNome.value ?? ''
   scTelefone.value = c?.celular || c?.telefone ? mascararTelefone(String(c.celular || c.telefone)) : ''
   scNascimento.value = ''
-  dialogSorteio.value = true
+  // Não abre agora (ficaria atrás do comprovante). Abre ao fechar o comprovante (Nova Venda).
+  sorteioPendente.value = true
 }
 
 async function gerarCupomSorteio() {
@@ -1853,6 +1860,12 @@ function novaVenda() {
   tipoDocConsumidor.value = 'cpf'; itemSelecionado.value = null
   ultimaVendaQrCode.value = null; ultimaVendaChave.value = null
   dialogComprovante.value = false
+  // Se a venda gerou direito ao sorteio, abre agora o cupom (após fechar o comprovante).
+  if (sorteioPendente.value) {
+    sorteioPendente.value = false
+    nextTick(() => { dialogSorteio.value = true })
+    return
+  }
   nextTick(() => inputCodigo.value?.focus())
 }
 

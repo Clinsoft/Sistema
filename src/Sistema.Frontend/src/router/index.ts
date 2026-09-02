@@ -145,6 +145,8 @@ const router = createRouter({
     // Relatórios
     { path: '/relatorios', component: () => import('@/modules/relatorios/RelatoriosView.vue'),
       meta: { titulo: 'Relatórios' } },
+    { path: '/relatorios/comparativo-lojas', component: () => import('@/modules/relatorios/ComparativoLojasView.vue'),
+      meta: { titulo: 'Comparativo entre Lojas' } },
     { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
       meta: { titulo: 'Planejamento Anual de Vendas' } },
     { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),

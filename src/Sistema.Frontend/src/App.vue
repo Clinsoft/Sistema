@@ -102,6 +102,8 @@
           <!-- 5. Relatórios -->
           <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-chart-bar" title="Relatórios"
             to="/relatorios" value="/relatorios" color="primary" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-scale-balance" title="Comparativo entre Lojas"
+            to="/relatorios/comparativo-lojas" value="/relatorios/comparativo-lojas" color="primary" rounded="lg" />
 
           <!-- Restante em ordem alfabética -->
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"

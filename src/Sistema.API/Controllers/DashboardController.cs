@@ -127,4 +127,85 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
 
         return Ok(new { periodoDias = dias, lojas });
     }
+
+    /// <summary>Comparativo gerencial entre lojas no período: faturamento, nº de vendas,
+    /// ticket médio, margem e crescimento vs período anterior + top produtos por loja.</summary>
+    [HttpGet("comparativo-lojas")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> ComparativoLojas([FromQuery] Guid empresaId,
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+    {
+        var ini = inicio.Date;
+        var fimEx = fim.Date.AddDays(1);
+        var dias = Math.Max(1, (fimEx - ini).Days);
+        var iniAnt = ini.AddDays(-dias);   // período anterior do mesmo tamanho
+
+        var nomes = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        // Vendas do período (por loja) e do período anterior (para crescimento)
+        var atual = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                     && v.DataHora >= ini && v.DataHora < fimEx)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Fat = g.Sum(v => v.Total), Qtd = g.Count() })
+            .ToListAsync(ct);
+
+        var fatAnt = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                     && v.DataHora >= iniAnt && v.DataHora < ini)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Fat = g.Sum(v => v.Total) })
+            .ToListAsync(ct)).ToDictionary(x => x.Loja, x => x.Fat);
+
+        // Itens vendidos por loja/produto (base para margem e top produtos)
+        var porProduto = await (
+            from i in db.ItensVenda.AsNoTracking()
+            join v in db.Vendas.AsNoTracking() on i.VendaId equals v.Id
+            where v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                  && v.DataHora >= ini && v.DataHora < fimEx
+            group i by new { v.LocalEstoqueId, i.ProdutoId, i.Descricao } into g
+            select new
+            {
+                g.Key.LocalEstoqueId, g.Key.ProdutoId, g.Key.Descricao,
+                Total = g.Sum(x => x.Total), Qtd = g.Sum(x => x.Quantidade)
+            }).ToListAsync(ct);
+
+        var custos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId)
+            .Select(p => new { p.Id, p.CustoUnitario })
+            .ToDictionaryAsync(p => p.Id, p => p.CustoUnitario, ct);
+
+        decimal Custo(Guid? pid, decimal qtd) =>
+            (pid.HasValue && custos.TryGetValue(pid.Value, out var c) ? c : 0m) * qtd;
+
+        var lojas = atual.Select(a =>
+        {
+            var itensLoja = porProduto.Where(x => x.LocalEstoqueId == a.Loja).ToList();
+            var receita = itensLoja.Sum(x => x.Total);
+            var custoTotal = itensLoja.Sum(x => Custo(x.ProdutoId, x.Qtd));
+            var margemValor = receita - custoTotal;
+            var anterior = fatAnt.TryGetValue(a.Loja, out var fa) ? fa : 0m;
+
+            return new
+            {
+                localEstoqueId = a.Loja,
+                nome = nomes.TryGetValue(a.Loja, out var n) ? n : "Loja",
+                faturamento = a.Fat,
+                numeroVendas = a.Qtd,
+                ticketMedio = a.Qtd > 0 ? a.Fat / a.Qtd : 0m,
+                margemValor,
+                margemPct = receita > 0 ? margemValor / receita * 100 : 0m,
+                faturamentoAnterior = anterior,
+                crescimentoPct = anterior > 0 ? (a.Fat - anterior) / anterior * 100 : (decimal?)null,
+                topProdutos = itensLoja.OrderByDescending(x => x.Total).Take(5)
+                    .Select(x => new { x.Descricao, total = x.Total, qtd = x.Qtd }).ToList()
+            };
+        })
+        .OrderByDescending(l => l.faturamento)
+        .ToList();
+
+        return Ok(new { periodoDias = dias, lojas });
+    }
 }

@@ -52,7 +52,13 @@
       </v-card-title>
       <v-data-table :headers="headers" :items="grupo.itens" density="compact" hide-default-footer
         :items-per-page="-1">
-        <template #item.estoqueAtual="{ item }">{{ fmtQtd(item.estoqueAtual) }}</template>
+        <template #item.estoqueAtual="{ item }">
+          <div v-for="l in item.porLoja" :key="l.localEstoqueId" class="text-caption text-end"
+            :class="l.saldo < 0 ? 'text-error' : ''">
+            {{ l.nome }}: <b>{{ fmtQtd(l.saldo) }}</b>
+          </div>
+          <div class="text-caption text-medium-emphasis text-end">Total: {{ fmtQtd(item.estoqueAtual) }}</div>
+        </template>
         <template #item.vendaDia="{ item }">{{ fmtQtd(item.vendaDia) }}</template>
         <template #item.coberturaDias="{ item }">
           <span :class="item.abaixoMinimo ? 'text-error font-weight-bold' : ''">
@@ -84,6 +90,7 @@ interface Item {
   vendaDia: number; coberturaDias: number | null; abaixoMinimo: boolean
   quantidadeSugerida: number; custoUnitario: number; custoSugerido: number
   fornecedorId: string | null; fornecedor: string
+  porLoja: { localEstoqueId: string; nome: string; saldo: number }[]
 }
 
 const carregando = ref(true)
@@ -95,7 +102,7 @@ const diasAlvo = ref(30)
 const headers = [
   { title: 'Cód', key: 'codigo', width: 80 },
   { title: 'Produto', key: 'descricao' },
-  { title: 'Estoque', key: 'estoqueAtual', align: 'end' as const },
+  { title: 'Estoque por loja', key: 'estoqueAtual', align: 'end' as const, width: 170 },
   { title: 'Venda/dia', key: 'vendaDia', align: 'end' as const },
   { title: 'Cobertura', key: 'coberturaDias', align: 'end' as const },
   { title: 'Situação', key: 'abaixoMinimo', width: 110, align: 'center' as const },

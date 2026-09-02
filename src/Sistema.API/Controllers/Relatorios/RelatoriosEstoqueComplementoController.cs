@@ -194,6 +194,32 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
             .Where(f => f.EmpresaId == empresaId)
             .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct);
 
+        // Saldo por loja (reconstruído do histórico), para mostrar onde está o estoque.
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .Select(l => new { l.Id, l.Nome })
+            .ToListAsync(ct);
+
+        var saldoLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId)
+            .GroupBy(m => new { m.ProdutoId, m.LocalEstoqueId })
+            .Select(g => new
+            {
+                g.Key.ProdutoId, g.Key.LocalEstoqueId,
+                Saldo = g.Sum(m =>
+                    m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            })
+            .ToListAsync(ct))
+            .ToDictionary(x => (x.ProdutoId, x.LocalEstoqueId), x => x.Saldo);
+
         var itens = new List<object>();
         decimal custoTotal = 0m;
         foreach (var p in produtos)
@@ -215,9 +241,16 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
 
             var custoSug = Math.Round(sugerida * p.CustoUnitario, 2);
             custoTotal += custoSug;
+            var porLoja = lojas.Select(l => new
+            {
+                localEstoqueId = l.Id, nome = l.Nome,
+                saldo = saldoLoja.TryGetValue((p.Id, l.Id), out var s) ? s : 0m
+            }).ToList();
+
             itens.Add(new
             {
                 p.Id, p.Codigo, p.Descricao,
+                porLoja,
                 estoqueAtual = p.EstoqueAtual,
                 estoqueMinimo = p.EstoqueMinimo,
                 vendaDia = Math.Round(vendaDia, 2),

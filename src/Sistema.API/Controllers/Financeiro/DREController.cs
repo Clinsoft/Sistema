@@ -12,6 +12,77 @@ namespace Sistema.API.Controllers.Financeiro;
 [Authorize(Roles = "Administrador,Financeiro,Contador")]
 public class DREController(SistemaDbContext db) : ControllerBase
 {
+    /// <summary>DRE simplificado MÊS A MÊS (evolução): receita, CMV, despesas e
+    /// resultado por mês nos últimos `meses` meses. Para ver tendência.</summary>
+    [HttpGet("mensal")]
+    public async Task<IActionResult> Mensal([FromQuery] Guid empresaId,
+        [FromQuery] int meses = 12, CancellationToken ct = default)
+    {
+        if (meses < 1) meses = 12;
+        if (meses > 36) meses = 36;
+        var primeiroMes = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-(meses - 1));
+        var fimEx = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1);
+
+        // Receita por mês (vendas finalizadas)
+        var receitaMes = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId
+                && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && v.DataHora >= primeiroMes && v.DataHora < fimEx)
+            .GroupBy(v => new { v.DataHora.Year, v.DataHora.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(v => v.Total) })
+            .ToListAsync(ct))
+            .ToDictionary(x => (x.Year, x.Month), x => x.Total);
+
+        // CMV por mês (custo do produto × qtd vendida)
+        var cmvMes = (await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id, (x, p) => new { x.i, x.v, p })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= primeiroMes && x.v.DataHora < fimEx)
+            .GroupBy(x => new { x.v.DataHora.Year, x.v.DataHora.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Custo = g.Sum(x => x.p.CustoUnitario * x.i.Quantidade) })
+            .ToListAsync(ct))
+            .ToDictionary(x => (x.Year, x.Month), x => x.Custo);
+
+        // Despesas pagas por mês (contas a pagar baixadas, exceto CMV/Imobilizado)
+        var despesaMes = (await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
+                && l.DataPagamento != null && l.DataPagamento >= primeiroMes && l.DataPagamento < fimEx
+                && l.Categoria != "Custo (CMV)" && l.Categoria != "Imobilizado"
+                && (l.Status == StatusLancamento.Pago || l.Status == StatusLancamento.PagoParcialmente))
+            .GroupBy(l => new { l.DataPagamento!.Value.Year, l.DataPagamento!.Value.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(l => l.ValorPago) })
+            .ToListAsync(ct))
+            .ToDictionary(x => (x.Year, x.Month), x => x.Total);
+
+        var nomesMes = new[] { "", "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez" };
+        var lista = new List<object>();
+        for (int k = 0; k < meses; k++)
+        {
+            var m = primeiroMes.AddMonths(k);
+            var key = (m.Year, m.Month);
+            var receita = receitaMes.TryGetValue(key, out var r) ? r : 0m;
+            var cmv = cmvMes.TryGetValue(key, out var c) ? c : 0m;
+            var despesas = despesaMes.TryGetValue(key, out var d) ? d : 0m;
+            var lucroBruto = receita - cmv;
+            var resultado = lucroBruto - despesas;
+            lista.Add(new
+            {
+                mes = $"{m.Year}-{m.Month:00}",
+                label = $"{nomesMes[m.Month]}/{m.Year % 100:00}",
+                receita = Math.Round(receita, 2),
+                cmv = Math.Round(cmv, 2),
+                lucroBruto = Math.Round(lucroBruto, 2),
+                despesas = Math.Round(despesas, 2),
+                resultado = Math.Round(resultado, 2),
+                margemPct = receita > 0 ? Math.Round(resultado / receita * 100, 1) : 0m
+            });
+        }
+
+        return Ok(new { meses, itens = lista });
+    }
+
     [HttpGet]
     public async Task<IActionResult> Obter([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)

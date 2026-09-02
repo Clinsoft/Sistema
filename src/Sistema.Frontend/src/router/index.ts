@@ -91,6 +91,8 @@ const router = createRouter({
       meta: { titulo: 'Contas a Pagar' } },
     { path: '/financeiro/dre', component: () => import('@/modules/financeiro/DreView.vue'),
       meta: { titulo: 'DRE — Demonstrativo de Resultados' } },
+    { path: '/financeiro/dre-mensal', component: () => import('@/modules/financeiro/DreMensalView.vue'),
+      meta: { titulo: 'DRE Comparativo (mês a mês)' } },
     { path: '/financeiro/fluxo-caixa', component: () => import('@/modules/financeiro/FluxoCaixaView.vue'),
       meta: { titulo: 'Fluxo de Caixa' } },
     { path: '/financeiro/custos-fixos', component: () => import('@/modules/financeiro/CustosFixosView.vue'),

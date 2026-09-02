@@ -81,7 +81,7 @@
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
         <v-col cols="12" sm="2">
-          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
+          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregar() }" />
         </v-col>
         <v-col cols="12" sm="2">
           <v-text-field v-model="filtros.inicio" label="De" type="date"

@@ -27,7 +27,7 @@
             variant="outlined" density="compact" hide-details />
         </v-col>
         <v-col cols="12" sm="3">
-          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
+          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregar() }" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.inicio" label="Início" type="date"

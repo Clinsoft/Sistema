@@ -175,7 +175,7 @@
     <v-card v-if="!ehAtendente" rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
         <v-col cols="12" sm="3">
-          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" />
+          <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; listar() }" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.inicio" label="De" type="date"

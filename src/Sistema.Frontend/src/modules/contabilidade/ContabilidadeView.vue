@@ -46,7 +46,7 @@
     <!-- ── LANÇAMENTOS ──────────────────────────────────── -->
     <div v-if="aba==='lancamentos'">
       <div class="d-flex align-center mb-3 gap-2 flex-wrap">
-        <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" style="min-width:180px" />
+        <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregarLancamentos() }" style="min-width:180px" />
         <v-text-field v-model="filtros.inicio" label="Início" type="date"
           variant="outlined" density="compact" hide-details style="max-width:160px" />
         <v-text-field v-model="filtros.fim" label="Fim" type="date"
@@ -72,7 +72,7 @@
     <!-- ── BALANCETE ────────────────────────────────────── -->
     <div v-if="aba==='balancete'">
       <div class="d-flex align-center mb-3 gap-2 flex-wrap">
-        <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f }" style="min-width:180px" />
+        <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregarBalancete() }" style="min-width:180px" />
         <v-text-field v-model="filtros.inicio" label="Início" type="date"
           variant="outlined" density="compact" hide-details style="max-width:160px" />
         <v-text-field v-model="filtros.fim" label="Fim" type="date"

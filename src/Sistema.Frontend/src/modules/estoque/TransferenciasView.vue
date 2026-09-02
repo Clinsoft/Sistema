@@ -24,7 +24,7 @@
     <v-card rounded="xl" elevation="1" class="mb-4 pa-3">
       <v-row dense align="center">
         <v-col cols="12" md="3">
-          <FiltroMes @selecionar="(i, f) => { filtros.de = i; filtros.ate = f }" />
+          <FiltroMes @selecionar="(i, f) => { filtros.de = i; filtros.ate = f; listarHistorico() }" />
         </v-col>
         <v-col cols="12" md="3">
           <v-text-field v-model="filtros.de" label="De" type="date" variant="outlined"

@@ -292,4 +292,67 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
 
         return Ok(new { dias, capitalParado = itens.Sum(x => x.valorEstoque), itens });
     }
+
+    /// <summary>Rentabilidade por categoria no período: faturamento, custo, margem
+    /// (valor e %) e participação — mostra onde está o lucro, não só o faturamento.</summary>
+    [HttpGet("rentabilidade-categoria")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> RentabilidadeCategoria([FromQuery] Guid empresaId,
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+    {
+        var ini = inicio.Date; var fimEx = fim.Date.AddDays(1);
+
+        var porProduto = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= ini && x.v.DataHora < fimEx)
+            .GroupBy(x => x.i.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Receita = g.Sum(x => x.i.Total), Qtd = g.Sum(x => x.i.Quantidade) })
+            .ToListAsync(ct);
+
+        var prods = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId)
+            .Select(p => new { p.Id, p.CategoriaId, p.CustoUnitario })
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var cats = await db.Categorias.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId)
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+
+        // Agrega por categoria (produto sem cadastro cai em "Sem categoria")
+        var acc = new Dictionary<string, (decimal receita, decimal custo, decimal qtd)>();
+        foreach (var pp in porProduto)
+        {
+            string cat = "Sem categoria"; decimal custoUnit = 0m;
+            if (prods.TryGetValue(pp.ProdutoId, out var p))
+            {
+                custoUnit = p.CustoUnitario;
+                cat = cats.TryGetValue(p.CategoriaId, out var cn) ? cn : "Sem categoria";
+            }
+            var cur = acc.TryGetValue(cat, out var a) ? a : (receita: 0m, custo: 0m, qtd: 0m);
+            acc[cat] = (cur.receita + pp.Receita, cur.custo + custoUnit * pp.Qtd, cur.qtd + pp.Qtd);
+        }
+
+        var totalReceita = acc.Values.Sum(x => x.receita);
+        var itens = acc.Select(kv =>
+        {
+            var (receita, custo, qtd) = kv.Value;
+            var margem = receita - custo;
+            return new
+            {
+                categoria = kv.Key,
+                faturamento = Math.Round(receita, 2),
+                custo = Math.Round(custo, 2),
+                margemValor = Math.Round(margem, 2),
+                margemPct = receita > 0 ? Math.Round(margem / receita * 100, 1) : 0m,
+                participacaoPct = totalReceita > 0 ? Math.Round(receita / totalReceita * 100, 1) : 0m,
+                quantidade = qtd
+            };
+        })
+        .OrderByDescending(x => x.margemValor)
+        .ToList();
+
+        return Ok(new { totalFaturamento = Math.Round(totalReceita, 2), itens });
+    }
 }

@@ -70,7 +70,11 @@
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
         </template>
         <template #item.acoes="{ item }">
-          <v-btn size="small" variant="tonal" color="purple" class="mr-1"
+          <v-btn v-if="item.tipo === 'Sorteio'" size="small" variant="tonal" color="deep-purple" class="mr-1"
+            prepend-icon="mdi-ticket-confirmation-outline" @click="abrirSorteio(item)">
+            Sortear ganhador
+          </v-btn>
+          <v-btn v-else size="small" variant="tonal" color="purple" class="mr-1"
             prepend-icon="mdi-palette" @click="abrirArtes(item)">
             Gerar Artes
           </v-btn>
@@ -325,6 +329,55 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog: sortear ganhador -->
+    <v-dialog v-model="dialogSorteio" max-width="460">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon color="deep-purple">mdi-ticket-confirmation-outline</v-icon>
+          Sortear — {{ sorteioSel?.nome }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" density="compact" @click="dialogSorteio = false" />
+        </v-card-title>
+        <v-card-text class="pa-4 pt-2">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <span class="text-body-2 text-medium-emphasis">Cupons registrados</span>
+            <span class="text-h6 font-weight-bold">{{ totalCupons }}</span>
+          </div>
+          <v-switch v-model="apenasNaoSorteados" color="deep-purple" density="compact" hide-details
+            label="Sortear só entre cupons ainda não sorteados" class="mb-2" />
+
+          <v-alert v-if="ganhador" type="success" variant="tonal" class="mb-2">
+            <div class="text-caption">🎉 Ganhador (cupom nº {{ String(ganhador.numero).padStart(5, '0') }})</div>
+            <div class="text-h6 font-weight-bold">{{ ganhador.nomeCliente }}</div>
+            <div class="text-body-2">📱 {{ ganhador.telefone || '—' }} · compra R$ {{ fmt(ganhador.valorCompra) }}</div>
+          </v-alert>
+
+          <div v-if="cupons.length" class="mt-2">
+            <div class="text-caption text-medium-emphasis mb-1">Participantes</div>
+            <div style="max-height:180px;overflow:auto">
+              <v-table density="compact">
+                <thead><tr><th style="width:56px">Nº</th><th>Nome</th><th>Telefone</th></tr></thead>
+                <tbody>
+                  <tr v-for="c in cupons" :key="c.id" :class="c.sorteado ? 'text-medium-emphasis' : ''">
+                    <td>{{ String(c.numero).padStart(5, '0') }}</td>
+                    <td>{{ c.nomeCliente }}<v-icon v-if="c.sorteado" size="12" class="ml-1" color="deep-purple" title="Já sorteado">mdi-check</v-icon></td>
+                    <td>{{ c.telefone || '—' }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+          </div>
+          <div v-else class="text-center text-medium-emphasis pa-4">Nenhum cupom registrado ainda.</div>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogSorteio = false">Fechar</v-btn>
+          <v-btn color="deep-purple" rounded="lg" prepend-icon="mdi-dice-multiple"
+            :loading="sorteando" :disabled="!totalCupons" @click="sortear">Sortear ganhador</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -570,6 +623,48 @@ async function carregarLocais() {
   } catch { locais.value = [] }
 }
 const nomeLoja = (id: string | null) => id ? (locais.value.find(l => l.id === id)?.nome ?? '—') : 'Todas as lojas'
+
+// ── Sortear ganhador ──────────────────────────────────────────────
+const dialogSorteio = ref(false)
+const sorteioSel = ref<any>(null)
+const cupons = ref<any[]>([])
+const ganhador = ref<any>(null)
+const sorteando = ref(false)
+const apenasNaoSorteados = ref(true)
+const totalCupons = computed(() => cupons.value.length)
+
+async function abrirSorteio(item: any) {
+  sorteioSel.value = item
+  ganhador.value = null
+  apenasNaoSorteados.value = true
+  cupons.value = []
+  dialogSorteio.value = true
+  await carregarCupons()
+}
+async function carregarCupons() {
+  try {
+    const r = await api.get('/cupons-sorteio', {
+      params: { empresaId: auth.empresaId, promocaoId: sorteioSel.value.id },
+    })
+    cupons.value = r.data ?? []
+  } catch { cupons.value = [] }
+}
+async function sortear() {
+  if (!sorteioSel.value) return
+  sorteando.value = true
+  try {
+    const r = await api.post('/cupons-sorteio/sortear', {
+      empresaId: auth.empresaId,
+      promocaoId: sorteioSel.value.id,
+      apenasNaoSorteados: apenasNaoSorteados.value,
+    })
+    ganhador.value = r.data
+    notif.ok(`🎉 Ganhador: ${r.data.nomeCliente} (cupom nº ${r.data.numero})`)
+    await carregarCupons()
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Nenhum cupom disponível para sorteio.')
+  } finally { sorteando.value = false }
+}
 
 onMounted(() => { carregar(); carregarLocais() })
 </script>

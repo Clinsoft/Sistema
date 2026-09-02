@@ -128,6 +128,79 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
         return Ok(new { periodoDias = dias, lojas });
     }
 
+    /// <summary>Resumo gerencial de um dia: vendas, ticket, margem por loja e contas
+    /// (a pagar/receber que vencem no dia) — para o gestor acompanhar/enviar por WhatsApp.</summary>
+    [HttpGet("resumo-dia")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> ResumoDia([FromQuery] Guid empresaId,
+        [FromQuery] DateTime? data, CancellationToken ct)
+    {
+        var dia = (data ?? DateTime.Today).Date;
+        var amanha = dia.AddDays(1);
+
+        var nomes = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        var vendasDia = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                     && v.DataHora >= dia && v.DataHora < amanha)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Total = g.Sum(x => x.Total), Qtd = g.Count() })
+            .ToListAsync(ct);
+
+        // Custo (para margem) por loja, a partir dos itens do dia
+        var custoPorLoja = (await (
+            from i in db.ItensVenda.AsNoTracking()
+            join v in db.Vendas.AsNoTracking() on i.VendaId equals v.Id
+            join p in db.Produtos.AsNoTracking() on i.ProdutoId equals p.Id
+            where v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                  && v.DataHora >= dia && v.DataHora < amanha
+            group new { i, p } by v.LocalEstoqueId into g
+            select new { Loja = g.Key, Receita = g.Sum(x => x.i.Total), Custo = g.Sum(x => x.p.CustoUnitario * x.i.Quantidade) }
+        ).ToListAsync(ct)).ToDictionary(x => x.Loja);
+
+        var porLoja = vendasDia.Select(v =>
+        {
+            custoPorLoja.TryGetValue(v.Loja, out var c);
+            var receita = c?.Receita ?? 0m; var custo = c?.Custo ?? 0m;
+            return new
+            {
+                nome = nomes.TryGetValue(v.Loja, out var n) ? n : "Loja",
+                total = Math.Round(v.Total, 2),
+                numeroVendas = v.Qtd,
+                ticketMedio = v.Qtd > 0 ? Math.Round(v.Total / v.Qtd, 2) : 0m,
+                margemPct = receita > 0 ? Math.Round((receita - custo) / receita * 100, 1) : 0m
+            };
+        }).OrderByDescending(x => x.total).ToList();
+
+        var totalDia = porLoja.Sum(x => x.total);
+        var qtdDia = porLoja.Sum(x => x.numeroVendas);
+
+        var aPagarHoje = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
+                     && l.Status == StatusLancamento.EmAberto
+                     && l.DataVencimento >= dia && l.DataVencimento < amanha)
+            .SumAsync(l => (decimal?)(l.ValorOriginal - l.ValorPago), ct) ?? 0m;
+
+        var aReceberHoje = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaReceber
+                     && l.Status == StatusLancamento.EmAberto
+                     && l.DataVencimento >= dia && l.DataVencimento < amanha)
+            .SumAsync(l => (decimal?)(l.ValorOriginal - l.ValorPago), ct) ?? 0m;
+
+        return Ok(new
+        {
+            data = dia,
+            totalVendas = Math.Round(totalDia, 2),
+            numeroVendas = qtdDia,
+            ticketMedio = qtdDia > 0 ? Math.Round(totalDia / qtdDia, 2) : 0m,
+            porLoja,
+            aPagarHoje = Math.Round(aPagarHoje, 2),
+            aReceberHoje = Math.Round(aReceberHoje, 2)
+        });
+    }
+
     /// <summary>Projeção da meta de vendas do mês: meta × realizado até hoje × projeção
     /// pelo ritmo atual, com quanto falta e quanto vender por dia nos dias restantes.</summary>
     [HttpGet("projecao-meta")]

@@ -159,6 +159,8 @@ const router = createRouter({
       meta: { titulo: 'Rentabilidade por Categoria' } },
     { path: '/relatorios/projecao-meta', component: () => import('@/modules/relatorios/ProjecaoMetaView.vue'),
       meta: { titulo: 'Projeção de Meta' } },
+    { path: '/relatorios/resumo-dia', component: () => import('@/modules/relatorios/ResumoDiaView.vue'),
+      meta: { titulo: 'Resumo do Dia' } },
     { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
       meta: { titulo: 'Planejamento Anual de Vendas' } },
     { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),

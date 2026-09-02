@@ -112,6 +112,8 @@
             to="/relatorios/rentabilidade-categoria" value="/relatorios/rentabilidade-categoria" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-target" title="Projeção de Meta"
             to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-calendar-check-outline" title="Resumo do Dia"
+            to="/relatorios/resumo-dia" value="/relatorios/resumo-dia" color="primary" rounded="lg" />
 
           <!-- Restante em ordem alfabética -->
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"

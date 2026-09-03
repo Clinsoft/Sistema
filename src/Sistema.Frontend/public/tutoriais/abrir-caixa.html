@@ -1,0 +1,45 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Como abrir o caixa</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .pdv{position:absolute;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center}
+  .top{position:absolute;top:0;left:0;right:0;height:52px;background:#1f2937;display:flex;align-items:center;gap:10px;padding:0 14px;color:#fff}
+  .chip{font-size:11px;background:#dc2626;padding:3px 10px;border-radius:20px;font-weight:600}
+  .card{background:#fff;border-radius:18px;padding:26px 30px;width:min(420px,86%);box-shadow:0 24px 60px rgba(0,0,0,.4);text-align:center}
+  .ic{width:56px;height:56px;border-radius:50%;background:#f97316;color:#fff;font-size:28px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+  h3{margin:2px 0 4px}.sub{color:#64748b;font-size:13px;margin-bottom:16px}
+  .campo{text-align:left;margin-bottom:12px}
+  .lbl{font-size:11px;color:#64748b;font-weight:700;margin-bottom:4px}
+  .inp{border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+  .btn{background:#16a34a;color:#fff;border-radius:10px;padding:12px;font-weight:700;margin-top:4px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="pdv">
+  <div class="top"><b>PDV</b> <span class="chip" id="semcaixa">Sem caixa aberto</span></div>
+  <div class="card">
+    <div class="ic">🗄️</div>
+    <h3>Nenhum caixa aberto</h3>
+    <div class="sub">Informe o saldo inicial em dinheiro para abrir o caixa de hoje.</div>
+    <div class="campo"><div class="lbl">Local de Estoque *</div>
+      <div class="inp" id="loja"><span id="lojatxt">Selecione a loja…</span><span>▾</span></div></div>
+    <div class="campo"><div class="lbl">Saldo inicial (troco)</div>
+      <div class="inp" id="saldo"><span id="saldotxt">R$ 0,00</span></div></div>
+    <div class="btn" id="abrir">Abrir Caixa</div>
+  </div>
+</div></div></div>
+<script src="./sim.js"></script>
+<script>
+  Sim.run([
+    { cap:'No PDV, se aparecer "Nenhum caixa aberto", vamos abri-lo.', ms:1200 },
+    { cap:'Escolha o Local de Estoque (sua loja).', sel:'#loja', act:'click', ms:700,
+      after:()=>document.getElementById('lojatxt').textContent='IPANEMA ARAÇATUBA' },
+    { cap:'Informe o saldo inicial em dinheiro (o troco).', sel:'#saldo', act:'type', text:'', ms:200,
+      after:()=>document.getElementById('saldotxt').textContent='R$ 150,00' },
+    { cap:'Clique em Abrir Caixa.', sel:'#abrir', act:'click', ms:700 },
+    { cap:'Pronto! O caixa fica verde com "Caixa #".', ms:1600,
+      before:()=>{ const c=document.getElementById('semcaixa'); c.style.background='#16a34a'; c.textContent='● Caixa #12';
+        document.querySelector('.card').innerHTML='<div class="ic" style="background:#16a34a">✓</div><h3>Caixa aberto!</h3><div class="sub">Bom trabalho. Agora é só vender.</div>'; } },
+  ], { badge:'Simulação · Abrir o caixa' });
+</script>
+</body></html>

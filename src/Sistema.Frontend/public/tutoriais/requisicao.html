@@ -1,0 +1,50 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Requisição de compra</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .app{position:absolute;inset:0;background:#f1f5f9;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .h{display:flex;align-items:center;gap:8px}
+  .h .t{font-weight:800;font-size:18px;flex:1}
+  .btn{background:#16a34a;color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:13px}
+  .card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .linha{display:flex;gap:8px;align-items:center}
+  .inp{flex:1;border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:14px;color:#334155}
+  .qtd{width:70px;border:1px solid #cbd5e1;border-radius:10px;padding:10px;text-align:center;font-weight:700}
+  .plus{width:40px;height:40px;border-radius:10px;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  td,th{padding:8px;border-bottom:1px solid #f1f5f9;text-align:left}
+  th{font-size:11px;color:#64748b;text-transform:uppercase}
+  .enviar{background:#16a34a;color:#fff;border-radius:10px;padding:11px;text-align:center;font-weight:700;margin-top:10px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="app">
+  <div class="h"><span class="t">Requisição de Compra</span><span class="btn">＋ Nova Requisição</span></div>
+  <div class="card">
+    <div class="linha">
+      <div class="inp" id="busca">Buscar produto (nome ou código)…</div>
+      <div class="qtd" id="qtd">1</div>
+      <div class="plus" id="add">＋</div>
+    </div>
+    <table><thead><tr><th>Produto</th><th style="width:70px;text-align:center">Qtd</th></tr></thead>
+      <tbody id="corpo"><tr id="vazio"><td colspan="2" style="text-align:center;color:#94a3b8;padding:18px">Nenhum item</td></tr></tbody></table>
+    <div class="enviar" id="enviar">Enviar requisição</div>
+  </div>
+</div></div></div>
+<script src="./sim.js"></script>
+<script>
+  function addLinha(nome,q){ const vazio=document.getElementById('vazio'); if(vazio) vazio.remove();
+    document.getElementById('corpo').insertAdjacentHTML('beforeend',`<tr><td>${nome}</td><td style="text-align:center;font-weight:700">${q}</td></tr>`); }
+  Sim.run([
+    { cap:'Menu Requisição de Compra → Nova Requisição.', ms:1100 },
+    { cap:'Busque o produto que está faltando.', sel:'#busca', act:'type', text:'AVEIA EM FLOCOS', ms:400 },
+    { cap:'Informe a quantidade (sem preço, sem fornecedor).', sel:'#qtd', act:'type', text:'6', ms:300 },
+    { cap:'Clique em + para adicionar à lista.', sel:'#add', act:'click', ms:500,
+      after:()=>{ addLinha('AVEIA EM FLOCOS 500G','6'); document.getElementById('busca').textContent='Buscar produto (nome ou código)…'; document.getElementById('qtd').textContent='1'; } },
+    { cap:'Adicione todos os itens que faltam.', sel:'#busca', act:'type', text:'CASTANHA DE CAJU', ms:400,
+      after:()=>{ addLinha('CASTANHA DE CAJU 200G','4'); } },
+    { cap:'Clique em Enviar requisição — o gestor recebe e faz os pedidos por fornecedor.', sel:'#enviar', act:'click', ms:1800,
+      before:()=>document.getElementById('busca').textContent='Buscar produto (nome ou código)…' },
+  ], { badge:'Simulação · Requisição de compra' });
+</script>
+</body></html>

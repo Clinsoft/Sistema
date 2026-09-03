@@ -1,0 +1,47 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buscar e cadastrar cliente</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .pdv{position:absolute;inset:0;background:#f1f5f9}
+  .top{height:52px;background:#1f2937;display:flex;align-items:center;gap:10px;padding:0 14px;color:#fff}
+  .pane{position:absolute;right:0;top:52px;bottom:0;width:320px;background:#fff;border-left:1px solid #e2e8f0;padding:16px}
+  .lbl{font-size:11px;color:#64748b;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .kbd{background:#e2e8f0;border-radius:4px;font-size:10px;padding:1px 5px;color:#334155}
+  .inp{border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:14px;color:#334155;min-height:20px}
+  .drop{border:1px solid #e2e8f0;border-radius:10px;margin-top:6px;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+  .opt{padding:10px 12px;display:flex;flex-direction:column;border-bottom:1px solid #f1f5f9}
+  .opt .n{font-weight:600;font-size:14px}.opt .s{font-size:11px;color:#94a3b8}
+  .opt.sel{background:#dcfce7}
+  .add{padding:10px 12px;color:#16a34a;font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px}
+  .selected{margin-top:10px;background:#dcfce7;border-radius:10px;padding:10px 12px;font-weight:600;color:#065f46;display:flex;align-items:center;gap:8px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="pdv">
+  <div class="top"><b>PDV</b> — Ponto de Venda</div>
+  <div class="pane">
+    <div class="lbl">👤 Cliente <span class="kbd">F3</span></div>
+    <div class="inp" id="busca">Nome, CPF ou telefone…</div>
+    <div id="drop"></div>
+    <div id="sel"></div>
+  </div>
+</div></div></div>
+<script src="./sim.js"></script>
+<script>
+  Sim.run([
+    { cap:'Aperte F3 e busque por nome, CPF ou telefone.', sel:'#busca', act:'type', text:'18 99122', ms:400 },
+    { cap:'O sistema encontra pelo telefone (ignora a máscara).', ms:900,
+      before:()=>document.getElementById('drop').innerHTML=
+        '<div class="drop"><div class="opt"><span class="n">Maria Aparecida</span><span class="s">📱 (18) 99122-1740 · CPF 123.456.789-00</span></div><div class="add">➕ Cadastrar cliente: 18 99122</div></div>' },
+    { cap:'Aperte Tab para selecionar o primeiro resultado.', sel:'#drop .opt', act:'click', ms:600,
+      after:()=>{ document.querySelector('#drop .opt').classList.add('sel'); } },
+    { cap:'Cliente selecionado na venda.', ms:1400,
+      before:()=>{ document.getElementById('drop').innerHTML=''; document.getElementById('busca').textContent='Maria Aparecida';
+        document.getElementById('sel').innerHTML='<div class="selected">✓ Maria Aparecida</div>'; } },
+    { cap:'Se não existir, clique em "Cadastrar cliente" e informe nome, telefone e (opcional) CPF e nascimento.', ms:2000,
+      before:()=>{ document.getElementById('busca').textContent='João Novo Cliente';
+        document.getElementById('sel').innerHTML='';
+        document.getElementById('drop').innerHTML='<div class="drop"><div class="add">➕ Cadastrar cliente: João Novo Cliente</div></div>'; } },
+  ], { badge:'Simulação · Buscar e cadastrar cliente' });
+</script>
+</body></html>

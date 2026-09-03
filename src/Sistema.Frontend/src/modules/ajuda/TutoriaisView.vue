@@ -114,6 +114,9 @@ function embedUrl(url?: string | null): string | null {
   m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/)
   if (m) return `https://player.vimeo.com/video/${m[1]}`
   if (/\.(mp4|webm|ogg)(\?|$)/i.test(u)) return u // vídeo direto tocaria em <video>, mas mantemos simples
+  // Simulação animada hospedada no próprio sistema (mesma origem, arquivo .html).
+  if (/^\/tutoriais\/.+\.html?($|\?)/i.test(u)) return u
+  if (/\.html?($|\?)/i.test(u) && u.startsWith(location.origin)) return u
   return null
 }
 

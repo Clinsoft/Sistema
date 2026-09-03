@@ -1,0 +1,83 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Como fazer uma venda</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .pdv{position:absolute;inset:0;display:flex;flex-direction:column;background:#f1f5f9}
+  .top{height:52px;background:#1f2937;display:flex;align-items:center;gap:10px;padding:0 14px;color:#fff}
+  .brand{display:flex;align-items:center;gap:6px;font-weight:700}
+  .dot{width:9px;height:9px;border-radius:50%;background:#22c55e}
+  .chip{font-size:11px;background:#16a34a;padding:2px 8px;border-radius:20px}
+  .busca{flex:1;background:#374151;border-radius:8px;height:34px;display:flex;align-items:center;padding:0 12px;
+    color:#cbd5e1;font-size:14px;max-width:420px;margin:0 auto}
+  .body{flex:1;display:flex}
+  .itens{flex:1;padding:14px;display:flex;flex-direction:column}
+  .col-h{display:flex;font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;padding:0 8px 6px}
+  .col-h .p{flex:1}.col-h .q{width:80px;text-align:center}.col-h .t{width:90px;text-align:right}
+  .row{display:flex;align-items:center;background:#fff;border-radius:10px;padding:10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .row .p{flex:1}.row .nome{font-weight:600;font-size:14px}.row .sub{font-size:11px;color:#94a3b8}
+  .row .q{width:80px;text-align:center;font-weight:600}.row .t{width:90px;text-align:right;font-weight:700}
+  .vazio{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px}
+  .pag{width:210px;background:#fff;border-left:1px solid #e2e8f0;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .pag h4{margin:0;font-size:11px;color:#64748b;text-transform:uppercase}
+  .fp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fpb{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 6px;text-align:center;font-size:12px;font-weight:600}
+  .fpb.on{background:#dcfce7;border-color:#22c55e}
+  .totbar{margin-top:auto;background:#0f172a;color:#fff;border-radius:12px;padding:10px 12px}
+  .totbar .l{font-size:11px;opacity:.8}.totbar .v{font-size:22px;font-weight:800}
+  .fin{background:#16a34a;color:#fff;text-align:center;border-radius:12px;padding:12px;font-weight:700;margin-top:8px}
+  .kbd{background:#e2e8f0;border-radius:4px;font-size:10px;padding:1px 5px;color:#334155;margin-left:6px}
+  .okwrap{position:absolute;inset:0;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center}
+  .okcard{background:#fff;border-radius:16px;padding:24px 30px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .okc{width:56px;height:56px;border-radius:50%;background:#16a34a;color:#fff;font-size:32px;display:flex;align-items:center;justify-content:center;margin:0 auto 8px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="pdv">
+  <div class="top">
+    <div class="brand"><span class="dot"></span>PDV <span class="chip">Caixa #12</span></div>
+    <div class="busca" id="busca">Código de barras, SKU ou nome do produto</div>
+  </div>
+  <div class="body">
+    <div class="itens">
+      <div class="col-h"><span class="p">Produto</span><span class="q">Qtd</span><span class="t">Total</span></div>
+      <div id="lista"></div>
+      <div class="vazio" id="vazio">📷<div>Aguardando produto</div></div>
+    </div>
+    <div class="pag">
+      <h4>Pagamento</h4>
+      <div class="fp">
+        <div class="fpb" id="dinheiro">💵 Dinheiro<span class="kbd">F4</span></div>
+        <div class="fpb">📱 Pix<span class="kbd">F6</span></div>
+        <div class="fpb">💳 Crédito</div>
+        <div class="fpb">💳 Débito</div>
+      </div>
+      <div class="totbar"><div class="l">Total a pagar</div><div class="v" id="total">R$ 0,00</div></div>
+      <div class="fin" id="finalizar">✔ Finalizar Venda <span class="kbd">F10</span></div>
+    </div>
+  </div>
+</div></div></div>
+
+<script src="./sim.js"></script>
+<script>
+  const lista = () => document.getElementById('lista');
+  function addItem(nome, cod, qtd, tot){
+    document.getElementById('vazio').classList.add('hidden');
+    lista().insertAdjacentHTML('beforeend',
+      `<div class="row"><div class="p"><div class="nome">${nome}</div><div class="sub">${cod} · UN · R$ ${tot}</div></div><div class="q">${qtd}</div><div class="t">R$ ${tot}</div></div>`);
+  }
+  Sim.run([
+    { cap:'Bipe o código de barras ou digite o nome do produto.', sel:'#busca', act:'type', text:'ARROZ INTEGRAL 1KG', ms:500 },
+    { cap:'Pressione Enter — o produto entra na lista.', ms:900,
+      before:()=>{ addItem('ARROZ INTEGRAL 1KG','7891234', 1, '12,90'); document.getElementById('busca').textContent='Código de barras, SKU ou nome do produto'; document.getElementById('total').textContent='R$ 12,90'; } },
+    { cap:'Para várias unidades, digite 3*código.', sel:'#busca', act:'type', text:'2*BISCOITO', ms:400 },
+    { cap:'Enter novamente — mais itens no carrinho.', ms:900,
+      before:()=>{ addItem('BISCOITO AVEIA E MEL','7899999', 2, '15,80'); document.getElementById('busca').textContent='Código de barras, SKU ou nome do produto'; document.getElementById('total').textContent='R$ 28,70'; } },
+    { cap:'Escolha a forma de pagamento (F4 = Dinheiro).', sel:'#dinheiro', act:'click', ms:700,
+      after:()=>document.getElementById('dinheiro').classList.add('on') },
+    { cap:'Pressione F10 para finalizar a venda.', sel:'#finalizar', act:'click', ms:700 },
+    { cap:'Pronto! Venda finalizada e cupom emitido.', ms:1600,
+      before:()=>{ const s=document.querySelector('.scene'); s.insertAdjacentHTML('beforeend',
+        '<div class="okwrap" id="ok"><div class="okcard"><div class="okc">✓</div><div style="font-weight:800;font-size:18px">Venda Finalizada!</div><div style="color:#64748b;font-size:13px">Cupom Nº 000123 · R$ 28,70</div></div></div>'); } },
+  ], { badge:'Simulação · Fazer uma venda' });
+</script>
+</body></html>

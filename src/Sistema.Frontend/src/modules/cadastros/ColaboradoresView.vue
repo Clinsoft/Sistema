@@ -22,11 +22,36 @@
       ]"
     />
 
+    <!-- Filtros -->
+    <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
+      <v-row dense align="center">
+        <v-col cols="12" sm="4">
+          <v-text-field v-model="busca" label="Buscar (nome, e-mail, CPF, cargo)"
+            prepend-inner-icon="mdi-magnify" variant="outlined" density="compact" hide-details clearable />
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-select v-model="filtroUnidade" :items="unidadesOpcoes" item-title="title" item-value="value"
+            label="Unidade" variant="outlined" density="compact" hide-details />
+        </v-col>
+        <v-col cols="6" sm="3">
+          <v-select v-model="filtroAcesso" :items="acessoOpcoes"
+            label="Acesso / Perfil" variant="outlined" density="compact" hide-details />
+        </v-col>
+        <v-col cols="12" sm="2">
+          <v-select v-model="filtroStatus" :items="['Ativos','Inativos','Todos']"
+            label="Status" variant="outlined" density="compact" hide-details />
+        </v-col>
+      </v-row>
+    </v-card>
+
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
+      <div class="px-3 pt-2 text-caption text-medium-emphasis">
+        {{ colaboradoresFiltrados.length }} de {{ colaboradores.length }} colaborador(es)
+      </div>
       <v-data-table
         :headers="headers"
-        :items="colaboradores"
+        :items="colaboradoresFiltrados"
         :loading="carregando"
         density="comfortable"
         hover
@@ -301,7 +326,7 @@
 
 <script setup lang="ts">
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -340,6 +365,38 @@ const formPadrao = () => ({
 })
 const form = ref(formPadrao())
 const locaisEstoque = ref<any[]>([])
+
+// ── Filtros ──
+const busca = ref('')
+const filtroUnidade = ref<string | null>(null)
+const filtroAcesso = ref('Todos')
+const filtroStatus = ref('Ativos')
+const unidadesOpcoes = computed(() => [
+  { title: 'Todas as unidades', value: null as string | null },
+  ...locaisEstoque.value.map((l: any) => ({ title: l.nome, value: l.id })),
+])
+const acessoOpcoes = ['Todos', 'Com acesso', 'Sem acesso', 'Administrador', 'Atendente', 'Financeiro', 'Contador']
+
+const colaboradoresFiltrados = computed(() => {
+  let r = colaboradores.value
+  if (filtroStatus.value === 'Ativos') r = r.filter(c => c.ativo)
+  else if (filtroStatus.value === 'Inativos') r = r.filter(c => !c.ativo)
+  if (filtroUnidade.value) r = r.filter(c => c.localEstoqueId === filtroUnidade.value)
+  if (filtroAcesso.value === 'Com acesso') r = r.filter(c => c.temAcesso)
+  else if (filtroAcesso.value === 'Sem acesso') r = r.filter(c => !c.temAcesso)
+  else if (['Administrador', 'Atendente', 'Financeiro', 'Contador'].includes(filtroAcesso.value))
+    r = r.filter(c => c.perfil === filtroAcesso.value)
+  const q = busca.value?.trim().toLowerCase()
+  if (q) {
+    const qd = q.replace(/\D/g, '')
+    r = r.filter(c =>
+      (c.nome ?? '').toLowerCase().includes(q) ||
+      (c.email ?? '').toLowerCase().includes(q) ||
+      (c.cargo ?? '').toLowerCase().includes(q) ||
+      (!!qd && (c.cpf ?? '').replace(/\D/g, '').includes(qd)))
+  }
+  return r
+})
 
 const headers = [
   { title: 'Colaborador', key: 'nome', sortable: true },

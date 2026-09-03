@@ -70,9 +70,27 @@
       </v-col>
     </v-row>
 
+    <!-- Barra de seleção múltipla -->
+    <v-slide-y-transition>
+      <v-card v-if="selecionados.length" rounded="xl" elevation="2" color="success" variant="tonal" class="mb-3 pa-3">
+        <div class="d-flex align-center flex-wrap ga-3">
+          <v-icon>mdi-checkbox-multiple-marked-outline</v-icon>
+          <span class="font-weight-medium">
+            {{ selecionadosEmAberto.length }} título(s) em aberto selecionado(s) ·
+            <b>R$ {{ fmt(totalSelecionado) }}</b>
+          </span>
+          <v-spacer />
+          <v-btn size="small" variant="text" @click="selecionados = []">Limpar</v-btn>
+          <v-btn size="small" color="success" variant="flat" rounded="lg" prepend-icon="mdi-cash-multiple"
+            :disabled="!selecionadosEmAberto.length" @click="abrirBaixaLote">Quitar selecionados</v-btn>
+        </div>
+      </v-card>
+    </v-slide-y-transition>
+
     <!-- Tabela -->
     <v-card rounded="xl" elevation="1">
-      <v-data-table :headers="headers" :items="lancamentosFiltrados" :loading="carregando" density="compact" hover>
+      <v-data-table v-model="selecionados" :headers="headers" :items="lancamentosFiltrados"
+        :loading="carregando" density="compact" hover show-select item-value="id">
         <template #item.categoria="{ item }">
           <v-chip :color="corSubcategoria(item.categoria)" size="x-small" variant="tonal" label>
             {{ item.categoria ?? 'Recebimentos' }}
@@ -209,6 +227,24 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Quitar em lote -->
+    <v-dialog v-model="dialogBaixaLote" max-width="420" persistent>
+      <v-card rounded="xl" class="pa-4">
+        <v-card-title class="pb-2">Quitar {{ selecionadosEmAberto.length }} título(s)</v-card-title>
+        <v-card-text>
+          <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+            Total: <b>R$ {{ fmt(totalSelecionado) }}</b> — cada título é baixado pelo saldo em aberto.
+          </v-alert>
+          <v-text-field v-model="baixaLoteData" label="Data do recebimento" type="date"
+            variant="outlined" density="compact" hide-details />
+        </v-card-text>
+        <v-card-actions class="justify-end">
+          <v-btn variant="text" @click="dialogBaixaLote = false">Cancelar</v-btn>
+          <v-btn color="success" :loading="salvandoLote" @click="confirmarBaixaLote">Confirmar quitação</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: Baixar Título -->
     <v-dialog v-model="dialogBaixa" max-width="400">
       <v-card rounded="xl" class="pa-4">
@@ -286,6 +322,38 @@ const dialogNovo = ref(false)
 const dialogReneg = ref(false)
 const itemReneg = ref<any>(null)
 const baixa = ref({ id: '', valor: 0, data: new Date().toISOString().slice(0, 10) })
+
+// Seleção múltipla / quitação em lote
+const selecionados = ref<string[]>([])
+const dialogBaixaLote = ref(false)
+const salvandoLote = ref(false)
+const baixaLoteData = ref(new Date().toISOString().slice(0, 10))
+const selecionadosEmAberto = computed(() =>
+  lancamentosFiltrados.value.filter((l: any) => selecionados.value.includes(l.id) && l.status === 'EmAberto'))
+const totalSelecionado = computed(() =>
+  selecionadosEmAberto.value.reduce((s: number, l: any) => s + (l.saldo ?? 0), 0))
+function abrirBaixaLote() {
+  baixaLoteData.value = new Date().toISOString().slice(0, 10)
+  dialogBaixaLote.value = true
+}
+async function confirmarBaixaLote() {
+  const itens = selecionadosEmAberto.value
+  if (!itens.length) return
+  salvandoLote.value = true
+  let ok = 0
+  try {
+    for (const l of itens) {
+      try {
+        await api.post(`/contas-receber/${l.id}/baixar`, { valorPago: l.saldo, dataPagamento: baixaLoteData.value })
+        ok++
+      } catch { /* segue os demais */ }
+    }
+    notif.ok(`${ok} título(s) quitado(s).`)
+    dialogBaixaLote.value = false
+    selecionados.value = []
+    await carregar()
+  } finally { salvandoLote.value = false }
+}
 const reneg = ref({ novoValor: 0, novoVencimento: '', motivo: '' })
 
 // Subcategorias de Recebimentos

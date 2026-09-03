@@ -145,6 +145,18 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         await uow.SalvarAsync(ct);
         return NoContent();
     }
+
+    /// <summary>Exclui a requisição (e seus itens). Uso: limpar requisições de teste/erradas.</summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Administrador,Gerente")]
+    public async Task<IActionResult> Excluir(Guid id, CancellationToken ct)
+    {
+        var req = await db.RequisicoesCompra.FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new KeyNotFoundException("Requisição não encontrada.");
+        db.RequisicoesCompra.Remove(req);   // itens caem por cascade
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
 }
 
 public record CriarRequisicaoRequest(

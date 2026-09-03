@@ -39,6 +39,8 @@
             @click="abrirDetalhe(item)" title="Ver itens" />
           <v-btn v-if="item.status==='Aberta'" icon="mdi-cancel" size="small" variant="text" color="error"
             @click="cancelar(item)" title="Cancelar requisição" />
+          <v-btn v-if="ehGestor" icon="mdi-delete-outline" size="small" variant="text" color="error"
+            @click="excluir(item)" title="Excluir requisição" />
         </template>
       </v-data-table>
     </v-card>
@@ -283,6 +285,15 @@ async function cancelar(item: any) {
     notif.ok('Requisição cancelada.')
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar.') }
+}
+
+async function excluir(item: any) {
+  if (!confirm('Excluir esta requisição definitivamente?')) return
+  try {
+    await api.delete(`/requisicoes-compra/${item.id}`)
+    notif.ok('Requisição excluída.')
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao excluir.') }
 }
 
 onMounted(carregar)

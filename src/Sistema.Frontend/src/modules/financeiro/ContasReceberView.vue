@@ -46,11 +46,13 @@
             no-data-text="Sem contas no período" />
         </v-col>
       </v-row>
-      <div class="d-flex align-center justify-end mt-2 gap-3 flex-wrap">
+      <div class="d-flex align-center flex-wrap mt-3 ga-3">
+        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details inset
+          class="flex-grow-0" style="white-space:nowrap"
+          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
+        <v-spacer />
         <v-btn color="warning" variant="tonal" rounded="lg" prepend-icon="mdi-calendar-today"
           :loading="carregando" @click="filtrarHoje">Hoje</v-btn>
-        <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details
-          label="Ver todas (ignora as datas)" @update:model-value="carregar" />
         <v-btn color="primary" variant="tonal" rounded="lg" prepend-icon="mdi-magnify"
           :loading="carregando" @click="carregar">Buscar</v-btn>
       </div>

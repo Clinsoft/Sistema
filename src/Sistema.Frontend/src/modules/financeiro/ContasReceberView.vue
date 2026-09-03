@@ -397,22 +397,29 @@ const clientesLista = computed(() =>
   [...new Set(lancamentos.value.map((l: any) => l.clienteNome).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b))
 )
 
-const lancamentosFiltrados = computed(() => {
+// Escopo dos totais: respeita categoria e cliente (mas NÃO o status), para os
+// 4 cards continuarem fazendo sentido para o cliente/categoria selecionados.
+const lancamentosEscopo = computed(() => {
   let lista = lancamentos.value
   if (filtros.value.categoria !== 'Todas')
     lista = lista.filter(l => (l.categoria ?? 'Vendas') === filtros.value.categoria)
-  if (filtros.value.status !== 'Todos')
-    lista = lista.filter(l => l.status === filtros.value.status)
   if (filtros.value.cliente)
     lista = lista.filter(l => l.clienteNome === filtros.value.cliente)
   return lista
 })
 
+const lancamentosFiltrados = computed(() => {
+  let lista = lancamentosEscopo.value
+  if (filtros.value.status !== 'Todos')
+    lista = lista.filter(l => l.status === filtros.value.status)
+  return lista
+})
+
 const totais = computed(() => [
-  { label: 'Em aberto',   valor: lancamentos.value.filter(l => l.status === 'EmAberto').reduce((s, l) => s + l.saldo, 0), classe: 'text-primary' },
-  { label: 'Vencidos',    valor: lancamentos.value.filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje()).reduce((s, l) => s + l.saldo, 0), classe: 'text-error' },
-  { label: 'Recebidos',   valor: lancamentos.value.filter(l => l.status === 'Pago').reduce((s, l) => s + l.valorOriginal, 0), classe: 'text-success' },
-  { label: 'Total geral', valor: lancamentos.value.reduce((s, l) => s + l.valorOriginal, 0), classe: '' },
+  { label: 'Em aberto',   valor: lancamentosEscopo.value.filter(l => l.status === 'EmAberto').reduce((s, l) => s + l.saldo, 0), classe: 'text-primary' },
+  { label: 'Vencidos',    valor: lancamentosEscopo.value.filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje()).reduce((s, l) => s + l.saldo, 0), classe: 'text-error' },
+  { label: 'Recebidos',   valor: lancamentosEscopo.value.filter(l => l.status === 'Pago').reduce((s, l) => s + l.valorOriginal, 0), classe: 'text-success' },
+  { label: 'Total geral', valor: lancamentosEscopo.value.reduce((s, l) => s + l.valorOriginal, 0), classe: '' },
 ])
 
 function corSubcategoria(cat?: string) {

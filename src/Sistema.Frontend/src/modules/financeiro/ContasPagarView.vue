@@ -982,12 +982,19 @@ const fornecedoresLista = computed(() =>
   [...new Set(lancamentos.value.map((l: any) => l.fornecedorNome).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b))
 )
 
-const lancamentosFiltrados = computed(() => {
+// Escopo dos totais/cards: respeita o filtro de fornecedor (não o de categoria,
+// para o detalhamento por categoria continuar mostrando todas as categorias).
+const lancamentosEscopo = computed(() => {
   let lista = lancamentos.value
-  if (filtros.value.categoria !== 'Todas')
-    lista = lista.filter(l => l.categoria === filtros.value.categoria)
   if (filtros.value.fornecedor)
     lista = lista.filter(l => l.fornecedorNome === filtros.value.fornecedor)
+  return lista
+})
+
+const lancamentosFiltrados = computed(() => {
+  let lista = lancamentosEscopo.value
+  if (filtros.value.categoria !== 'Todas')
+    lista = lista.filter(l => l.categoria === filtros.value.categoria)
   if (filtros.value.status === 'Todos') {
     // "Todos" não inclui cancelados/estornados (evita parecer duplicado)
     lista = lista.filter(l => l.status !== 'Cancelado' && l.status !== 'Estornado' && l.status !== 'Renegociado')
@@ -1000,16 +1007,16 @@ const lancamentosFiltrados = computed(() => {
 })
 
 function somarAberto(cat: string) {
-  return lancamentos.value
+  return lancamentosEscopo.value
     .filter(l => l.categoria === cat && l.status === 'EmAberto')
     .reduce((s: number, l: any) => s + l.saldo, 0)
 }
 
 const totalAberto = computed(() =>
-  lancamentos.value.filter(l => l.status === 'EmAberto').reduce((s: number, l: any) => s + l.saldo, 0)
+  lancamentosEscopo.value.filter(l => l.status === 'EmAberto').reduce((s: number, l: any) => s + l.saldo, 0)
 )
 const totalVencidos = computed(() =>
-  lancamentos.value
+  lancamentosEscopo.value
     .filter(l => l.status === 'EmAberto' && new Date(String(l.dataVencimento).slice(0, 10) + 'T12:00:00') < hoje())
     .reduce((s: number, l: any) => s + l.saldo, 0)
 )

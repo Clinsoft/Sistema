@@ -1,0 +1,53 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sorteio: gerar o cupom</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .pdv{position:absolute;inset:0;display:flex;flex-direction:column;background:#f1f5f9}
+  .top{height:48px;background:#1f2937;display:flex;align-items:center;gap:10px;padding:0 14px;color:#fff}
+  .chip{font-size:11px;background:#16a34a;padding:2px 8px;border-radius:20px}
+  .sbar{background:linear-gradient(90deg,#7e22ce,#9333ea,#6d28d9);color:#fff;padding:8px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .sbar-ok{background:linear-gradient(90deg,#15803d,#16a34a,#15803d)}
+  .body{flex:1;padding:14px;position:relative}
+  .row{display:flex;align-items:center;background:#fff;border-radius:10px;padding:10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .row .p{flex:1;font-weight:600;font-size:14px}.row .t{font-weight:700}
+  .totbar{position:absolute;right:14px;bottom:14px;background:#0f172a;color:#fff;border-radius:12px;padding:8px 14px}
+  .totbar .v{font-size:20px;font-weight:800}
+  /* dialog cupom */
+  .ov{position:absolute;inset:0;background:rgba(15,23,42,.4);display:flex;align-items:center;justify-content:center;z-index:20}
+  .dlg{background:#fff;border-radius:16px;padding:20px;width:min(360px,86%);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .dlg h3{margin:0 0 4px;display:flex;align-items:center;gap:8px;color:#7e22ce}
+  .al{background:#dcfce7;border-radius:10px;padding:8px 10px;font-size:12px;color:#065f46;margin:8px 0}
+  .fld{border:1px solid #cbd5e1;border-radius:10px;padding:9px 12px;font-size:13px;color:#334155;margin-bottom:8px}
+  .btn{background:#7e22ce;color:#fff;border-radius:10px;padding:10px;text-align:center;font-weight:700;margin-top:4px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="pdv">
+  <div class="top"><b>PDV</b> <span class="chip">● Caixa #12 · Rio Claro</span></div>
+  <div class="sbar" id="sbar">🎟️ <span id="sbartxt">SORTEIO: compras a partir de R$ 30,00 concorrem a Cesta Básica. Ofereça o cupom!</span></div>
+  <div class="body">
+    <div class="row"><span class="p">COMPRA DO CLIENTE</span><span class="t" id="t">R$ 18,00</span></div>
+    <div class="totbar"><div>Total</div><div class="v" id="tot">R$ 18,00</div></div>
+  </div>
+</div></div></div>
+<script src="./sim.js"></script>
+<script>
+  Sim.run([
+    { cap:'A faixa roxa avisa quando a compra dá direito ao cupom.', ms:1500 },
+    { cap:'Abaixo do mínimo, ela mostra quanto falta.', ms:1400,
+      before:()=>document.getElementById('sbartxt').textContent='SORTEIO: Faltam R$ 12,00 para o cliente concorrer — ofereça mais um item!' },
+    { cap:'Ao atingir o valor mínimo, a faixa fica verde: cliente concorre!', ms:1600,
+      before:()=>{ document.getElementById('sbar').classList.add('sbar-ok');
+        document.getElementById('sbartxt').textContent='✅ Cliente JÁ concorre — gere o cupom ao finalizar!';
+        document.getElementById('t').textContent='R$ 33,00'; document.getElementById('tot').textContent='R$ 33,00'; } },
+    { cap:'Finalize a venda e clique em "Nova Venda": abre o cupom.', ms:1400,
+      before:()=>document.querySelector('.scene').insertAdjacentHTML('beforeend',
+        '<div class="ov" id="ov"><div class="dlg"><h3>🎟️ Cliente concorre ao sorteio!</h3><div class="al">Compra de R$ 33,00 — concorre a <b>Cesta Básica</b>.</div><div class="fld" id="nome">Nome</div><div class="fld" id="tel">Telefone / WhatsApp</div><div class="fld">Nascimento (opcional)</div><div class="btn" id="ger">Gerar e imprimir cupom</div></div></div>') },
+    { cap:'Preencha nome e telefone (nascimento é opcional).', sel:'#nome', act:'type', text:'Maria Aparecida', ms:400,
+      after:()=>document.getElementById('tel').textContent='(18) 99122-1740' },
+    { cap:'Clique em "Gerar e imprimir cupom".', sel:'#ger', act:'click', ms:900 },
+    { cap:'Cupom impresso! O cliente já está concorrendo. 🍀', ms:1600,
+      before:()=>document.getElementById('ov').innerHTML='<div class="dlg" style="text-align:center"><div style="font-size:34px">🎟️</div><b>Cupom nº 00007 gerado!</b><div style="color:#64748b;font-size:13px;margin-top:4px">Cesta Básica — boa sorte!</div></div>' },
+  ], { badge:'Simulação · Sorteio (cupom)' });
+</script>
+</body></html>

@@ -1,0 +1,52 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Venda em espera</title>
+<link rel="stylesheet" href="./sim.css">
+<style>
+  .pdv{position:absolute;inset:0;display:flex;flex-direction:column;background:#f1f5f9}
+  .top{height:48px;background:#1f2937;display:flex;align-items:center;gap:8px;padding:0 12px;color:#fff}
+  .chip{font-size:11px;background:#16a34a;padding:2px 8px;border-radius:20px;margin-right:auto}
+  .tbtn{width:34px;height:34px;border-radius:8px;background:#374151;display:flex;align-items:center;justify-content:center;font-size:16px;position:relative}
+  .badge{position:absolute;top:-4px;right:-4px;background:#f59e0b;color:#111;font-size:10px;font-weight:800;border-radius:10px;padding:0 5px}
+  .body{flex:1;padding:14px}
+  .row{display:flex;align-items:center;background:#fff;border-radius:10px;padding:10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .row .p{flex:1;font-weight:600;font-size:14px}.row .t{font-weight:700}
+  .vazio{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;gap:6px;height:170px}
+  .ov{position:absolute;inset:0;background:rgba(15,23,42,.4);display:flex;align-items:center;justify-content:center;z-index:20}
+  .dlg{background:#fff;border-radius:16px;padding:16px;width:min(360px,86%);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .dlg h3{margin:0 0 8px;color:#b45309;display:flex;align-items:center;gap:6px}
+  .li{display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px;cursor:pointer}
+  .li .p{flex:1}.li .n{font-weight:600}.li .s{font-size:11px;color:#94a3b8}
+  .play{color:#16a34a;font-size:18px}
+</style></head>
+<body>
+<div class="sim-stage"><div class="scene"><div class="pdv">
+  <div class="top"><b>PDV</b><span class="chip">● Caixa #12</span>
+    <div class="tbtn" id="pausar">⏸</div>
+    <div class="tbtn" id="retomar">▶<span class="badge" id="badge" style="display:none">1</span></div></div>
+  <div class="body">
+    <div id="lista">
+      <div class="row"><span class="p">SUCO DETOX 300ML</span><span class="t">R$ 9,90</span></div>
+      <div class="row"><span class="p">PÃO INTEGRAL</span><span class="t">R$ 12,50</span></div>
+    </div>
+    <div class="vazio hidden" id="vazio">🛒<div>Venda limpa — atenda o próximo cliente</div></div>
+  </div>
+</div></div></div>
+<script src="./sim.js"></script>
+<script>
+  Sim.run([
+    { cap:'Cliente vai buscar mais um item? Guarde a venda: clique em ⏸ (ou Ctrl+E).', sel:'#pausar', act:'click', ms:700 },
+    { cap:'A venda fica em espera e a tela limpa para o próximo cliente.', ms:1400,
+      before:()=>{ document.getElementById('lista').innerHTML=''; document.getElementById('vazio').classList.remove('hidden');
+        const b=document.getElementById('badge'); b.style.display='block'; } },
+    { cap:'Para retomar, clique em ▶ (ou Ctrl+L).', sel:'#retomar', act:'click', ms:700,
+      after:()=>document.querySelector('.scene').insertAdjacentHTML('beforeend',
+        '<div class="ov" id="ov"><div class="dlg"><h3>⏸ Vendas em espera</h3><div class="li" id="item"><div class="p"><div class="n">Sem cliente — 2 itens</div><div class="s">R$ 22,40 · 14:30</div></div><span class="play">▶</span></div></div></div>') },
+    { cap:'Escolha a venda para continuar de onde parou.', sel:'#item', act:'click', ms:700 },
+    { cap:'A venda volta com os itens — é só finalizar. ✅', ms:1600,
+      before:()=>{ document.getElementById('ov').remove(); document.getElementById('vazio').classList.add('hidden');
+        document.getElementById('badge').style.display='none';
+        document.getElementById('lista').innerHTML='<div class="row"><span class="p">SUCO DETOX 300ML</span><span class="t">R$ 9,90</span></div><div class="row"><span class="p">PÃO INTEGRAL</span><span class="t">R$ 12,50</span></div>'; } },
+  ], { badge:'Simulação · Venda em espera' });
+</script>
+</body></html>

@@ -91,9 +91,11 @@
     <!-- Dialog: detalhe / gerar pedidos -->
     <v-dialog v-model="dialogDet" max-width="900">
       <v-card rounded="xl" v-if="det">
-        <v-card-title class="pa-4 d-flex align-center">
-          Requisição — {{ det.itens.length }} item(ns)
-          <v-chip size="small" :color="corStatus(det.status)" variant="tonal" class="ml-2">{{ det.status }}</v-chip>
+        <v-card-title class="pa-4 d-flex align-center flex-wrap ga-2">
+          <v-icon icon="mdi-store-outline" size="20" />
+          <span>{{ det.loja || 'Sem loja' }}</span>
+          <span class="text-body-2 text-medium-emphasis">· {{ det.solicitante }} · {{ det.itens.length }} item(ns)</span>
+          <v-chip size="small" :color="corStatus(det.status)" variant="tonal">{{ det.status }}</v-chip>
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" @click="dialogDet = false" />
         </v-card-title>
@@ -242,7 +244,7 @@ const porFornecedor = computed(() => {
 async function abrirDetalhe(item: any) {
   try {
     const r = await api.get(`/requisicoes-compra/${item.id}`)
-    det.value = { ...r.data }
+    det.value = { ...r.data, loja: item.loja, solicitante: item.solicitante }
     dialogDet.value = true
   } catch { notif.erro('Erro ao carregar a requisição.') }
 }

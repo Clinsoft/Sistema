@@ -516,7 +516,9 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
     const r = await api.get(`/pedidos-compra/${item.id}`)
     const d = r.data
     const forn = forns.value.find((f: any) => f.id === item.fornecedorId)
-    const foneDig = String(forn?.celular || forn?.telefone || '').replace(/\D/g, '')
+    // Usa o CELULAR do fornecedor (setor de pedidos). O telefone é da empresa e não
+    // deve receber o pedido — se não houver celular, abre sem número para escolher.
+    const foneDig = String(forn?.celular || '').replace(/\D/g, '')
     const intl = foneDig ? (foneDig.length >= 12 && foneDig.startsWith('55') ? foneDig : '55' + foneDig) : ''
 
     const itens = d.itens ?? []
@@ -539,7 +541,7 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
       ? `https://web.whatsapp.com/send?phone=${intl}&text=${encodeURIComponent(msg)}`
       : `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
-    if (!foneDig) notif.aviso('Fornecedor sem telefone cadastrado — abri o WhatsApp Web para você escolher o contato.')
+    if (!foneDig) notif.aviso('Fornecedor sem CELULAR cadastrado (o telefone é da empresa). Cadastre o celular do setor de pedidos — abri o WhatsApp Web para você escolher o contato.')
     else notif.ok('WhatsApp Web aberto com o pedido.')
   } catch { notif.erro('Erro ao gerar o link do WhatsApp.') }
   finally { enviandoId.value = null }

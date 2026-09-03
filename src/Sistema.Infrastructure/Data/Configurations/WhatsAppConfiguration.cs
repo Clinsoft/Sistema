@@ -81,3 +81,16 @@ public class ItemPedidoWhatsAppConfiguration : IEntityTypeConfiguration<ItemPedi
         b.Property(i => i.Total).HasColumnType("decimal(18,2)");
     }
 }
+
+public class NumeroBloqueadoWhatsAppConfiguration : IEntityTypeConfiguration<NumeroBloqueadoWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<NumeroBloqueadoWhatsApp> b)
+    {
+        b.ToTable("NumerosBloqueadosWhatsApp");
+        b.HasKey(n => n.Id);
+        b.HasIndex(n => new { n.EmpresaId, n.Telefone });
+        b.Property(n => n.Telefone).HasMaxLength(20).IsRequired();
+        b.Property(n => n.Motivo).HasMaxLength(200);
+        b.Ignore(n => n.DomainEvents);
+    }
+}

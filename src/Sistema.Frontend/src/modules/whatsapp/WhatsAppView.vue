@@ -74,6 +74,9 @@
                   <div class="font-weight-medium">{{ conversaAtiva.nome || conversaAtiva.telefone }}</div>
                   <div class="text-caption text-medium-emphasis">+{{ conversaAtiva.telefone }}</div>
                 </div>
+                <v-spacer />
+                <v-btn icon="mdi-cancel" variant="text" size="small" color="error"
+                  title="Bloquear este número (parar de receber)" @click="bloquearAtual" />
               </div>
               <v-divider />
 
@@ -822,6 +825,23 @@ async function carregarNaoLidas() {
     const { data } = await api.get('/whatsapp/conversas/nao-lidas', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     totalNaoLidas.value = data?.total ?? 0
   } catch { /* silencioso */ }
+}
+
+async function bloquearAtual() {
+  const c = conversaAtiva.value
+  if (!c) return
+  if (!confirm(`Bloquear o número +${c.telefone}? As mensagens dele deixarão de ser recebidas nesta loja.`)) return
+  try {
+    await api.post('/whatsapp/bloqueados', {
+      empresaId: auth.empresaId,
+      localEstoqueId: auth.lojaAtualId || null,
+      telefone: c.telefone,
+      motivo: 'Bloqueado pelo atendente',
+    })
+    notif.ok('Número bloqueado. Não receberá mais mensagens.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Falha ao bloquear o número.')
+  }
 }
 
 async function abrirConversa(c: any, manterScroll = false) {

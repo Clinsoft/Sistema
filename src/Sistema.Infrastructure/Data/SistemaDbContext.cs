@@ -115,6 +115,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<TemplateWhatsAppMensagem> TemplatesWhatsAppMensagem => Set<TemplateWhatsAppMensagem>();
     public DbSet<HistoricoMensagemWhatsApp> HistoricosMensagensWhatsApp => Set<HistoricoMensagemWhatsApp>();
     public DbSet<MensagemWhatsApp> MensagensWhatsApp => Set<MensagemWhatsApp>();
+    public DbSet<NumeroBloqueadoWhatsApp> NumerosBloqueadosWhatsApp => Set<NumeroBloqueadoWhatsApp>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

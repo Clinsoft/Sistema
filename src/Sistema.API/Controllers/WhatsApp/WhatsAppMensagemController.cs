@@ -711,6 +711,46 @@ public class WhatsAppMensagemController(
         return Ok(new { total });
     }
 
+    // ─── Números bloqueados ─────────────────────────────────────────────────────
+    [HttpGet("/api/whatsapp/bloqueados")]
+    [Authorize]
+    public async Task<IActionResult> ListarBloqueados([FromQuery] Guid empresaId,
+        [FromQuery] Guid? localEstoqueId, CancellationToken ct)
+    {
+        var q = db.NumerosBloqueadosWhatsApp.AsNoTracking().Where(n => n.EmpresaId == empresaId);
+        if (localEstoqueId.HasValue)
+            q = q.Where(n => n.LocalEstoqueId == null || n.LocalEstoqueId == localEstoqueId);
+        var lista = await q.OrderByDescending(n => n.CriadoEm)
+            .Select(n => new { n.Id, n.Telefone, n.Motivo, n.LocalEstoqueId, n.CriadoEm }).ToListAsync(ct);
+        return Ok(lista);
+    }
+
+    [HttpPost("/api/whatsapp/bloqueados")]
+    [Authorize]
+    public async Task<IActionResult> BloquearNumero([FromBody] BloquearNumeroRequest req, CancellationToken ct)
+    {
+        var tel = new string((req.Telefone ?? "").Where(char.IsDigit).ToArray());
+        if (tel.Length < 8) return BadRequest(new { mensagem = "Telefone inválido." });
+        var jaExiste = await db.NumerosBloqueadosWhatsApp.AnyAsync(n =>
+            n.EmpresaId == req.EmpresaId && n.Telefone == tel && n.LocalEstoqueId == req.LocalEstoqueId, ct);
+        if (jaExiste) return Ok(new { mensagem = "Número já estava bloqueado." });
+        db.NumerosBloqueadosWhatsApp.Add(
+            Domain.WhatsApp.Entities.NumeroBloqueadoWhatsApp.Criar(req.EmpresaId, req.LocalEstoqueId, tel, req.Motivo));
+        await uow.SalvarAsync(ct);
+        return Ok(new { mensagem = "Número bloqueado." });
+    }
+
+    [HttpDelete("/api/whatsapp/bloqueados/{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> DesbloquearNumero(Guid id, CancellationToken ct)
+    {
+        var n = await db.NumerosBloqueadosWhatsApp.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (n is null) return NotFound();
+        db.NumerosBloqueadosWhatsApp.Remove(n);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     // ─── Webhook Meta ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -810,6 +850,12 @@ public class WhatsAppMensagemController(
                         var empresaId = cfg.EmpresaId;
                         var localEstoqueId = cfg.LocalEstoqueId;
 
+                        // Números bloqueados (geral ou desta loja) — mensagens deles são ignoradas.
+                        var bloqueados = (await db.NumerosBloqueadosWhatsApp.AsNoTracking()
+                            .Where(n => n.EmpresaId == empresaId
+                                && (n.LocalEstoqueId == null || n.LocalEstoqueId == localEstoqueId))
+                            .Select(n => n.Telefone).ToListAsync(ct)).ToHashSet();
+
                         // Nome do contato (perfil do cliente).
                         string? nome = null;
                         if (value.TryGetProperty("contacts", out var contacts) && contacts.GetArrayLength() > 0
@@ -824,6 +870,9 @@ public class WhatsAppMensagemController(
                                 continue;
 
                             var from = m.TryGetProperty("from", out var fromEl) ? fromEl.GetString() ?? "" : "";
+                            // Número bloqueado → ignora a mensagem (compara só dígitos).
+                            var fromDig = new string(from.Where(char.IsDigit).ToArray());
+                            if (bloqueados.Contains(fromDig)) continue;
                             var tipo = m.TryGetProperty("type", out var tpEl) ? tpEl.GetString() ?? "text" : "text";
                             var dataHora = m.TryGetProperty("timestamp", out var tsEl)
                                 && long.TryParse(tsEl.GetString(), out var ts)
@@ -935,6 +984,7 @@ public record CriarTemplateDeArteRequest(
     IEnumerable<string>? Exemplos = null, string? VariaveisJson = null);
 
 public record ResponderRequest(Guid EmpresaId, string Texto, Guid? LocalEstoqueId = null);
+public record BloquearNumeroRequest(Guid EmpresaId, string Telefone, Guid? LocalEstoqueId = null, string? Motivo = null);
 
 public record ResponderTemplateRequest(
     Guid EmpresaId, string TemplateName, string? Idioma = "pt_BR",

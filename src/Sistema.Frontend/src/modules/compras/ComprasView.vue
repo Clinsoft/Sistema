@@ -533,10 +533,14 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
       await carregar()
     }
 
-    const url = `https://wa.me/${intl}?text=${encodeURIComponent(msg)}`
+    // Abre no WhatsApp WEB (não no Desktop) — assim o pedido sai do número logado
+    // no WhatsApp Web deste navegador (o número de pedidos), e não do app instalado.
+    const url = intl
+      ? `https://web.whatsapp.com/send?phone=${intl}&text=${encodeURIComponent(msg)}`
+      : `https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
-    if (!foneDig) notif.aviso('Fornecedor sem telefone cadastrado — abri o WhatsApp para você escolher o contato.')
-    else notif.ok('Link do WhatsApp aberto com o pedido.')
+    if (!foneDig) notif.aviso('Fornecedor sem telefone cadastrado — abri o WhatsApp Web para você escolher o contato.')
+    else notif.ok('WhatsApp Web aberto com o pedido.')
   } catch { notif.erro('Erro ao gerar o link do WhatsApp.') }
   finally { enviandoId.value = null }
 }

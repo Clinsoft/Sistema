@@ -66,6 +66,9 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<ParcelaCrediario> ParcelasCrediario => Set<ParcelaCrediario>();
     public DbSet<RenegociacaoCrediario> RenegociacoesCrediario => Set<RenegociacaoCrediario>();
 
+    // Ajuda / Tutoriais
+    public DbSet<Sistema.Domain.Ajuda.Entities.Tutorial> Tutoriais => Set<Sistema.Domain.Ajuda.Entities.Tutorial>();
+
     // WhatsApp
     public DbSet<CatalogoWhatsApp> CatalogosWhatsApp => Set<CatalogoWhatsApp>();
     public DbSet<ItemCatalogo> ItensCatalogo => Set<ItemCatalogo>();

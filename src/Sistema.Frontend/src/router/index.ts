@@ -79,6 +79,8 @@ const router = createRouter({
       meta: { titulo: 'Comparador de Cotações' } },
     { path: '/compras/requisicoes', component: () => import('@/modules/compras/RequisicoesCompraView.vue'),
       meta: { titulo: 'Requisições de Compra' } },
+    { path: '/tutoriais', component: () => import('@/modules/ajuda/TutoriaisView.vue'),
+      meta: { titulo: 'Tutoriais' } },
 
     // Crediário
     { path: '/crediario', component: () => import('@/modules/crediario/CrediarioView.vue'),
@@ -185,6 +187,7 @@ const ROTAS_ATENDENTE = [
   '/pdv', '/pdv/vendas', '/pdv/sessoes',
   '/cadastros/clientes',
   '/compras/requisicoes',
+  '/tutoriais',
   '/estoque/produtos',
   '/estoque/etiquetas', '/estoque/validade', '/estoque/perdas-validade', '/estoque/balanca',
   '/whatsapp',

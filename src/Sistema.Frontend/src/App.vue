@@ -136,6 +136,10 @@
           <v-list-item v-if="ehAtendente" prepend-icon="mdi-clipboard-text-outline" title="Requisição de Compra"
             to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" />
 
+          <!-- Tutoriais (ajuda) — atendente e gestor -->
+          <v-list-item v-if="!ehContador" prepend-icon="mdi-school-outline" title="Tutoriais"
+            to="/tutoriais" value="/tutoriais" color="primary" rounded="lg" />
+
           <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-account-multiple-outline" title="Crediário"
             to="/crediario" value="/crediario" color="primary" rounded="lg" />
 

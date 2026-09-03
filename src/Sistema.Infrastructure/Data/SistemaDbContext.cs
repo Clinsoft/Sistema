@@ -58,6 +58,8 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     // Compras
     public DbSet<PedidoCompra> PedidosCompra => Set<PedidoCompra>();
     public DbSet<ItemPedidoCompra> ItensPedidoCompra => Set<ItemPedidoCompra>();
+    public DbSet<RequisicaoCompra> RequisicoesCompra => Set<RequisicaoCompra>();
+    public DbSet<ItemRequisicaoCompra> ItensRequisicaoCompra => Set<ItemRequisicaoCompra>();
 
     // Crediário
     public DbSet<Crediario> Crediarios => Set<Crediario>();

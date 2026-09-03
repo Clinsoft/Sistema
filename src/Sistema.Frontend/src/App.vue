@@ -126,9 +126,15 @@
             </template>
             <v-list-item prepend-icon="mdi-clipboard-list-outline" title="Pedido de Compra"
               to="/compras" value="/compras" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-clipboard-text-outline" title="Requisições de Compra"
+              to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
               to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
+
+          <!-- Atendente: só a requisição de compra (pedir o que falta) -->
+          <v-list-item v-if="ehAtendente" prepend-icon="mdi-clipboard-text-outline" title="Requisição de Compra"
+            to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" />
 
           <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-account-multiple-outline" title="Crediário"
             to="/crediario" value="/crediario" color="primary" rounded="lg" />

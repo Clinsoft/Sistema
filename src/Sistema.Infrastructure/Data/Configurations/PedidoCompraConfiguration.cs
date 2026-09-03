@@ -25,6 +25,34 @@ public class PedidoCompraConfiguration : IEntityTypeConfiguration<PedidoCompra>
     }
 }
 
+public class RequisicaoCompraConfiguration : IEntityTypeConfiguration<RequisicaoCompra>
+{
+    public void Configure(EntityTypeBuilder<RequisicaoCompra> b)
+    {
+        b.ToTable("RequisicoesCompra");
+        b.HasKey(r => r.Id);
+        b.HasIndex(r => new { r.EmpresaId, r.Status });
+        b.Property(r => r.Status).HasConversion<string>().HasMaxLength(15);
+        b.Property(r => r.Observacao).HasMaxLength(500);
+        b.HasMany(r => r.Itens)
+         .WithOne()
+         .HasForeignKey(i => i.RequisicaoCompraId)
+         .OnDelete(DeleteBehavior.Cascade);
+        b.Ignore(r => r.DomainEvents);
+    }
+}
+
+public class ItemRequisicaoCompraConfiguration : IEntityTypeConfiguration<ItemRequisicaoCompra>
+{
+    public void Configure(EntityTypeBuilder<ItemRequisicaoCompra> b)
+    {
+        b.ToTable("ItensRequisicaoCompra");
+        b.HasKey(i => i.Id);
+        b.Property(i => i.Descricao).HasMaxLength(200).IsRequired();
+        b.Property(i => i.Quantidade).HasColumnType("decimal(18,3)");
+    }
+}
+
 public class ItemPedidoCompraConfiguration : IEntityTypeConfiguration<ItemPedidoCompra>
 {
     public void Configure(EntityTypeBuilder<ItemPedidoCompra> b)

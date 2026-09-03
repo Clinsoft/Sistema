@@ -44,7 +44,7 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.status" label="Status"
-            :items="['Todos', 'EmAberto', 'Pago', 'Vencido', 'Cancelado']"
+            :items="[{title:'Todos',value:'Todos'},{title:'Em aberto',value:'EmAberto'},{title:'Pago',value:'Pago'},{title:'Vencido',value:'Vencido'},{title:'Cancelado',value:'Cancelado'}]"
             variant="outlined" density="compact" hide-details />
         </v-col>
         <v-col cols="12" sm="3">

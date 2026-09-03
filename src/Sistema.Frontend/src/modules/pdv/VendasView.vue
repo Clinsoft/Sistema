@@ -118,7 +118,7 @@
             variant="outlined" density="compact" hide-details />
         </v-col>
         <v-col cols="12" sm="3">
-          <v-select v-model="filtros.status" :items="statusOptions" label="Status"
+          <v-select v-model="filtros.status" :items="statusOptions" :item-title="rotuloStatus" label="Status"
             variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="12" sm="3">

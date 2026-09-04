@@ -91,6 +91,37 @@ public class ClubeController(SistemaDbContext db) : ControllerBase
         return Ok(new { membro.SaldoCashback });
     }
 
+    // ── Resgate no PDV: saldo + regras do cliente ────────────────────────
+    [HttpGet("resgate-info")]
+    public async Task<IActionResult> ResgateInfo(
+        [FromQuery] Guid empresaId, [FromQuery] Guid clienteId, CancellationToken ct)
+    {
+        var cfg = await db.ConfiguracoesClube.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct)
+            ?? ConfiguracaoClube.Padrao(empresaId);
+
+        var membro = await db.MembrosClube.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.EmpresaId == empresaId && m.ClienteId == clienteId, ct);
+
+        var saldo = membro?.SaldoCashback ?? 0m;
+        var ativo = membro is not null
+            && string.Equals(membro.Status, "Ativo", StringComparison.OrdinalIgnoreCase)
+            && cfg.Ativo;
+        // Pode resgatar se o clube está ativo, é membro ativo e o saldo atinge o mínimo.
+        var podeResgatar = ativo && saldo >= cfg.MinimoResgate && saldo > 0;
+
+        return Ok(new
+        {
+            membro = membro is not null,
+            saldo,
+            podeResgatar,
+            minimoResgate = cfg.MinimoResgate,
+            limiteUsoPercent = cfg.LimiteUsoPercent,
+            nomeClube = cfg.NomeClubeExibicao,
+            clubeAtivo = cfg.Ativo,
+        });
+    }
+
     // ── Cashback (extrato de movimentos) ─────────────────────────────────
     [HttpGet("cashback")]
     public async Task<IActionResult> ListarCashback([FromQuery] Guid empresaId, CancellationToken ct)

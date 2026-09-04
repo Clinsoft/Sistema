@@ -229,6 +229,10 @@
             <span>Desconto aplicado</span>
             <span>− R$ {{ fmt(desconto) }}</span>
           </div>
+          <div v-if="cashbackAplicado > 0" class="pdv-totais-linha" style="color:#10b981">
+            <span><v-icon size="14" class="mr-1">mdi-wallet-giftcard</v-icon>Cashback usado</span>
+            <span>− R$ {{ fmt(cashbackAplicado) }}</span>
+          </div>
           <div class="pdv-totais-total">
             <span class="pdv-total-label">Total a pagar</span>
             <span class="pdv-total-valor">R$ {{ fmt(total) }}</span>
@@ -293,6 +297,39 @@
               class="flex-grow-1"
               @input="onInputDoc"
             />
+          </div>
+        </div>
+
+        <!-- Cashback do Clube -->
+        <div v-if="cashbackInfo && cashbackInfo.saldo > 0" class="pdv-pag-section">
+          <div class="pdv-cashback-box" :class="{ 'pdv-cashback-box--on': usarCashback && cashbackAplicado > 0 }">
+            <div class="d-flex align-center justify-space-between">
+              <div class="d-flex align-center ga-2">
+                <v-icon size="18" color="#10b981">mdi-wallet-giftcard</v-icon>
+                <div>
+                  <div class="pdv-cashback-titulo">{{ cashbackInfo.nomeClube || 'Cashback' }}</div>
+                  <div class="pdv-cashback-saldo">Saldo: <b>R$ {{ fmt(cashbackInfo.saldo) }}</b></div>
+                </div>
+              </div>
+              <v-switch
+                v-model="usarCashback"
+                :disabled="!cashbackInfo.podeResgatar || cashbackMax <= 0"
+                color="#10b981"
+                density="compact"
+                hide-details
+                inset
+              />
+            </div>
+            <div v-if="!cashbackInfo.podeResgatar" class="pdv-cashback-hint">
+              Mínimo de R$ {{ fmt(cashbackInfo.minimoResgate) }} para resgatar.
+            </div>
+            <div v-else-if="usarCashback && cashbackAplicado > 0" class="pdv-cashback-hint pdv-cashback-hint--ok">
+              Aplicando <b>R$ {{ fmt(cashbackAplicado) }}</b> nesta compra
+              <span v-if="cashbackInfo.limiteUsoPercent < 100"> (limite {{ fmt(cashbackInfo.limiteUsoPercent) }}% do total)</span>.
+            </div>
+            <div v-else-if="usarCashback" class="pdv-cashback-hint">
+              Adicione itens para aplicar o cashback.
+            </div>
           </div>
         </div>
 
@@ -1044,6 +1081,14 @@ const descontoPct = ref(0)
 const pagamentos = ref<Pagamento[]>([])
 const clienteId = ref<string | null>(null)
 
+// ── Cashback do Clube de Promoções ────────────────────────────────
+interface CashbackInfo {
+  membro: boolean; saldo: number; podeResgatar: boolean
+  minimoResgate: number; limiteUsoPercent: number; nomeClube: string; clubeAtivo: boolean
+}
+const cashbackInfo = ref<CashbackInfo | null>(null)
+const usarCashback = ref(false)
+
 // ── Cartão: operadoras + diálogo de seleção ───────────────────────
 const operadoras = ref<Operadora[]>([])
 const dialogCartao = ref(false)
@@ -1177,7 +1222,18 @@ const nomeOperador = computed(() => auth.usuario?.nome?.split(' ')[0] ?? 'Operad
 // ── Computed ──────────────────────────────────────────────────────
 const totalItens = computed(() => itens.value.reduce((s, i) => s + i.quantidade, 0))
 const subtotal = computed(() => itens.value.reduce((s, i) => s + i.total, 0))
-const total = computed(() => Math.max(0, subtotal.value - desconto.value))
+// Base para calcular o teto do cashback (antes de aplicar o próprio cashback).
+const totalAntesCashback = computed(() => Math.max(0, subtotal.value - desconto.value))
+const cashbackMax = computed(() => {
+  const info = cashbackInfo.value
+  if (!info || !info.podeResgatar) return 0
+  const teto = info.limiteUsoPercent > 0
+    ? Math.floor(totalAntesCashback.value * info.limiteUsoPercent) / 100
+    : totalAntesCashback.value
+  return Math.max(0, Math.round(Math.min(info.saldo, teto, totalAntesCashback.value) * 100) / 100)
+})
+const cashbackAplicado = computed(() => (usarCashback.value ? cashbackMax.value : 0))
+const total = computed(() => Math.max(0, totalAntesCashback.value - cashbackAplicado.value))
 const totalPago = computed(() => pagamentos.value.reduce((s, p) => s + (p.valor ?? 0), 0))
 const troco = computed(() => Math.max(0, totalPago.value - total.value))
 const podeFinalizarVenda = computed(() =>
@@ -1321,7 +1377,17 @@ const clienteSelecionadoNome = computed(() =>
 // com o documento cadastrado do cliente. Busca o detalhe por ID para não
 // depender do item da lista (que o autocomplete pode substituir na seleção).
 watch(clienteId, async (id) => {
+  // Reseta o cashback a cada troca de cliente e busca o saldo do novo.
+  cashbackInfo.value = null
+  usarCashback.value = false
   if (!id) return
+  try {
+    const r = await api.get<CashbackInfo>('/clube/resgate-info', {
+      params: { empresaId: auth.empresaId, clienteId: id },
+    })
+    if (clienteId.value === id) cashbackInfo.value = r.data
+  } catch { /* clube pode não estar configurado; ignora */ }
+
   let doc = String((clientes.value.find(x => x.id === id) as any)?.cpfCnpj ?? '').replace(/\D/g, '')
   if (!doc) {
     try {
@@ -1808,6 +1874,7 @@ async function finalizar() {
         operadoraCartaoId: p.operadoraId ?? null,
       })),
       cpfCnpjConsumidor: docValido ? docRaw : null,
+      cashbackUsado: cashbackAplicado.value,
     })
 
     // Crediário: abre o contrato (gera parcelas → contas a receber) vinculado à venda.
@@ -2639,6 +2706,21 @@ onUnmounted(() => {
   text-transform: uppercase; color: #94a3b8;
   display: flex; align-items: center; margin-bottom: 8px;
 }
+
+/* Cashback do clube */
+.pdv-cashback-box {
+  border: 1px solid rgba(16,185,129,.35);
+  background: rgba(16,185,129,.06);
+  border-radius: 12px; padding: 10px 12px;
+}
+.pdv-cashback-box--on {
+  border-color: rgba(16,185,129,.7);
+  background: rgba(16,185,129,.12);
+}
+.pdv-cashback-titulo { font-size: 12px; font-weight: 700; color: #10b981; line-height: 1.1; }
+.pdv-cashback-saldo { font-size: 12px; color: #cbd5e1; }
+.pdv-cashback-hint { font-size: 11px; color: #94a3b8; margin-top: 6px; }
+.pdv-cashback-hint--ok { color: #10b981; }
 
 /* Formas de pagamento em grid */
 .pdv-fps-grid {

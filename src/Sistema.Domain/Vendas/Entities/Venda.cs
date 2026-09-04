@@ -82,6 +82,32 @@ public class Venda : Entity
     /// <summary>Vincula um cliente cadastrado à venda (ex.: match automático pelo CPF do consumidor).</summary>
     public void VincularCliente(Guid clienteId) => ClienteId = clienteId;
 
+    /// <summary>Resgata cashback como desconto na venda, rateado entre os itens
+    /// (mantém a NFC-e válida: aumenta o vDesc dos itens e reduz o total).
+    /// Retorna o valor efetivamente aplicado.</summary>
+    public decimal ResgatarCashback(decimal valor)
+    {
+        valor = Math.Round(valor, 2);
+        if (valor <= 0 || _itens.Count == 0) return 0m;
+
+        var totalItens = _itens.Sum(i => i.Total);
+        if (valor > totalItens) valor = totalItens;   // nunca zera/negativa a venda
+        if (valor <= 0) return 0m;
+
+        decimal aplicado = 0;
+        for (var k = 0; k < _itens.Count; k++)
+        {
+            var parcela = k == _itens.Count - 1
+                ? valor - aplicado                                  // resíduo de arredondamento no último
+                : Math.Round(valor * (_itens[k].Total / totalItens), 2);
+            _itens[k].AplicarDescontoAdicional(parcela);
+            aplicado += parcela;
+        }
+
+        RecalcularTotais();
+        return valor;
+    }
+
     public void VincularNotaFiscal(Guid notaFiscalId) => NotaFiscalId = notaFiscalId;
 
     public void Finalizar()

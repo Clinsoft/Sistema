@@ -15,6 +15,19 @@ public class ItemVenda : Entity
 
     private ItemVenda() { }
 
+    /// <summary>Acrescenta um desconto ao item (ex.: rateio de resgate de cashback),
+    /// reduzindo o Total e recalculando o percentual. Nunca deixa o Total negativo.</summary>
+    public void AplicarDescontoAdicional(decimal valor)
+    {
+        valor = Math.Round(valor, 2);
+        if (valor <= 0) return;
+        if (valor > Total) valor = Total;   // trava de segurança
+        TotalDesconto = Math.Round(TotalDesconto + valor, 2);
+        Total = Math.Round(Total - valor, 2);
+        var bruto = PrecoUnitario * Quantidade;
+        PercentualDesconto = bruto > 0 ? Math.Round(TotalDesconto / bruto * 100, 4) : 0;
+    }
+
     public static ItemVenda Criar(Guid vendaId, Guid produtoId, string descricao,
         decimal quantidade, decimal precoUnitario, decimal percentualDesconto = 0)
     {

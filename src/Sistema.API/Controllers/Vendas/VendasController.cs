@@ -39,7 +39,7 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
     public async Task<IActionResult> Finalizar(Guid id, [FromBody] FinalizarVendaRequest req, CancellationToken ct)
     {
         var resultado = await mediator.Send(
-            new FinalizarVendaCommand(id, req.Pagamentos, req.CpfCnpjConsumidor), ct);
+            new FinalizarVendaCommand(id, req.Pagamentos, req.CpfCnpjConsumidor, req.CashbackUsado), ct);
 
         // Após o MediatR publicar o VendaFinalizadaEvent, o EmitirNFCeHandler já salvou a NFC-e
         // (despacho síncrono no SaveChanges). Buscamos os dados da nota para retornar ao PDV.
@@ -161,4 +161,5 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
 }
 
 public record AdicionarItemRequest(Guid ProdutoId, decimal Quantidade, decimal? PrecoUnitario = null, decimal PercentualDesconto = 0);
-public record FinalizarVendaRequest(IList<PagamentoDto> Pagamentos, string? CpfCnpjConsumidor = null);
+public record FinalizarVendaRequest(IList<PagamentoDto> Pagamentos, string? CpfCnpjConsumidor = null,
+    decimal CashbackUsado = 0);

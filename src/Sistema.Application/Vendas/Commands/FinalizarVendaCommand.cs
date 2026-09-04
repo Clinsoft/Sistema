@@ -1,5 +1,7 @@
 using MediatR;
 using Sistema.Domain.Cadastros.Interfaces;
+using Sistema.Domain.Marketing.Entities;
+using Sistema.Domain.Marketing.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Vendas.Interfaces;
@@ -12,7 +14,8 @@ public record PagamentoDto(string Forma, decimal Valor, int Parcelas = 1,
 public record FinalizarVendaCommand(
     Guid VendaId,
     IList<PagamentoDto> Pagamentos,
-    string? CpfCnpjConsumidor = null) : IRequest<FinalizarVendaResult>;
+    string? CpfCnpjConsumidor = null,
+    decimal CashbackUsado = 0) : IRequest<FinalizarVendaResult>;
 
 /// <summary>
 /// Dados para o PDV exibir comprovante e QR Code.
@@ -26,7 +29,8 @@ public record FinalizarVendaResult(
     string? QrCode = null,
     string? ChaveAcesso = null);
 
-public class FinalizarVendaHandler(IVendaRepository repo, IClienteRepository clienteRepo, IUnitOfWork uow)
+public class FinalizarVendaHandler(
+    IVendaRepository repo, IClienteRepository clienteRepo, IClubeRepository clubeRepo, IUnitOfWork uow)
     : IRequestHandler<FinalizarVendaCommand, FinalizarVendaResult>
 {
     public async Task<FinalizarVendaResult> Handle(FinalizarVendaCommand cmd, CancellationToken ct)
@@ -47,6 +51,10 @@ public class FinalizarVendaHandler(IVendaRepository repo, IClienteRepository cli
                 venda.VincularCliente(cliente.Id);
         }
 
+        // Resgate de cashback (opcional): reduz a venda como desconto e debita o saldo.
+        if (cmd.CashbackUsado > 0)
+            await ResgatarCashback(venda, cmd.CashbackUsado, ct);
+
         foreach (var p in cmd.Pagamentos)
         {
             var forma = Enum.Parse<FormaPagamento>(p.Forma);
@@ -62,5 +70,44 @@ public class FinalizarVendaHandler(IVendaRepository repo, IClienteRepository cli
         // NotaFiscalId preenchido pelo EmitirNFCeHandler após publicação do evento
         return new FinalizarVendaResult(venda.Numero, venda.Total, venda.Troco,
             venda.NotaFiscalId);
+    }
+
+    /// <summary>Valida os limites do clube, aplica o cashback como desconto rateado
+    /// na venda e debita o saldo do membro (registrando o movimento).</summary>
+    private async Task ResgatarCashback(Venda venda, decimal solicitado, CancellationToken ct)
+    {
+        if (venda.ClienteId is null)
+            throw new InvalidOperationException("Resgate de cashback exige um cliente associado à venda.");
+
+        var membro = await clubeRepo.ObterMembroAsync(venda.EmpresaId, venda.ClienteId.Value, ct)
+            ?? throw new InvalidOperationException("Cliente não é membro do Clube de Promoções.");
+        if (!string.Equals(membro.Status, "Ativo", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Membro do clube inativo.");
+
+        var cfg = await clubeRepo.ObterConfiguracaoAsync(venda.EmpresaId, ct);
+        if (cfg is null || !cfg.Ativo)
+            throw new InvalidOperationException("Clube de Promoções inativo.");
+
+        var valor = Math.Round(solicitado, 2, MidpointRounding.AwayFromZero);
+        if (valor > membro.SaldoCashback)
+            throw new InvalidOperationException("Saldo de cashback insuficiente.");
+        if (membro.SaldoCashback < cfg.MinimoResgate)
+            throw new InvalidOperationException($"Saldo abaixo do mínimo para resgate (R$ {cfg.MinimoResgate:0.00}).");
+
+        // Limite de uso: no máximo LimiteUsoPercent% do valor da venda.
+        var limite = Math.Round(venda.Total * cfg.LimiteUsoPercent / 100m, 2);
+        if (limite > 0 && valor > limite)
+            valor = limite;
+        if (valor <= 0) return;
+
+        var aplicado = venda.ResgatarCashback(valor);
+        if (aplicado <= 0) return;
+
+        membro.Debitar(aplicado);
+        await clubeRepo.AdicionarMovimentoAsync(MovimentoCashback.Criar(
+            venda.EmpresaId, membro.Id, venda.ClienteId.Value,
+            tipo: "Debito", valor: aplicado,
+            motivo: "Resgate de cashback na venda",
+            vendaNumero: venda.Numero, descontoUsado: aplicado), ct);
     }
 }

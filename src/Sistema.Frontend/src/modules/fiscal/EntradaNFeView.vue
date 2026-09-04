@@ -1009,13 +1009,15 @@
             <strong>Documentos Fiscais → Emitidas</strong> para assinar e transmitir.
           </v-alert>
           <div class="text-body-2 mb-2 font-weight-medium">Selecione os itens a devolver:</div>
-          <v-checkbox v-for="item in itensProdutoVinculado" :key="item.id"
-            v-model="itensDevolucao" :value="item.id"
-            :label="`${item.produtoDescricao} — ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`"
-            density="compact" hide-details />
-          <v-text-field v-model="motivoDevolucao" label="Motivo da devolução"
+          <div style="max-height:260px;overflow-y:auto" class="mb-3">
+            <v-checkbox v-for="item in itensProdutoVinculado" :key="item.id"
+              v-model="itensDevolucao" :value="item.id"
+              :label="`${item.produtoDescricao} — ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`"
+              density="compact" hide-details />
+          </div>
+          <v-textarea v-model="motivoDevolucao" label="Motivo da devolução *"
             placeholder="Ex.: produto veio com validade errada" variant="outlined" density="compact"
-            class="mt-3" hide-details />
+            rows="2" auto-grow hide-details />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0 flex-wrap">
           <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-file-search-outline"

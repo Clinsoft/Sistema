@@ -125,11 +125,17 @@ public class DanfeService : IDanfeService
                         .Text("CÁLCULO DO IMPOSTO").Bold().FontSize(6.5f);
                     col.Item().Row(row =>
                     {
-                        Campo(row.ConstantItem(105), "BASE ICMS", M(nota.TotalIcms), true);
-                        Campo(row.ConstantItem(105), "VALOR ICMS", M(nota.TotalIcms), true);
-                        Campo(row.ConstantItem(105), "TOTAL PRODUTOS", M(nota.TotalProdutos), true);
-                        Campo(row.ConstantItem(105), "DESCONTO", M(nota.TotalDesconto), true);
-                        Campo(row.RelativeItem(), "TOTAL DA NOTA", M(nota.TotalNota), true, true);
+                        Campo(row.RelativeItem(1), "BASE CÁLC. ICMS", M(nota.TotalIcms));
+                        Campo(row.RelativeItem(1), "VALOR DO ICMS", M(nota.TotalIcms));
+                        Campo(row.RelativeItem(1), "BASE CÁLC. ICMS ST", M(0));
+                        Campo(row.RelativeItem(1), "VALOR ICMS ST", M(0));
+                    });
+                    col.Item().Row(row =>
+                    {
+                        Campo(row.RelativeItem(1), "VALOR FRETE", M(0));
+                        Campo(row.RelativeItem(1), "VALOR DESCONTO", M(nota.TotalDesconto));
+                        Campo(row.RelativeItem(1), "TOTAL PRODUTOS", M(nota.TotalProdutos));
+                        Campo(row.RelativeItem(1), "VALOR TOTAL DA NOTA", M(nota.TotalNota), false, true);
                     });
 
                     // ═══ PRODUTOS / SERVIÇOS ═══

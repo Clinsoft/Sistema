@@ -91,7 +91,7 @@ async function carregar() {
   if (!auth.empresaId) { carregando.value = false; return }
   carregando.value = true
   try {
-    const res = await api.get<{ itens: Mes[] }>('/financeiro/dre/mensal', {
+    const res = await api.get<{ itens: Mes[] }>('/financeiro/dre/evolucao', {
       params: { empresaId: auth.empresaId, meses: meses.value },
     })
     itens.value = res.data.itens ?? []

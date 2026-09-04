@@ -14,8 +14,8 @@ public class DREController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>DRE simplificado MÊS A MÊS (evolução): receita, CMV, despesas e
     /// resultado por mês nos últimos `meses` meses. Para ver tendência.</summary>
-    [HttpGet("mensal")]
-    public async Task<IActionResult> Mensal([FromQuery] Guid empresaId,
+    [HttpGet("evolucao")]
+    public async Task<IActionResult> Evolucao([FromQuery] Guid empresaId,
         [FromQuery] int meses = 12, CancellationToken ct = default)
     {
         if (meses < 1) meses = 12;

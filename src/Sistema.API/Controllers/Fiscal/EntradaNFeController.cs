@@ -1306,6 +1306,80 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>
+    /// PRÉVIA do XML da devolução (dry-run): monta e assina o XML SEM persistir, SEM
+    /// transmitir à SEFAZ e SEM baixar estoque. Serve para você/o contador conferirem a
+    /// estrutura (finNFe=4, refNFe, CFOP, tributos) sem afetar a produção.
+    /// </summary>
+    [HttpPost("{id:guid}/previa-devolucao")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> PreviaDevolucao(Guid id, [FromBody] DevolucaoEntradaRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens).AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+        var config = await db.ConfiguracoesFiscais.AsNoTracking().FirstOrDefaultAsync(c => c.EmpresaId == entrada.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada.");
+        if (config.CertificadoPfxBase64 is null)
+            return BadRequest(new { mensagem = "Certificado digital A1 não configurado (necessário para assinar a prévia)." });
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == entrada.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
+        var forn = entrada.FornecedorId is Guid fid
+            ? await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
+
+        var mesmaUF = forn?.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
+        var cfop = mesmaUF ? (config.CfopDevolucaoDentroUF ?? "5202") : (config.CfopDevolucaoForaUF ?? "6202");
+
+        // Nota EM MEMÓRIA (não salva, não consome numeração).
+        var nota = NotaFiscal.Criar(entrada.EmpresaId, ModeloNF.NFe, config.SerieNFe, config.ProximoNumerNFe,
+            NaturezaOperacao.Devolucao);
+        nota.DefinirDevolucao(entrada.ChaveAcesso, entrada.Id);
+        nota.DefinirDestinatarioContribuinte(
+            (forn?.Cnpj ?? entrada.EmitenteCnpj), (forn?.RazaoSocial ?? entrada.EmitenteNome),
+            forn?.InscricaoEstadual, forn?.Logradouro, forn?.Numero, forn?.Bairro,
+            null, forn?.Cidade, forn?.Uf, null, forn?.Email);
+
+        var simples = config.Regime == RegimeTributario.SimplesNacional;
+        var itensSel = entrada.Itens.Where(i => (req.Itens == null || req.Itens.Contains(i.Id)) && i.ProdutoId.HasValue).ToList();
+        var prodIds = itensSel.Select(i => i.ProdutoId!.Value).ToList();
+        var produtos = await db.Produtos.AsNoTracking().Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
+        var unidades = await db.UnidadesMedida.AsNoTracking().ToDictionaryAsync(u => u.Id, ct);
+
+        foreach (var item in itensSel)
+        {
+            var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
+            var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
+            var itemNF = ItemNotaFiscal.Criar(
+                nota.Id, item.NumeroItem,
+                produto?.Codigo ?? item.CodigoFornecedor ?? item.NumeroItem.ToString(),
+                produto?.Descricao ?? item.DescricaoXml, cfop,
+                um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml,
+                item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                ncm: produto?.Ncm ?? item.NcmXml, produtoId: item.ProdutoId, pesavel: um?.Pesavel ?? false);
+            if (simples)
+                itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
+            else
+                itemNF.CalcularImpostos(produto?.CstIcms ?? "000", null, produto?.AliquotaIcms ?? 0,
+                    produto?.CstPisCofins ?? "01", produto?.AliquotaPis ?? 0.65m, produto?.AliquotaCofins ?? 3m);
+            nota.AdicionarItem(itemNF);
+        }
+
+        if (nota.Itens.Count == 0)
+            return BadRequest(new { mensagem = "Selecione ao menos um item com produto vinculado." });
+
+        var (xml, chave) = Sistema.Infrastructure.Fiscal.NFeXmlBuilder.GerarXmlAssinado(
+            nota, empresa, config, new List<(string, decimal)> { ("90", nota.TotalNota) });
+
+        var ambiente = config.Ambiente == Domain.Fiscal.Entities.AmbienteFiscal.Producao ? "PRODUÇÃO" : "HOMOLOGAÇÃO";
+        return Ok(new
+        {
+            chave, cfop, finNFe = 4, refNFe = new string(entrada.ChaveAcesso.Where(char.IsDigit).ToArray()),
+            total = nota.TotalNota, ambienteConfigurado = ambiente,
+            aviso = "PRÉVIA — não foi transmitida à SEFAZ, não consumiu numeração e não baixou estoque.",
+            xml
+        });
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // CLONAR PARA SAÍDA (gera NF-e de saída com os itens da entrada)
     // ──────────────────────────────────────────────────────────────────

@@ -13,4 +13,11 @@ public class ClubeRepository(SistemaDbContext db) : IClubeRepository
 
     public async Task AdicionarMembroAsync(MembroClube membro, CancellationToken ct = default)
         => await db.MembrosClube.AddAsync(membro, ct);
+
+    public async Task<ConfiguracaoClube?> ObterConfiguracaoAsync(Guid empresaId, CancellationToken ct = default)
+        => await db.ConfiguracoesClube.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct);
+
+    public async Task AdicionarMovimentoAsync(MovimentoCashback movimento, CancellationToken ct = default)
+        => await db.MovimentosCashback.AddAsync(movimento, ct);
 }

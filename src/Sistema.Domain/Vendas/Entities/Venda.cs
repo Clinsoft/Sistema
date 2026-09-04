@@ -95,7 +95,7 @@ public class Venda : Entity
         Status = StatusVenda.Finalizada;
         DataHoraFechamento = DateTime.Now;
         RaiseDomainEvent(new VendaFinalizadaEvent(
-            Id, EmpresaId, ClienteId, CpfCnpjConsumidor, LocalEstoqueId, _itens.ToList(), Pagamentos.ToList(), Total));
+            Id, EmpresaId, ClienteId, CpfCnpjConsumidor, LocalEstoqueId, _itens.ToList(), Pagamentos.ToList(), Total, Numero));
     }
 
     public void Cancelar(string motivo)

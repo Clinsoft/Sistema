@@ -11,4 +11,5 @@ public record VendaFinalizadaEvent(
     Guid LocalEstoqueId,
     IReadOnlyList<ItemVenda> Itens,
     IReadOnlyList<PagamentoVenda> Pagamentos,
-    decimal Total) : IDomainEvent;
+    decimal Total,
+    string Numero = "") : IDomainEvent;

@@ -29,7 +29,8 @@ public class VendaFinalizadaEventHandler(
     }
 
     /// <summary>Todo cliente com compra associada é membro do Clube de Promoções.
-    /// Inscreve automaticamente na primeira compra e acumula o total comprado.</summary>
+    /// Inscreve automaticamente na primeira compra, acumula o total comprado e
+    /// credita o cashback conforme a configuração do clube.</summary>
     private async Task GarantirMembroClube(VendaFinalizadaEvent evt, CancellationToken ct)
     {
         if (evt.ClienteId is null) return;
@@ -43,6 +44,23 @@ public class VendaFinalizadaEventHandler(
             await clubeRepo.AdicionarMembroAsync(membro, ct);
         }
         membro.RegistrarCompra(evt.Total);
+
+        // Cashback automático: credita % da compra conforme configuração do clube.
+        // Só para membro Ativo e clube ativo com percentual > 0.
+        if (!string.Equals(membro.Status, "Ativo", StringComparison.OrdinalIgnoreCase)) return;
+
+        var cfg = await clubeRepo.ObterConfiguracaoAsync(evt.EmpresaId, ct);
+        if (cfg is null || !cfg.Ativo || cfg.PercentualCashback <= 0) return;
+
+        var valor = Math.Round(evt.Total * cfg.PercentualCashback / 100m, 2, MidpointRounding.AwayFromZero);
+        if (valor <= 0) return;
+
+        membro.Creditar(valor);
+        await clubeRepo.AdicionarMovimentoAsync(MovimentoCashback.Criar(
+            evt.EmpresaId, membro.Id, evt.ClienteId.Value,
+            tipo: "Credito", valor: valor,
+            motivo: $"Cashback {cfg.PercentualCashback:0.##}% da compra",
+            vendaNumero: string.IsNullOrEmpty(evt.Numero) ? null : evt.Numero), ct);
     }
 
     private async Task BaixarEstoque(VendaFinalizadaEvent evt, CancellationToken ct)

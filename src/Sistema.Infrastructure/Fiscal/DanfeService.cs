@@ -123,7 +123,7 @@ public class DanfeService : IDanfeService
                     // ═══ CÁLCULO DO IMPOSTO ═══
                     col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
                         .Text("CÁLCULO DO IMPOSTO").Bold().FontSize(6.5f);
-                    col.Item().Table(imp =>
+                    col.Item().PaddingRight(20).Table(imp =>
                     {
                         imp.ColumnsDefinition(c => { for (int i = 0; i < 5; i++) c.RelativeColumn(); });
                         Campo(imp.Cell(), "BASE ICMS", M(nota.TotalIcms), true);
@@ -136,7 +136,7 @@ public class DanfeService : IDanfeService
                     // ═══ PRODUTOS / SERVIÇOS ═══
                     col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
                         .Text("DADOS DOS PRODUTOS / SERVIÇOS").Bold().FontSize(6.5f);
-                    col.Item().Table(table =>
+                    col.Item().PaddingRight(20).Table(table =>
                     {
                         table.ColumnsDefinition(cols =>
                         {

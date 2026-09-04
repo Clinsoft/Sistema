@@ -28,13 +28,54 @@ public class Cliente : Entity
 
     private Cliente() { }
 
+    // Conectores de nomes próprios que ficam em minúsculo (exceto quando são a 1ª palavra).
+    private static readonly HashSet<string> ConectoresMinusculos = new(StringComparer.OrdinalIgnoreCase)
+    { "de", "da", "do", "das", "dos", "e", "di", "du", "del", "della", "dello", "la", "le", "van", "von", "y" };
+
+    /// <summary>Normaliza o nome para "regra de nome": cada palavra com inicial maiúscula
+    /// e o resto minúsculo, mantendo conectores (de, da, do, dos, das, e...) em minúsculo
+    /// e capitalizando após hífen/apóstrofo (ex.: "ANA de souza" → "Ana de Souza",
+    /// "maria-clara d'avila" → "Maria-Clara D'Avila"). Independe de como foi digitado.</summary>
+    public static string NormalizarNome(string? nome)
+    {
+        if (string.IsNullOrWhiteSpace(nome)) return string.Empty;
+        var palavras = nome.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < palavras.Length; i++)
+        {
+            var lower = palavras[i].ToLowerInvariant();
+            palavras[i] = i > 0 && ConectoresMinusculos.Contains(lower)
+                ? lower
+                : CapitalizarPalavra(lower);
+        }
+        return string.Join(' ', palavras);
+    }
+
+    private static string CapitalizarPalavra(string lower)
+    {
+        var arr = lower.ToCharArray();
+        var capitalizarProxima = true;
+        for (var i = 0; i < arr.Length; i++)
+        {
+            if (capitalizarProxima && char.IsLetter(arr[i]))
+            {
+                arr[i] = char.ToUpperInvariant(arr[i]);
+                capitalizarProxima = false;
+            }
+            else if (arr[i] is '-' or '\'' or '’')
+            {
+                capitalizarProxima = true;
+            }
+        }
+        return new string(arr);
+    }
+
     public static Cliente Criar(Guid empresaId, string nome, TipoPessoa tipoPessoa,
         string? cpfCnpj = null, string? email = null, string? telefone = null,
         string? celular = null, DateTime? dataNascimento = null, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId,
-            Nome = nome,
+            Nome = NormalizarNome(nome),
             TipoPessoa = tipoPessoa,
             CpfCnpj = cpfCnpj,
             Email = email,
@@ -66,7 +107,7 @@ public class Cliente : Entity
         string? cidade, string? uf, string? cep, decimal limiteCredito, string? classificacao,
         DateTime? dataNascimento = null, string? cpfCnpj = null)
     {
-        Nome = nome; Email = email; Telefone = telefone; Celular = celular;
+        Nome = NormalizarNome(nome); Email = email; Telefone = telefone; Celular = celular;
         Logradouro = logradouro; Numero = numero; Complemento = complemento;
         Bairro = bairro; Cidade = cidade; Uf = uf; Cep = cep;
         LimiteCredito = limiteCredito; Classificacao = classificacao;

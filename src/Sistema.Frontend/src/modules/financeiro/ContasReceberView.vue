@@ -25,11 +25,13 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.inicio" label="Data início" type="date"
-            variant="outlined" density="compact" hide-details />
+            variant="outlined" density="compact" hide-details
+            @change="filtros.tudo = false; carregar()" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.fim" label="Data fim" type="date"
-            variant="outlined" density="compact" hide-details />
+            variant="outlined" density="compact" hide-details
+            @change="filtros.tudo = false; carregar()" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.categoria" label="Categoria"

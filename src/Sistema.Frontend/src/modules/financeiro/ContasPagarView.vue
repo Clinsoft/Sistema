@@ -32,11 +32,13 @@
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.inicio" label="Início" type="date"
-            variant="outlined" density="compact" hide-details />
+            variant="outlined" density="compact" hide-details
+            @change="filtros.tudo = false; carregar()" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-text-field v-model="filtros.fim" label="Fim" type="date"
-            variant="outlined" density="compact" hide-details />
+            variant="outlined" density="compact" hide-details
+            @change="filtros.tudo = false; carregar()" />
         </v-col>
         <v-col cols="12" sm="3">
           <v-select v-model="filtros.categoria" label="Categoria"

@@ -21,22 +21,28 @@ public class DanfeService : IDanfeService
             ? string.Join(" ", Enumerable.Range(0, 11).Select(i => chave.Substring(i * 4, 4)))
             : chave;
         var entrada = nota.Finalidade == 4 || nota.NaturezaOperacao == NaturezaOperacao.Devolucao;
+        byte[]? logo = CarregarLogo();
+        var barras = chave.Length == 44 ? Code128C(chave) : null;
 
         var doc = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(14);
+                page.Margin(10);
                 page.DefaultTextStyle(ts => ts.FontSize(7.5f).FontFamily("Arial"));
 
-                page.Content().Border(1).Column(col =>
+                page.Content().Column(col =>
                 {
                     // ═══ CABEÇALHO ═══
                     col.Item().Row(row =>
                     {
                         // Emitente
-                        row.RelativeItem(5).Border(0.6f).Padding(6).Column(c =>
+                        row.RelativeItem(5).Border(0.6f).Padding(6).Row(er =>
+                        {
+                          if (logo is not null)
+                            er.ConstantItem(52).PaddingRight(6).AlignMiddle().Image(logo).FitArea();
+                          er.RelativeItem().Column(c =>
                         {
                             c.Item().Text(empresa.NomeFantasia).Bold().FontSize(12);
                             c.Item().Text(empresa.RazaoSocial).FontSize(7.5f);
@@ -45,6 +51,7 @@ public class DanfeService : IDanfeService
                             c.Item().Text($"{empresa.Bairro} - {empresa.Cidade}/{empresa.Uf} - CEP {empresa.Cep}");
                             c.Item().Text($"CNPJ: {FormatarCnpj(empresa.Cnpj)}   IE: {empresa.InscricaoEstadual}");
                             c.Item().Text($"Fone: {empresa.Telefone}");
+                          });
                         });
 
                         // Bloco DANFE central
@@ -61,9 +68,18 @@ public class DanfeService : IDanfeService
                         // Chave de acesso
                         row.RelativeItem(5).Border(0.6f).Padding(6).Column(c =>
                         {
-                            c.Item().Text("CHAVE DE ACESSO").Bold().FontSize(6);
-                            c.Item().PaddingTop(2).Text(chaveFmt).FontSize(8).FontFamily("Courier New");
-                            c.Item().PaddingTop(4).Text("Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz autorizadora").FontSize(6).Italic();
+                            if (barras is not null)
+                                c.Item().Height(30).Row(bc =>
+                                {
+                                    foreach (var (w, bar) in barras)
+                                    {
+                                        var seg = bc.ConstantItem(w * 0.72f);
+                                        if (bar) seg.Background("#000000");
+                                    }
+                                });
+                            c.Item().PaddingTop(3).Text("CHAVE DE ACESSO").Bold().FontSize(6);
+                            c.Item().Text(chaveFmt).FontSize(8).FontFamily("Courier New");
+                            c.Item().PaddingTop(3).Text("Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz autorizadora").FontSize(6).Italic();
                             if (!string.IsNullOrEmpty(nota.Protocolo))
                                 c.Item().PaddingTop(3).Text($"Protocolo: {nota.Protocolo}").FontSize(7).Bold();
                         });
@@ -125,15 +141,15 @@ public class DanfeService : IDanfeService
                     {
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(18);   // #
-                            cols.ConstantColumn(42);   // Código
+                            cols.ConstantColumn(16);   // #
+                            cols.ConstantColumn(38);   // Código
                             cols.RelativeColumn(4);    // Descrição
-                            cols.ConstantColumn(48);   // NCM
-                            cols.ConstantColumn(30);   // CFOP
-                            cols.ConstantColumn(24);   // UN
-                            cols.ConstantColumn(42);   // Qtd
-                            cols.ConstantColumn(52);   // Vl Unit
-                            cols.ConstantColumn(56);   // Vl Total
+                            cols.ConstantColumn(42);   // NCM
+                            cols.ConstantColumn(26);   // CFOP
+                            cols.ConstantColumn(20);   // UN
+                            cols.ConstantColumn(36);   // Qtd
+                            cols.ConstantColumn(46);   // Vl Unit
+                            cols.ConstantColumn(50);   // Vl Total
                         });
 
                         static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(3);
@@ -188,7 +204,7 @@ public class DanfeService : IDanfeService
         {
             c.Item().Text(label).FontSize(5.5f).FontColor("#555555");
             var t = alignRight ? c.Item().AlignRight() : c.Item();
-            if (destaque) t.Text(valor).FontSize(9).Bold();
+            if (destaque) t.Text(valor).FontSize(8).Bold();
             else t.Text(valor).FontSize(7.5f);
         });
     }
@@ -197,6 +213,47 @@ public class DanfeService : IDanfeService
     {
         var c = new string((chave ?? "").Where(char.IsDigit).ToArray());
         return c.Length == 44 ? $"…{c[^12..]}" : c;
+    }
+
+    // Carrega a logo da empresa da wwwroot (se existir).
+    private static byte[]? CarregarLogo()
+    {
+        try
+        {
+            var p = System.IO.Path.Combine("wwwroot", "logo-ecogranel.png");
+            return System.IO.File.Exists(p) ? System.IO.File.ReadAllBytes(p) : null;
+        }
+        catch { return null; }
+    }
+
+    // ── Code128-C: gera os segmentos (largura em módulos, barra/espaço) da chave (44 dígitos) ──
+    private static readonly string[] Cod128Pat =
+    {
+        "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+        "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+        "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+        "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+        "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+        "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+        "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+        "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+        "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+        "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+        "114131","311141","411131","211412","211214","211232"
+    };
+    private static List<(float w, bool bar)> Code128C(string digits)
+    {
+        var vals = new List<int> { 105 }; // Start C
+        for (int i = 0; i + 1 < digits.Length; i += 2)
+            vals.Add(int.Parse(digits.Substring(i, 2)));
+        long sum = 105;
+        for (int k = 1; k < vals.Count; k++) sum += (long)vals[k] * k;
+        vals.Add((int)(sum % 103)); // dígito verificador
+        var segs = new List<(float, bool)>();
+        void Add(string pat) { bool bar = true; foreach (var ch in pat) { segs.Add((ch - '0', bar)); bar = !bar; } }
+        foreach (var v in vals) Add(Cod128Pat[v]);
+        Add("2331112"); // Stop
+        return segs;
     }
 
     private static string FormatarCnpj(string cnpj)

@@ -14,214 +14,189 @@ public class DanfeService : IDanfeService
 {
     public byte[] GerarDanfe(NotaFiscal nota, Empresa empresa)
     {
+        var br = new System.Globalization.CultureInfo("pt-BR");
+        string M(decimal v) => v.ToString("N2", br);
+        var chave = new string((nota.ChaveAcesso ?? "").Where(char.IsDigit).ToArray());
+        var chaveFmt = chave.Length == 44
+            ? string.Join(" ", Enumerable.Range(0, 11).Select(i => chave.Substring(i * 4, 4)))
+            : chave;
+        var entrada = nota.Finalidade == 4 || nota.NaturezaOperacao == NaturezaOperacao.Devolucao;
+
         var doc = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(12);
-                page.DefaultTextStyle(ts => ts.FontSize(7).FontFamily("Arial"));
+                page.Margin(14);
+                page.DefaultTextStyle(ts => ts.FontSize(7.5f).FontFamily("Arial"));
 
-                page.Content().Column(col =>
+                page.Content().Border(1).Column(col =>
                 {
-                    // ── Cabeçalho ────────────────────────────────────────────
-                    col.Item().BorderBottom(1).PaddingBottom(4).Row(row =>
+                    // ═══ CABEÇALHO ═══
+                    col.Item().Row(row =>
                     {
                         // Emitente
-                        row.RelativeItem(3).Column(c =>
+                        row.RelativeItem(5).Border(0.6f).Padding(6).Column(c =>
                         {
-                            c.Item().Text(empresa.NomeFantasia).Bold().FontSize(11);
-                            c.Item().Text(empresa.RazaoSocial).FontSize(8);
-                            c.Item().Text($"CNPJ: {FormatarCnpj(empresa.Cnpj)}");
-                            c.Item().Text($"IE: {empresa.InscricaoEstadual}");
-                            c.Item().Text($"{empresa.Logradouro}, {empresa.Numero}{(empresa.Complemento != null ? " " + empresa.Complemento : "")}");
-                            c.Item().Text($"{empresa.Bairro} – {empresa.Cidade}/{empresa.Uf}  CEP: {empresa.Cep}");
-                            c.Item().Text($"Tel: {empresa.Telefone}");
+                            c.Item().Text(empresa.NomeFantasia).Bold().FontSize(12);
+                            c.Item().Text(empresa.RazaoSocial).FontSize(7.5f);
+                            c.Item().PaddingTop(2).Text($"{empresa.Logradouro}, {empresa.Numero}"
+                                + (string.IsNullOrEmpty(empresa.Complemento) ? "" : " " + empresa.Complemento));
+                            c.Item().Text($"{empresa.Bairro} - {empresa.Cidade}/{empresa.Uf} - CEP {empresa.Cep}");
+                            c.Item().Text($"CNPJ: {FormatarCnpj(empresa.Cnpj)}   IE: {empresa.InscricaoEstadual}");
+                            c.Item().Text($"Fone: {empresa.Telefone}");
                         });
 
-                        // Título central
-                        row.RelativeItem(2).AlignCenter().Column(c =>
+                        // Bloco DANFE central
+                        row.RelativeItem(2).Border(0.6f).Padding(6).AlignCenter().Column(c =>
                         {
-                            c.Item().AlignCenter().Text("DANFE").Bold().FontSize(10);
-                            c.Item().AlignCenter().Text("Documento Auxiliar da").FontSize(7);
-                            c.Item().AlignCenter().Text("Nota Fiscal Eletrônica").FontSize(7);
-                            c.Item().PaddingTop(4).AlignCenter()
-                                .Text($"Modelo: {(int)nota.Modelo}  Série: {nota.Serie:D3}").FontSize(8);
-                            c.Item().AlignCenter()
-                                .Text($"Número: {nota.Numero:D9}").FontSize(9).Bold();
-                            c.Item().PaddingTop(4).AlignCenter()
-                                .Text($"Emissão: {nota.DataEmissao:dd/MM/yyyy HH:mm}").FontSize(7);
+                            c.Item().AlignCenter().Text("DANFE").Bold().FontSize(13);
+                            c.Item().AlignCenter().Text("Documento Auxiliar da").FontSize(6.5f);
+                            c.Item().AlignCenter().Text("Nota Fiscal Eletrônica").FontSize(6.5f);
+                            c.Item().PaddingTop(4).AlignCenter().Text($"{(entrada ? "0 - ENTRADA" : "1 - SAÍDA")}").FontSize(7).Bold();
+                            c.Item().PaddingTop(3).AlignCenter().Text($"Nº {nota.Numero:000000000}").Bold().FontSize(9);
+                            c.Item().AlignCenter().Text($"Série {nota.Serie:000}").FontSize(8);
                         });
 
-                        // Chave de acesso + código de barras
-                        row.RelativeItem(3).Column(c =>
+                        // Chave de acesso
+                        row.RelativeItem(5).Border(0.6f).Padding(6).Column(c =>
                         {
-                            c.Item().Text("CHAVE DE ACESSO").Bold();
-                            var chave = nota.ChaveAcesso ?? "";
-                            // Formatação da chave em grupos de 4
-                            var chaveFormatada = string.Join(" ", Enumerable.Range(0, chave.Length / 4)
-                                .Select(i => chave.Substring(i * 4, Math.Min(4, chave.Length - i * 4))));
-                            c.Item().Text(chaveFormatada).FontSize(6.5f).FontFamily("Courier New");
-                            // Código de barras representado como texto monospace
-                            c.Item().PaddingTop(3).Text("|||" + string.Concat(chave.Select(d => $"| {d}")) + "|||")
-                                .FontSize(5).FontFamily("Courier New").LetterSpacing(-0.5f);
+                            c.Item().Text("CHAVE DE ACESSO").Bold().FontSize(6);
+                            c.Item().PaddingTop(2).Text(chaveFmt).FontSize(8).FontFamily("Courier New");
+                            c.Item().PaddingTop(4).Text("Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz autorizadora").FontSize(6).Italic();
                             if (!string.IsNullOrEmpty(nota.Protocolo))
-                                c.Item().PaddingTop(2).Text($"Protocolo: {nota.Protocolo}").FontSize(7);
+                                c.Item().PaddingTop(3).Text($"Protocolo: {nota.Protocolo}").FontSize(7).Bold();
                         });
                     });
 
-                    col.Item().PaddingTop(4);
-
-                    // ── Natureza da Operação ──────────────────────────────────
-                    col.Item().Border(0.5f).Padding(3).Row(row =>
+                    // ═══ NATUREZA DA OPERAÇÃO ═══
+                    col.Item().Row(row =>
                     {
-                        row.RelativeItem().Column(c =>
-                        {
-                            c.Item().Text("NATUREZA DA OPERAÇÃO").Bold().FontSize(6);
-                            c.Item().Text(DescricaoNatureza(nota.NaturezaOperacao)).FontSize(8);
-                        });
+                        Campo(row.RelativeItem(7), "NATUREZA DA OPERAÇÃO", DescricaoNatureza(nota.NaturezaOperacao)
+                            + (entrada ? "  (DEVOLUÇÃO)" : ""));
+                        Campo(row.RelativeItem(3), "FINALIDADE", nota.Finalidade == 4 ? "4 - Devolução" : "1 - Normal");
                     });
-
-                    col.Item().PaddingTop(4);
-
-                    // ── Destinatário ──────────────────────────────────────────
-                    col.Item().Border(0.5f).Padding(3).Column(c =>
+                    col.Item().Row(row =>
                     {
-                        c.Item().Text("DESTINATÁRIO / REMETENTE").Bold().FontSize(6);
-                        c.Item().PaddingTop(2).Row(row =>
-                        {
-                            row.RelativeItem(3).Column(d =>
-                            {
-                                d.Item().Text($"Nome/Razão Social: {nota.NomeDestinatario ?? "CONSUMIDOR FINAL"}").FontSize(8);
-                            });
-                            row.RelativeItem(2).Column(d =>
-                            {
-                                d.Item().Text($"CPF/CNPJ: {FormatarCpfCnpj(nota.CpfCnpjDestinatario ?? nota.CpfCnpjConsumidor ?? "")}").FontSize(8);
-                            });
-                        });
+                        Campo(row.RelativeItem(1), "EMISSÃO", nota.DataEmissao.ToString("dd/MM/yyyy"));
+                        Campo(row.RelativeItem(2), "MODELO", $"{(int)nota.Modelo}");
+                        Campo(row.RelativeItem(4), "DOCUMENTO REFERENCIADO (NF de entrada)",
+                            string.IsNullOrEmpty(nota.ChaveReferenciada) ? "-" : FormatarChaveCurta(nota.ChaveReferenciada));
+                        Campo(row.RelativeItem(2), "AMBIENTE", "—");
                     });
 
-                    col.Item().PaddingTop(4);
+                    // ═══ DESTINATÁRIO ═══
+                    col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
+                        .Text("DESTINATÁRIO / REMETENTE").Bold().FontSize(6.5f);
+                    col.Item().Row(row =>
+                    {
+                        Campo(row.RelativeItem(6), "NOME / RAZÃO SOCIAL", nota.NomeDestinatario ?? "CONSUMIDOR FINAL");
+                        Campo(row.RelativeItem(3), "CNPJ / CPF", FormatarCpfCnpj(nota.CpfCnpjDestinatario ?? nota.CpfCnpjConsumidor ?? ""));
+                        Campo(row.RelativeItem(2), "INSCR. ESTADUAL", nota.IeDestinatario ?? "-");
+                    });
+                    if (!string.IsNullOrWhiteSpace(nota.LogradouroDest))
+                    {
+                        col.Item().Row(row =>
+                        {
+                            Campo(row.RelativeItem(6), "ENDEREÇO", $"{nota.LogradouroDest}, {nota.NumeroDest}");
+                            Campo(row.RelativeItem(3), "BAIRRO", nota.BairroDest ?? "-");
+                            Campo(row.RelativeItem(2), "MUN./UF", $"{nota.MunicipioDest}/{nota.UfDest}");
+                        });
+                    }
 
-                    // ── Itens ─────────────────────────────────────────────────
+                    // ═══ CÁLCULO DO IMPOSTO ═══
+                    col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
+                        .Text("CÁLCULO DO IMPOSTO").Bold().FontSize(6.5f);
+                    col.Item().Row(row =>
+                    {
+                        Campo(row.RelativeItem(), "BASE ICMS", M(nota.TotalIcms), true);
+                        Campo(row.RelativeItem(), "VALOR ICMS", M(nota.TotalIcms), true);
+                        Campo(row.RelativeItem(), "PIS", M(nota.TotalPis), true);
+                        Campo(row.RelativeItem(), "COFINS", M(nota.TotalCofins), true);
+                        Campo(row.RelativeItem(), "TOTAL PRODUTOS", M(nota.TotalProdutos), true);
+                        Campo(row.RelativeItem(), "DESCONTO", M(nota.TotalDesconto), true);
+                        Campo(row.RelativeItem(), "TOTAL DA NOTA", M(nota.TotalNota), true, true);
+                    });
+
+                    // ═══ PRODUTOS / SERVIÇOS ═══
+                    col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
+                        .Text("DADOS DOS PRODUTOS / SERVIÇOS").Bold().FontSize(6.5f);
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(20);   // #
-                            cols.ConstantColumn(40);   // Código
+                            cols.ConstantColumn(18);   // #
+                            cols.ConstantColumn(42);   // Código
                             cols.RelativeColumn(4);    // Descrição
-                            cols.ConstantColumn(35);   // NCM
+                            cols.ConstantColumn(48);   // NCM
                             cols.ConstantColumn(30);   // CFOP
-                            cols.ConstantColumn(20);   // UN
-                            cols.ConstantColumn(35);   // Qtd
-                            cols.ConstantColumn(45);   // Vl Unit
-                            cols.ConstantColumn(45);   // Vl Total
+                            cols.ConstantColumn(24);   // UN
+                            cols.ConstantColumn(42);   // Qtd
+                            cols.ConstantColumn(52);   // Vl Unit
+                            cols.ConstantColumn(56);   // Vl Total
                         });
 
-                        // Cabeçalho da tabela
-                        static IContainer HeaderCell(IContainer c) =>
-                            c.Background("#EEEEEE").Border(0.3f).Padding(2);
-
-                        table.Header(header =>
+                        static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(3);
+                        table.Header(h =>
                         {
-                            header.Cell().Element(HeaderCell).Text("#").Bold();
-                            header.Cell().Element(HeaderCell).Text("Código").Bold();
-                            header.Cell().Element(HeaderCell).Text("Descrição").Bold();
-                            header.Cell().Element(HeaderCell).Text("NCM").Bold();
-                            header.Cell().Element(HeaderCell).Text("CFOP").Bold();
-                            header.Cell().Element(HeaderCell).Text("UN").Bold();
-                            header.Cell().Element(HeaderCell).AlignRight().Text("Qtd").Bold();
-                            header.Cell().Element(HeaderCell).AlignRight().Text("Vl Unit").Bold();
-                            header.Cell().Element(HeaderCell).AlignRight().Text("Vl Total").Bold();
+                            h.Cell().Element(HCell).Text("#").Bold();
+                            h.Cell().Element(HCell).Text("CÓDIGO").Bold();
+                            h.Cell().Element(HCell).Text("DESCRIÇÃO").Bold();
+                            h.Cell().Element(HCell).Text("NCM").Bold();
+                            h.Cell().Element(HCell).Text("CFOP").Bold();
+                            h.Cell().Element(HCell).Text("UN").Bold();
+                            h.Cell().Element(HCell).AlignRight().Text("QTD").Bold();
+                            h.Cell().Element(HCell).AlignRight().Text("VL UNIT").Bold();
+                            h.Cell().Element(HCell).AlignRight().Text("VL TOTAL").Bold();
                         });
 
-                        // Linhas de item
-                        static IContainer DataCell(IContainer c) =>
-                            c.Border(0.3f).Padding(2);
-
-                        var br = new System.Globalization.CultureInfo("pt-BR");
+                        static IContainer DCell(IContainer c) => c.BorderVertical(0.4f).BorderBottom(0.3f).PaddingVertical(2).PaddingHorizontal(3);
                         foreach (var item in nota.Itens)
                         {
-                            table.Cell().Element(DataCell).Text(item.NumeroItem.ToString());
-                            table.Cell().Element(DataCell).Text(item.Codigo);
-                            table.Cell().Element(DataCell).Text(item.Descricao);
-                            table.Cell().Element(DataCell).Text(item.Ncm ?? "");
-                            table.Cell().Element(DataCell).Text(item.Cfop);
-                            table.Cell().Element(DataCell).Text(item.UnidadeMedida);
-                            table.Cell().Element(DataCell).AlignRight()
-                                .Text(item.Pesavel ? item.Quantidade.ToString("N3", br) : item.Quantidade.ToString("N0", br));
-                            table.Cell().Element(DataCell).AlignRight()
-                                .Text(item.ValorUnitario.ToString("N4", br));
-                            table.Cell().Element(DataCell).AlignRight()
-                                .Text(item.ValorTotal.ToString("N2", br));
+                            table.Cell().Element(DCell).Text(item.NumeroItem.ToString());
+                            table.Cell().Element(DCell).Text(item.Codigo);
+                            table.Cell().Element(DCell).Text(item.Descricao);
+                            table.Cell().Element(DCell).Text(item.Ncm ?? "");
+                            table.Cell().Element(DCell).Text(item.Cfop);
+                            table.Cell().Element(DCell).Text(item.UnidadeMedida);
+                            table.Cell().Element(DCell).AlignRight().Text(item.Pesavel ? item.Quantidade.ToString("N3", br) : item.Quantidade.ToString("N0", br));
+                            table.Cell().Element(DCell).AlignRight().Text(item.ValorUnitario.ToString("N2", br));
+                            table.Cell().Element(DCell).AlignRight().Text(item.ValorTotal.ToString("N2", br));
                         }
                     });
 
-                    col.Item().PaddingTop(4);
-
-                    // ── Totais ────────────────────────────────────────────────
-                    var ptBR = new System.Globalization.CultureInfo("pt-BR");
-                    col.Item().Border(0.5f).Padding(3).Row(row =>
+                    // ═══ DADOS ADICIONAIS ═══
+                    col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
+                        .Text("DADOS ADICIONAIS").Bold().FontSize(6.5f);
+                    col.Item().Border(0.6f).Padding(6).MinHeight(40).Column(c =>
                     {
-                        row.RelativeItem().Column(c =>
-                        {
-                            c.Item().Text("TOTAIS DA NOTA").Bold().FontSize(6);
-                            c.Item().PaddingTop(2).Row(r =>
-                            {
-                                r.RelativeItem().Text($"Total Produtos: {nota.TotalProdutos.ToString("C", ptBR)}");
-                                r.RelativeItem().Text($"Desconto: {nota.TotalDesconto.ToString("C", ptBR)}");
-                                r.RelativeItem().Text($"Total NF: {nota.TotalNota.ToString("C", ptBR)}").Bold().FontSize(9);
-                            });
-                        });
+                        if (entrada)
+                            c.Item().Text("Nota de devolução de compra. Referência à NF-e de entrada informada no campo próprio.").FontSize(7);
+                        c.Item().Text($"Emitido por EcoGranel em {DateTime.Now:dd/MM/yyyy HH:mm}.").FontSize(7);
                     });
-
-                    col.Item().PaddingTop(4);
-
-                    // ── Tributos ──────────────────────────────────────────────
-                    col.Item().Border(0.5f).Padding(3).Row(row =>
-                    {
-                        row.RelativeItem().Column(c =>
-                        {
-                            c.Item().Text("INFORMAÇÕES FISCAIS").Bold().FontSize(6);
-                            c.Item().PaddingTop(2).Row(r =>
-                            {
-                                r.RelativeItem().Text($"Base ICMS: {nota.TotalIcms.ToString("C", ptBR)}");
-                                r.RelativeItem().Text($"Vl ICMS: {nota.TotalIcms.ToString("C", ptBR)}");
-                                r.RelativeItem().Text($"PIS: {nota.TotalPis.ToString("C", ptBR)}");
-                                r.RelativeItem().Text($"COFINS: {nota.TotalCofins.ToString("C", ptBR)}");
-                            });
-                        });
-                    });
-
-                    col.Item().PaddingTop(4);
-
-                    // ── QR Code (NFC-e) ───────────────────────────────────────
-                    if (!string.IsNullOrEmpty(nota.QrCode))
-                    {
-                        col.Item().Border(0.5f).Padding(3).Column(c =>
-                        {
-                            c.Item().Text("CONSULTE PELA CHAVE DE ACESSO OU QR CODE").Bold().FontSize(6);
-                            c.Item().PaddingTop(2).Text(nota.QrCode).FontSize(6).FontFamily("Courier New");
-                            if (!string.IsNullOrEmpty(nota.UrlConsultaQrCode))
-                                c.Item().PaddingTop(2).Text($"URL: {nota.UrlConsultaQrCode}").FontSize(6);
-                        });
-
-                        col.Item().PaddingTop(4);
-                    }
-
-                    // ── Protocolo de autorização ──────────────────────────────
-                    if (!string.IsNullOrEmpty(nota.Protocolo))
-                    {
-                        col.Item().Border(0.5f).Padding(3)
-                            .Text($"Protocolo de Autorização: {nota.Protocolo}  |  Data: {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}")
-                            .FontSize(7);
-                    }
                 });
             });
         });
 
         return doc.GeneratePdf();
+    }
+
+    // Campo rotulado no estilo DANFE (label pequeno em cima, valor embaixo).
+    private static void Campo(IContainer container, string label, string valor, bool alignRight = false, bool destaque = false)
+    {
+        container.Border(0.6f).PaddingHorizontal(4).PaddingVertical(2).Column(c =>
+        {
+            c.Item().Text(label).FontSize(5.5f).FontColor("#555555");
+            var t = alignRight ? c.Item().AlignRight() : c.Item();
+            if (destaque) t.Text(valor).FontSize(9).Bold();
+            else t.Text(valor).FontSize(7.5f);
+        });
+    }
+
+    private static string FormatarChaveCurta(string chave)
+    {
+        var c = new string((chave ?? "").Where(char.IsDigit).ToArray());
+        return c.Length == 44 ? $"…{c[^12..]}" : c;
     }
 
     private static string FormatarCnpj(string cnpj)

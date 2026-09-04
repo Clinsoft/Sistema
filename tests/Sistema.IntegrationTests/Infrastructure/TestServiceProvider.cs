@@ -10,6 +10,7 @@ using Sistema.Domain.Cadastros.Interfaces;
 using Sistema.Domain.Crediario.Interfaces;
 using Sistema.Domain.Estoque.Interfaces;
 using Sistema.Domain.Financeiro.Interfaces;
+using Sistema.Domain.Marketing.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Domain.Vendas.Interfaces;
 using Sistema.Infrastructure.Data;
@@ -18,6 +19,7 @@ using Sistema.Infrastructure.Repositories.Cadastros;
 using Sistema.Infrastructure.Repositories.Crediario;
 using Sistema.Infrastructure.Repositories.Estoque;
 using Sistema.Infrastructure.Repositories.Financeiro;
+using Sistema.Infrastructure.Repositories.Marketing;
 using Sistema.Infrastructure.Repositories.Vendas;
 
 namespace Sistema.IntegrationTests.Infrastructure;
@@ -45,6 +47,7 @@ public static class TestServiceProvider
         services.AddScoped<IVendaRepository, VendaRepository>();
         services.AddScoped<IProdutoRepository, ProdutoRepository>();
         services.AddScoped<IClienteRepository, ClienteRepository>();
+        services.AddScoped<IClubeRepository, ClubeRepository>();
         services.AddScoped<IMovimentacaoEstoqueRepository, MovimentacaoEstoqueRepository>();
         services.AddScoped<ICrediarioRepository, CrediarioRepository>();
         services.AddScoped<IParcelaCrediarioRepository, ParcelaCrediarioRepository>();

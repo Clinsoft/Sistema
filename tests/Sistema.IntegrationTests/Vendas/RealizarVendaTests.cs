@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sistema.Application.Estoque.Commands;
 using Sistema.Application.Vendas.Commands;
 using Sistema.Domain.Estoque.Entities;
+using Sistema.Domain.Marketing.Entities;
 using Sistema.Domain.Vendas.Entities;
 using Sistema.Infrastructure.Data;
 using Sistema.IntegrationTests.Infrastructure;
@@ -142,6 +143,89 @@ public class RealizarVendaTests
         mov.Quantidade.Should().Be(4m);
 
         db.Produtos.Find(produto.Id)!.EstoqueAtual.Should().Be(96m); // 100 - 4
+    }
+
+    [Fact]
+    public async Task Finalizar_ComResgateCashback_DeveDebitarSaldoEReduzirTotal()
+    {
+        var (_, scope, mediator, db) = CriarContexto();
+        using var _ = scope;
+
+        var empresaId = Guid.NewGuid();
+        var clienteId = Guid.NewGuid();
+        var produto = CriarProdutoNoBanco(db, empresaId, "PCB", 50m); // estoque 100
+
+        // Membro do clube com saldo 20 e clube ativo. Percentual de crédito = 0
+        // para isolar o DÉBITO do resgate (sem crédito automático interferindo).
+        var membro = MembroClube.Criar(empresaId, clienteId, "Ativo", DateTime.Today, "teste");
+        membro.Creditar(20m);
+        db.MembrosClube.Add(membro);
+
+        var cfg = ConfiguracaoClube.Padrao(empresaId);
+        cfg.Atualizar(percentualCashback: 0m, validade: 180, minimoResgate: 10m,
+            limiteUsoPercent: 50m, descontoMembro: 0m, aniversarianteDuplo: false,
+            ativo: true, nomeClubeExibicao: "Clube");
+        db.ConfiguracoesClube.Add(cfg);
+        db.SaveChanges();
+
+        var venda = Venda.Iniciar(empresaId, Guid.NewGuid(), Guid.NewGuid(), "000001", clienteId);
+        db.Vendas.Add(venda);
+        db.SaveChanges();
+        AdicionarItem(db, venda.Id, produto.Id, 2, 50m); // total 100
+
+        // Usa R$10 de cashback → total cai para 90; paga 90 no Pix.
+        var res = await mediator.Send(new FinalizarVendaCommand(
+            venda.Id,
+            new List<PagamentoDto> { new("Pix", 90m) },
+            CpfCnpjConsumidor: null,
+            CashbackUsado: 10m));
+
+        res.Total.Should().Be(90m);
+
+        var vendaDb = db.Vendas.Include(v => v.Itens).First(v => v.Id == venda.Id);
+        vendaDb.Total.Should().Be(90m);
+        vendaDb.TotalDesconto.Should().Be(10m);
+
+        db.MembrosClube.First(m => m.ClienteId == clienteId).SaldoCashback.Should().Be(10m); // 20 - 10
+
+        var mov = db.MovimentosCashback.Single(m => m.ClienteId == clienteId && m.Tipo == "Debito");
+        mov.Valor.Should().Be(10m);
+        mov.VendaNumero.Should().Be("000001");
+    }
+
+    [Fact]
+    public async Task Finalizar_ResgateAcimaDoLimite_DeveLimitarAoPercentualDaVenda()
+    {
+        var (_, scope, mediator, db) = CriarContexto();
+        using var _ = scope;
+
+        var empresaId = Guid.NewGuid();
+        var clienteId = Guid.NewGuid();
+        var produto = CriarProdutoNoBanco(db, empresaId, "PCB2", 50m);
+
+        var membro = MembroClube.Criar(empresaId, clienteId, "Ativo", DateTime.Today, "teste");
+        membro.Creditar(100m); // saldo alto
+        db.MembrosClube.Add(membro);
+
+        var cfg = ConfiguracaoClube.Padrao(empresaId);
+        cfg.Atualizar(0m, 180, 10m, 50m, 0m, false, true, "Clube"); // limite 50%
+        db.ConfiguracoesClube.Add(cfg);
+        db.SaveChanges();
+
+        var venda = Venda.Iniciar(empresaId, Guid.NewGuid(), Guid.NewGuid(), "000001", clienteId);
+        db.Vendas.Add(venda);
+        db.SaveChanges();
+        AdicionarItem(db, venda.Id, produto.Id, 2, 50m); // total 100
+
+        // Pede 80 de cashback, mas o limite é 50% de 100 = 50 → aplica só 50.
+        var res = await mediator.Send(new FinalizarVendaCommand(
+            venda.Id,
+            new List<PagamentoDto> { new("Pix", 50m) },
+            CpfCnpjConsumidor: null,
+            CashbackUsado: 80m));
+
+        res.Total.Should().Be(50m);
+        db.MembrosClube.First(m => m.ClienteId == clienteId).SaldoCashback.Should().Be(50m); // 100 - 50
     }
 
     [Fact]

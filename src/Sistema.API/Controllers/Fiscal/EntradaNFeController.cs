@@ -1435,6 +1435,11 @@ public class EntradaNFeController(SistemaDbContext db,
         if (nota.Itens.Count == 0)
             return BadRequest(new { mensagem = "Selecione ao menos um item com produto vinculado." });
 
+        // A prévia é uma nota transitória (sem chave). Calcula a chave para o DANFE
+        // exibir o número e o código de barras (não é transmitida).
+        var chave = Sistema.Infrastructure.Fiscal.NFeXmlBuilder.CalcularChaveAcesso(nota, empresa, config);
+        nota.RegistrarTransmissao(chave, "");
+
         var pdf = danfe.GerarDanfe(nota, empresa);
         return File(pdf, "application/pdf", $"previa-devolucao-{entrada.EmitenteNome}.pdf");
     }

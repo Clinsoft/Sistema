@@ -30,6 +30,7 @@ public class DanfeService : IDanfeService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(10);
+                page.MarginRight(20);
                 page.DefaultTextStyle(ts => ts.FontSize(7.5f).FontFamily("Arial"));
 
                 page.Content().Column(col =>

@@ -5,6 +5,7 @@ using Sistema.Domain.Cadastros.Interfaces;
 using Sistema.Domain.Marketing.Entities;
 using Sistema.Domain.Marketing.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
+using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Vendas.Events;
 
 namespace Sistema.Application.Vendas.EventHandlers;
@@ -34,6 +35,10 @@ public class VendaFinalizadaEventHandler(
     private async Task GarantirMembroClube(VendaFinalizadaEvent evt, CancellationToken ct)
     {
         if (evt.ClienteId is null) return;
+
+        // Compra no crediário não faz parte do clube: não inscreve, não acumula e
+        // não gera cashback (se qualquer parcela do pagamento for crediário).
+        if (evt.Pagamentos.Any(p => p.Forma == FormaPagamento.Crediario)) return;
 
         var membro = await clubeRepo.ObterMembroAsync(evt.EmpresaId, evt.ClienteId.Value, ct);
         if (membro is null)

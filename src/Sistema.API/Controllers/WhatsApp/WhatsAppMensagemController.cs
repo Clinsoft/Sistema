@@ -481,8 +481,12 @@ public class WhatsAppMensagemController(
             .OrderByDescending(c => c.ultimaData)
             .ToListAsync(ct);
 
+        // O atendente não vê as conversas dos números internos (gestor/resumo).
+        var internos = User.IsInRole("Atendente") ? await NumerosInternosAsync(empresaId, ct) : new HashSet<string>();
+
         var limite = DateTime.UtcNow.AddHours(-24);
         var conversas = brutas
+            .Where(c => internos.Count == 0 || !internos.Contains(SoDigitos(c.telefone)))
             .Where(c => string.IsNullOrWhiteSpace(busca)
                 || (c.nome ?? "").Contains(busca, StringComparison.OrdinalIgnoreCase)
                 || c.telefone.Contains(busca))
@@ -497,10 +501,28 @@ public class WhatsAppMensagemController(
     }
 
     /// <summary>Mensagens de uma conversa (marca as recebidas como lidas).</summary>
+    // Números internos (gestor/resumo) que o atendente não deve ver na caixa de entrada.
+    private async Task<HashSet<string>> NumerosInternosAsync(Guid empresaId, CancellationToken ct)
+    {
+        var tels = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.TelefoneResumoDiario != null)
+            .Select(c => c.TelefoneResumoDiario!).ToListAsync(ct);
+        var set = new HashSet<string>();
+        foreach (var t in tels)
+            foreach (var n in t.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                set.Add(SoDigitos(n));
+        return set;
+    }
+    private static string SoDigitos(string? v) => new((v ?? "").Where(char.IsDigit).ToArray());
+
     [HttpGet("/api/whatsapp/conversas/{telefone}/mensagens")]
     [Authorize]
     public async Task<IActionResult> MensagensConversa(string telefone, [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        // Atendente não abre conversas de números internos (gestor/resumo).
+        if (User.IsInRole("Atendente") && (await NumerosInternosAsync(empresaId, ct)).Contains(SoDigitos(telefone)))
+            return Ok(Array.Empty<object>());
+
         var msgs = await db.MensagensWhatsApp
             .Where(m => m.EmpresaId == empresaId && m.Telefone == telefone
                      && (localEstoqueId == null || m.LocalEstoqueId == localEstoqueId))
@@ -704,10 +726,13 @@ public class WhatsAppMensagemController(
     [Authorize]
     public async Task<IActionResult> NaoLidas([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        var internos = User.IsInRole("Atendente")
+            ? (await NumerosInternosAsync(empresaId, ct)).ToList() : new List<string>();
         var total = await db.MensagensWhatsApp.CountAsync(
             m => m.EmpresaId == empresaId
               && (localEstoqueId == null || m.LocalEstoqueId == localEstoqueId)
-              && m.Direcao == DirecaoMensagemWhatsApp.Recebida && !m.Lida, ct);
+              && m.Direcao == DirecaoMensagemWhatsApp.Recebida && !m.Lida
+              && (internos.Count == 0 || !internos.Contains(m.Telefone)), ct);
         return Ok(new { total });
     }
 

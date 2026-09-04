@@ -1017,7 +1017,11 @@
             placeholder="Ex.: produto veio com validade errada" variant="outlined" density="compact"
             class="mt-3" hide-details />
         </v-card-text>
-        <v-card-actions class="pa-4 pt-0">
+        <v-card-actions class="pa-4 pt-0 flex-wrap">
+          <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-file-search-outline"
+            :loading="previendo" :disabled="!itensDevolucao.length" @click="previaDevolucao">
+            Pré-visualizar XML
+          </v-btn>
           <v-spacer />
           <v-btn variant="text" @click="dlgDevolucao = false" :disabled="devolvendo">Cancelar</v-btn>
           <v-btn color="warning" rounded="lg" :loading="devolvendo"
@@ -1462,6 +1466,7 @@ const devolvendo = ref(false)
 const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
 const motivoDevolucao = ref('')
+const previendo = ref(false)
 const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
 
@@ -2257,6 +2262,25 @@ async function clonarParaSaida() {
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao clonar para saída.')
   }
+}
+
+async function previaDevolucao() {
+  previendo.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/previa-devolucao`, {
+      itens: itensDevolucao.value.length ? itensDevolucao.value : null,
+      motivo: motivoDevolucao.value || null,
+    })
+    // Baixa o XML da prévia (não transmitido) para conferência com o contador.
+    const blob = new Blob([r.data.xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `previa-devolucao-${r.data.chave || 'nfe'}.xml`
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000)
+    notif.ok(`Prévia gerada (CFOP ${r.data.cfop}, finNFe 4). NÃO foi transmitida — confira o XML baixado.`)
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao gerar a prévia.')
+  } finally { previendo.value = false }
 }
 
 async function confirmarDevolucao() {

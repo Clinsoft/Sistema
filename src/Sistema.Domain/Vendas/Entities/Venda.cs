@@ -79,6 +79,9 @@ public class Venda : Entity
 
     public void InformarCpfCnpjConsumidor(string cpfOuCnpj) => CpfCnpjConsumidor = cpfOuCnpj.ToUpperInvariant();
 
+    /// <summary>Vincula um cliente cadastrado à venda (ex.: match automático pelo CPF do consumidor).</summary>
+    public void VincularCliente(Guid clienteId) => ClienteId = clienteId;
+
     public void VincularNotaFiscal(Guid notaFiscalId) => NotaFiscalId = notaFiscalId;
 
     public void Finalizar()

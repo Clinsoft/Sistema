@@ -11,6 +11,17 @@ public class ClienteRepository(SistemaDbContext db) : BaseRepository<Cliente>(db
         => await _set.AsNoTracking()
             .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.CpfCnpj == cpfCnpj, ct);
 
+    public async Task<Cliente?> ObterPorCpfCnpjDigitosAsync(Guid empresaId, string digitos, CancellationToken ct = default)
+    {
+        digitos = SomenteDigitos(digitos);
+        if (digitos.Length < 11) return null; // CPF=11, CNPJ=14; abaixo disso não é documento válido
+        return await _set.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo && c.CpfCnpj != null &&
+                c.CpfCnpj.Replace("(", "").Replace(")", "").Replace("-", "").Replace(" ", "").Replace(".", "").Replace("/", "") == digitos)
+            .OrderBy(c => c.Nome)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<Cliente>> PesquisarAsync(Guid empresaId, string termo, int pagina, int tamanhoPagina, CancellationToken ct = default)
     {
         // Busca por dígitos (telefone/CPF) ignorando máscara: normaliza a coluna

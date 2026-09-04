@@ -1,4 +1,5 @@
 using MediatR;
+using Sistema.Domain.Cadastros.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Vendas.Interfaces;
@@ -25,7 +26,7 @@ public record FinalizarVendaResult(
     string? QrCode = null,
     string? ChaveAcesso = null);
 
-public class FinalizarVendaHandler(IVendaRepository repo, IUnitOfWork uow)
+public class FinalizarVendaHandler(IVendaRepository repo, IClienteRepository clienteRepo, IUnitOfWork uow)
     : IRequestHandler<FinalizarVendaCommand, FinalizarVendaResult>
 {
     public async Task<FinalizarVendaResult> Handle(FinalizarVendaCommand cmd, CancellationToken ct)
@@ -35,6 +36,16 @@ public class FinalizarVendaHandler(IVendaRepository repo, IUnitOfWork uow)
 
         if (!string.IsNullOrWhiteSpace(cmd.CpfCnpjConsumidor))
             venda.InformarCpfCnpjConsumidor(cmd.CpfCnpjConsumidor);
+
+        // Vínculo automático: se a venda não tem cliente e o CPF/CNPJ do consumidor
+        // bate com um cadastro (só dígitos, ignorando máscara), associa o cliente.
+        if (venda.ClienteId is null && !string.IsNullOrWhiteSpace(venda.CpfCnpjConsumidor))
+        {
+            var cliente = await clienteRepo.ObterPorCpfCnpjDigitosAsync(
+                venda.EmpresaId, venda.CpfCnpjConsumidor, ct);
+            if (cliente is not null)
+                venda.VincularCliente(cliente.Id);
+        }
 
         foreach (var p in cmd.Pagamentos)
         {

@@ -1020,9 +1020,9 @@
             rows="2" auto-grow hide-details />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0 flex-wrap">
-          <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-file-search-outline"
+          <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-download-outline"
             :loading="previendo" :disabled="!itensDevolucao.length" @click="previaDevolucao">
-            Pré-visualizar XML
+            Baixar XML (prévia)
           </v-btn>
           <v-spacer />
           <v-btn variant="text" @click="dlgDevolucao = false" :disabled="devolvendo">Cancelar</v-btn>

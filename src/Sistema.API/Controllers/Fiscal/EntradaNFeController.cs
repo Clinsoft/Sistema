@@ -1229,36 +1229,81 @@ public class EntradaNFeController(SistemaDbContext db) : ControllerBase
         if (entrada.Status != StatusEntradaNFe.Processada)
             return BadRequest(new { mensagem = "Apenas entradas processadas podem ser devolvidas." });
 
-        // Gerar NF-e de devolução (modelo 55, CFOP 5201/6201)
-        var cfop = entrada.EmitenteCnpj.StartsWith(entrada.EmpresaId.ToString()[..2]) ? "5201" : "6201";
+        var config = await db.ConfiguracoesFiscais.FirstOrDefaultAsync(c => c.EmpresaId == entrada.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada.");
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == entrada.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
 
-        var nfeDev = NotaFiscal.Criar(
-            entrada.EmpresaId, ModeloNF.NFe,
-            serie: 1, numero: 0, // número será sequenciado pelo sistema
-            natureza: NaturezaOperacao.Devolucao);
+        // Destinatário = fornecedor (endereço/IE vêm do cadastro do fornecedor).
+        var forn = entrada.FornecedorId is Guid fid
+            ? await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
 
-        nfeDev.DefinirDestinatario(entrada.EmitenteCnpj, entrada.EmitenteNome);
+        // CFOP de devolução: mesma UF vs outra UF (padrões 5202/6202).
+        var mesmaUF = forn?.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
+        var cfop = mesmaUF ? (config.CfopDevolucaoDentroUF ?? "5202") : (config.CfopDevolucaoForaUF ?? "6202");
 
-        foreach (var item in entrada.Itens.Where(i => req.Itens == null || req.Itens.Contains(i.Id)))
+        // NF-e de devolução (mod 55, finNFe=4, refNFe da entrada), número sequenciado.
+        var numero = config.AvancarNumeracaoNFe();
+        var nfeDev = NotaFiscal.Criar(entrada.EmpresaId, ModeloNF.NFe, config.SerieNFe, numero,
+            NaturezaOperacao.Devolucao);
+        nfeDev.DefinirDevolucao(entrada.ChaveAcesso, entrada.Id);
+        nfeDev.DefinirDestinatarioContribuinte(
+            (forn?.Cnpj ?? entrada.EmitenteCnpj), (forn?.RazaoSocial ?? entrada.EmitenteNome),
+            forn?.InscricaoEstadual, forn?.Logradouro, forn?.Numero, forn?.Bairro,
+            null, forn?.Cidade, forn?.Uf, null, forn?.Email);
+
+        var simples = config.Regime == RegimeTributario.SimplesNacional;
+        var itensSel = entrada.Itens.Where(i => (req.Itens == null || req.Itens.Contains(i.Id)) && i.ProdutoId.HasValue).ToList();
+        var prodIds = itensSel.Select(i => i.ProdutoId!.Value).ToList();
+        var produtos = await db.Produtos.Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
+        var unidades = await db.UnidadesMedida.AsNoTracking().ToDictionaryAsync(u => u.Id, ct);
+
+        foreach (var item in itensSel)
         {
-            if (!item.ProdutoId.HasValue) continue;
+            var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
+            var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
+            var qtd = item.QuantidadeEstoque;
+
             var itemNF = ItemNotaFiscal.Criar(
                 nfeDev.Id, item.NumeroItem,
-                codigo: item.CodigoFornecedor ?? item.NumeroItem.ToString(),
-                descricao: item.DescricaoXml,
+                codigo: produto?.Codigo ?? item.CodigoFornecedor ?? item.NumeroItem.ToString(),
+                descricao: produto?.Descricao ?? item.DescricaoXml,
                 cfop: cfop,
-                unidade: item.UnidadeEstoque ?? item.UnidadeXml,
-                quantidade: item.QuantidadeEstoque,
+                unidade: um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml,
+                quantidade: qtd,
                 valorUnitario: item.CustoUnitarioFinal,
-                ncm: item.NcmXml,
-                produtoId: item.ProdutoId);
+                ncm: produto?.Ncm ?? item.NcmXml,
+                produtoId: item.ProdutoId,
+                pesavel: um?.Pesavel ?? false);
+
+            if (simples)
+                itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
+            else
+                itemNF.CalcularImpostos(produto?.CstIcms ?? "000", null, produto?.AliquotaIcms ?? 0,
+                    produto?.CstPisCofins ?? "01", produto?.AliquotaPis ?? 0.65m, produto?.AliquotaCofins ?? 3m);
+
             nfeDev.AdicionarItem(itemNF);
+
+            // Baixa de estoque (saída) da quantidade devolvida.
+            produto?.AjustarEstoque(-qtd);
+            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+                entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
+                TipoMovimentacao.Saida, qtd, item.CustoUnitarioFinal,
+                documentoOrigem: "DEVOL-FORN",
+                observacao: $"Devolução ao fornecedor — {req.Motivo}"));
         }
+
+        if (nfeDev.Itens.Count == 0)
+            return BadRequest(new { mensagem = "Nenhum item válido (com produto vinculado) para devolver." });
 
         db.NotasFiscais.Add(nfeDev);
         await db.SaveChangesAsync(ct);
 
-        return Ok(new { nfeDevolucaoId = nfeDev.Id, mensagem = "NF-e de devolução criada. Acesse Documentos Fiscais para transmitir." });
+        return Ok(new
+        {
+            nfeDevolucaoId = nfeDev.Id, nfeDev.Numero, cfop,
+            mensagem = "NF-e de devolução criada (em digitação). Acesse Documentos Fiscais para conferir e transmitir (teste em homologação)."
+        });
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -1839,4 +1884,4 @@ public record ProcessarEntradaRequest(
     string? FormaPagamento = null);  // forma de pagamento (informativo)
 public record EstornarRequest(string Motivo);
 public record CorrigirProdutoItemRequest(Guid ProdutoId, decimal? FatorConversao = null);
-public record DevolucaoEntradaRequest(List<Guid>? Itens);
+public record DevolucaoEntradaRequest(List<Guid>? Itens, string? Motivo = null);

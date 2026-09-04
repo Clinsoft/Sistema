@@ -54,6 +54,21 @@ public class NotaFiscal : Entity
     // Venda de origem
     public Guid? VendaId { get; private set; }
 
+    // Devolução ao fornecedor (NF-e de entrada→saída): finalidade 4 + referência à NF de compra
+    public int Finalidade { get; private set; } = 1;          // 1=Normal, 4=Devolução
+    public string? ChaveReferenciada { get; private set; }     // refNFe (chave da nota de entrada)
+    public Guid? EntradaNFeId { get; private set; }
+
+    // Destinatário contribuinte (endereço/IE) — usado na devolução ao fornecedor (mod 55)
+    public string? IeDestinatario { get; private set; }
+    public string? LogradouroDest { get; private set; }
+    public string? NumeroDest { get; private set; }
+    public string? BairroDest { get; private set; }
+    public string? CodMunicipioDest { get; private set; }
+    public string? MunicipioDest { get; private set; }
+    public string? UfDest { get; private set; }
+    public string? CepDest { get; private set; }
+
     private readonly List<ItemNotaFiscal> _itens = [];
     public IReadOnlyList<ItemNotaFiscal> Itens => _itens.AsReadOnly();
 
@@ -72,6 +87,27 @@ public class NotaFiscal : Entity
     {
         _itens.Add(item);
         RecalcularTotais();
+    }
+
+    /// <summary>Marca a nota como devolução (finNFe=4) referenciando a NF-e de entrada do fornecedor.</summary>
+    public void DefinirDevolucao(string chaveEntrada, Guid entradaNFeId)
+    {
+        Finalidade = 4;
+        ChaveReferenciada = new string((chaveEntrada ?? "").Where(char.IsDigit).ToArray());
+        EntradaNFeId = entradaNFeId;
+    }
+
+    /// <summary>Destinatário contribuinte (fornecedor) com endereço e IE — para NF-e mod 55.</summary>
+    public void DefinirDestinatarioContribuinte(string cnpj, string nome, string? ie,
+        string? logradouro, string? numero, string? bairro, string? codMunicipio,
+        string? municipio, string? uf, string? cep, string? email = null)
+    {
+        CpfCnpjDestinatario = cnpj;
+        NomeDestinatario = nome;
+        EmailDestinatario = email;
+        IeDestinatario = ie;
+        LogradouroDest = logradouro; NumeroDest = numero; BairroDest = bairro;
+        CodMunicipioDest = codMunicipio; MunicipioDest = municipio; UfDest = uf; CepDest = cep;
     }
 
     public void DefinirDestinatario(string cpfCnpj, string nome, string? email = null)

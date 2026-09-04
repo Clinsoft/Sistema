@@ -49,6 +49,11 @@ public class ConfiguracaoFiscal : Entity
     public string? CfopVendaEstadual { get; private set; }
     public string? CfopVendaInterestadual { get; private set; }
     public string? CfopVendaConsumidor { get; private set; }
+    // Devolução de compra ao fornecedor (saída). Padrões: 5202 (mesma UF) / 6202 (outra UF).
+    public string? CfopDevolucaoDentroUF { get; private set; }
+    public string? CfopDevolucaoForaUF { get; private set; }
+    public void DefinirCfopDevolucao(string dentroUF, string foraUF)
+    { CfopDevolucaoDentroUF = dentroUF; CfopDevolucaoForaUF = foraUF; }
 
     // ── NFS-e (serviços municipais) ──────────────────────────────────────
     public bool HabilitarNFSe { get; private set; }

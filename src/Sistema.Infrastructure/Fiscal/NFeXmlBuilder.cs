@@ -168,12 +168,19 @@ public static class NFeXmlBuilder
         w.WriteElementString("tpEmis",   "1"); // 1=emissão normal
         w.WriteElementString("cDV",      chave44[43].ToString()); // dígito verificador
         w.WriteElementString("tpAmb",    tpAmb);
-        w.WriteElementString("finNFe",   "1"); // 1=normal
+        w.WriteElementString("finNFe",   nota.Finalidade.ToString()); // 1=normal, 4=devolução
         w.WriteElementString("indFinal", nota.Modelo == ModeloNF.NFCe ? "1" : "0");
         w.WriteElementString("indPres",  nota.Modelo == ModeloNF.NFCe ? "1" : "9");
         w.WriteElementString("indIntermed", "0");
         w.WriteElementString("procEmi",  "0"); // 0=app contribuinte
         w.WriteElementString("verProc",  "EcoGranel-1.0");
+        // Devolução: referência à NF-e de entrada do fornecedor (obrigatório em finNFe=4).
+        if (!string.IsNullOrWhiteSpace(nota.ChaveReferenciada) && nota.ChaveReferenciada.Length == 44)
+        {
+            w.WriteStartElement("NFref");
+            w.WriteElementString("refNFe", nota.ChaveReferenciada);
+            w.WriteEndElement();
+        }
         w.WriteEndElement(); // ide
     }
 
@@ -230,7 +237,28 @@ public static class NFeXmlBuilder
         if (!string.IsNullOrWhiteSpace(nota.NomeDestinatario))
             w.WriteElementString("xNome", LimparTexto(nota.NomeDestinatario, 60));
 
-        w.WriteElementString("indIEDest", "9"); // 9=não contribuinte
+        // Destinatário contribuinte (ex.: devolução ao fornecedor): endereço + IE.
+        var temEndereco = !string.IsNullOrWhiteSpace(nota.LogradouroDest) && !string.IsNullOrWhiteSpace(nota.UfDest);
+        if (temEndereco)
+        {
+            w.WriteStartElement("enderDest");
+            w.WriteElementString("xLgr",    LimparTexto(nota.LogradouroDest!, 60));
+            w.WriteElementString("nro",     LimparTexto(string.IsNullOrWhiteSpace(nota.NumeroDest) ? "S/N" : nota.NumeroDest!, 60));
+            w.WriteElementString("xBairro", LimparTexto(string.IsNullOrWhiteSpace(nota.BairroDest) ? "CENTRO" : nota.BairroDest!, 60));
+            w.WriteElementString("cMun",    ApenasDigitos(nota.CodMunicipioDest ?? "9999999"));
+            w.WriteElementString("xMun",    LimparTexto(string.IsNullOrWhiteSpace(nota.MunicipioDest) ? "MUNICIPIO" : nota.MunicipioDest!, 60));
+            w.WriteElementString("UF",      nota.UfDest!.ToUpper());
+            w.WriteElementString("CEP",     ApenasDigitos(nota.CepDest ?? "").PadLeft(8, '0')[..8]);
+            w.WriteElementString("cPais",   "1058");
+            w.WriteElementString("xPais",   "BRASIL");
+            w.WriteEndElement(); // enderDest
+        }
+
+        var ieDest = ApenasDigitos(nota.IeDestinatario ?? "");
+        var indIEDest = temEndereco ? (ieDest.Length > 0 ? "1" : "9") : "9"; // 1=contribuinte ICMS, 9=não contribuinte
+        w.WriteElementString("indIEDest", indIEDest);
+        if (indIEDest == "1" && ieDest.Length > 0)
+            w.WriteElementString("IE", ieDest);
         if (!string.IsNullOrWhiteSpace(nota.EmailDestinatario))
             w.WriteElementString("email", nota.EmailDestinatario[..Math.Min(60, nota.EmailDestinatario.Length)]);
         w.WriteEndElement(); // dest

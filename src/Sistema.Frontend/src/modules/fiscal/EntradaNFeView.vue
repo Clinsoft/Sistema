@@ -1013,6 +1013,9 @@
             v-model="itensDevolucao" :value="item.id"
             :label="`${item.produtoDescricao} — ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`"
             density="compact" hide-details />
+          <v-text-field v-model="motivoDevolucao" label="Motivo da devolução"
+            placeholder="Ex.: produto veio com validade errada" variant="outlined" density="compact"
+            class="mt-3" hide-details />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -1458,6 +1461,7 @@ const estornando = ref(false)
 const devolvendo = ref(false)
 const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
+const motivoDevolucao = ref('')
 const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
 
@@ -2260,6 +2264,7 @@ async function confirmarDevolucao() {
   try {
     const r = await api.post(`/fiscal/entradas/${entradaId}/devolver`, {
       itens: itensDevolucao.value.length ? itensDevolucao.value : null,
+      motivo: motivoDevolucao.value || null,
     })
     notif.ok(r.data.mensagem)
     dlgDevolucao.value = false

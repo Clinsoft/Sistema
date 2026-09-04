@@ -123,14 +123,13 @@ public class DanfeService : IDanfeService
                     // ═══ CÁLCULO DO IMPOSTO ═══
                     col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
                         .Text("CÁLCULO DO IMPOSTO").Bold().FontSize(6.5f);
-                    col.Item().PaddingRight(20).Table(imp =>
+                    col.Item().Row(row =>
                     {
-                        imp.ColumnsDefinition(c => { for (int i = 0; i < 5; i++) c.RelativeColumn(); });
-                        Campo(imp.Cell(), "BASE ICMS", M(nota.TotalIcms), true);
-                        Campo(imp.Cell(), "VALOR ICMS", M(nota.TotalIcms), true);
-                        Campo(imp.Cell(), "TOTAL PRODUTOS", M(nota.TotalProdutos), true);
-                        Campo(imp.Cell(), "DESCONTO", M(nota.TotalDesconto), true);
-                        Campo(imp.Cell(), "TOTAL DA NOTA", M(nota.TotalNota), true, true);
+                        Campo(row.ConstantItem(105), "BASE ICMS", M(nota.TotalIcms), true);
+                        Campo(row.ConstantItem(105), "VALOR ICMS", M(nota.TotalIcms), true);
+                        Campo(row.ConstantItem(105), "TOTAL PRODUTOS", M(nota.TotalProdutos), true);
+                        Campo(row.ConstantItem(105), "DESCONTO", M(nota.TotalDesconto), true);
+                        Campo(row.RelativeItem(), "TOTAL DA NOTA", M(nota.TotalNota), true, true);
                     });
 
                     // ═══ PRODUTOS / SERVIÇOS ═══

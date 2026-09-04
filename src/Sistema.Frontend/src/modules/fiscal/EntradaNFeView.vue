@@ -1020,9 +1020,13 @@
             rows="2" auto-grow hide-details />
         </v-card-text>
         <v-card-actions class="pa-4 pt-0 flex-wrap">
-          <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-download-outline"
+          <v-btn variant="tonal" color="red-darken-1" rounded="lg" prepend-icon="mdi-file-pdf-box"
+            :loading="previendoPdf" :disabled="!itensDevolucao.length" @click="previaDevolucaoPdf">
+            Baixar PDF (prévia)
+          </v-btn>
+          <v-btn variant="tonal" color="primary" rounded="lg" prepend-icon="mdi-code-tags"
             :loading="previendo" :disabled="!itensDevolucao.length" @click="previaDevolucao">
-            Baixar XML (prévia)
+            XML
           </v-btn>
           <v-spacer />
           <v-btn variant="text" @click="dlgDevolucao = false" :disabled="devolvendo">Cancelar</v-btn>
@@ -1469,6 +1473,7 @@ const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
 const motivoDevolucao = ref('')
 const previendo = ref(false)
+const previendoPdf = ref(false)
 const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
 
@@ -2283,6 +2288,23 @@ async function previaDevolucao() {
   } catch (e: any) {
     notif.erro(e.response?.data?.mensagem ?? 'Erro ao gerar a prévia.')
   } finally { previendo.value = false }
+}
+
+async function previaDevolucaoPdf() {
+  previendoPdf.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/previa-devolucao-pdf`, {
+      itens: itensDevolucao.value.length ? itensDevolucao.value : null,
+      motivo: motivoDevolucao.value || null,
+    }, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'previa-devolucao.pdf'
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000)
+    notif.ok('PDF da prévia baixado — pode enviar ao fornecedor antes de transmitir.')
+  } catch (e: any) {
+    notif.erro(e.response?.data?.mensagem ?? 'Erro ao gerar o PDF.')
+  } finally { previendoPdf.value = false }
 }
 
 async function confirmarDevolucao() {

@@ -126,11 +126,9 @@ public class DanfeService : IDanfeService
                         .Text("CÁLCULO DO IMPOSTO").Bold().FontSize(6.5f);
                     col.Item().Table(imp =>
                     {
-                        imp.ColumnsDefinition(c => { for (int i = 0; i < 7; i++) c.RelativeColumn(); });
+                        imp.ColumnsDefinition(c => { for (int i = 0; i < 5; i++) c.RelativeColumn(); });
                         Campo(imp.Cell(), "BASE ICMS", M(nota.TotalIcms), true);
                         Campo(imp.Cell(), "VALOR ICMS", M(nota.TotalIcms), true);
-                        Campo(imp.Cell(), "PIS", M(nota.TotalPis), true);
-                        Campo(imp.Cell(), "COFINS", M(nota.TotalCofins), true);
                         Campo(imp.Cell(), "TOTAL PRODUTOS", M(nota.TotalProdutos), true);
                         Campo(imp.Cell(), "DESCONTO", M(nota.TotalDesconto), true);
                         Campo(imp.Cell(), "TOTAL DA NOTA", M(nota.TotalNota), true, true);
@@ -146,12 +144,12 @@ public class DanfeService : IDanfeService
                             cols.ConstantColumn(16);   // #
                             cols.ConstantColumn(38);   // Código
                             cols.RelativeColumn(4);    // Descrição
-                            cols.ConstantColumn(42);   // NCM
+                            cols.ConstantColumn(40);   // NCM
                             cols.ConstantColumn(26);   // CFOP
-                            cols.ConstantColumn(20);   // UN
-                            cols.ConstantColumn(36);   // Qtd
-                            cols.ConstantColumn(46);   // Vl Unit
-                            cols.ConstantColumn(50);   // Vl Total
+                            cols.ConstantColumn(18);   // UN
+                            cols.ConstantColumn(40);   // Qtd
+                            cols.ConstantColumn(48);   // Vl Unit
+                            cols.ConstantColumn(54);   // Vl Total
                         });
 
                         static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(3);

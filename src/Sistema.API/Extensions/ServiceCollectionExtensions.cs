@@ -83,6 +83,7 @@ public static class ServiceCollectionExtensions
         // Repositórios
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IClienteRepository, ClienteRepository>();
+        services.AddScoped<Sistema.Domain.Marketing.Interfaces.IClubeRepository, Sistema.Infrastructure.Repositories.Marketing.ClubeRepository>();
         services.AddScoped<IFornecedorRepository, FornecedorRepository>();
         services.AddScoped<IProdutoRepository, ProdutoRepository>();
         services.AddScoped<IVendaRepository, VendaRepository>();

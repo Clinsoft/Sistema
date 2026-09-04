@@ -114,6 +114,15 @@ public class Cliente : Entity
         DataNascimento = dataNascimento; CpfCnpj = cpfCnpj;
     }
 
+    /// <summary>Reaplica a regra de nome ao nome atual (usado no backfill). Retorna true se mudou.</summary>
+    public bool NormalizarNomeAtual()
+    {
+        var novo = NormalizarNome(Nome);
+        if (novo == Nome) return false;
+        Nome = novo;
+        return true;
+    }
+
     public void AdicionarPontos(int pontos) => PontosFidelidade += pontos;
     public void RetirarPontos(int pontos) => PontosFidelidade = Math.Max(0, PontosFidelidade - pontos);
     public void Desativar() => Ativo = false;

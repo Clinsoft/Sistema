@@ -144,12 +144,12 @@ public class DanfeService : IDanfeService
                             cols.ConstantColumn(16);   // #
                             cols.ConstantColumn(38);   // Código
                             cols.RelativeColumn(4);    // Descrição
-                            cols.ConstantColumn(40);   // NCM
+                            cols.ConstantColumn(46);   // NCM
                             cols.ConstantColumn(26);   // CFOP
                             cols.ConstantColumn(18);   // UN
-                            cols.ConstantColumn(40);   // Qtd
+                            cols.ConstantColumn(38);   // Qtd
                             cols.ConstantColumn(48);   // Vl Unit
-                            cols.ConstantColumn(54);   // Vl Total
+                            cols.ConstantColumn(52);   // Vl Total
                         });
 
                         static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(3);
@@ -162,8 +162,8 @@ public class DanfeService : IDanfeService
                             h.Cell().Element(HCell).Text("CFOP").Bold();
                             h.Cell().Element(HCell).Text("UN").Bold();
                             h.Cell().Element(HCell).AlignRight().Text("QTD").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("VL UNIT").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("VL TOTAL").Bold();
+                            h.Cell().Element(HCell).AlignRight().Text("V.UNIT").Bold();
+                            h.Cell().Element(HCell).AlignRight().Text("V.TOTAL").Bold();
                         });
 
                         static IContainer DCell(IContainer c) => c.BorderVertical(0.4f).BorderBottom(0.3f).PaddingVertical(2).PaddingHorizontal(3);
@@ -202,7 +202,8 @@ public class DanfeService : IDanfeService
     {
         container.Border(0.6f).PaddingHorizontal(4).PaddingVertical(2).Column(c =>
         {
-            c.Item().Text(label).FontSize(5.5f).FontColor("#555555");
+            var lbl = alignRight ? c.Item().AlignRight() : c.Item();
+            lbl.Text(label).FontSize(5.5f).FontColor("#555555");
             var t = alignRight ? c.Item().AlignRight() : c.Item();
             if (destaque) t.Text(valor).FontSize(8).Bold();
             else t.Text(valor).FontSize(7.5f);

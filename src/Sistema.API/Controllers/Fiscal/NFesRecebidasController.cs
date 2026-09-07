@@ -200,11 +200,23 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
 
         var vencimento = req.DataVencimento ?? DateTime.Today.AddDays(req.DiasVencimento ?? 7);
 
+        // Loja do frete = loja que recebeu a mercadoria transportada. Resolve pela
+        // primeira NF-e referenciada no CT-e que tenha uma entrada com loja.
+        Guid? localEstoqueId = null;
+        if (!string.IsNullOrWhiteSpace(cte.ChavesReferenciadas))
+        {
+            var nfeChaves = cte.ChavesReferenciadas
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            localEstoqueId = await db.EntradasNFe
+                .Where(e => nfeChaves.Contains(e.ChaveAcesso))
+                .Select(e => (Guid?)e.LocalEstoqueId).FirstOrDefaultAsync(ct);
+        }
+
         var lanc = LancamentoFinanceiro.Criar(
             req.EmpresaId, Sistema.Domain.Financeiro.Entities.TipoLancamento.ContaPagar,
             $"Frete CT-e {cte.Numero} — {cte.EmitenteNome}", cte.ValorTotal, vencimento,
             fornecedorId: fornecedorId, categoriaId: req.CategoriaId,
-            documentoOrigem: docOrigem);
+            documentoOrigem: docOrigem, localEstoqueId: localEstoqueId);
         lanc.DefinirClassificacao("Frete", cte.EmitenteNome, $"CT-e {cte.ChaveAcesso}");
 
         db.LancamentosFinanceiros.Add(lanc);

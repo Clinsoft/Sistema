@@ -26,7 +26,7 @@ public class ContasPagarController(
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId,
         [FromQuery] DateTime? inicio, [FromQuery] DateTime? fim,
-        [FromQuery] string? status, CancellationToken ct)
+        [FromQuery] string? status, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         // Sem datas → retorna TODAS (intervalo bem amplo). Com datas → filtra pelo período.
         var lancamentos = await repo.ListarPorPeriodoAsync(
@@ -36,6 +36,9 @@ public class ContasPagarController(
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             lancamentos = lancamentos.Where(l => l.Status == st);
+
+        if (localEstoqueId.HasValue)
+            lancamentos = lancamentos.Where(l => l.LocalEstoqueId == localEstoqueId.Value);
 
         var lista = lancamentos.ToList();
         var fornecedorIds = lista.Where(l => l.FornecedorId.HasValue)
@@ -59,7 +62,7 @@ public class ContasPagarController(
             l.Id, l.Descricao, l.ValorOriginal, l.ValorPago,
             saldo = l.Saldo, l.DataVencimento, l.DataPagamento,
             status = l.Status.ToString(), l.Parcela, l.TotalParcelas, l.Observacao,
-            categoria = l.Categoria, l.FornecedorId, l.ColaboradorId,
+            categoria = l.Categoria, l.FornecedorId, l.ColaboradorId, l.LocalEstoqueId,
             fornecedorNome = l.FornecedorId.HasValue && fornecedores.TryGetValue(l.FornecedorId.Value, out var fn) ? fn
                            : l.ColaboradorId.HasValue && colaboradores.TryGetValue(l.ColaboradorId.Value, out var cn) ? cn
                            : l.ClienteNome,   // beneficiário informado manualmente (ex.: transportadora do CT-e)
@@ -128,7 +131,7 @@ public class ContasPagarController(
                 contaBancariaId: req.ContaBancariaId,
                 documentoOrigem: req.DocumentoOrigem,
                 parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo,
-                colaboradorId: req.ColaboradorId);
+                colaboradorId: req.ColaboradorId, localEstoqueId: req.LocalEstoqueId);
 
             l.DefinirClassificacao(req.Categoria, null, req.Observacao);
 
@@ -297,6 +300,7 @@ public class ContasPagarController(
         lancamento.Editar(req.Descricao, req.ValorOriginal, req.DataVencimento, req.Observacao,
             req.FornecedorId, req.ColaboradorId);
         lancamento.DefinirClassificacao(req.Categoria, lancamento.ClienteNome, req.Observacao);
+        lancamento.DefinirLoja(req.LocalEstoqueId);
         repo.Atualizar(lancamento);
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -629,7 +633,7 @@ public class ContasPagarController(
     }
 }
 
-public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null, Guid? ColaboradorId = null);
+public record EditarLancamentoRequest(string Descricao, decimal ValorOriginal, DateTime DataVencimento, string? Observacao = null, Guid? FornecedorId = null, string? Categoria = null, Guid? ColaboradorId = null, Guid? LocalEstoqueId = null);
 public record RenegociarPagarRequest(decimal NovoValor, DateTime NovoVencimento, string? Motivo = null);
 public record ConfirmarComprovantesRequest(Guid EmpresaId, List<ConfirmarComprovanteItem> Itens);
 public record ConfirmarComprovanteItem(Guid LancamentoId, decimal ValorPago, DateTime? DataPagamento,
@@ -643,4 +647,4 @@ public record CriarContaPagarRequest(
     Guid? FornecedorId = null, Guid? CategoriaId = null,
     Guid? ContaBancariaId = null, string? DocumentoOrigem = null,
     string? Categoria = null, string? Observacao = null,
-    Guid? ColaboradorId = null);
+    Guid? ColaboradorId = null, Guid? LocalEstoqueId = null);

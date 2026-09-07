@@ -6,6 +6,7 @@ namespace Sistema.Domain.Financeiro.Entities;
 public class LancamentoFinanceiro : Entity
 {
     public Guid EmpresaId { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }  // loja a que a despesa/receita pertence (rateio por loja)
     public Guid? ClienteId { get; private set; }
     public Guid? FornecedorId { get; private set; }
     public Guid? ColaboradorId { get; private set; }   // beneficiário colaborador (ex.: salário)
@@ -36,7 +37,7 @@ public class LancamentoFinanceiro : Entity
         Guid? clienteId = null, Guid? fornecedorId = null, Guid? categoriaId = null,
         Guid? contaBancariaId = null, string? documentoOrigem = null,
         int parcela = 1, int totalParcelas = 1, string? grupoParcelamento = null,
-        Guid? colaboradorId = null)
+        Guid? colaboradorId = null, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId, Tipo = tipo, Descricao = descricao,
@@ -44,10 +45,13 @@ public class LancamentoFinanceiro : Entity
             DataVencimento = dataVencimento, Status = StatusLancamento.EmAberto,
             ClienteId = clienteId, FornecedorId = fornecedorId, ColaboradorId = colaboradorId,
             CategoriaId = categoriaId, ContaBancariaId = contaBancariaId,
-            DocumentoOrigem = documentoOrigem,
+            DocumentoOrigem = documentoOrigem, LocalEstoqueId = localEstoqueId,
             Parcela = parcela, TotalParcelas = totalParcelas,
             GrupoParcelamento = grupoParcelamento ?? Guid.NewGuid().ToString()
         };
+
+    /// <summary>Define/atualiza a loja (LocalEstoque) a que o lançamento pertence.</summary>
+    public void DefinirLoja(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
 
     public void DefinirClassificacao(string? categoria, string? clienteNome, string? observacao)
     {

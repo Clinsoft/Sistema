@@ -17,7 +17,7 @@ public class ContasReceberController(
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId,
         [FromQuery] DateTime? inicio, [FromQuery] DateTime? fim,
-        [FromQuery] string? status, CancellationToken ct)
+        [FromQuery] string? status, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var lancamentos = await repo.ListarPorPeriodoAsync(
             empresaId, TipoLancamento.ContaReceber,
@@ -27,13 +27,16 @@ public class ContasReceberController(
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLancamento>(status, out var st))
             lancamentos = lancamentos.Where(l => l.Status == st);
 
+        if (localEstoqueId.HasValue)
+            lancamentos = lancamentos.Where(l => l.LocalEstoqueId == localEstoqueId.Value);
+
         return Ok(lancamentos.Select(l => new
         {
             l.Id, l.Descricao, l.ValorOriginal, l.ValorPago,
             saldo = l.Saldo, l.DataVencimento, l.DataPagamento,
             status = l.Status.ToString(), l.Parcela, l.TotalParcelas,
             l.ClienteId, l.ClienteNome, categoria = l.Categoria, l.Observacao,
-            l.DocumentoOrigem, vencido = l.Vencido
+            l.DocumentoOrigem, vencido = l.Vencido, l.LocalEstoqueId
         }));
     }
 
@@ -72,7 +75,8 @@ public class ContasReceberController(
                 clienteId: req.PessoaId, categoriaId: req.CategoriaId,
                 contaBancariaId: req.ContaBancariaId,
                 documentoOrigem: req.DocumentoOrigem,
-                parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo);
+                parcela: i, totalParcelas: req.TotalParcelas, grupoParcelamento: grupo,
+                localEstoqueId: req.LocalEstoqueId);
 
             l.DefinirClassificacao(req.Categoria, req.ClienteNome, req.Observacao);
 
@@ -137,7 +141,8 @@ public record CriarLancamentoRequest(
     DateTime PrimeiroVencimento, int TotalParcelas = 1,
     Guid? PessoaId = null, Guid? CategoriaId = null,
     Guid? ContaBancariaId = null, string? DocumentoOrigem = null,
-    string? Categoria = null, string? ClienteNome = null, string? Observacao = null);
+    string? Categoria = null, string? ClienteNome = null, string? Observacao = null,
+    Guid? LocalEstoqueId = null);
 
 public record BaixarLancamentoRequest(decimal ValorPago, DateTime DataPagamento, Guid? ContaBancariaId = null);
 public record RenegociarRequest(decimal NovoValor, DateTime NovoVencimento, string? Observacao = null);

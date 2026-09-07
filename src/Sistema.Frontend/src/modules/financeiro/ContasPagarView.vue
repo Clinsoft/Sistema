@@ -54,6 +54,12 @@
             :items="fornecedoresLista" variant="outlined" density="compact" hide-details clearable
             no-data-text="Sem contas no período" />
         </v-col>
+        <v-col v-if="lojas.length > 1" cols="12" sm="3">
+          <v-select v-model="filtros.loja" label="Loja"
+            :items="lojasFiltro" item-title="nome" item-value="id"
+            variant="outlined" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-store-outline" />
+        </v-col>
       </v-row>
       <div class="d-flex align-center flex-wrap mt-3 filtro-acoes">
         <v-switch v-model="filtros.tudo" color="primary" density="compact" hide-details inset
@@ -134,6 +140,12 @@
           <v-btn v-if="item.comprovanteUrl" @click="verComprovante(item.comprovanteUrl)"
             icon="mdi-file-eye-outline" size="x-small" color="red-darken-1" variant="text"
             title="Ver comprovante de pagamento" />
+        </template>
+        <template #item.localEstoqueId="{ item }">
+          <v-chip v-if="item.localEstoqueId" size="x-small" variant="tonal" color="blue-grey" label>
+            <v-icon start size="11">mdi-store-outline</v-icon>{{ nomeLoja(item.localEstoqueId) }}
+          </v-chip>
+          <span v-else class="text-medium-emphasis">—</span>
         </template>
         <template #item.valorOriginal="{ item }">R$ {{ fmt(item.valorOriginal) }}</template>
         <template #item.saldo="{ item }">R$ {{ fmt(item.saldo) }}</template>
@@ -248,6 +260,13 @@
                   <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
                 </template>
               </v-autocomplete>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-select v-model="form.localEstoqueId" label="Loja"
+                :items="lojas" item-title="nome" item-value="id"
+                variant="outlined" density="compact" hide-details clearable
+                prepend-inner-icon="mdi-store-outline"
+                hint="A qual loja esta despesa/receita pertence" persistent-hint />
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="form.valorOriginal" label="Valor total (R$) *"
@@ -377,6 +396,12 @@
                   <v-list-item v-else title="Digite o nome para buscar ou cadastrar" disabled />
                 </template>
               </v-autocomplete>
+            </v-col>
+            <v-col cols="12" sm="6" class="mt-2">
+              <v-select v-model="edicao.localEstoqueId" label="Loja"
+                :items="lojas" item-title="nome" item-value="id"
+                variant="outlined" density="compact" hide-details clearable
+                prepend-inner-icon="mdi-store-outline" />
             </v-col>
             <v-col cols="12" sm="6" class="mt-2">
               <v-text-field v-model.number="edicao.valorOriginal" label="Valor total (R$)"
@@ -703,6 +728,11 @@ import { useNotifStore } from '@/stores/notif'
 const auth = useAuthStore()
 const notif = useNotifStore()
 
+// Lojas (para marcar/filtrar a loja da despesa)
+const lojas = computed(() => (auth.lojas ?? []) as any[])
+const nomeLoja = (id: string | null) => lojas.value.find(l => l.id === id)?.nome ?? '—'
+const lojasFiltro = computed(() => [{ id: null, nome: 'Todas as lojas' }, ...lojas.value])
+
 // Abre o comprovante de forma AUTENTICADA (URL direta é bloqueada no servidor):
 // baixa o arquivo com o token e abre num blob, em vez de linkar a URL pública.
 async function verComprovante(url: string) {
@@ -902,6 +932,7 @@ const fornecedores = ref<any[]>([])
 const edicao = ref({
   id: '', descricao: '', categoria: '', valorOriginal: 0,
   dataVencimento: '', observacao: '', fornecedorId: '' as string | null, _buscaForneced: '',
+  localEstoqueId: null as string | null,
   modo: 'unico' as 'unico' | 'parcelar' | 'repetir', quantas: 2, periodo: 'mensal', prazos: '21/28/35/42/49',
 })
 const reneg = ref({ id: '', saldo: 0, novoValor: 0, novoVencimento: '', motivo: '' })
@@ -933,6 +964,7 @@ function addDias(base: string, dias: number): string {
 
 const formPadrao = () => ({
   descricao: '', categoria: '', fornecedorId: null as string | null, _buscaForneced: '',
+  localEstoqueId: null as string | null,
   valorOriginal: 0, dataVencimento: '', observacao: '',
   modo: 'unico' as 'unico' | 'parcelar' | 'repetir',
   quantas: 2,
@@ -975,6 +1007,7 @@ const filtros = ref({
   categoria: 'Todas',
   status: 'Todos',
   fornecedor: null as string | null,
+  loja: null as string | null,
   tudo: false,
 })
 
@@ -990,6 +1023,8 @@ const lancamentosEscopo = computed(() => {
   let lista = lancamentos.value
   if (filtros.value.fornecedor)
     lista = lista.filter(l => l.fornecedorNome === filtros.value.fornecedor)
+  if (filtros.value.loja)
+    lista = lista.filter(l => l.localEstoqueId === filtros.value.loja)
   return lista
 })
 
@@ -1037,6 +1072,7 @@ const headersCompletos = [
   { title: 'Descrição',  key: 'descricao',     sortable: true },
   { title: 'Categoria',  key: 'categoria',     width: 170 },
   { title: 'Fornecedor', key: 'fornecedorNome' },
+  { title: 'Loja',       key: 'localEstoqueId', width: 150 },
   { title: 'Vencimento', key: 'dataVencimento', sortable: true },
   { title: 'Valor',      key: 'valorOriginal' },
   { title: 'Saldo',      key: 'saldo' },
@@ -1137,6 +1173,7 @@ function filtrarHoje() {
 
 function abrirNovo() {
   form.value = formPadrao()
+  form.value.localEstoqueId = auth.lojaAtualId ?? null   // padrão: loja ativa do topo
   dialogNovo.value = true
 }
 
@@ -1177,6 +1214,7 @@ async function salvarNova(continuar = false) {
       descricao: f.descricao,
       categoria: f.categoria,
       ...beneficiarioPayload(f.fornecedorId),
+      localEstoqueId: f.localEstoqueId,
       observacao: f.observacao,
     }
 
@@ -1268,6 +1306,7 @@ function abrirEditar(item: any) {
     dataVencimento: item.dataVencimento?.slice(0, 10) ?? '',
     observacao: item.observacao ?? '',
     fornecedorId: item.fornecedorId ?? item.colaboradorId ?? null,
+    localEstoqueId: item.localEstoqueId ?? null,
     modo: 'unico',
     quantas: 2,
     periodo: 'mensal',
@@ -1284,12 +1323,13 @@ async function confirmarEdicao() {
         descricao: e.descricao, categoria: e.categoria,
         valorOriginal: e.valorOriginal, dataVencimento: e.dataVencimento,
         observacao: e.observacao, ...beneficiarioPayload(e.fornecedorId),
+        localEstoqueId: e.localEstoqueId,
       })
     } else {
       // Cancel existing entry, then create N new ones
       await api.post(`/contas-pagar/${e.id}/cancelar`, {})
       const n = Math.max(2, e.quantas || 2)
-      const base = { empresaId: auth.empresaId, descricao: e.descricao, categoria: e.categoria, observacao: e.observacao, ...beneficiarioPayload(e.fornecedorId) }
+      const base = { empresaId: auth.empresaId, descricao: e.descricao, categoria: e.categoria, observacao: e.observacao, localEstoqueId: e.localEstoqueId, ...beneficiarioPayload(e.fornecedorId) }
       for (let i = 0; i < n; i++) {
         const valor = e.modo === 'parcelar'
           ? (i === n - 1 ? Math.round((e.valorOriginal - Math.round(e.valorOriginal / n * 100) / 100 * (n - 1)) * 100) / 100 : Math.round(e.valorOriginal / n * 100) / 100)
@@ -1446,6 +1486,7 @@ onMounted(async () => {
   }
   await carregar()
   await carregarBeneficiarios()
+  if (!auth.lojas?.length) await auth.carregarLojas()
 })
 </script>
 

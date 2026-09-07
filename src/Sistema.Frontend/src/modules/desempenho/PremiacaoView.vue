@@ -297,7 +297,7 @@ watch(aba, v => { if (v === 'metas') carregarConfig() })
 onMounted(async () => {
   if (!auth.lojas?.length) await auth.carregarLojas()
   const r = await api.get('/usuarios', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] }))
-  colaboradores.value = (r.data as any[]).filter(u => u.ativo && u.localEstoqueId)
+  colaboradores.value = (r.data as any[]).filter(u => u.localEstoqueId)
   await carregar()
 })
 </script>

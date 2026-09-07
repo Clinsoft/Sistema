@@ -191,11 +191,18 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             .Where(a => a.EmpresaId == empresaId && a.Ano == ano && a.Mes == mes)
             .ToDictionaryAsync(a => a.ColaboradorId, a => a, ct);
 
-        // Roster: colaboradores ativos vinculados a uma loja (equipe de loja).
-        var rosterQ = db.Usuarios.AsNoTracking()
-            .Where(u => u.EmpresaId == empresaId && u.Ativo && u.LocalEstoqueId != null);
-        if (apenasColaborador.HasValue) rosterQ = rosterQ.Where(u => u.Id == apenasColaborador.Value);
-        var roster = await rosterQ.Select(u => new { u.Id, u.Nome, u.LocalEstoqueId }).ToListAsync(ct);
+        // Roster = quem teve atividade no período (venda, avaliação ou apuração), com loja
+        // no cadastro. Não depende do flag Ativo (vendedores podem estar sem login/inativos).
+        var idsAtividade = new HashSet<Guid>(vendaVendedor.Keys);
+        idsAtividade.UnionWith(avaliacoes.Keys);
+        idsAtividade.UnionWith(apuracoes.Keys);
+        if (apenasColaborador.HasValue)
+            idsAtividade = new HashSet<Guid> { apenasColaborador.Value };
+
+        var roster = await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.LocalEstoqueId != null && idsAtividade.Contains(u.Id))
+            .Select(u => new { u.Id, u.Nome, u.LocalEstoqueId })
+            .ToListAsync(ct);
 
         var lista = new List<(ResultadoPremio, string, Guid, decimal, decimal, decimal, List<AvaliacaoDesempenhoSemanal>)>();
         foreach (var u in roster)

@@ -169,6 +169,128 @@ public class DREController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>DRE POR LOJA no mês: receita e CMV exatos por loja (das vendas),
+    /// despesas DIRETAS (lançamentos marcados com a loja) + rateio das despesas
+    /// COMPARTILHADAS (sem loja) pela participação de cada loja no faturamento.</summary>
+    [HttpGet("por-lojas")]
+    public async Task<IActionResult> PorLojas([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
+    {
+        var inicio = new DateTime(ano, mes, 1);
+        var fimExcl = inicio.AddMonths(1);
+        var vFinalizada = Domain.Vendas.Entities.StatusVenda.Finalizada;
+
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
+
+        // Receita por loja (vendas finalizadas)
+        var receitaLoja = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == vFinalizada
+                && v.DataHora >= inicio && v.DataHora < fimExcl)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Receita = g.Sum(v => v.Total) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Receita);
+
+        // CMV por loja (custo do produto × qtd vendida)
+        var cmvLoja = (await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId && x.v.Status == vFinalizada
+                && x.v.DataHora >= inicio && x.v.DataHora < fimExcl)
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                (x, p) => new { x.v.LocalEstoqueId, Custo = x.i.Quantidade * p.CustoUnitario })
+            .GroupBy(x => x.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Custo = g.Sum(x => x.Custo) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Custo);
+
+        // Perdas (descarte de vencidos) por loja
+        var perdasLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && m.DocumentoOrigem == "VENCIDO:Descarte"
+                && m.CriadoEm >= inicio && m.CriadoEm < fimExcl)
+            .GroupBy(m => (Guid?)m.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Perda = g.Sum(m => m.Quantidade * m.CustoUnitario) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Perda);
+
+        // Lançamentos de despesa (competência = vencimento), com a loja marcada
+        var lancs = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
+                && l.Status != StatusLancamento.Cancelado
+                && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
+            .Select(l => new { l.Categoria, l.ValorOriginal, l.ValorJuros, l.LocalEstoqueId })
+            .ToListAsync(ct);
+
+        // Despesa operacional = tudo, exceto compra de mercadoria (CMV), imobilizado,
+        // e o PRINCIPAL de financiamento (fica só o juro). Frete de compra entra como custo.
+        bool EhOperacional(string? c) =>
+            c != "Custo (CMV)" && c != "Imobilizado" && c != "Financiamentos";
+        decimal ValorDespesa(string? c, decimal valor, decimal? juros) =>
+            c == "Financiamentos" ? (juros ?? 0) : valor;
+
+        var operac = lancs.Where(l => EhOperacional(l.Categoria) || l.Categoria == "Financiamentos").ToList();
+        // Diretas por loja
+        var despDiretaLoja = operac.Where(l => l.LocalEstoqueId != null)
+            .GroupBy(l => l.LocalEstoqueId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(l => ValorDespesa(l.Categoria, l.ValorOriginal, l.ValorJuros)));
+        // Compartilhadas (sem loja) — inclui frete de compra e juros sem loja
+        var despCompartilhada = operac.Where(l => l.LocalEstoqueId == null)
+            .Sum(l => ValorDespesa(l.Categoria, l.ValorOriginal, l.ValorJuros));
+        var perdaCompartilhada = perdasLoja.TryGetValue(null, out var pc) ? pc : 0m;
+
+        var receitaTotal = receitaLoja.Values.Sum();
+        if (receitaTotal <= 0) receitaTotal = 1m; // evita divisão por zero
+
+        var resultadoLojas = lojas.Select(loja =>
+        {
+            var receita = receitaLoja.TryGetValue(loja.Id, out var r) ? r : 0m;
+            var cmv = cmvLoja.TryGetValue(loja.Id, out var c) ? c : 0m;
+            var perda = perdasLoja.TryGetValue(loja.Id, out var pl) ? pl : 0m;
+            var direta = despDiretaLoja.TryGetValue(loja.Id, out var dd) ? dd : 0m;
+            var share = receita / receitaTotal;
+            var rateada = Math.Round((despCompartilhada + perdaCompartilhada) * share, 2);
+            var lucroBruto = receita - cmv;
+            var despesaTotal = direta + rateada;
+            var resultado = lucroBruto - perda - despesaTotal;
+            return new
+            {
+                lojaId = loja.Id,
+                loja = loja.Nome,
+                receita = Math.Round(receita, 2),
+                cmv = Math.Round(cmv, 2),
+                lucroBruto = Math.Round(lucroBruto, 2),
+                margemBruta = receita > 0 ? Math.Round(lucroBruto / receita * 100, 1) : 0m,
+                perdas = Math.Round(perda, 2),
+                despesasDiretas = Math.Round(direta, 2),
+                despesasRateadas = rateada,
+                despesasTotal = Math.Round(despesaTotal, 2),
+                resultado = Math.Round(resultado, 2),
+                margemLiquida = receita > 0 ? Math.Round(resultado / receita * 100, 1) : 0m,
+                participacaoReceita = Math.Round(share * 100, 1),
+            };
+        }).OrderByDescending(x => x.receita).ToList();
+
+        return Ok(new
+        {
+            periodo = new { ano, mes },
+            lojas = resultadoLojas,
+            compartilhado = new
+            {
+                despesas = Math.Round(despCompartilhada, 2),
+                perdas = Math.Round(perdaCompartilhada, 2),
+                total = Math.Round(despCompartilhada + perdaCompartilhada, 2),
+                observacao = "Despesas sem loja definida, rateadas entre as lojas pela participação no faturamento."
+            },
+            totais = new
+            {
+                receita = Math.Round(resultadoLojas.Sum(x => x.receita), 2),
+                lucroBruto = Math.Round(resultadoLojas.Sum(x => x.lucroBruto), 2),
+                resultado = Math.Round(resultadoLojas.Sum(x => x.resultado), 2),
+            }
+        });
+    }
+
     /// <summary>DRE gerencial mensal por categoria (Recebimentos, Despesas Administrativas/
     /// Operacionais/Variáveis, Pessoas, Impostos).</summary>
     [HttpGet("mensal")]

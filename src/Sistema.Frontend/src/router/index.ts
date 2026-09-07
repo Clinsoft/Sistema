@@ -97,6 +97,8 @@ const router = createRouter({
       meta: { titulo: 'DRE — Demonstrativo de Resultados' } },
     { path: '/financeiro/dre-mensal', component: () => import('@/modules/financeiro/DreMensalView.vue'),
       meta: { titulo: 'DRE Comparativo (mês a mês)' } },
+    { path: '/financeiro/dre-lojas', component: () => import('@/modules/financeiro/DreLojasView.vue'),
+      meta: { titulo: 'DRE por Loja' } },
     { path: '/financeiro/fluxo-caixa', component: () => import('@/modules/financeiro/FluxoCaixaView.vue'),
       meta: { titulo: 'Fluxo de Caixa' } },
     { path: '/financeiro/custos-fixos', component: () => import('@/modules/financeiro/CustosFixosView.vue'),

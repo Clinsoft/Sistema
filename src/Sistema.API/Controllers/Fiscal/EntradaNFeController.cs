@@ -1071,7 +1071,8 @@ public class EntradaNFeController(SistemaDbContext db,
                 fornecedorId: entrada.FornecedorId,
                 documentoOrigem: entrada.ChaveAcesso,
                 parcela: parcela, totalParcelas: req.Faturas.Count,
-                grupoParcelamento: grupo);
+                grupoParcelamento: grupo,
+                localEstoqueId: entrada.LocalEstoqueId);   // loja que recebeu a mercadoria
 
             // Categoria do contas a pagar + forma de pagamento (observação).
             // Compra de mercadoria por NF-e entra como "Custo (CMV)" por padrão.

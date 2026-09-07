@@ -57,7 +57,8 @@
             <div class="text-h6">{{ pct(d.performancePercent) }}<span class="text-body-2"> pts</span></div>
             <div class="text-caption text-medium-emphasis">{{ d.semanasAvaliadas }} semana(s) avaliada(s)</div>
             <v-progress-linear :model-value="d.performancePercent" height="8" rounded class="mt-2" color="amber-darken-2" />
-            <div class="text-caption mt-1 text-medium-emphasis">multiplica o valor base</div>
+            <div v-if="d.descontoValidade > 0" class="text-caption mt-1 text-error">−{{ d.descontoValidade }} pts: produto vencido na loja</div>
+            <div v-else class="text-caption mt-1 text-medium-emphasis">multiplica o valor base</div>
           </v-card>
         </v-col>
       </v-row>

@@ -46,7 +46,12 @@
                   <td class="font-weight-medium">{{ c.colaborador }}</td>
                   <td class="text-right">{{ fmt(c.vendaIndividual) }} <span class="text-caption text-medium-emphasis">/ {{ fmt(c.metaIndividual) }}</span></td>
                   <td class="text-right" :class="c.percentIndividual >= 100 ? 'text-success' : c.percentIndividual >= 90 ? 'text-amber-darken-2' : 'text-error'">{{ pct(c.percentIndividual) }}%</td>
-                  <td class="text-right">{{ pct(c.performancePercent) }}% <span class="text-caption text-medium-emphasis">({{ c.semanasAvaliadas }}s)</span></td>
+                  <td class="text-right">
+                    {{ pct(c.performancePercent) }}% <span class="text-caption text-medium-emphasis">({{ c.semanasAvaliadas }}s)</span>
+                    <v-tooltip v-if="c.descontoValidade > 0" text="Produto vencido na loja: pontos de Validade descontados de toda a equipe"><template #activator="{ props }">
+                      <v-chip v-bind="props" size="x-small" color="error" variant="tonal" class="ml-1">−{{ c.descontoValidade }} validade</v-chip>
+                    </template></v-tooltip>
+                  </td>
                   <td class="text-center">
                     <v-chip v-if="c.premio > 0" size="x-small" color="success" variant="tonal">Elegível</v-chip>
                     <v-tooltip v-else :text="c.motivo || 'Sem prêmio'"><template #activator="{ props }">

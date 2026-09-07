@@ -264,6 +264,14 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             .Where(a => a.EmpresaId == empresaId && a.Ano == ano && a.Mes == mes)
             .ToDictionaryAsync(a => a.ColaboradorId, a => a, ct);
 
+        // Lojas com produto vencido em estoque → desconta os pontos de "Validade" (10)
+        // da performance de TODOS os colaboradores daquela unidade (automático).
+        var hoje = DateTime.Today;
+        var lojasComVencido = new HashSet<Guid>(await db.Lotes.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Quantidade > 0
+                && l.DataValidade != null && l.DataValidade < hoje)
+            .Select(l => l.LocalEstoqueId).Distinct().ToListAsync(ct));
+
         // Roster = quem teve atividade no período (venda, avaliação ou apuração), com loja
         // no cadastro. Não depende do flag Ativo (vendedores podem estar sem login/inativos).
         var idsAtividade = new HashSet<Guid>(vendaVendedor.Keys);
@@ -287,11 +295,22 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             var fat = fatLoja.TryGetValue(loja, out var f) ? f : 0;
             var vendaInd = vendaVendedor.TryGetValue(u.Id, out var vi) ? vi : 0;
             var avalsU = avaliacoes.TryGetValue(u.Id, out var av) ? av : new List<AvaliacaoDesempenhoSemanal>();
-            var perf = avalsU.Count > 0 ? Math.Round(avalsU.Average(a => a.Pontos), 1) : 0m;
+            var temVencido = lojasComVencido.Contains(loja);
+            decimal perf = 0, descValidade = 0;
+            if (avalsU.Count > 0)
+            {
+                if (temVencido)
+                {
+                    // Zera o item Validade (10 pts × nível) em cada semana.
+                    perf = Math.Round(avalsU.Average(a => Math.Max(0, a.Pontos - 10m * (int)a.Validade / 100m)), 1);
+                    descValidade = Math.Round(avalsU.Average(a => 10m * (int)a.Validade / 100m), 1);
+                }
+                else perf = Math.Round(avalsU.Average(a => a.Pontos), 1);
+            }
             var apu = apuracoes.TryGetValue(u.Id, out var ap) ? ap : null;
 
             var res = CalculoPremiacao.Calcular(u.Id, u.Nome, loja, fat, metaLoja, vendaInd, metaInd,
-                perf, avalsU.Count, cfg, apu);
+                perf, avalsU.Count, cfg, apu, descValidade);
             var pctLoja = metaLoja > 0 ? Math.Round(fat / metaLoja * 100, 1) : 0;
             lista.Add((res, lojas.TryGetValue(loja, out var ln) ? ln : "—", loja, fat, metaLoja, pctLoja, avalsU));
         }
@@ -307,6 +326,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             performancePercent = r.PerformancePercent, semanasAvaliadas = r.SemanasAvaliadas,
             baseLoja = r.BaseLoja, fatorIndividual = r.FatorIndividual,
             elegivel = r.Elegivel, temCorte = r.TemCorte, motivo = r.Motivo, premio = r.Premio,
+            descontoValidade = r.DescontoValidade,
             avaliacoes = incluirSemanas && avaliacoes != null
                 ? avaliacoes.OrderBy(a => a.InicioSemana).Select(a => new { inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"), pontos = a.Pontos }).ToList<object>()
                 : null

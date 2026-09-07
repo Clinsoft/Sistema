@@ -120,6 +120,12 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<MensagemWhatsApp> MensagensWhatsApp => Set<MensagemWhatsApp>();
     public DbSet<NumeroBloqueadoWhatsApp> NumerosBloqueadosWhatsApp => Set<NumeroBloqueadoWhatsApp>();
 
+    // Premiação por desempenho
+    public DbSet<Sistema.Domain.Desempenho.Entities.ConfiguracaoPremiacao> ConfiguracoesPremiacao => Set<Sistema.Domain.Desempenho.Entities.ConfiguracaoPremiacao>();
+    public DbSet<Sistema.Domain.Desempenho.Entities.MetaPremiacaoLoja> MetasPremiacaoLoja => Set<Sistema.Domain.Desempenho.Entities.MetaPremiacaoLoja>();
+    public DbSet<Sistema.Domain.Desempenho.Entities.AvaliacaoDesempenhoSemanal> AvaliacoesDesempenho => Set<Sistema.Domain.Desempenho.Entities.AvaliacaoDesempenhoSemanal>();
+    public DbSet<Sistema.Domain.Desempenho.Entities.ApuracaoMensalPremiacao> ApuracoesPremiacao => Set<Sistema.Domain.Desempenho.Entities.ApuracaoMensalPremiacao>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());

@@ -21,18 +21,32 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
     // ── Configuração geral ────────────────────────────────────────────────
     [HttpGet("config")]
     [Authorize(Roles = "Administrador,Financeiro")]
-    public async Task<IActionResult> ObterConfig([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> ObterConfig([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
     {
         var cfg = await db.ConfiguracoesPremiacao.AsNoTracking()
             .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct) ?? ConfiguracaoPremiacao.Padrao(empresaId);
-        var metas = await (from m in db.MetasPremiacaoLoja.AsNoTracking()
-                           join l in db.LocaisEstoque.AsNoTracking() on m.LocalEstoqueId equals l.Id
-                           where m.EmpresaId == empresaId
-                           select new { m.LocalEstoqueId, loja = l.Nome, m.MetaLoja, m.MetaIndividual }).ToListAsync(ct);
+        var a = ano ?? DateTime.Today.Year;
+        var m = mes ?? DateTime.Today.Month;
+        var metas = await ResolverMetasAsync(empresaId, a, m, cfg, ct);
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId).Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
+        var baseIni = new DateTime(a, m, 1).AddMonths(-cfg.MesesBaseMeta);
         return Ok(new
         {
-            cfg.ValorBase, cfg.RedutorPercent, cfg.MinPresenca, cfg.ThresholdLoja, cfg.ThresholdIndividual, cfg.Ativo,
-            metas
+            cfg.ValorBase, cfg.RedutorPercent, cfg.MinPresenca, cfg.ThresholdLoja, cfg.ThresholdIndividual,
+            cfg.FatorMetaLoja, cfg.MesesBaseMeta, cfg.Ativo,
+            baseInicio = baseIni.ToString("yyyy-MM"), baseFim = new DateTime(a, m, 1).AddMonths(-1).ToString("yyyy-MM"),
+            metas = lojas.Select(l =>
+            {
+                var mt = metas.TryGetValue(l.Id, out var v) ? v : default;
+                return new
+                {
+                    localEstoqueId = l.Id, loja = l.Nome,
+                    metaLoja = mt.MetaLoja, metaIndividual = mt.MetaIndividual,
+                    baseFaturamento = mt.BaseFaturamento, vendedores = mt.Vendedores, manual = mt.Manual
+                };
+            })
         });
     }
 
@@ -42,25 +56,86 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
     {
         var cfg = await db.ConfiguracoesPremiacao.FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
         if (cfg is null) { cfg = ConfiguracaoPremiacao.Padrao(req.EmpresaId); db.ConfiguracoesPremiacao.Add(cfg); }
-        cfg.Atualizar(req.ValorBase, req.RedutorPercent, req.MinPresenca, req.ThresholdLoja, req.ThresholdIndividual, req.Ativo);
+        cfg.Atualizar(req.ValorBase, req.RedutorPercent, req.MinPresenca, req.ThresholdLoja, req.ThresholdIndividual,
+            req.FatorMetaLoja, req.MesesBaseMeta, req.Ativo);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
+    /// <summary>Override manual da meta de uma loja para uma competência (ano/mês).</summary>
     [HttpPut("metas")]
     [Authorize(Roles = "Administrador")]
     public async Task<IActionResult> SalvarMeta([FromBody] MetaLojaRequest req, CancellationToken ct)
     {
-        var m = await db.MetasPremiacaoLoja
-            .FirstOrDefaultAsync(x => x.EmpresaId == req.EmpresaId && x.LocalEstoqueId == req.LocalEstoqueId, ct);
+        var m = await db.MetasPremiacaoLoja.FirstOrDefaultAsync(x =>
+            x.EmpresaId == req.EmpresaId && x.LocalEstoqueId == req.LocalEstoqueId && x.Ano == req.Ano && x.Mes == req.Mes, ct);
         if (m is null)
         {
-            m = MetaPremiacaoLoja.Criar(req.EmpresaId, req.LocalEstoqueId, req.MetaLoja, req.MetaIndividual);
+            m = MetaPremiacaoLoja.Criar(req.EmpresaId, req.LocalEstoqueId, req.Ano, req.Mes, req.MetaLoja, req.MetaIndividual);
             db.MetasPremiacaoLoja.Add(m);
         }
         else m.Atualizar(req.MetaLoja, req.MetaIndividual);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Remove o override manual → volta a meta automática (base financeira).</summary>
+    [HttpDelete("metas")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> RemoverMeta([FromQuery] Guid empresaId, [FromQuery] Guid localEstoqueId,
+        [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
+    {
+        var m = await db.MetasPremiacaoLoja.FirstOrDefaultAsync(x =>
+            x.EmpresaId == empresaId && x.LocalEstoqueId == localEstoqueId && x.Ano == ano && x.Mes == mes, ct);
+        if (m is not null) { db.MetasPremiacaoLoja.Remove(m); await db.SaveChangesAsync(ct); }
+        return NoContent();
+    }
+
+    /// <summary>Resolve a meta de cada loja no mês: override manual se houver, senão automática
+    /// (faturamento médio dos últimos MesesBaseMeta meses × FatorMetaLoja; individual = ÷ nº vendedores).</summary>
+    private async Task<Dictionary<Guid, (decimal MetaLoja, decimal MetaIndividual, decimal BaseFaturamento, int Vendedores, bool Manual)>>
+        ResolverMetasAsync(Guid empresaId, int ano, int mes, ConfiguracaoPremiacao cfg, CancellationToken ct)
+    {
+        var baseIni = new DateTime(ano, mes, 1).AddMonths(-cfg.MesesBaseMeta);
+        var baseFim = new DateTime(ano, mes, 1);
+
+        var fatBase = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                && v.DataHora >= baseIni && v.DataHora < baseFim)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Total = g.Sum(v => v.Total) }).ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Total);
+
+        var vendBase = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada && v.VendedorId != null
+                && v.DataHora >= baseIni && v.DataHora < baseFim)
+            .Select(v => new { v.LocalEstoqueId, v.VendedorId })
+            .Distinct().ToListAsync(ct))
+            .GroupBy(x => x.LocalEstoqueId).ToDictionary(g => g.Key, g => g.Count());
+
+        var overrides = await db.MetasPremiacaoLoja.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes)
+            .ToDictionaryAsync(x => x.LocalEstoqueId, x => x, ct);
+
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
+
+        var dict = new Dictionary<Guid, (decimal, decimal, decimal, int, bool)>();
+        foreach (var loja in lojas)
+        {
+            var fat = fatBase.TryGetValue(loja, out var f) ? f : 0m;
+            var media = Math.Round(fat / cfg.MesesBaseMeta, 2);
+            var vend = vendBase.TryGetValue(loja, out var vv) ? vv : 0;
+            if (overrides.TryGetValue(loja, out var ov))
+                dict[loja] = (ov.MetaLoja, ov.MetaIndividual, media, vend, true);
+            else
+            {
+                var metaLoja = Math.Round(media * cfg.FatorMetaLoja / 100m, 2);
+                var metaInd = Math.Round(metaLoja / Math.Max(1, vend), 2);
+                dict[loja] = (metaLoja, metaInd, media, vend, false);
+            }
+        }
+        return dict;
     }
 
     // ── Avaliação semanal (Performance Comercial) ─────────────────────────
@@ -162,9 +237,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         var inicio = new DateTime(ano, mes, 1);
         var fimExcl = inicio.AddMonths(1);
 
-        var metas = await db.MetasPremiacaoLoja.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId)
-            .ToDictionaryAsync(m => m.LocalEstoqueId, m => m, ct);
+        var metas = await ResolverMetasAsync(empresaId, ano, mes, cfg, ct);
 
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
@@ -208,9 +281,9 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         foreach (var u in roster)
         {
             var loja = u.LocalEstoqueId!.Value;
-            var meta = metas.TryGetValue(loja, out var mt) ? mt : null;
-            var metaLoja = meta?.MetaLoja ?? 0;
-            var metaInd = meta?.MetaIndividual ?? 0;
+            var metaTup = metas.TryGetValue(loja, out var mt) ? mt : default;
+            var metaLoja = metaTup.MetaLoja;
+            var metaInd = metaTup.MetaIndividual;
             var fat = fatLoja.TryGetValue(loja, out var f) ? f : 0;
             var vendaInd = vendaVendedor.TryGetValue(u.Id, out var vi) ? vi : 0;
             var avalsU = avaliacoes.TryGetValue(u.Id, out var av) ? av : new List<AvaliacaoDesempenhoSemanal>();
@@ -241,8 +314,9 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
 }
 
 public record ConfigPremiacaoRequest(Guid EmpresaId, decimal ValorBase, decimal RedutorPercent,
-    decimal MinPresenca, decimal ThresholdLoja, decimal ThresholdIndividual, bool Ativo);
-public record MetaLojaRequest(Guid EmpresaId, Guid LocalEstoqueId, decimal MetaLoja, decimal MetaIndividual);
+    decimal MinPresenca, decimal ThresholdLoja, decimal ThresholdIndividual,
+    decimal FatorMetaLoja, int MesesBaseMeta, bool Ativo);
+public record MetaLojaRequest(Guid EmpresaId, Guid LocalEstoqueId, int Ano, int Mes, decimal MetaLoja, decimal MetaIndividual);
 public record AvaliacaoRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid ColaboradorId, string InicioSemana,
     int Abordagem, int Diagnostico, int ConexaoProduto, int SugestaoComplementar, int Fechamento,
     int Abastecimento, int Organizacao, int Rotina, int Validade, int Perdas, int Armazenamento, string? Observacao);

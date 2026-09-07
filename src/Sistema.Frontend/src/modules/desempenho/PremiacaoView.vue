@@ -136,15 +136,27 @@
 
     <!-- ══ METAS & REGRAS ══ -->
     <div v-else-if="aba === 'metas'">
+      <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
+        As metas são <b>dinâmicas</b>: calculadas do <b>faturamento base</b> de cada loja ({{ metasInfo.baseInicio }} → {{ metasInfo.baseFim }}) × <b>{{ cfg.fatorMetaLoja }}%</b>, e a individual = meta da loja ÷ nº de vendedores. Mudam sozinhas todo mês. Você pode fixar um valor manual para um mês específico.
+      </v-alert>
       <v-card rounded="lg" class="pa-4 mb-4">
-        <div class="text-subtitle-2 font-weight-bold mb-3">Metas por loja</div>
-        <div v-for="l in lojas" :key="l.id" class="d-flex align-center ga-3 mb-2 flex-wrap">
-          <div style="min-width:170px" class="font-weight-medium">{{ l.nome }}</div>
-          <v-text-field v-model.number="metasEdit[l.id].metaLoja" label="Meta da loja (R$)" type="number" prefix="R$"
-            variant="outlined" density="compact" hide-details style="max-width:200px" />
-          <v-text-field v-model.number="metasEdit[l.id].metaIndividual" label="Meta individual (R$)" type="number" prefix="R$"
-            variant="outlined" density="compact" hide-details style="max-width:200px" />
-          <v-btn size="small" color="amber-darken-2" variant="tonal" :loading="salvando" @click="salvarMeta(l.id)">Salvar</v-btn>
+        <div class="text-subtitle-2 font-weight-bold mb-3">Metas de {{ meses.find(m => m.value === mes)?.label }} / {{ ano }}</div>
+        <div v-for="l in lojas" :key="l.id" class="mb-4">
+          <div class="d-flex align-center ga-2 mb-1 flex-wrap">
+            <div style="min-width:170px" class="font-weight-medium">{{ l.nome }}</div>
+            <v-chip size="x-small" :color="metasEdit[l.id]?.manual ? 'amber-darken-2' : 'success'" variant="tonal">
+              {{ metasEdit[l.id]?.manual ? 'Manual (fixada)' : 'Automática' }}
+            </v-chip>
+            <span class="text-caption text-medium-emphasis">base: R$ {{ fmt(metasEdit[l.id]?.baseFaturamento || 0) }} · {{ metasEdit[l.id]?.vendedores || 0 }} vendedor(es)</span>
+          </div>
+          <div class="d-flex align-center ga-3 flex-wrap">
+            <v-text-field v-model.number="metasEdit[l.id].metaLoja" label="Meta da loja (R$)" type="number" prefix="R$"
+              variant="outlined" density="compact" hide-details style="max-width:200px" />
+            <v-text-field v-model.number="metasEdit[l.id].metaIndividual" label="Meta individual (R$)" type="number" prefix="R$"
+              variant="outlined" density="compact" hide-details style="max-width:200px" />
+            <v-btn size="small" color="amber-darken-2" variant="tonal" :loading="salvando" @click="salvarMeta(l.id)">Fixar p/ este mês</v-btn>
+            <v-btn v-if="metasEdit[l.id]?.manual" size="small" variant="text" :loading="salvando" @click="voltarAutomatica(l.id)">Voltar ao automático</v-btn>
+          </div>
         </div>
       </v-card>
       <v-card rounded="lg" class="pa-4">
@@ -152,6 +164,8 @@
         <v-row dense>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.valorBase" label="Valor base (R$)" type="number" prefix="R$" variant="outlined" density="compact" hide-details /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.redutorPercent" label="Redutor 90–99% (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="80 = base cai p/ R$320" persistent-hint /></v-col>
+          <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.fatorMetaLoja" label="Fator da meta (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="90 = meta é 90% do faturamento base" persistent-hint /></v-col>
+          <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.mesesBaseMeta" label="Meses da base" type="number" variant="outlined" density="compact" hide-details hint="1 = mês anterior; 3 = média trimestral" persistent-hint /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.minPresenca" label="Presença mín. (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.thresholdLoja" label="Ativação loja (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.thresholdIndividual" label="Ativação individual (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details /></v-col>
@@ -193,6 +207,7 @@ async function carregar() {
     const r = await api.get('/premiacao/apuracao', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
     apuracao.value = r.data
   } catch { apuracao.value = null }
+  if (aba.value === 'metas') await carregarConfig()
 }
 
 // ── Avaliação semanal ──
@@ -258,16 +273,18 @@ async function salvarElegibilidade() {
 }
 
 // ── Metas & config ──
-const cfg = ref<any>({ valorBase: 400, redutorPercent: 80, minPresenca: 95, thresholdLoja: 90, thresholdIndividual: 90 })
+const cfg = ref<any>({ valorBase: 400, redutorPercent: 80, minPresenca: 95, thresholdLoja: 90, thresholdIndividual: 90, fatorMetaLoja: 90, mesesBaseMeta: 1 })
+const metasInfo = ref<any>({ baseInicio: '', baseFim: '' })
 const metasEdit = ref<Record<string, any>>({})
 async function carregarConfig() {
   try {
-    const r = await api.get('/premiacao/config', { params: { empresaId: auth.empresaId } })
-    cfg.value = { valorBase: r.data.valorBase, redutorPercent: r.data.redutorPercent, minPresenca: r.data.minPresenca, thresholdLoja: r.data.thresholdLoja, thresholdIndividual: r.data.thresholdIndividual }
+    const r = await api.get('/premiacao/config', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
+    cfg.value = { valorBase: r.data.valorBase, redutorPercent: r.data.redutorPercent, minPresenca: r.data.minPresenca, thresholdLoja: r.data.thresholdLoja, thresholdIndividual: r.data.thresholdIndividual, fatorMetaLoja: r.data.fatorMetaLoja, mesesBaseMeta: r.data.mesesBaseMeta }
+    metasInfo.value = { baseInicio: r.data.baseInicio, baseFim: r.data.baseFim }
     const m: Record<string, any> = {}
     for (const l of lojas.value) {
       const found = (r.data.metas as any[]).find(x => x.localEstoqueId === l.id)
-      m[l.id] = { metaLoja: found?.metaLoja ?? 0, metaIndividual: found?.metaIndividual ?? 0 }
+      m[l.id] = { metaLoja: found?.metaLoja ?? 0, metaIndividual: found?.metaIndividual ?? 0, baseFaturamento: found?.baseFaturamento ?? 0, vendedores: found?.vendedores ?? 0, manual: found?.manual ?? false }
     }
     metasEdit.value = m
   } catch { /* sem config ainda */ }
@@ -275,15 +292,22 @@ async function carregarConfig() {
 async function salvarMeta(lojaId: string) {
   salvando.value = true
   try {
-    await api.put('/premiacao/metas', { empresaId: auth.empresaId, localEstoqueId: lojaId, metaLoja: metasEdit.value[lojaId].metaLoja, metaIndividual: metasEdit.value[lojaId].metaIndividual })
-    notif.ok('Meta salva.'); await carregar()
+    await api.put('/premiacao/metas', { empresaId: auth.empresaId, localEstoqueId: lojaId, ano: ano.value, mes: mes.value, metaLoja: metasEdit.value[lojaId].metaLoja, metaIndividual: metasEdit.value[lojaId].metaIndividual })
+    notif.ok('Meta fixada para o mês.'); await carregarConfig(); await carregar()
   } catch { notif.erro('Erro ao salvar meta.') } finally { salvando.value = false }
+}
+async function voltarAutomatica(lojaId: string) {
+  salvando.value = true
+  try {
+    await api.delete('/premiacao/metas', { params: { empresaId: auth.empresaId, localEstoqueId: lojaId, ano: ano.value, mes: mes.value } })
+    notif.ok('Meta voltou ao automático.'); await carregarConfig(); await carregar()
+  } catch { notif.erro('Erro ao remover meta.') } finally { salvando.value = false }
 }
 async function salvarConfig() {
   salvando.value = true
   try {
     await api.put('/premiacao/config', { empresaId: auth.empresaId, ...cfg.value, ativo: true })
-    notif.ok('Regras salvas.'); await carregar()
+    notif.ok('Regras salvas.'); await carregarConfig(); await carregar()
   } catch { notif.erro('Erro ao salvar regras.') } finally { salvando.value = false }
 }
 

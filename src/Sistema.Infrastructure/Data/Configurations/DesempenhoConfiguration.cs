@@ -16,6 +16,7 @@ public class ConfiguracaoPremiacaoConfiguration : IEntityTypeConfiguration<Confi
         b.Property(x => x.MinPresenca).HasPrecision(9, 2);
         b.Property(x => x.ThresholdLoja).HasPrecision(9, 2);
         b.Property(x => x.ThresholdIndividual).HasPrecision(9, 2);
+        b.Property(x => x.FatorMetaLoja).HasPrecision(9, 2);
     }
 }
 
@@ -25,7 +26,7 @@ public class MetaPremiacaoLojaConfiguration : IEntityTypeConfiguration<MetaPremi
     {
         b.ToTable("MetasPremiacaoLoja");
         b.HasKey(x => x.Id);
-        b.HasIndex(x => new { x.EmpresaId, x.LocalEstoqueId }).IsUnique();
+        b.HasIndex(x => new { x.EmpresaId, x.LocalEstoqueId, x.Ano, x.Mes }).IsUnique();
         b.Property(x => x.MetaLoja).HasPrecision(18, 2);
         b.Property(x => x.MetaIndividual).HasPrecision(18, 2);
     }

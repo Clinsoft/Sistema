@@ -11,31 +11,38 @@ public class ConfiguracaoPremiacao : Entity
     public decimal MinPresenca { get; private set; } = 95m;       // % mínimo de presença
     public decimal ThresholdLoja { get; private set; } = 90m;     // % mínimo p/ ativar a loja
     public decimal ThresholdIndividual { get; private set; } = 90m;
+    // Meta dinâmica: meta da loja = faturamento médio dos últimos MesesBaseMeta meses × FatorMetaLoja.
+    public decimal FatorMetaLoja { get; private set; } = 90m;     // % do faturamento base (90% ≈ espírito do termo)
+    public int MesesBaseMeta { get; private set; } = 1;           // nº de meses anteriores para a base
     public bool Ativo { get; private set; } = true;
 
     private ConfiguracaoPremiacao() { }
     public static ConfiguracaoPremiacao Padrao(Guid empresaId) => new() { EmpresaId = empresaId };
 
     public void Atualizar(decimal valorBase, decimal redutorPercent, decimal minPresenca,
-        decimal thresholdLoja, decimal thresholdIndividual, bool ativo)
+        decimal thresholdLoja, decimal thresholdIndividual, decimal fatorMetaLoja, int mesesBaseMeta, bool ativo)
     {
         ValorBase = valorBase; RedutorPercent = redutorPercent; MinPresenca = minPresenca;
-        ThresholdLoja = thresholdLoja; ThresholdIndividual = thresholdIndividual; Ativo = ativo;
+        ThresholdLoja = thresholdLoja; ThresholdIndividual = thresholdIndividual;
+        FatorMetaLoja = fatorMetaLoja; MesesBaseMeta = mesesBaseMeta < 1 ? 1 : mesesBaseMeta; Ativo = ativo;
         AtualizadoEm = DateTime.UtcNow;
     }
 }
 
-/// <summary>Meta de faturamento por loja (coletiva e individual).</summary>
+/// <summary>Override manual de meta por loja para uma competência específica (ano/mês).
+/// Quando não existe, a meta é calculada automaticamente da base financeira.</summary>
 public class MetaPremiacaoLoja : Entity
 {
     public Guid EmpresaId { get; private set; }
     public Guid LocalEstoqueId { get; private set; }
+    public int Ano { get; private set; }
+    public int Mes { get; private set; }
     public decimal MetaLoja { get; private set; }
     public decimal MetaIndividual { get; private set; }
 
     private MetaPremiacaoLoja() { }
-    public static MetaPremiacaoLoja Criar(Guid empresaId, Guid localEstoqueId, decimal metaLoja, decimal metaIndividual)
-        => new() { EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, MetaLoja = metaLoja, MetaIndividual = metaIndividual };
+    public static MetaPremiacaoLoja Criar(Guid empresaId, Guid localEstoqueId, int ano, int mes, decimal metaLoja, decimal metaIndividual)
+        => new() { EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, Ano = ano, Mes = mes, MetaLoja = metaLoja, MetaIndividual = metaIndividual };
 
     public void Atualizar(decimal metaLoja, decimal metaIndividual)
     {

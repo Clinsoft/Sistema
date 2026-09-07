@@ -54,7 +54,7 @@ public class FolhaPagamentoJob(SistemaDbContext db, ILogger<FolhaPagamentoJob> l
             var colaboradores = await db.Usuarios.AsNoTracking()
                 .Where(u => u.EmpresaId == empresaId && u.Ativo
                     && u.Salario != null && u.Salario > 0)
-                .Select(u => new { u.Id, u.Nome, u.Cargo, Salario = u.Salario!.Value })
+                .Select(u => new { u.Id, u.Nome, u.Cargo, u.LocalEstoqueId, Salario = u.Salario!.Value })
                 .ToListAsync();
 
             if (colaboradores.Count == 0) continue;
@@ -78,7 +78,8 @@ public class FolhaPagamentoJob(SistemaDbContext db, ILogger<FolhaPagamentoJob> l
                 // Conta de salário / pró-labore (categoria Pessoas, 5º dia útil).
                 var lancPessoal = LancamentoFinanceiro.Criar(empresaId, TipoLancamento.ContaPagar,
                     $"{tipoPag} {competencia:MM/yyyy} — {c.Nome}", c.Salario, vencSalario,
-                    documentoOrigem: docOrigem, colaboradorId: c.Id);
+                    documentoOrigem: docOrigem, colaboradorId: c.Id,
+                    localEstoqueId: c.LocalEstoqueId);   // loja do colaborador (rateio por loja)
                 lancPessoal.DefinirClassificacao("Pessoas", c.Nome, null);
                 novos.Add(lancPessoal);
 

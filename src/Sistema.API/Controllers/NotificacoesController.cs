@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.API.Extensions;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Infrastructure.Data;
 
@@ -18,19 +19,28 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var hoje = DateTime.Today;
         var limiteValidade = hoje.AddDays(15);
 
-        var etiquetas = await db.Produtos.CountAsync(p =>
+        // Perfil/loja do usuário logado (do JWT):
+        //  • Financeiro (contas vencidas) → só Administrador/Financeiro.
+        //  • Etiqueta/estoque (tarefas de gestão, sem separação por loja) → não para atendente.
+        //  • Validade → filtrada pela loja do atendente (o lote tem loja).
+        var ehAtendente = User.EhAtendente();
+        var ehGestao = User.IsInRole("Administrador") || User.IsInRole("Financeiro");
+        var lojaAtendente = ehAtendente ? (User.LojaClaim() ?? Guid.Empty) : (Guid?)null;
+
+        var etiquetas = ehAtendente ? 0 : await db.Produtos.CountAsync(p =>
             p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada, ct);
 
-        var estoqueBaixo = await db.Produtos.CountAsync(p =>
+        var estoqueBaixo = ehAtendente ? 0 : await db.Produtos.CountAsync(p =>
             p.EmpresaId == empresaId && p.Ativo && p.EstoqueMinimo > 0
             && p.EstoqueAtual <= p.EstoqueMinimo, ct);
 
-        var contasVencidas = await db.LancamentosFinanceiros.CountAsync(l =>
+        var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
-            && l.Status == StatusLancamento.EmAberto && l.DataVencimento < hoje, ct);
+            && l.Status == StatusLancamento.EmAberto && l.DataVencimento < hoje, ct) : 0;
 
         var validadeProxima = await db.Lotes.CountAsync(l =>
             l.EmpresaId == empresaId && l.Quantidade > 0
+            && (lojaAtendente == null || l.LocalEstoqueId == lojaAtendente.Value)
             && l.DataValidade != null && l.DataValidade >= hoje && l.DataValidade <= limiteValidade, ct);
 
         var itens = new List<object>();

@@ -104,26 +104,38 @@
           </v-list-group>
 
           <!-- 5. Relatórios -->
-          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-chart-bar" title="Relatórios"
-            to="/relatorios" value="/relatorios" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-scale-balance" title="Comparativo entre Lojas"
-            to="/relatorios/comparativo-lojas" value="/relatorios/comparativo-lojas" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-account-clock-outline" title="Clientes Sumidos"
-            to="/relatorios/clientes-sumidos" value="/relatorios/clientes-sumidos" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-finance" title="Rentabilidade por Categoria"
-            to="/relatorios/rentabilidade-categoria" value="/relatorios/rentabilidade-categoria" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-target" title="Projeção de Meta"
-            to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-calendar-check-outline" title="Resumo do Dia"
-            to="/relatorios/resumo-dia" value="/relatorios/resumo-dia" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-chart-line-variant" title="Histórico de Faturamento"
-            to="/relatorios/historico-faturamento" value="/relatorios/historico-faturamento" color="primary" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-trophy-outline" title="Premiação por Desempenho"
-            to="/desempenho/premiacao" value="/desempenho/premiacao" color="amber-darken-2" rounded="lg" />
-          <v-list-item v-if="ehGestor" prepend-icon="mdi-file-sign" title="Aceites da Premiação"
-            to="/desempenho/aceites" value="/desempenho/aceites" color="amber-darken-2" rounded="lg" />
-          <v-list-item prepend-icon="mdi-medal-outline" title="Meu Desempenho"
-            to="/desempenho/meu" value="/desempenho/meu" color="amber-darken-2" rounded="lg" />
+          <v-list-group v-if="!ehAtendente && !ehContador" value="relatorios">
+            <template #activator="{ props }">
+              <v-list-item v-bind="props" prepend-icon="mdi-chart-bar" title="Relatórios" color="primary" rounded="lg" />
+            </template>
+            <v-list-item prepend-icon="mdi-view-dashboard" title="Painel de Relatórios"
+              to="/relatorios" value="/relatorios" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-scale-balance" title="Comparativo entre Lojas"
+              to="/relatorios/comparativo-lojas" value="/relatorios/comparativo-lojas" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-account-clock-outline" title="Clientes Sumidos"
+              to="/relatorios/clientes-sumidos" value="/relatorios/clientes-sumidos" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-finance" title="Rentabilidade por Categoria"
+              to="/relatorios/rentabilidade-categoria" value="/relatorios/rentabilidade-categoria" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-target" title="Projeção de Meta"
+              to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-calendar-check-outline" title="Resumo do Dia"
+              to="/relatorios/resumo-dia" value="/relatorios/resumo-dia" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-chart-line-variant" title="Histórico de Faturamento"
+              to="/relatorios/historico-faturamento" value="/relatorios/historico-faturamento" color="primary" rounded="lg" class="pl-4" />
+          </v-list-group>
+
+          <!-- Desempenho -->
+          <v-list-group v-if="!ehContador" value="desempenho">
+            <template #activator="{ props }">
+              <v-list-item v-bind="props" prepend-icon="mdi-trophy-outline" title="Desempenho" color="amber-darken-2" rounded="lg" />
+            </template>
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-trophy-outline" title="Premiação por Desempenho"
+              to="/desempenho/premiacao" value="/desempenho/premiacao" color="amber-darken-2" rounded="lg" class="pl-4" />
+            <v-list-item v-if="ehGestor" prepend-icon="mdi-file-sign" title="Aceites da Premiação"
+              to="/desempenho/aceites" value="/desempenho/aceites" color="amber-darken-2" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-medal-outline" title="Meu Desempenho"
+              to="/desempenho/meu" value="/desempenho/meu" color="amber-darken-2" rounded="lg" class="pl-4" />
+          </v-list-group>
 
           <!-- Restante em ordem alfabética -->
           <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"
@@ -193,10 +205,15 @@
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
-            to="/fiscal" value="/fiscal" color="primary" rounded="lg" />
-          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-truck-outline" title="CT-e recebidos"
-            to="/fiscal/cte-recebidos" value="/fiscal/cte-recebidos" color="primary" rounded="lg" />
+          <v-list-group v-if="!ehAtendente && !ehContador" value="fiscal">
+            <template #activator="{ props }">
+              <v-list-item v-bind="props" prepend-icon="mdi-file-document-outline" title="Fiscal" color="primary" rounded="lg" />
+            </template>
+            <v-list-item prepend-icon="mdi-file-document-outline" title="Fiscal / NF-e"
+              to="/fiscal" value="/fiscal" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-truck-outline" title="CT-e recebidos"
+              to="/fiscal/cte-recebidos" value="/fiscal/cte-recebidos" color="primary" rounded="lg" class="pl-4" />
+          </v-list-group>
 
           <v-list-group v-if="!ehContador" value="marketing">
             <template #activator="{ props }">

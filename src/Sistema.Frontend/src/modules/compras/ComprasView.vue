@@ -21,10 +21,16 @@
     />
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
       <v-row dense>
-        <v-col cols="12" sm="4">
+        <v-col cols="12" sm="3">
           <v-select v-model="filtros.status" label="Status"
             :items="['Todos','Rascunho','Enviado','Recebido','Cancelado']"
             variant="outlined" density="compact" hide-details />
+        </v-col>
+        <v-col cols="12" sm="3">
+          <v-select v-model="filtroLoja" label="Unidade"
+            :items="[{ id: 'todas', nome: 'Todas as unidades' }, ...locaisEstoque, { id: 'sem', nome: 'Sem unidade' }]"
+            item-title="nome" item-value="id"
+            variant="outlined" density="compact" hide-details clearable />
         </v-col>
         <v-col cols="12" sm="3">
           <FiltroMes @selecionar="(i, f) => { filtros.inicio = i; filtros.fim = f; carregar() }" />
@@ -43,7 +49,7 @@
       </div>
     </v-card>
     <v-card rounded="xl" elevation="1">
-      <v-data-table :headers="headers" :items="pedidos" :loading="carregando" density="compact" hover
+      <v-data-table :headers="headers" :items="pedidosFiltrados" :loading="carregando" density="compact" hover
         @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
         <template #item.lojaNome="{ item }">
           <v-chip v-if="item.lojaNome" size="small" variant="tonal" color="primary">
@@ -345,6 +351,13 @@ const pickerUnidade = ref<string | null>(null)
 const pickerBusca = ref('')
 const selecionados = ref<Record<string, boolean>>({})
 const filtros = ref({ status:'Todos', inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10), fim: new Date().toISOString().slice(0,10) })
+const filtroLoja = ref<string>('todas')
+const pedidosFiltrados = computed(() => {
+  const f = filtroLoja.value
+  if (!f || f === 'todas') return pedidos.value
+  if (f === 'sem') return pedidos.value.filter((p: any) => !p.localEstoqueId)
+  return pedidos.value.filter((p: any) => p.localEstoqueId === f)
+})
 const np = ref<any>({ fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' })
 const it = ref({ produtoId:'', descricao:'', quantidade:1, precoUnitario:0 })
 const rec = ref<any>({ pedidoId:'', dataRecebimento: new Date().toISOString().slice(0,10), numeroNf:'', itens:[] })

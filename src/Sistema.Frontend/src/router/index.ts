@@ -193,6 +193,7 @@ const router = createRouter({
 // Rotas que o perfil "Atendente" pode acessar (o resto é bloqueado por URL também).
 const ROTAS_ATENDENTE = [
   '/pdv', '/pdv/vendas', '/pdv/sessoes',
+  '/desempenho/meu',
   '/cadastros/clientes',
   '/compras/requisicoes',
   '/tutoriais',

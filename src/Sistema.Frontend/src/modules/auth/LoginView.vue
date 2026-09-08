@@ -156,7 +156,8 @@ async function entrar() {
   carregando.value = true
   try {
     await auth.login(email.value, senha.value)
-    router.push('/')
+    // Atendente cai direto no "Meu Desempenho"; demais perfis vão para a home.
+    router.push(auth.usuario?.role === 'Atendente' ? '/desempenho/meu' : '/')
   } catch {
     notif.erro('E-mail ou senha inválidos.')
   } finally {

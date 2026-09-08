@@ -138,6 +138,8 @@
               to="/compras" value="/compras" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-clipboard-text-outline" title="Requisições de Compra"
               to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-file-compare" title="Comparar Cotações"
+              to="/compras/cotacoes" value="/compras/cotacoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
               to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>

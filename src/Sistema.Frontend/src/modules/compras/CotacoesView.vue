@@ -298,10 +298,15 @@
               <td class="text-right">{{ p.quantidade }}</td>
               <td v-for="(cot, idx) in p.cotacoes" :key="idx" class="text-right">
                 <template v-if="cot.encontrado">
-                  <span :class="cot.melhor ? 'cot-melhor' : 'text-medium-emphasis'">
-                    <v-icon v-if="cot.melhor" icon="mdi-trophy" size="13" color="success" />
-                    R$ {{ fmt(cot.preco) }}<span v-if="cot.unidade" class="text-caption">/{{ cot.unidade }}</span>
-                  </span>
+                  <v-tooltip location="top" :text="'No PDF: ' + (cot.descricaoOriginal || '—')">
+                    <template #activator="{ props }">
+                      <span v-bind="props" :class="cot.melhor ? 'cot-melhor' : 'text-medium-emphasis'"
+                        style="cursor:help; border-bottom:1px dotted #cbd5e1">
+                        <v-icon v-if="cot.melhor" icon="mdi-trophy" size="13" color="success" />
+                        R$ {{ fmt(cot.preco) }}<span v-if="cot.unidade" class="text-caption">/{{ cot.unidade }}</span>
+                      </span>
+                    </template>
+                  </v-tooltip>
                   <div class="text-caption text-medium-emphasis">= R$ {{ fmt(cot.subtotal) }}</div>
                 </template>
                 <span v-else class="text-medium-emphasis">—</span>

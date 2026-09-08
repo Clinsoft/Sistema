@@ -47,36 +47,16 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
             cotacoesPorFornecedor.Add((nomeForn, itens));
         }
 
-        // Para cada produto, encontra preços em cada fornecedor
+        // Para cada produto do catálogo, encontra o melhor item em cada fornecedor
         var resultado = new List<object>();
-        var produtosVistos = new HashSet<Guid>();
+        var itensUsados = new HashSet<ItemExtraido>();
 
-        foreach (var (fornecedor, itens) in cotacoesPorFornecedor)
+        foreach (var produto in produtos)
         {
-            foreach (var item in itens)
-            {
-                // Match por código de barras primeiro, depois por nome fuzzy
-                var produto = produtos.FirstOrDefault(p =>
-                    !string.IsNullOrEmpty(item.CodigoBarras) && p.CodigoBarras == item.CodigoBarras)
-                    ?? MatchFuzzy(produtos.Select(p => new { p.Id, p.Descricao, p.CodigoBarras, p.Codigo, p.CustoUnitario }).ToList(), item.Descricao);
-
-                if (produto is not null && !produtosVistos.Contains(produto.Id))
-                    produtosVistos.Add(produto.Id);
-            }
-        }
-
-        // Constrói tabela de comparação por produto encontrado
-        foreach (var produtoId in produtosVistos)
-        {
-            var produto = produtos.First(p => p.Id == produtoId);
             var cotacoesProduto = cotacoesPorFornecedor.Select(cf =>
             {
-                var match = cf.Itens
-                    .Where(i => (!string.IsNullOrEmpty(i.CodigoBarras) && i.CodigoBarras == produto.CodigoBarras)
-                        || ScoreFuzzy(Normalizar(produto.Descricao), Normalizar(i.Descricao)) >= 0.5)
-                    .OrderByDescending(i => ScoreFuzzy(Normalizar(produto.Descricao), Normalizar(i.Descricao)))
-                    .FirstOrDefault();
-
+                var match = MelhorItem(cf.Itens, produto.Descricao, produto.CodigoBarras);
+                if (match is not null) itensUsados.Add(match);
                 return new
                 {
                     fornecedor = cf.Fornecedor,
@@ -109,20 +89,12 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
             });
         }
 
-        // Itens não identificados (sem match no banco)
+        // Itens não identificados = os extraídos que não casaram com nenhum produto
         var naoIdentificados = new List<object>();
         foreach (var (fornecedor, itens) in cotacoesPorFornecedor)
-        {
             foreach (var item in itens)
-            {
-                var produto = produtos.FirstOrDefault(p =>
-                    (!string.IsNullOrEmpty(item.CodigoBarras) && p.CodigoBarras == item.CodigoBarras)
-                    || ScoreFuzzy(Normalizar(p.Descricao), Normalizar(item.Descricao)) >= 0.5);
-
-                if (produto is null)
+                if (!itensUsados.Contains(item))
                     naoIdentificados.Add(new { fornecedor, item.Descricao, item.Preco, item.Unidade });
-            }
-        }
 
         return Ok(new
         {
@@ -196,17 +168,10 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
             var produto = pmap.GetValueOrDefault(it.ProdutoId);
             var desc = produto?.Descricao ?? it.Descricao;
             var ean = produto?.CodigoBarras;
-            var normProduto = Normalizar(desc);
 
             var cotacoes = cotacoesPorFornecedor.Select(cf =>
             {
-                var match = cf.Itens
-                    .Select(i => (i, score: (!string.IsNullOrEmpty(ean) && i.CodigoBarras == ean)
-                        ? 1.0 : ScoreFuzzy(normProduto, Normalizar(i.Descricao))))
-                    .Where(x => x.score >= 0.5)
-                    .OrderByDescending(x => x.score)
-                    .Select(x => x.i)
-                    .FirstOrDefault();
+                var match = MelhorItem(cf.Itens, desc, ean);
 
                 return new
                 {
@@ -296,43 +261,93 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
     }
 
     // ── Parser de itens do texto extraído ────────────────────────────────────
-    private static readonly Regex RxPreco = new(@"R?\$?\s*(\d{1,6}[.,]\d{2})", RegexOptions.Compiled);
+    // Preço: número com 2 casas decimais NÃO seguido de unidade (evita pegar peso "12,50KG").
+    private static readonly Regex RxPreco = new(@"R?\$?\s*(\d{1,6}[.,]\d{2})(?!\s*(?:kgs?|grs?|g|mls?|lt|un|und|unid)\b)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex RxEan = new(@"\b\d{13}\b", RegexOptions.Compiled);
     private static readonly Regex RxUnidade = new(@"\b(UN|KG|CX|PC|LT|ML|G|GR|KIT|PAR|MT|M|L)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    // Conserta dígitos separados por espaço em preços prefixados por R$: "R$ 3 9,50" → "R$ 39,50".
+    private static readonly Regex RxPrecoRSespacado = new(@"R\$\s*([\d][\d\s]*[.,]\s?\d{2})", RegexOptions.Compiled);
+    private static readonly Regex RxCodInicio = new(@"^\s*\d{4,7}\b", RegexOptions.Compiled);
+    private static readonly HashSet<string> StopDesc =
+        ["POR", "DE", "R", "RS", "KG", "UND", "UN", "CX", "PC", "LT", "ML", "GR", "MT"];
 
+    private static string LimparDesc(string linha)
+    {
+        var d = RxPreco.Replace(linha, "");
+        d = Regex.Replace(d, @"R\$", " ");
+        d = Regex.Replace(d, @"[^\w\s\-\/]", " ").Trim();
+        return Regex.Replace(d, @"\s{2,}", " ").Trim();
+    }
+
+    private static bool TemDescricao(string desc)
+    {
+        var semCod = RxCodInicio.Replace(desc, "").Trim();
+        var palavras = semCod.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Count(t => t.Length >= 3 && !StopDesc.Contains(t.ToUpperInvariant()) && t.Any(char.IsLetter));
+        return palavras >= 1 && desc.Length >= 4;
+    }
+
+    private static decimal? PrecoDaLinha(string linha)
+    {
+        var m = RxPreco.Match(linha);
+        if (!m.Success) return null;
+        var s = m.Groups[1].Value.Replace('.', ',');
+        if (!decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+            new System.Globalization.CultureInfo("pt-BR"), out var v)) return null;
+        return v is < 0.10m or > 99999m ? null : v;
+    }
+
+    /// <summary>
+    /// Extrai (descrição, preço, EAN) de uma tabela em texto. Robusto a dois layouts:
+    /// (a) descrição e preço na MESMA linha (ex.: BrasBol); (b) descrição numa linha e o
+    /// preço na linha seguinte "Por: R$ ..." (ex.: Vida em Grãos), inclusive com dígitos
+    /// separados por espaço. Linhas "De: R$ ..." (preço riscado) são ignoradas.
+    /// </summary>
     private static List<ItemExtraido> ExtrairItens(string texto)
     {
+        var linhas = texto.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => RxPrecoRSespacado.Replace(l, mm => "R$ " + Regex.Replace(mm.Groups[1].Value, @"\s+", "")))
+            .ToArray();
+
         var itens = new List<ItemExtraido>();
-        var linhas = texto.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string? pendDesc = null, pendEan = null;
+
+        void Emitir(string descBruta, decimal preco, string? eanConhecido)
+        {
+            var descricao = descBruta;
+            var ean = eanConhecido ?? (RxEan.Match(descricao) is { Success: true } m ? m.Value : null);
+            if (ean is not null) descricao = descricao.Replace(ean, "").Trim();
+            var uni = RxUnidade.Match(descBruta);
+            itens.Add(new ItemExtraido(descricao, preco, uni.Success ? uni.Value.ToUpper() : null, ean));
+        }
 
         foreach (var linha in linhas)
         {
-            var precoMatch = RxPreco.Match(linha);
-            if (!precoMatch.Success) continue;
+            var preco = PrecoDaLinha(linha);
+            var desc = LimparDesc(linha);
+            var temDesc = TemDescricao(desc);
+            var ehDe = Regex.IsMatch(linha, @"^\s*De\b", RegexOptions.IgnoreCase)
+                       && !Regex.IsMatch(linha, @"Por", RegexOptions.IgnoreCase);
 
-            var precoStr = precoMatch.Groups[1].Value.Replace('.', ',');
-            if (!decimal.TryParse(precoStr, System.Globalization.NumberStyles.Any,
-                new System.Globalization.CultureInfo("pt-BR"), out var preco))
-                continue;
-
-            // Ignora valores muito pequenos (centavos soltos) ou muito grandes
-            if (preco < 0.10m || preco > 99999m) continue;
-
-            var descricao = RxPreco.Replace(linha, "").Trim();
-            descricao = Regex.Replace(descricao, @"[^\w\s\-\/]", " ").Trim();
-            descricao = Regex.Replace(descricao, @"\s{2,}", " ").Trim();
-
-            if (descricao.Length < 3) continue;
-
-            var ean = RxEan.Match(descricao);
-            var codigoBarras = ean.Success ? ean.Value : null;
-            if (codigoBarras is not null)
-                descricao = descricao.Replace(codigoBarras, "").Trim();
-
-            var unidadeMatch = RxUnidade.Match(linha);
-            var unidade = unidadeMatch.Success ? unidadeMatch.Value.ToUpper() : null;
-
-            itens.Add(new ItemExtraido(descricao, preco, unidade, codigoBarras));
+            if (preco.HasValue && temDesc)            // desc + preço na mesma linha
+            {
+                Emitir(desc, preco.Value, null);
+                pendDesc = null; pendEan = null;
+            }
+            else if (preco.HasValue && !temDesc)      // só preço → usa descrição pendente (ignora "De:")
+            {
+                if (!ehDe && pendDesc is not null)
+                {
+                    Emitir(pendDesc, preco.Value, pendEan);
+                    pendDesc = null; pendEan = null;
+                }
+            }
+            else if (temDesc)                          // só descrição → guarda p/ próximo preço
+            {
+                pendDesc = desc;
+                pendEan = RxEan.Match(desc) is { Success: true } m ? m.Value : null;
+            }
         }
 
         // Remove duplicatas: mantém o mais barato por descrição similar
@@ -342,26 +357,47 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
             .ToList();
     }
 
-    // ── Matching fuzzy ───────────────────────────────────────────────────────
-    private static T? MatchFuzzy<T>(List<T> produtos, string descricao) where T : class
-    {
-        var normalizado = Normalizar(descricao);
-        return produtos
-            .Select(p => (p, score: ScoreFuzzy(Normalizar(ObterDescricao(p)), normalizado)))
-            .Where(x => x.score >= 0.5)
-            .OrderByDescending(x => x.score)
-            .Select(x => x.p)
-            .FirstOrDefault();
-    }
+    // ── Matching por cobertura ────────────────────────────────────────────────
+    // Palavras genéricas (embalagem/origem) que não ajudam a identificar o produto.
+    private static readonly HashSet<string> StopMatch =
+    [
+        "imp", "nac", "caixa", "cx", "saco", "sc", "pacote", "pct", "pote", "kg", "kgs", "gr", "grs",
+        "ml", "lt", "un", "und", "unid", "pc", "par", "premium", "organico", "natural", "importado", "nacional"
+    ];
 
-    private static double ScoreFuzzy(string a, string b)
+    private static HashSet<string> TokensCanon(string s) =>
+        Normalizar(s).Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 3 && t.Any(char.IsLetter) && !StopMatch.Contains(t))
+            .ToHashSet();
+
+    /// <summary>
+    /// Casa a descrição de um PRODUTO com a melhor descrição extraída do PDF.
+    /// Score = fração dos tokens do produto presentes no item do fornecedor (cobertura);
+    /// desempate pelo item mais "justo" (menos palavras sobrando) e depois pelo menor preço.
+    /// Retorna null se a cobertura ficar abaixo do limiar.
+    /// </summary>
+    private static ItemExtraido? MelhorItem(IEnumerable<ItemExtraido> itens, string descricaoProduto,
+        string? ean, double limiar = 0.6)
     {
-        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return 0;
-        var tokensA = a.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-        var tokensB = b.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-        var intersecao = tokensA.Intersect(tokensB).Count();
-        var maxTokens = Math.Max(tokensA.Count, tokensB.Count);
-        return maxTokens == 0 ? 0 : (double)intersecao / maxTokens;
+        var pt = TokensCanon(descricaoProduto);
+        if (pt.Count == 0 && string.IsNullOrEmpty(ean)) return null;
+
+        return itens
+            .Select(i =>
+            {
+                if (!string.IsNullOrEmpty(ean) && i.CodigoBarras == ean)
+                    return (i, score: 1.0, extra: 0);
+                var vt = TokensCanon(i.Descricao);
+                var inter = pt.Count(t => vt.Contains(t));
+                var score = pt.Count == 0 ? 0 : (double)inter / pt.Count;
+                return (i, score, extra: vt.Count - inter);
+            })
+            .Where(x => x.score >= limiar)
+            .OrderByDescending(x => x.score)
+            .ThenBy(x => x.extra)
+            .ThenBy(x => x.i.Preco)
+            .Select(x => x.i)
+            .FirstOrDefault();
     }
 
     private static string Normalizar(string s) =>
@@ -372,12 +408,6 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
          .ToString()
          .Replace("-", " ")
          .Replace("/", " ");
-
-    private static string ObterDescricao<T>(T obj)
-    {
-        var prop = typeof(T).GetProperty("Descricao");
-        return prop?.GetValue(obj)?.ToString() ?? "";
-    }
 }
 
 internal record ItemExtraido(string Descricao, decimal Preco, string? Unidade, string? CodigoBarras);

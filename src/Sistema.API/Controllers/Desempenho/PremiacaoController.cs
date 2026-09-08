@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using System.Security.Claims;
 using Sistema.Domain.Desempenho.Entities;
 using Sistema.Domain.Vendas.Entities;
@@ -272,6 +275,94 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
                 x.FotoBase64, x.AssinaturaBase64
             }).ToListAsync(ct);
         return Ok(lista);
+    }
+
+    /// <summary>Gestor: comprovante em PDF de um aceite (com foto, assinatura, geo e trilha).</summary>
+    [HttpGet("aceites/{id:guid}/comprovante-pdf")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> ComprovantePdf(Guid id, CancellationToken ct)
+    {
+        var a = await db.AceitesTermoPremiacao.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (a is null) return NotFound();
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == a.EmpresaId, ct);
+
+        var foto = DecodeDataUrl(a.FotoBase64);
+        var assinatura = DecodeDataUrl(a.AssinaturaBase64);
+        var dataLocal = a.DataAceite.ToLocalTime();
+
+        var pdf = Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Margin(36); page.Size(PageSizes.A4);
+                page.DefaultTextStyle(t => t.FontSize(10).FontColor("#1b241e"));
+
+                page.Header().Column(h =>
+                {
+                    h.Item().Text("Comprovante de Aceite Eletrônico").FontSize(16).Bold().FontColor("#1e7a46");
+                    h.Item().Text("Regulamento de Premiação por Desempenho").FontSize(11).FontColor("#555");
+                    h.Item().PaddingTop(2).Text(empresa?.RazaoSocial ?? "").FontSize(9).FontColor("#777");
+                });
+
+                page.Content().PaddingVertical(14).Column(c =>
+                {
+                    c.Spacing(8);
+                    void Linha(string k, string v) => c.Item().Row(r =>
+                    {
+                        r.ConstantItem(150).Text(k).SemiBold().FontColor("#555");
+                        r.RelativeItem().Text(v);
+                    });
+
+                    Linha("Colaborador(a):", a.ColaboradorNome);
+                    Linha("Data e hora do aceite:", dataLocal.ToString("dd/MM/yyyy HH:mm:ss") + " (horário local)");
+                    Linha("Versão do termo:", a.TermoVersao);
+                    Linha("Hash do documento (SHA-256):", string.IsNullOrEmpty(a.TermoHash) ? "—" : a.TermoHash);
+                    Linha("Localização:", a.Latitude.HasValue
+                        ? $"{a.Latitude:0.#####}, {a.Longitude:0.#####}  (±{a.PrecisaoMetros:0}m)" : "não informada");
+                    Linha("Endereço do mapa:", a.Latitude.HasValue
+                        ? $"https://maps.google.com/?q={a.Latitude},{a.Longitude}" : "—");
+                    Linha("IP:", a.Ip ?? "—");
+                    Linha("Dispositivo (User-Agent):", a.UserAgent ?? "—");
+
+                    c.Item().PaddingTop(8).Row(r =>
+                    {
+                        r.RelativeItem().Column(col =>
+                        {
+                            col.Item().Text("Foto (identificação)").SemiBold().FontColor("#555").FontSize(9);
+                            if (foto is not null) col.Item().PaddingTop(4).Height(160).Image(foto).FitArea();
+                            else col.Item().PaddingTop(4).Text("—");
+                        });
+                        r.ConstantItem(16);
+                        r.RelativeItem().Column(col =>
+                        {
+                            col.Item().Text("Assinatura").SemiBold().FontColor("#555").FontSize(9);
+                            if (assinatura is not null) col.Item().PaddingTop(4).Border(0.5f).Height(160).Image(assinatura).FitArea();
+                            else col.Item().PaddingTop(4).Text("—");
+                        });
+                    });
+
+                    c.Item().PaddingTop(10).Background("#F3F5F0").Padding(10).Text(
+                        "Declaração: a colaboradora acima, mediante autenticação por usuário e senha no sistema, "
+                        + "leu e aceitou o Regulamento de Premiação por Desempenho, confirmando sua participação e "
+                        + "ciência de que o prêmio não possui natureza salarial. As evidências (foto, assinatura, "
+                        + "geolocalização, IP, data/hora e hash do documento) foram registradas no ato do aceite para fins de comprovação.")
+                        .FontSize(9).FontColor("#444");
+                });
+
+                page.Footer().AlignCenter().Text($"Documento gerado em {DateTime.Now:dd/MM/yyyy HH:mm} · id {a.Id}")
+                    .FontSize(8).FontColor("#999");
+            });
+        });
+
+        return File(pdf.GeneratePdf(), "application/pdf", $"aceite-{a.ColaboradorNome}.pdf");
+    }
+
+    private static byte[]? DecodeDataUrl(string? dataUrl)
+    {
+        if (string.IsNullOrEmpty(dataUrl)) return null;
+        var i = dataUrl.IndexOf(',');
+        var b64 = i >= 0 ? dataUrl[(i + 1)..] : dataUrl;
+        try { return Convert.FromBase64String(b64); } catch { return null; }
     }
 
     // ── Núcleo do cálculo ─────────────────────────────────────────────────

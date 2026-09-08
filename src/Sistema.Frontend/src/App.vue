@@ -120,6 +120,8 @@
             to="/relatorios/historico-faturamento" value="/relatorios/historico-faturamento" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-trophy-outline" title="Premiação por Desempenho"
             to="/desempenho/premiacao" value="/desempenho/premiacao" color="amber-darken-2" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-file-sign" title="Aceites da Premiação"
+            to="/desempenho/aceites" value="/desempenho/aceites" color="amber-darken-2" rounded="lg" />
           <v-list-item prepend-icon="mdi-medal-outline" title="Meu Desempenho"
             to="/desempenho/meu" value="/desempenho/meu" color="amber-darken-2" rounded="lg" />
 

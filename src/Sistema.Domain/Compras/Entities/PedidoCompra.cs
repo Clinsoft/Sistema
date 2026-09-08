@@ -9,6 +9,7 @@ public class PedidoCompra : Entity
     public Guid FornecedorId { get; private set; }
     public Guid UsuarioId { get; private set; }
     public Guid? LocalEstoqueId { get; private set; }   // unidade/loja de entrega do pedido
+    public Guid? RequisicaoCompraId { get; private set; }   // requisição de origem (quando gerado dela)
     public StatusPedidoCompra Status { get; private set; }
     public DateTime DataPedido { get; private set; }
     public DateTime? DataPrevisaoEntrega { get; private set; }
@@ -23,13 +24,14 @@ public class PedidoCompra : Entity
     private PedidoCompra() { }
 
     public static PedidoCompra Criar(Guid empresaId, Guid fornecedorId, Guid usuarioId, string numero,
-        DateTime? previsaoEntrega = null, Guid? localEstoqueId = null)
+        DateTime? previsaoEntrega = null, Guid? localEstoqueId = null, Guid? requisicaoCompraId = null)
         => new()
         {
             EmpresaId = empresaId,
             FornecedorId = fornecedorId,
             UsuarioId = usuarioId,
             LocalEstoqueId = localEstoqueId,
+            RequisicaoCompraId = requisicaoCompraId,
             Numero = numero,
             Status = StatusPedidoCompra.Rascunho,
             DataPedido = DateTime.Now,

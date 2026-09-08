@@ -737,6 +737,7 @@ async function confirmarPedido() {
         empresaId: auth.empresaId,
         fornecedorId,
         localEstoqueId: resultadoReq.value?.localEstoqueId ?? null,
+        requisicaoCompraId: resultadoReq.value?.requisicaoId ?? null,
         observacoes: `Gerado automaticamente pela comparação de cotações — ${forn}`,
         itens: (itens as any[]).map(i => ({
           produtoId: i.produtoId,

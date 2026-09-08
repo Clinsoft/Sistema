@@ -108,12 +108,42 @@
         <v-card-text class="pa-4">
           <div v-if="det.observacao" class="text-body-2 mb-3"><b>Obs.:</b> {{ det.observacao }}</div>
 
+          <!-- Conferência: requisitado × pedido -->
+          <v-alert v-if="conf" :type="conf.completo ? 'success' : 'warning'" variant="tonal"
+            density="comfortable" class="mb-3">
+            <div class="d-flex align-center flex-wrap ga-2">
+              <b v-if="conf.completo">Tudo pedido — todos os {{ conf.totalItens }} itens já estão em pedidos de compra.</b>
+              <b v-else>Faltam pedir {{ conf.itensPendentes }} de {{ conf.totalItens }} itens.</b>
+              <v-spacer />
+              <v-btn size="x-small" variant="text" @click="mostrarConf = !mostrarConf">
+                {{ mostrarConf ? 'ocultar' : 'ver detalhe' }}
+              </v-btn>
+            </div>
+            <div v-if="conf.aproximado" class="text-caption mt-1">
+              * Conferência aproximada (por produto/loja) para pedidos antigos sem vínculo direto.
+            </div>
+            <v-table v-if="mostrarConf" density="compact" class="mt-2 bg-transparent">
+              <thead><tr><th>Produto</th><th class="text-center" style="width:90px">Requisit.</th>
+                <th class="text-center" style="width:90px">Pedido</th><th class="text-center" style="width:90px">Pendente</th>
+                <th style="width:120px">Pedidos</th></tr></thead>
+              <tbody>
+                <tr v-for="l in conf.itens" :key="l.produtoId" :class="l.pendente > 0 ? 'text-warning' : ''">
+                  <td>{{ l.descricao }}</td>
+                  <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
+                  <td class="text-center">{{ fmtQtd(l.pedido) }}</td>
+                  <td class="text-center font-weight-bold">{{ l.pendente > 0 ? fmtQtd(l.pendente) : '—' }}</td>
+                  <td class="text-caption">{{ (l.pedidos || []).join(', ') || '—' }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </v-alert>
+
           <v-card v-for="g in porFornecedor" :key="g.fornecedor" rounded="lg" variant="outlined" class="mb-3">
             <v-card-title class="text-body-2 font-weight-bold d-flex align-center py-2 flex-wrap ga-2">
               <v-icon icon="mdi-truck-outline" size="18" class="mr-1" /> {{ g.fornecedor }}
               <v-spacer />
               <span class="text-caption text-medium-emphasis">{{ g.itens.length }} item(ns)</span>
-              <v-btn v-if="ehGestor && det.status==='Aberta'" size="small" color="primary" variant="tonal"
+              <v-btn v-if="ehGestor && det.status !== 'Cancelada'" size="small" color="primary" variant="tonal"
                 rounded="lg" prepend-icon="mdi-cart-plus" :loading="gerando===g.fornecedor"
                 :disabled="!g.fornecedorId" @click="gerarPedido(g)">Gerar pedido</v-btn>
             </v-card-title>
@@ -236,6 +266,16 @@ async function salvarNova() {
 const dialogDet = ref(false)
 const det = ref<any>(null)
 const gerando = ref<string | null>(null)
+const conf = ref<any>(null)
+const mostrarConf = ref(false)
+
+async function carregarConferencia() {
+  if (!det.value?.id) return
+  try {
+    const r = await api.get(`/requisicoes-compra/${det.value.id}/conferencia`)
+    conf.value = r.data
+  } catch { conf.value = null }
+}
 
 const porFornecedor = computed(() => {
   const map = new Map<string, { fornecedor: string; fornecedorId: string | null; itens: ItemDet[] }>()
@@ -250,7 +290,9 @@ async function abrirDetalhe(item: any) {
   try {
     const r = await api.get(`/requisicoes-compra/${item.id}`)
     det.value = { ...r.data, loja: item.loja, solicitante: item.solicitante }
+    conf.value = null; mostrarConf.value = false
     dialogDet.value = true
+    carregarConferencia()
   } catch { notif.erro('Erro ao carregar a requisição.') }
 }
 
@@ -262,12 +304,17 @@ async function gerarPedido(g: { fornecedor: string; fornecedorId: string | null;
       empresaId: auth.empresaId,
       fornecedorId: g.fornecedorId,
       usuarioId: auth.usuario?.id,
+      localEstoqueId: det.value?.localEstoqueId ?? null,
+      requisicaoCompraId: det.value?.id ?? null,
       itens: g.itens.map(i => ({
         produtoId: i.produtoId, descricao: i.descricao,
         quantidade: i.quantidade, precoUnitario: i.custoUnitario,
       })),
     })
-    notif.ok(`Pedido criado para ${g.fornecedor}. Veja em Compras › Pedido de Compra.`)
+    notif.ok(`Pedido criado para ${g.fornecedor}. Requisição marcada como processada.`)
+    if (det.value) det.value.status = 'Processada'
+    await carregar()
+    await carregarConferencia()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o pedido.') }
   finally { gerando.value = null }
 }

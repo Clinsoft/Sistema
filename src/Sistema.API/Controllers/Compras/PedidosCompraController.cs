@@ -23,6 +23,17 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
     public async Task<IActionResult> Criar([FromBody] CriarPedidoCompraCommand cmd, CancellationToken ct)
     {
         var id = await mediator.Send(cmd, ct);
+
+        // Ao gerar o pedido a partir de uma requisição, marca a requisição como Processada.
+        if (cmd.RequisicaoCompraId is Guid reqId)
+        {
+            var req = await db.RequisicoesCompra.FirstOrDefaultAsync(r => r.Id == reqId, ct);
+            if (req is not null && req.Status == Sistema.Domain.Compras.Entities.StatusRequisicaoCompra.Aberta)
+            {
+                req.Processar();
+                await uow.SalvarAsync(ct);
+            }
+        }
         return Ok(new { id });
     }
 

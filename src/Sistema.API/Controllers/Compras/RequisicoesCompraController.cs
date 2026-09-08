@@ -107,7 +107,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
 
         return Ok(new
         {
-            req.Id, status = req.Status.ToString(), req.Observacao,
+            req.Id, status = req.Status.ToString(), req.Observacao, req.LocalEstoqueId,
             criadoEm = DateTime.SpecifyKind(req.CriadoEm, DateTimeKind.Utc).ToLocalTime(),
             itens = itens.Select(i =>
             {
@@ -123,6 +123,79 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                         ? fn : "(sem fornecedor)",
                 };
             }).ToList()
+        });
+    }
+
+    /// <summary>
+    /// Confere o que foi requisitado × o que já foi pedido (pedidos de compra).
+    /// Usa o vínculo pedido→requisição quando existe; senão, cai para os pedidos da
+    /// mesma loja criados a partir da data da requisição (aproximado, para dados antigos).
+    /// </summary>
+    [HttpGet("{id:guid}/conferencia")]
+    public async Task<IActionResult> Conferencia(Guid id, CancellationToken ct)
+    {
+        var req = await db.RequisicoesCompra.AsNoTracking()
+            .Where(r => r.Id == id)
+            .Select(r => new { r.EmpresaId, r.LocalEstoqueId, r.CriadoEm })
+            .FirstOrDefaultAsync(ct);
+        if (req is null) return NotFound();
+
+        var itens = await db.ItensRequisicaoCompra.AsNoTracking()
+            .Where(i => i.RequisicaoCompraId == id)
+            .Select(i => new { i.ProdutoId, i.Descricao, i.Quantidade })
+            .ToListAsync(ct);
+
+        // Pedidos vinculados a esta requisição (exato). Se não houver, cai no aproximado.
+        var pedidosLig = await db.PedidosCompra.AsNoTracking()
+            .Where(p => p.RequisicaoCompraId == id && p.Status != StatusPedidoCompra.Cancelado)
+            .Select(p => new { p.Id, p.Numero }).ToListAsync(ct);
+
+        var aproximado = false;
+        if (pedidosLig.Count == 0)
+        {
+            aproximado = true;
+            pedidosLig = await db.PedidosCompra.AsNoTracking()
+                .Where(p => p.EmpresaId == req.EmpresaId
+                    && p.RequisicaoCompraId == null
+                    && p.Status != StatusPedidoCompra.Cancelado
+                    && p.LocalEstoqueId == req.LocalEstoqueId
+                    && p.DataPedido >= req.CriadoEm)
+                .Select(p => new { p.Id, p.Numero }).ToListAsync(ct);
+        }
+
+        var pedidoIds = pedidosLig.Select(p => p.Id).ToList();
+        var numeroPorId = pedidosLig.ToDictionary(p => p.Id, p => p.Numero);
+
+        var itensPedido = await db.ItensPedidoCompra.AsNoTracking()
+            .Where(i => pedidoIds.Contains(i.PedidoCompraId))
+            .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
+            .ToListAsync(ct);
+
+        var linhas = itens.Select(it =>
+        {
+            var casados = itensPedido.Where(ip => ip.ProdutoId == it.ProdutoId).ToList();
+            var pedido = casados.Sum(c => c.Quantidade);
+            var numeros = casados.Select(c => numeroPorId.GetValueOrDefault(c.PedidoCompraId))
+                .Where(n => n is not null).Distinct().ToList();
+            return new
+            {
+                produtoId = it.ProdutoId,
+                descricao = it.Descricao,
+                requisitado = it.Quantidade,
+                pedido,
+                pendente = Math.Max(0, it.Quantidade - pedido),
+                pedidos = numeros,
+            };
+        }).ToList();
+
+        return Ok(new
+        {
+            requisicaoId = id,
+            aproximado,
+            totalItens = linhas.Count,
+            itensPendentes = linhas.Count(l => l.pendente > 0),
+            completo = linhas.All(l => l.pendente <= 0),
+            itens = linhas,
         });
     }
 

@@ -11,10 +11,11 @@
       <v-tab value="lojas"><v-icon start size="18">mdi-store-outline</v-icon>Por loja</v-tab>
     </v-tabs>
 
-    <!-- Só a aba ativa é montada; mantém viva depois de visitada (não recarrega ao voltar) -->
-    <keep-alive>
-      <component :is="componentes[aba]" />
-    </keep-alive>
+    <v-window v-model="aba">
+      <v-window-item value="periodo"><DreView /></v-window-item>
+      <v-window-item value="mensal"><DreMensalView /></v-window-item>
+      <v-window-item value="lojas"><DreLojasView /></v-window-item>
+    </v-window>
   </div>
 </template>
 
@@ -24,12 +25,6 @@ import { useRoute, useRouter } from 'vue-router'
 import DreView from './DreView.vue'
 import DreMensalView from './DreMensalView.vue'
 import DreLojasView from './DreLojasView.vue'
-
-const componentes: Record<string, any> = {
-  periodo: DreView,
-  mensal: DreMensalView,
-  lojas: DreLojasView,
-}
 
 const route = useRoute()
 const router = useRouter()

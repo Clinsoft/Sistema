@@ -127,8 +127,10 @@ import { ref, onMounted } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 const carregando = ref(false)
 const dados = ref<any>(null)
 const mes = ref(new Date().getMonth() + 1)
@@ -154,6 +156,8 @@ async function carregar() {
       params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value },
     })
     dados.value = res.data
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o DRE por loja.')
   } finally { carregando.value = false }
 }
 

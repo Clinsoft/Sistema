@@ -184,17 +184,17 @@ public class DREController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId)
             .Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
 
-        // Receita por loja (vendas finalizadas)
-        var receitaLoja = (await db.Vendas.AsNoTracking()
+        // Receita por loja (vendas finalizadas). Ignora vendas sem loja (chave nula).
+        var receitaGrp = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId && v.Status == vFinalizada
                 && v.DataHora >= inicio && v.DataHora < fimExcl)
             .GroupBy(v => v.LocalEstoqueId)
             .Select(g => new { Loja = g.Key, Receita = g.Sum(v => v.Total) })
-            .ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Receita);
+            .ToListAsync(ct);
+        var receitaLoja = receitaGrp.ToDictionary(x => x.Loja, x => x.Receita);
 
-        // CMV por loja (custo do produto × qtd vendida)
-        var cmvLoja = (await db.ItensVenda.AsNoTracking()
+        // CMV por loja (custo do produto × qtd vendida). Ignora itens sem loja (chave nula).
+        var cmvGrp = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId && x.v.Status == vFinalizada
                 && x.v.DataHora >= inicio && x.v.DataHora < fimExcl)
@@ -202,17 +202,17 @@ public class DREController(SistemaDbContext db) : ControllerBase
                 (x, p) => new { x.v.LocalEstoqueId, Custo = x.i.Quantidade * p.CustoUnitario })
             .GroupBy(x => x.LocalEstoqueId)
             .Select(g => new { Loja = g.Key, Custo = g.Sum(x => x.Custo) })
-            .ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Custo);
+            .ToListAsync(ct);
+        var cmvLoja = cmvGrp.ToDictionary(x => x.Loja, x => x.Custo);
 
-        // Perdas (descarte de vencidos) por loja
-        var perdasLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+        // Perdas (descarte de vencidos) por loja. Separa o balde sem loja (chave nula).
+        var perdasGrp = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == empresaId && m.DocumentoOrigem == "VENCIDO:Descarte"
                 && m.CriadoEm >= inicio && m.CriadoEm < fimExcl)
             .GroupBy(m => (Guid?)m.LocalEstoqueId)
             .Select(g => new { Loja = g.Key, Perda = g.Sum(m => m.Quantidade * m.CustoUnitario) })
-            .ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Perda);
+            .ToListAsync(ct);
+        var perdasLoja = perdasGrp.Where(x => x.Loja != null).ToDictionary(x => x.Loja!.Value, x => x.Perda);
 
         // Lançamentos de despesa (competência = vencimento), com a loja marcada
         var lancs = await db.LancamentosFinanceiros.AsNoTracking()
@@ -237,7 +237,7 @@ public class DREController(SistemaDbContext db) : ControllerBase
         // Compartilhadas (sem loja) — inclui frete de compra e juros sem loja
         var despCompartilhada = operac.Where(l => l.LocalEstoqueId == null)
             .Sum(l => ValorDespesa(l.Categoria, l.ValorOriginal, l.ValorJuros));
-        var perdaCompartilhada = perdasLoja.TryGetValue(null, out var pc) ? pc : 0m;
+        var perdaCompartilhada = perdasGrp.Where(x => x.Loja == null).Sum(x => x.Perda);
 
         var receitaTotal = receitaLoja.Values.Sum();
         if (receitaTotal <= 0) receitaTotal = 1m; // evita divisão por zero

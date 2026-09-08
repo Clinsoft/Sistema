@@ -231,6 +231,49 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         return Ok(Dto(meu.Res, incluirSemanas: true, avaliacoes: meu.Avaliacoes));
     }
 
+    // ── Termo de Aceite (assinatura digital) ─────────────────────────────
+    [HttpGet("meu-aceite")]
+    public async Task<IActionResult> MeuAceite([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var a = await db.AceitesTermoPremiacao.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.ColaboradorId == UsuarioId)
+            .OrderByDescending(x => x.DataAceite).FirstOrDefaultAsync(ct);
+        return Ok(new { aceito = a != null, dataAceite = a?.DataAceite, termoVersao = a?.TermoVersao });
+    }
+
+    [HttpPost("aceitar")]
+    public async Task<IActionResult> Aceitar([FromBody] AceiteRequest req, CancellationToken ct)
+    {
+        if (UsuarioId == Guid.Empty) return Unauthorized();
+        var nome = User.FindFirst("nome")?.Value ?? "Colaborador";
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var ua = Request.Headers.UserAgent.ToString();
+        var a = AceiteTermoPremiacao.Criar(req.EmpresaId, UsuarioId, nome,
+            string.IsNullOrWhiteSpace(req.TermoVersao) ? "1.0" : req.TermoVersao!, req.TermoHash ?? "",
+            req.FotoBase64, req.AssinaturaBase64, req.Latitude, req.Longitude, req.PrecisaoMetros,
+            ip, ua?.Length > 400 ? ua[..400] : ua);
+        db.AceitesTermoPremiacao.Add(a);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { a.Id, a.DataAceite });
+    }
+
+    /// <summary>Gestor: lista/consulta os aceites (trilha de auditoria).</summary>
+    [HttpGet("aceites")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> Aceites([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var lista = await db.AceitesTermoPremiacao.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId)
+            .OrderByDescending(x => x.DataAceite)
+            .Select(x => new
+            {
+                x.Id, x.ColaboradorNome, x.DataAceite, x.TermoVersao, x.TermoHash,
+                x.Latitude, x.Longitude, x.PrecisaoMetros, x.Ip,
+                x.FotoBase64, x.AssinaturaBase64
+            }).ToListAsync(ct);
+        return Ok(lista);
+    }
+
     // ── Núcleo do cálculo ─────────────────────────────────────────────────
     private async Task<List<(ResultadoPremio Res, string LojaNome, Guid LocalEstoqueId,
         decimal FaturamentoLoja, decimal MetaLoja, decimal PercentLoja, List<AvaliacaoDesempenhoSemanal> Avaliacoes)>>
@@ -352,3 +395,5 @@ public record AvaliacaoRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid Colabor
 public record ApuracaoRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid ColaboradorId, int Ano, int Mes,
     decimal PresencaPercent, bool FaltaInjustificada, bool Advertencia, bool ExecucaoMinima,
     bool ProdutoVencidoExposto, bool HigieneGrave, bool RotinaNaoExecutada, bool ReclamacaoRelevante, string? Observacao);
+public record AceiteRequest(Guid EmpresaId, string? TermoVersao, string? TermoHash,
+    string? FotoBase64, string? AssinaturaBase64, double? Latitude, double? Longitude, double? PrecisaoMetros);

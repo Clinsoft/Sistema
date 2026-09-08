@@ -64,6 +64,23 @@ public class AvaliacaoDesempenhoSemanalConfiguration : IEntityTypeConfiguration<
     }
 }
 
+public class AceiteTermoPremiacaoConfiguration : IEntityTypeConfiguration<AceiteTermoPremiacao>
+{
+    public void Configure(EntityTypeBuilder<AceiteTermoPremiacao> b)
+    {
+        b.ToTable("AceitesTermoPremiacao");
+        b.HasKey(x => x.Id);
+        b.HasIndex(x => new { x.EmpresaId, x.ColaboradorId });
+        b.Property(x => x.ColaboradorNome).HasMaxLength(150);
+        b.Property(x => x.TermoVersao).HasMaxLength(20);
+        b.Property(x => x.TermoHash).HasMaxLength(128);
+        b.Property(x => x.FotoBase64).HasColumnType("nvarchar(max)");
+        b.Property(x => x.AssinaturaBase64).HasColumnType("nvarchar(max)");
+        b.Property(x => x.Ip).HasMaxLength(64);
+        b.Property(x => x.UserAgent).HasMaxLength(400);
+    }
+}
+
 public class ApuracaoMensalPremiacaoConfiguration : IEntityTypeConfiguration<ApuracaoMensalPremiacao>
 {
     public void Configure(EntityTypeBuilder<ApuracaoMensalPremiacao> b)

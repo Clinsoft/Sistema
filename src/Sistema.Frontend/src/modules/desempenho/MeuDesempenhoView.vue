@@ -1,5 +1,9 @@
 <template>
   <div>
+    <!-- Portão: precisa aceitar o termo para acessar o painel -->
+    <TermoAceiteAssinatura v-if="aceiteVerificado && !aceito" @assinado="onAssinado" />
+
+    <div v-else-if="aceiteVerificado">
     <div class="d-flex align-center mb-4 flex-wrap ga-2">
       <div class="text-h6 font-weight-bold flex-grow-1">
         <v-icon class="mr-1" color="amber-darken-2">mdi-medal-outline</v-icon>Meu Desempenho
@@ -93,6 +97,7 @@
     </div>
 
     <v-alert v-else type="info" variant="tonal">Ainda não há dados de desempenho para você neste período.</v-alert>
+    </div>
   </div>
 </template>
 
@@ -100,11 +105,14 @@
 import { ref, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import TermoAceiteAssinatura from './TermoAceiteAssinatura.vue'
 
 const auth = useAuthStore()
 const mes = ref(new Date().getMonth() + 1)
 const ano = ref(new Date().getFullYear())
 const d = ref<any>(null)
+const aceiteVerificado = ref(false)
+const aceito = ref(false)
 const meses = [
   { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
   { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
@@ -120,5 +128,14 @@ async function carregar() {
   const r = await api.get('/premiacao/meu-desempenho', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } }).catch(() => ({ data: { semDados: true } }))
   d.value = r.data
 }
-onMounted(carregar)
+async function verificarAceite() {
+  try {
+    const r = await api.get('/premiacao/meu-aceite', { params: { empresaId: auth.empresaId } })
+    aceito.value = !!r.data.aceito
+  } catch { aceito.value = false }
+  aceiteVerificado.value = true
+  if (aceito.value) await carregar()
+}
+async function onAssinado() { aceito.value = true; await carregar() }
+onMounted(verificarAceite)
 </script>

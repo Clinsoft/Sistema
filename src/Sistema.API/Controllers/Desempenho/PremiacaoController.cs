@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using QRCoder;
 using System.Security.Claims;
 using Sistema.Domain.Desempenho.Entities;
 using Sistema.Domain.Vendas.Entities;
@@ -349,8 +350,18 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
                         .FontSize(9).FontColor("#444");
                 });
 
-                page.Footer().AlignCenter().Text($"Documento gerado em {DateTime.Now:dd/MM/yyyy HH:mm} · id {a.Id}")
-                    .FontSize(8).FontColor("#999");
+                var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/aceite/{a.Id}";
+                var qr = GerarQrPng(urlVerif);
+                page.Footer().PaddingTop(8).Row(f =>
+                {
+                    f.ConstantItem(60).Image(qr).FitArea();
+                    f.RelativeItem().PaddingLeft(8).AlignMiddle().Column(col =>
+                    {
+                        col.Item().Text("Verificação de autenticidade").FontSize(8).SemiBold().FontColor("#555");
+                        col.Item().Text(urlVerif).FontSize(7).FontColor("#1e7a46");
+                        col.Item().Text($"Gerado em {DateTime.Now:dd/MM/yyyy HH:mm} · id {a.Id}").FontSize(7).FontColor("#999");
+                    });
+                });
             });
         });
 
@@ -363,6 +374,116 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         var i = dataUrl.IndexOf(',');
         var b64 = i >= 0 ? dataUrl[(i + 1)..] : dataUrl;
         try { return Convert.FromBase64String(b64); } catch { return null; }
+    }
+
+    private static byte[] GerarQrPng(string texto)
+    {
+        using var gen = new QRCodeGenerator();
+        using var data = gen.CreateQrCode(texto, QRCodeGenerator.ECCLevel.M);
+        return new PngByteQRCode(data).GetGraphic(8);
+    }
+
+    private string BaseUrl() => $"{Request.Scheme}://{Request.Host}";
+
+    // ── Verificação pública (QR) ──────────────────────────────────────────
+    [HttpGet("verificar/aceite/{id:guid}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerificarAceite(Guid id, CancellationToken ct)
+    {
+        var a = await db.AceitesTermoPremiacao.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (a is null) return Ok(new { autentico = false });
+        return Ok(new
+        {
+            autentico = true, tipo = "Aceite do Regulamento de Premiação",
+            colaborador = a.ColaboradorNome, data = a.DataAceite.ToLocalTime().ToString("dd/MM/yyyy HH:mm"),
+            versao = a.TermoVersao, hash = a.TermoHash
+        });
+    }
+
+    [HttpGet("verificar/premio")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerificarPremio([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid colaboradorId, CancellationToken ct)
+    {
+        var res = await CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
+        if (res.Count == 0) return Ok(new { encontrado = false });
+        var r = res[0].Res;
+        return Ok(new
+        {
+            encontrado = true, tipo = "Demonstrativo de Premiação",
+            colaborador = r.Colaborador, competencia = $"{mes:00}/{ano}",
+            metaIndividual = r.MetaIndividual, vendaIndividual = r.VendaIndividual,
+            performance = r.PerformancePercent, premio = r.Premio
+        });
+    }
+
+    // ── Demonstrativo mensal do prêmio (PDF, por colaborador) ─────────────
+    [HttpGet("demonstrativo-pdf")]
+    public async Task<IActionResult> DemonstrativoPdf([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid colaboradorId, CancellationToken ct)
+    {
+        // Gestor vê de qualquer um; colaborador só o próprio.
+        var ehGestor = User.IsInRole("Administrador") || User.IsInRole("Financeiro");
+        if (!ehGestor && colaboradorId != UsuarioId) return Forbid();
+
+        var lista = await CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
+        if (lista.Count == 0) return NotFound();
+        var t = lista[0];
+        var r = t.Res;
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empresaId, ct);
+
+        string M(decimal v) => "R$ " + v.ToString("N2", new System.Globalization.CultureInfo("pt-BR"));
+        var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/premio?empresaId={empresaId}&ano={ano}&mes={mes}&colaboradorId={colaboradorId}";
+        var qr = GerarQrPng(urlVerif);
+
+        var pdf = Document.Create(doc => doc.Page(page =>
+        {
+            page.Margin(36); page.Size(PageSizes.A4);
+            page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1b241e"));
+            page.Header().Column(h =>
+            {
+                h.Item().Text("Demonstrativo de Premiação por Desempenho").FontSize(15).Bold().FontColor("#b5852a");
+                h.Item().Text($"Competência {mes:00}/{ano} · {empresa?.RazaoSocial}").FontSize(10).FontColor("#666");
+            });
+            page.Content().PaddingVertical(14).Column(c =>
+            {
+                c.Spacing(6);
+                void Linha(string k, string v, bool destaque = false) => c.Item().Row(row =>
+                {
+                    row.ConstantItem(210).Text(k).FontColor("#555").SemiBold();
+                    var span = row.RelativeItem().Text(v);
+                    span.FontSize(destaque ? 13 : 10).FontColor(destaque ? "#1e7a46" : "#1b241e");
+                    if (destaque) span.Bold();
+                });
+
+                Linha("Colaborador(a):", r.Colaborador);
+                Linha("Loja:", t.LojaNome);
+                c.Item().PaddingVertical(4).LineHorizontal(0.5f).LineColor("#e0e0e0");
+                Linha("Meta da loja:", $"{M(r.FaturamentoLoja)} de {M(r.MetaLoja)}  ({r.PercentLoja:0.#}%)");
+                Linha("Sua meta individual:", $"{M(r.VendaIndividual)} de {M(r.MetaIndividual)}  ({r.PercentIndividual:0.#}%)");
+                Linha("Performance comercial:", $"{r.PerformancePercent:0.#}% ({r.SemanasAvaliadas} semana(s))"
+                    + (r.DescontoValidade > 0 ? $"  — desconto validade: -{r.DescontoValidade:0.#}" : ""));
+                c.Item().PaddingVertical(4).LineHorizontal(0.5f).LineColor("#e0e0e0");
+                Linha("Valor base (ativação da loja):", M(r.BaseLoja));
+                Linha("Fator individual:", $"{r.FatorIndividual * 100:0}%");
+                Linha("Prêmio do mês:", M(r.Premio), destaque: true);
+                if (r.Premio == 0 && !string.IsNullOrEmpty(r.Motivo))
+                    c.Item().PaddingTop(4).Background("#F6EDD9").Padding(8).Text($"Sem prêmio neste mês: {r.Motivo}").FontSize(9).FontColor("#9a6b18");
+                c.Item().PaddingTop(8).Text("Cálculo: Valor base × Fator individual × Performance% (conforme o Regulamento). Documento informativo; o prêmio, quando devido, segue as condições do regulamento.")
+                    .FontSize(8).FontColor("#777");
+            });
+            page.Footer().PaddingTop(8).Row(f =>
+            {
+                f.ConstantItem(58).Image(qr).FitArea();
+                f.RelativeItem().PaddingLeft(8).AlignMiddle().Column(col =>
+                {
+                    col.Item().Text("Verificação (aponte a câmera)").FontSize(8).SemiBold().FontColor("#555");
+                    col.Item().Text($"Gerado em {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(7).FontColor("#999");
+                });
+            });
+        }));
+
+        return File(pdf.GeneratePdf(), "application/pdf", $"premio-{r.Colaborador}-{ano}-{mes:00}.pdf");
     }
 
     // ── Núcleo do cálculo ─────────────────────────────────────────────────

@@ -197,6 +197,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FolhaPagamentoJob>(
     job => job.ExecutarAsync(),
     "0 6 1 * *", optsBR);   // 06:00 BRT do dia 1º — previsão de salários + FGTS/INSS da folha
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ExpurgoDadosSensiveisJob>(
+    "lgpd-expurgo-fotos-aceite",
+    job => job.ExecutarAsync(),
+    "0 4 * * *", optsBR);   // 04:00 BRT — apaga foto de rosto de aceites após a retenção (LGPD)
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.DespesasFixasJob>(
     "despesas-fixas-mensais",
     job => job.ExecutarAsync(),

@@ -39,6 +39,7 @@
                   <th class="text-right">Performance</th>
                   <th class="text-center">Status</th>
                   <th class="text-right">Prêmio</th>
+                  <th class="text-right">PDF</th>
                 </tr>
               </thead>
               <tbody>
@@ -59,6 +60,11 @@
                     </template></v-tooltip>
                   </td>
                   <td class="text-right font-weight-bold" :class="c.premio > 0 ? 'text-success' : 'text-medium-emphasis'">R$ {{ fmt(c.premio) }}</td>
+                  <td class="text-right">
+                    <v-btn size="x-small" color="red-darken-1" variant="tonal" icon="mdi-file-pdf-box"
+                      :loading="baixandoPdf === c.colaboradorId" title="Demonstrativo em PDF"
+                      @click="baixarDemonstrativo(c.colaboradorId, c.colaborador)" />
+                  </td>
                 </tr>
               </tbody>
             </v-table>
@@ -215,12 +221,26 @@ const colaboradores = ref<any[]>([])
 const colaboradoresAtivos = computed(() => colaboradores.value.filter(c => c.ativo))
 const lojas = computed(() => (auth.lojas ?? []) as any[])
 
+const baixandoPdf = ref<string | null>(null)
 async function carregar() {
   try {
     const r = await api.get('/premiacao/apuracao', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
     apuracao.value = r.data
   } catch { apuracao.value = null }
   if (aba.value === 'metas') await carregarConfig()
+}
+async function baixarDemonstrativo(colaboradorId: string, nome: string) {
+  baixandoPdf.value = colaboradorId
+  try {
+    const r = await api.get('/premiacao/demonstrativo-pdf', {
+      params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value, colaboradorId }, responseType: 'blob',
+    })
+    const url = URL.createObjectURL(r.data as Blob)
+    const link = document.createElement('a')
+    link.href = url; link.download = `premio-${nome}-${ano.value}-${String(mes.value).padStart(2, '0')}.pdf`; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch { notif.erro('Erro ao gerar o demonstrativo.') }
+  finally { baixandoPdf.value = null }
 }
 
 // ── Avaliação semanal ──

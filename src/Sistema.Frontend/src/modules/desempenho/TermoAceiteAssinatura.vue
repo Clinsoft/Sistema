@@ -18,7 +18,8 @@
         <p>3. Ocorrências como produto vencido exposto, falta injustificada, falha grave de higiene, não execução de rotina mínima ou reclamação relevante de cliente <b>zeram</b> o prêmio do período.</p>
         <p>4. A apuração é mensal; o pagamento, quando devido, segue as condições do regulamento e depende de o contrato estar ativo na data do crédito.</p>
         <p>5. O recebimento em um período <b>não gera direito adquirido</b> para períodos futuros.</p>
-        <p>Ao assinar, declaro que <b>li, entendi e concordo</b> com todos os critérios acima e confirmo minha <b>participação</b> na premiação por desempenho, ciente de que o prêmio não possui natureza salarial.</p>
+        <p><b>Proteção de dados (LGPD):</b> para comprovar a identidade e a autoria deste aceite, coletamos sua <b>foto de rosto</b> (dado biométrico/sensível), sua <b>assinatura</b>, a <b>geolocalização</b>, o <b>IP</b> e a <b>data/hora</b>. A base legal é o seu <b>consentimento</b> (art. 7º, I, e art. 11, I, da Lei 13.709/2018) e a finalidade é <b>exclusivamente</b> registrar e comprovar sua adesão à premiação. A <b>foto</b> é mantida pelo prazo de <b>24 meses</b> e depois <b>apagada automaticamente</b> (as demais evidências são retidas para fins probatórios). Você pode solicitar acesso, correção ou exclusão dos seus dados a qualquer momento junto à empresa.</p>
+        <p>Ao assinar, declaro que <b>li, entendi e concordo</b> com todos os critérios acima, <b>consinto</b> com a coleta dos dados descritos e confirmo minha <b>participação</b> na premiação por desempenho, ciente de que o prêmio não possui natureza salarial.</p>
       </div>
 
       <v-divider class="mb-4" />

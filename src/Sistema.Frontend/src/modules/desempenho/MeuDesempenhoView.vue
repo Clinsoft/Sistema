@@ -29,6 +29,8 @@
               <v-chip color="grey" variant="tonal">Ainda sem prêmio</v-chip>
               <div class="text-caption text-medium-emphasis mt-1" style="max-width:260px">{{ d.motivo }}</div>
             </div>
+            <v-btn class="mt-2" size="small" variant="tonal" color="red-darken-1" prepend-icon="mdi-file-pdf-box"
+              :loading="baixando" @click="baixarDemonstrativo">Baixar demonstrativo</v-btn>
           </div>
         </div>
       </v-card>
@@ -137,5 +139,20 @@ async function verificarAceite() {
   if (aceito.value) await carregar()
 }
 async function onAssinado() { aceito.value = true; await carregar() }
+
+const baixando = ref(false)
+async function baixarDemonstrativo() {
+  if (!d.value?.colaboradorId) return
+  baixando.value = true
+  try {
+    const r = await api.get('/premiacao/demonstrativo-pdf', {
+      params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value, colaboradorId: d.value.colaboradorId }, responseType: 'blob',
+    })
+    const url = URL.createObjectURL(r.data as Blob)
+    const link = document.createElement('a')
+    link.href = url; link.download = `meu-premio-${ano.value}-${String(mes.value).padStart(2, '0')}.pdf`; link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } finally { baixando.value = false }
+}
 onMounted(verificarAceite)
 </script>

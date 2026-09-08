@@ -17,6 +17,29 @@
 
     <!-- Upload dos PDFs -->
     <v-card rounded="xl" elevation="1" class="mb-4 pa-4">
+      <!-- Base da comparação: catálogo ou uma requisição -->
+      <v-row dense align="center" class="mb-3">
+        <v-col cols="12" md="7">
+          <v-autocomplete
+            v-model="requisicaoSel"
+            :items="requisicoes" :item-title="rotuloReq" item-value="id"
+            label="Comparar a partir de uma requisição (opcional)"
+            variant="outlined" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-clipboard-list-outline"
+            :loading="carregandoReq"
+            @update:model-value="onTrocaBase" />
+        </v-col>
+        <v-col cols="12" md="5">
+          <v-alert v-if="requisicaoSel" type="success" variant="tonal" density="compact" class="ma-0">
+            Comparação com as <b>quantidades pedidas</b> — o sistema aponta o fornecedor mais barato por item.
+          </v-alert>
+          <div v-else class="text-caption text-medium-emphasis">
+            Sem requisição: compara todos os produtos do catálogo (quantidade 1).
+          </div>
+        </v-col>
+      </v-row>
+      <v-divider class="mb-3" />
+
       <div class="text-body-2 font-weight-bold mb-3">
         <v-icon icon="mdi-file-pdf-box" color="error" class="mr-1" />
         Envie até 3 orçamentos em PDF (de fornecedores diferentes)
@@ -210,6 +233,99 @@
       </v-expansion-panels>
     </template>
 
+    <!-- Resultado: modo REQUISIÇÃO (com quantidades e rateio) -->
+    <template v-if="resultadoReq">
+      <!-- Resumo por fornecedor -->
+      <v-row class="mb-4">
+        <v-col cols="12" md="4">
+          <v-card rounded="xl" elevation="1" class="pa-4 text-center">
+            <div class="text-h5 font-weight-bold text-success">R$ {{ fmt(resultadoReq.totalOtimizado) }}</div>
+            <div class="text-caption">custo otimizado (cada item no + barato)</div>
+          </v-card>
+        </v-col>
+        <v-col cols="12" md="4">
+          <v-card rounded="xl" elevation="1" class="pa-4 text-center">
+            <div class="text-h5 font-weight-bold">{{ resultadoReq.totalItens - resultadoReq.itensSemCotacao }}/{{ resultadoReq.totalItens }}</div>
+            <div class="text-caption">itens com cotação</div>
+          </v-card>
+        </v-col>
+        <v-col cols="12" md="4">
+          <v-card rounded="xl" elevation="1" class="pa-4 text-center">
+            <div class="text-h5 font-weight-bold" :class="resultadoReq.itensSemCotacao ? 'text-warning' : 'text-medium-emphasis'">
+              {{ resultadoReq.itensSemCotacao }}
+            </div>
+            <div class="text-caption">itens sem preço em nenhum PDF</div>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- Rateio por fornecedor -->
+      <v-card rounded="xl" elevation="1" class="mb-3 pa-3">
+        <div class="text-body-2 font-weight-bold mb-2">Rateio do pedido (comprando cada item no fornecedor mais barato)</div>
+        <div class="d-flex flex-wrap ga-2">
+          <v-chip v-for="t in resultadoReq.totaisPorFornecedor" :key="t.fornecedor"
+            color="primary" variant="tonal" size="large">
+            {{ t.fornecedor }} · {{ t.itensAtendidos }} itens · <b class="ml-1">R$ {{ fmt(t.totalRateio) }}</b>
+          </v-chip>
+        </div>
+      </v-card>
+
+      <div class="d-flex mb-2">
+        <v-spacer />
+        <v-btn color="primary" prepend-icon="mdi-cart-plus" @click="criarPedidoMelhores">
+          Gerar pedidos por fornecedor
+        </v-btn>
+      </div>
+
+      <!-- Tabela por item da requisição -->
+      <v-card rounded="xl" elevation="1" class="mb-4">
+        <v-table density="comfortable" hover>
+          <thead>
+            <tr>
+              <th style="min-width:220px">Produto</th>
+              <th class="text-right" style="width:70px">Qtd</th>
+              <th v-for="forn in resultadoReq.fornecedores" :key="forn"
+                class="text-right" style="width:150px">
+                <v-chip size="small" color="primary" variant="tonal">{{ forn }}</v-chip>
+              </th>
+              <th class="text-right" style="width:150px">Melhor / Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in resultadoReq.itens" :key="p.produtoId"
+              :class="{ 'cot-row--sem': !p.melhorFornecedor }">
+              <td><div class="text-body-2 font-weight-bold">{{ p.descricao }}</div></td>
+              <td class="text-right">{{ p.quantidade }}</td>
+              <td v-for="(cot, idx) in p.cotacoes" :key="idx" class="text-right">
+                <template v-if="cot.encontrado">
+                  <span :class="cot.melhor ? 'cot-melhor' : 'text-medium-emphasis'">
+                    <v-icon v-if="cot.melhor" icon="mdi-trophy" size="13" color="success" />
+                    R$ {{ fmt(cot.preco) }}<span v-if="cot.unidade" class="text-caption">/{{ cot.unidade }}</span>
+                  </span>
+                  <div class="text-caption text-medium-emphasis">= R$ {{ fmt(cot.subtotal) }}</div>
+                </template>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td class="text-right">
+                <template v-if="p.melhorFornecedor">
+                  <div class="text-success font-weight-bold">{{ p.melhorFornecedor }}</div>
+                  <div class="font-weight-bold">R$ {{ fmt(p.subtotalMelhor) }}</div>
+                </template>
+                <v-chip v-else size="small" color="warning" variant="tonal">sem cotação</v-chip>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="cot-total">
+              <td colspan="2" class="text-right font-weight-bold">Total otimizado</td>
+              <td :colspan="resultadoReq.fornecedores.length"></td>
+              <td class="text-right font-weight-bold text-success">R$ {{ fmt(resultadoReq.totalOtimizado) }}</td>
+            </tr>
+          </tfoot>
+        </v-table>
+      </v-card>
+    </template>
+
     <!-- Dialog: criar pedido -->
     <v-dialog v-model="dialogPedido" max-width="700" persistent>
       <v-card rounded="xl">
@@ -249,7 +365,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -262,6 +378,37 @@ const nomes = ref(['Fornecedor 1', 'Fornecedor 2', 'Fornecedor 3'])
 const inputs = ref<HTMLInputElement[]>([])
 const processando = ref(false)
 const resultado = ref<any>(null)
+const resultadoReq = ref<any>(null)
+
+// ── Requisições (base opcional da comparação) ──
+const requisicoes = ref<any[]>([])
+const requisicaoSel = ref<string | null>(null)
+const carregandoReq = ref(false)
+
+function rotuloReq(r: any) {
+  const dt = r.criadoEm ? new Date(r.criadoEm).toLocaleDateString('pt-BR') : ''
+  return `${r.solicitante ?? '—'} · ${r.loja ?? ''} · ${r.qtdItens} itens · ${dt}`
+}
+
+async function carregarRequisicoes() {
+  carregandoReq.value = true
+  try {
+    const r = await api.get('/requisicoes-compra', {
+      params: { empresaId: auth.empresaId, status: 'Aberta' }
+    })
+    requisicoes.value = r.data
+  } catch { /* silencioso */ } finally {
+    carregandoReq.value = false
+  }
+}
+
+function onTrocaBase() {
+  resultado.value = null
+  resultadoReq.value = null
+  selecionados.value = []
+}
+
+onMounted(carregarRequisicoes)
 const filtroTexto = ref('')
 const filtroModo = ref('todos')
 const selecionados = ref<string[]>([])
@@ -292,6 +439,15 @@ const economiaTotalPossivel = computed(() => {
 })
 
 const itensPedido = computed(() => {
+  // Modo requisição: um item por linha cotada, com a quantidade pedida
+  if (resultadoReq.value) {
+    return resultadoReq.value.itens
+      .filter((p: any) => p.melhorFornecedor)
+      .map((p: any) => ({
+        produtoId: p.produtoId, descricao: p.descricao,
+        fornecedor: p.melhorFornecedor, preco: p.melhorPreco, quantidade: p.quantidade,
+      }))
+  }
   if (!resultado.value) return []
   const sel = selecionados.value.length > 0
     ? resultado.value.produtos.filter((p: any) => selecionados.value.includes(p.produtoId))
@@ -299,7 +455,7 @@ const itensPedido = computed(() => {
 
   return sel.map((p: any) => {
     const melhor = p.cotacoes.find((c: any) => c.melhor)
-    return { produtoId: p.produtoId, descricao: p.descricao, fornecedor: melhor?.fornecedor ?? '?', preco: p.menorPreco }
+    return { produtoId: p.produtoId, descricao: p.descricao, fornecedor: melhor?.fornecedor ?? '?', preco: p.menorPreco, quantidade: 1 }
   })
 })
 
@@ -349,6 +505,7 @@ function fmt(v: number) {
 async function comparar() {
   processando.value = true
   resultado.value = null
+  resultadoReq.value = null
   selecionados.value = []
   try {
     const fd = new FormData()
@@ -359,6 +516,22 @@ async function comparar() {
         fd.append(`nome${i + 1}`, nomes.value[i])
       }
     })
+
+    // Modo requisição: usa os itens e quantidades da requisição escolhida
+    if (requisicaoSel.value) {
+      fd.append('requisicaoId', requisicaoSel.value)
+      const r = await api.post('/cotacoes/comparar-requisicao', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      resultadoReq.value = r.data
+      const comCotacao = r.data.totalItens - r.data.itensSemCotacao
+      if (!comCotacao)
+        notif.aviso('Nenhum item da requisição foi encontrado nos PDFs. Confira se as descrições coincidem.')
+      else
+        notif.ok(`${comCotacao} de ${r.data.totalItens} itens cotados — total otimizado R$ ${fmt(r.data.totalOtimizado)}`)
+      return
+    }
+
     const r = await api.post('/cotacoes/comparar', fd, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
@@ -529,7 +702,7 @@ async function confirmarPedido() {
         itens: (itens as any[]).map(i => ({
           produtoId: i.produtoId,
           descricao: i.descricao,
-          quantidade: 1,
+          quantidade: i.quantidade ?? 1,
           precoUnitario: i.preco,
         }))
       })
@@ -572,5 +745,12 @@ async function confirmarPedido() {
 .cot-melhor {
   color: #16a34a;
   font-weight: 700;
+}
+.cot-row--sem {
+  background: rgba(245, 158, 11, 0.06);
+}
+.cot-total td {
+  border-top: 2px solid #cbd5e1;
+  background: #f8fafc;
 }
 </style>

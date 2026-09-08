@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Sistema.Infrastructure.Data;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -130,6 +131,142 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
             naoIdentificados = naoIdentificados.Take(50),
             totalProdutos = resultado.Count,
             totalNaoIdentificados = naoIdentificados.Count
+        });
+    }
+
+    /// <summary>
+    /// Compara os PDFs de fornecedores usando os ITENS de uma REQUISIÇÃO como base
+    /// (produto + quantidade já pedida). Para cada item aponta o fornecedor mais barato,
+    /// calcula o subtotal (qtd × preço) e o total otimizado do rateio.
+    /// </summary>
+    [HttpPost("comparar-requisicao")]
+    [RequestSizeLimit(30_000_000)]
+    public async Task<IActionResult> CompararRequisicao(
+        [FromForm] Guid empresaId,
+        [FromForm] Guid requisicaoId,
+        [FromForm] IFormFile? pdf1,
+        [FromForm] IFormFile? pdf2,
+        [FromForm] IFormFile? pdf3,
+        [FromForm] string? nome1,
+        [FromForm] string? nome2,
+        [FromForm] string? nome3,
+        CancellationToken ct)
+    {
+        var arquivos = new[]
+        {
+            (Arq: pdf1, Nome: nome1 ?? "Fornecedor 1"),
+            (Arq: pdf2, Nome: nome2 ?? "Fornecedor 2"),
+            (Arq: pdf3, Nome: nome3 ?? "Fornecedor 3"),
+        }.Where(x => x.Arq is not null).ToList();
+
+        if (arquivos.Count == 0)
+            return BadRequest("Envie ao menos um PDF.");
+
+        // Itens da requisição = base da comparação (produto + quantidade pedida)
+        var itensReq = await db.ItensRequisicaoCompra.AsNoTracking()
+            .Where(i => i.RequisicaoCompraId == requisicaoId)
+            .Select(i => new { i.ProdutoId, i.Descricao, i.Quantidade })
+            .ToListAsync(ct);
+
+        if (itensReq.Count == 0)
+            return BadRequest("A requisição não tem itens.");
+
+        var prodIds = itensReq.Select(i => i.ProdutoId).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => prodIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Descricao, p.CodigoBarras, p.CustoUnitario })
+            .ToListAsync(ct);
+        var pmap = produtos.ToDictionary(p => p.Id);
+
+        // Extrai os itens de cada PDF
+        var cotacoesPorFornecedor = arquivos
+            .Select(a => (Fornecedor: a.Nome, Itens: ExtrairItens(ExtrairTexto(a.Arq!))))
+            .ToList();
+
+        // Para cada item da requisição, acha o preço em cada fornecedor
+        var linhas = new List<object>();
+        var totaisPorForn = cotacoesPorFornecedor
+            .ToDictionary(cf => cf.Fornecedor, _ => (Itens: 0, Total: 0m));
+
+        var totalOtimizado = 0m;
+        var semCotacao = 0;
+
+        foreach (var it in itensReq)
+        {
+            var produto = pmap.GetValueOrDefault(it.ProdutoId);
+            var desc = produto?.Descricao ?? it.Descricao;
+            var ean = produto?.CodigoBarras;
+            var normProduto = Normalizar(desc);
+
+            var cotacoes = cotacoesPorFornecedor.Select(cf =>
+            {
+                var match = cf.Itens
+                    .Select(i => (i, score: (!string.IsNullOrEmpty(ean) && i.CodigoBarras == ean)
+                        ? 1.0 : ScoreFuzzy(normProduto, Normalizar(i.Descricao))))
+                    .Where(x => x.score >= 0.5)
+                    .OrderByDescending(x => x.score)
+                    .Select(x => x.i)
+                    .FirstOrDefault();
+
+                return new
+                {
+                    fornecedor = cf.Fornecedor,
+                    preco = match?.Preco,
+                    unidade = match?.Unidade,
+                    descricaoOriginal = match?.Descricao,
+                    subtotal = match is not null ? match.Preco * it.Quantidade : (decimal?)null,
+                };
+            }).ToList();
+
+            var comPreco = cotacoes.Where(c => c.preco.HasValue).ToList();
+            if (comPreco.Count == 0) { semCotacao++; }
+
+            var menor = comPreco.Count > 0 ? comPreco.Min(c => c.preco!.Value) : (decimal?)null;
+            var melhor = menor.HasValue ? comPreco.First(c => c.preco!.Value == menor.Value) : null;
+
+            if (melhor is not null)
+            {
+                totalOtimizado += melhor.subtotal!.Value;
+                var acc = totaisPorForn[melhor.fornecedor];
+                totaisPorForn[melhor.fornecedor] = (acc.Itens + 1, acc.Total + melhor.subtotal!.Value);
+            }
+
+            linhas.Add(new
+            {
+                produtoId = it.ProdutoId,
+                descricao = desc,
+                quantidade = it.Quantidade,
+                custoAtual = produto?.CustoUnitario ?? 0m,
+                melhorFornecedor = melhor?.fornecedor,
+                melhorPreco = menor,
+                subtotalMelhor = melhor?.subtotal,
+                cotacoes = cotacoes.Select(c => new
+                {
+                    c.fornecedor,
+                    c.preco,
+                    c.unidade,
+                    c.subtotal,
+                    c.descricaoOriginal,
+                    encontrado = c.preco.HasValue,
+                    melhor = menor.HasValue && c.preco.HasValue && c.preco.Value == menor.Value,
+                }).ToList(),
+            });
+        }
+
+        return Ok(new
+        {
+            requisicaoId,
+            fornecedores = cotacoesPorFornecedor.Select(cf => cf.Fornecedor).ToList(),
+            itens = linhas,
+            totaisPorFornecedor = totaisPorForn.Select(kv => new
+            {
+                fornecedor = kv.Key,
+                itensAtendidos = kv.Value.Itens,
+                totalRateio = kv.Value.Total,      // total dos itens em que ESTE fornecedor ganhou
+            }).ToList(),
+            totalOtimizado,                        // custo comprando cada item no mais barato
+            totalItens = itensReq.Count,
+            itensSemCotacao = semCotacao,          // itens da requisição sem preço em nenhum PDF
         });
     }
 

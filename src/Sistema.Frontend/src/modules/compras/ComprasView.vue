@@ -45,6 +45,14 @@
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="pedidos" :loading="carregando" density="compact" hover
         @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
+        <template #item.lojaNome="{ item }">
+          <v-chip v-if="item.lojaNome" size="small" variant="tonal" color="primary">
+            <v-icon start size="13">mdi-store-marker-outline</v-icon>{{ item.lojaNome }}
+          </v-chip>
+          <v-chip v-else size="small" variant="tonal" color="warning">
+            <v-icon start size="13">mdi-help-circle-outline</v-icon>Definir unidade
+          </v-chip>
+        </template>
         <template #item.status="{ item }">
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
         </template>
@@ -343,6 +351,7 @@ const rec = ref<any>({ pedidoId:'', dataRecebimento: new Date().toISOString().sl
 const totalNp = computed(() => np.value.itens.reduce((s: number, i: any) => s + i.quantidade * i.precoUnitario, 0))
 const headers = [
   { title:'Nº', key:'numero' }, { title:'Fornecedor', key:'fornecedorNome', sortable:true },
+  { title:'Unidade', key:'lojaNome', sortable:true },
   { title:'Data', key:'criadoEm' }, { title:'Total', key:'totalPedido', sortable:true },
   { title:'Status', key:'status' }, { title:'Ações', key:'actions', sortable:false },
 ]

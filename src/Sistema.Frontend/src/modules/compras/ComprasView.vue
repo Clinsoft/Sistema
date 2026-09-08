@@ -518,6 +518,15 @@ function pedirFaltantes() {
 
 // Monta a mensagem do pedido e abre o link wa.me (WhatsApp) do fornecedor.
 // marcarEnviado = true também muda o status para "Enviado".
+function enderecoLoja(l: any): string {
+  if (!l) return ''
+  const linha1 = [[l.logradouro, l.numero].filter(Boolean).join(' '), l.complemento, l.bairro]
+    .filter((s: string) => s && s.trim()).join(', ')
+  const cidUf = [l.cidade, l.uf].filter(Boolean).join(l.uf ? '/' : '')
+  const linha2 = [cidUf, l.cep ? `CEP ${l.cep}` : ''].filter((s: string) => s && s.trim()).join(' ')
+  return [linha1, linha2].filter((s: string) => s && s.trim()).join(' - ')
+}
+
 async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
   enviandoId.value = item.id
   try {
@@ -541,7 +550,12 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
     const itens = d.itens ?? []
     const linhas = itens.map((i: any) => `• ${i.quantidade}x ${i.descricao}`).join('\n')
     const total = itens.reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0)
-    const unidade = lojaNome ? `\n📍 *Unidade de entrega:* ${lojaNome}` : ''
+    const loja = locaisEstoque.value.find((l: any) => l.id === lojaId)
+    const endereco = enderecoLoja(loja)
+    const foneLoja = loja?.telefone ? `\n📞 ${loja.telefone}` : ''
+    const unidade = lojaNome
+      ? `\n📍 *Entregar em:* ${lojaNome}${endereco ? `\n${endereco}` : ''}${foneLoja}`
+      : ''
     let msg = `*Pedido de Compra Nº ${d.numero}*${unidade}\n\nOlá${forn?.razaoSocial ? ' ' + forn.razaoSocial : ''}! Segue nosso pedido:\n\n${linhas}\n\n*Total: R$ ${fmt(total)}*`
     if (item.dataPrevisaoEntrega || item.previsaoEntrega) {
       const dt = new Date((item.dataPrevisaoEntrega || item.previsaoEntrega))

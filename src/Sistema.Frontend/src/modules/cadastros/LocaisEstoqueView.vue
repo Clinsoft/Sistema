@@ -39,7 +39,7 @@
       </v-data-table>
     </v-card>
 
-    <v-dialog v-model="dialog" max-width="520" persistent>
+    <v-dialog v-model="dialog" max-width="640" persistent>
       <v-card rounded="xl" style="display:flex;flex-direction:column;max-height:90vh">
         <div class="cad-header">
           <div class="d-flex align-center" style="gap:12px">
@@ -73,6 +73,28 @@
                   hint="Usado por padrão em entradas de NF-e e no PDV" />
               </div>
             </div>
+
+            <div class="cad-secao">
+              <div class="cad-secao-header">
+                <v-icon size="14">mdi-map-marker</v-icon>
+                Endereço da unidade (entrega)
+              </div>
+              <div class="cad-secao-body">
+                <div class="text-caption text-medium-emphasis mb-2">
+                  Usado no pedido de compra enviado ao fornecedor (WhatsApp), para indicar onde entregar.
+                </div>
+                <v-row dense>
+                  <v-col cols="12" sm="8"><v-text-field v-model="form.logradouro" label="Logradouro" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="12" sm="4"><v-text-field v-model="form.numero" label="Número" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="12" sm="6"><v-text-field v-model="form.complemento" label="Complemento" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="12" sm="6"><v-text-field v-model="form.bairro" label="Bairro" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="12" sm="6"><v-text-field v-model="form.cidade" label="Cidade" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="6" sm="2"><v-text-field v-model="form.uf" label="UF" maxlength="2" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="6" sm="4"><v-text-field v-model="form.cep" label="CEP" variant="outlined" density="compact" hide-details /></v-col>
+                  <v-col cols="12" sm="6"><v-text-field v-model="form.telefone" label="Telefone da unidade" variant="outlined" density="compact" hide-details /></v-col>
+                </v-row>
+              </div>
+            </div>
           </div>
         </v-card-text>
         <v-card-actions class="pa-4">
@@ -99,9 +121,10 @@ const salvando = ref(false)
 const dialog = ref(false)
 const locais = ref<any[]>([])
 const editandoId = ref<string | null>(null)
-const form = ref<{ empresaId: string; nome: string; descricao: string; principal: boolean }>({
-  empresaId: '', nome: '', descricao: '', principal: false,
+const enderecoVazio = () => ({
+  logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '', cep: '', telefone: '',
 })
+const form = ref<any>({ empresaId: '', nome: '', descricao: '', principal: false, ...enderecoVazio() })
 
 // Filiais do grupo (cada filial é uma empresa com CNPJ próprio)
 const filiaisItems = computed(() => {
@@ -132,7 +155,7 @@ async function listar() {
 
 function abrirNovo() {
   editandoId.value = null
-  form.value = { empresaId: auth.empresaId, nome: '', descricao: '', principal: false }
+  form.value = { empresaId: auth.empresaId, nome: '', descricao: '', principal: false, ...enderecoVazio() }
   dialog.value = true
 }
 
@@ -141,6 +164,9 @@ function abrirEditar(item: any) {
   form.value = {
     empresaId: item.empresaId ?? auth.empresaId,
     nome: item.nome, descricao: item.descricao ?? '', principal: !!item.principal,
+    logradouro: item.logradouro ?? '', numero: item.numero ?? '', complemento: item.complemento ?? '',
+    bairro: item.bairro ?? '', cidade: item.cidade ?? '', uf: item.uf ?? '', cep: item.cep ?? '',
+    telefone: item.telefone ?? '',
   }
   dialog.value = true
 }
@@ -154,6 +180,14 @@ async function salvar() {
       nome: form.value.nome,
       descricao: form.value.descricao || null,
       principal: form.value.principal,
+      logradouro: form.value.logradouro || null,
+      numero: form.value.numero || null,
+      complemento: form.value.complemento || null,
+      bairro: form.value.bairro || null,
+      cidade: form.value.cidade || null,
+      uf: (form.value.uf || '').toUpperCase() || null,
+      cep: form.value.cep || null,
+      telefone: form.value.telefone || null,
     }
     if (editandoId.value) {
       await api.put(`/locais-estoque/${editandoId.value}`, payload)

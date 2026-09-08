@@ -21,7 +21,11 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
         return Ok(await db.LocaisEstoque.AsNoTracking()
             .Where(l => ids.Contains(l.EmpresaId) && l.Ativo)
             .OrderByDescending(l => l.Principal).ThenBy(l => l.Nome)
-            .Select(l => new { l.Id, l.EmpresaId, l.Nome, l.Descricao, l.Principal })
+            .Select(l => new
+            {
+                l.Id, l.EmpresaId, l.Nome, l.Descricao, l.Principal,
+                l.Logradouro, l.Numero, l.Complemento, l.Bairro, l.Cidade, l.Uf, l.Cep, l.Telefone
+            })
             .ToListAsync(ct));
     }
 
@@ -37,6 +41,7 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
         }
 
         var local = LocalEstoque.Criar(req.EmpresaId, req.Nome, req.Principal, req.Descricao);
+        local.DefinirEndereco(req.Logradouro, req.Numero, req.Complemento, req.Bairro, req.Cidade, req.Uf, req.Cep, req.Telefone);
         db.LocaisEstoque.Add(local);
         await uow.SalvarAsync(ct);
         return Ok(new { local.Id, local.Nome, local.Principal });
@@ -60,6 +65,7 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
         }
 
         local.Editar(req.Nome, req.Principal, req.Descricao);
+        local.DefinirEndereco(req.Logradouro, req.Numero, req.Complemento, req.Bairro, req.Cidade, req.Uf, req.Cep, req.Telefone);
         db.LocaisEstoque.Update(local);
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -78,4 +84,6 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
     }
 }
 
-public record LocalEstoqueRequest(Guid EmpresaId, string Nome, bool Principal = false, string? Descricao = null);
+public record LocalEstoqueRequest(Guid EmpresaId, string Nome, bool Principal = false, string? Descricao = null,
+    string? Logradouro = null, string? Numero = null, string? Complemento = null, string? Bairro = null,
+    string? Cidade = null, string? Uf = null, string? Cep = null, string? Telefone = null);

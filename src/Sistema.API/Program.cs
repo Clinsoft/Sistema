@@ -202,6 +202,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ExpurgoDadosSensiveisJob>(
     job => job.ExecutarAsync(),
     "0 4 * * *", optsBR);   // 04:00 BRT — apaga foto de rosto de aceites após a retenção (LGPD)
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.ArquivarDemonstrativosJob>(
+    "premiacao-arquivar-demonstrativos",
+    job => job.ExecutarAsync(),
+    "0 5 2 * *", optsBR);   // 05:00 BRT do dia 2 — arquiva o demonstrativo do mês anterior por colaborador
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.DespesasFixasJob>(
     "despesas-fixas-mensais",
     job => job.ExecutarAsync(),

@@ -128,6 +128,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<Sistema.Domain.Desempenho.Entities.AvaliacaoDesempenhoSemanal> AvaliacoesDesempenho => Set<Sistema.Domain.Desempenho.Entities.AvaliacaoDesempenhoSemanal>();
     public DbSet<Sistema.Domain.Desempenho.Entities.ApuracaoMensalPremiacao> ApuracoesPremiacao => Set<Sistema.Domain.Desempenho.Entities.ApuracaoMensalPremiacao>();
     public DbSet<Sistema.Domain.Desempenho.Entities.AceiteTermoPremiacao> AceitesTermoPremiacao => Set<Sistema.Domain.Desempenho.Entities.AceiteTermoPremiacao>();
+    public DbSet<Sistema.Domain.Desempenho.Entities.DemonstrativoArquivado> DemonstrativosArquivados => Set<Sistema.Domain.Desempenho.Entities.DemonstrativoArquivado>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

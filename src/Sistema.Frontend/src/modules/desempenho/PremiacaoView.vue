@@ -15,6 +15,7 @@
       <v-tab value="avaliacao">Avaliação semanal</v-tab>
       <v-tab value="elegibilidade">Elegibilidade &amp; Cortes</v-tab>
       <v-tab value="metas">Metas &amp; Regras</v-tab>
+      <v-tab value="arquivo">Arquivo (PDF)</v-tab>
     </v-tabs>
 
     <!-- ══ APURAÇÃO ══ -->
@@ -143,6 +144,36 @@
         </div>
       </div>
       <v-alert v-else type="info" variant="tonal">Selecione um colaborador.</v-alert>
+    </div>
+
+    <!-- ══ ARQUIVO ══ -->
+    <div v-else-if="aba === 'arquivo'">
+      <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
+        Os demonstrativos são <b>arquivados automaticamente todo dia 2</b> (referentes ao mês anterior), com os valores congelados daquele mês. Você também pode arquivar/reprocessar o mês selecionado manualmente.
+      </v-alert>
+      <div class="d-flex ga-2 mb-3">
+        <v-btn color="amber-darken-2" variant="tonal" prepend-icon="mdi-archive-arrow-down" :loading="arquivando" @click="arquivarMes">
+          Arquivar {{ meses.find(m => m.value === mes)?.label }}/{{ ano }} agora
+        </v-btn>
+      </div>
+      <v-card rounded="lg" elevation="1">
+        <v-table density="comfortable">
+          <thead><tr><th>Colaborador(a)</th><th>Competência</th><th class="text-right">Prêmio</th><th>Gerado em</th><th class="text-right">PDF</th></tr></thead>
+          <tbody>
+            <tr v-for="x in arquivo" :key="x.id">
+              <td class="font-weight-medium">{{ x.colaboradorNome }}</td>
+              <td>{{ x.competencia }}</td>
+              <td class="text-right">R$ {{ fmt(x.premio) }}</td>
+              <td class="text-medium-emphasis">{{ new Date(x.geradoEm).toLocaleString('pt-BR') }}</td>
+              <td class="text-right">
+                <v-btn size="small" color="red-darken-1" variant="tonal" prepend-icon="mdi-file-pdf-box"
+                  @click="baixarArquivo(x)">PDF</v-btn>
+              </td>
+            </tr>
+            <tr v-if="!arquivo.length"><td colspan="5" class="text-center text-medium-emphasis py-6">Nenhum demonstrativo arquivado para {{ meses.find(m => m.value === mes)?.label }}/{{ ano }}.</td></tr>
+          </tbody>
+        </v-table>
+      </v-card>
     </div>
 
     <!-- ══ METAS & REGRAS ══ -->
@@ -349,7 +380,28 @@ function segundaFeira(d: Date): string {
   return x.toISOString().slice(0, 10)
 }
 
-watch(aba, v => { if (v === 'metas') carregarConfig() })
+// ── Arquivo ──
+const arquivo = ref<any[]>([])
+const arquivando = ref(false)
+async function carregarArquivo() {
+  const r = await api.get('/premiacao/arquivo', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } }).catch(() => ({ data: [] }))
+  arquivo.value = r.data
+}
+async function arquivarMes() {
+  arquivando.value = true
+  try {
+    const r = await api.post('/premiacao/arquivar', null, { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
+    notif.ok(`${r.data.arquivados} demonstrativo(s) arquivado(s).`); await carregarArquivo()
+  } catch { notif.erro('Erro ao arquivar.') } finally { arquivando.value = false }
+}
+async function baixarArquivo(x: any) {
+  const r = await api.get(`/premiacao/arquivo/${x.id}/pdf`, { responseType: 'blob' })
+  const url = URL.createObjectURL(r.data as Blob)
+  const link = document.createElement('a'); link.href = url; link.download = `premio-${x.colaboradorNome}-${x.competencia.replace('/', '-')}.pdf`; link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60000)
+}
+
+watch(aba, v => { if (v === 'metas') carregarConfig(); if (v === 'arquivo') carregarArquivo() })
 
 onMounted(async () => {
   if (!auth.lojas?.length) await auth.carregarLojas()

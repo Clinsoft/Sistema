@@ -3,12 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
-using QRCoder;
 using System.Security.Claims;
 using Sistema.Domain.Desempenho.Entities;
-using Sistema.Domain.Vendas.Entities;
 using Sistema.Infrastructure.Data;
+using Sistema.Infrastructure.Desempenho;
+using Sistema.Infrastructure.Jobs;
 
 namespace Sistema.API.Controllers.Desempenho;
 
@@ -16,7 +15,7 @@ namespace Sistema.API.Controllers.Desempenho;
 [ApiController]
 [Route("api/premiacao")]
 [Authorize]
-public class PremiacaoController(SistemaDbContext db) : ControllerBase
+public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService calc, ArquivarDemonstrativosJob arquivador) : ControllerBase
 {
     private Guid UsuarioId =>
         Guid.TryParse(User.FindFirst("sub")?.Value
@@ -32,7 +31,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct) ?? ConfiguracaoPremiacao.Padrao(empresaId);
         var a = ano ?? DateTime.Today.Year;
         var m = mes ?? DateTime.Today.Month;
-        var metas = await ResolverMetasAsync(empresaId, a, m, cfg, ct);
+        var metas = await calc.ResolverMetasAsync(empresaId, a, m, cfg, ct);
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
         var baseIni = new DateTime(a, m, 1).AddMonths(-cfg.MesesBaseMeta);
@@ -99,53 +98,6 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Resolve a meta de cada loja no mês: override manual se houver, senão automática
-    /// (faturamento médio dos últimos MesesBaseMeta meses × FatorMetaLoja; individual = ÷ nº vendedores).</summary>
-    private async Task<Dictionary<Guid, (decimal MetaLoja, decimal MetaIndividual, decimal BaseFaturamento, int Vendedores, bool Manual)>>
-        ResolverMetasAsync(Guid empresaId, int ano, int mes, ConfiguracaoPremiacao cfg, CancellationToken ct)
-    {
-        var baseIni = new DateTime(ano, mes, 1).AddMonths(-cfg.MesesBaseMeta);
-        var baseFim = new DateTime(ano, mes, 1);
-
-        var fatBase = (await db.Vendas.AsNoTracking()
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
-                && v.DataHora >= baseIni && v.DataHora < baseFim)
-            .GroupBy(v => v.LocalEstoqueId)
-            .Select(g => new { Loja = g.Key, Total = g.Sum(v => v.Total) }).ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Total);
-
-        var vendBase = (await db.Vendas.AsNoTracking()
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada && v.VendedorId != null
-                && v.DataHora >= baseIni && v.DataHora < baseFim)
-            .Select(v => new { v.LocalEstoqueId, v.VendedorId })
-            .Distinct().ToListAsync(ct))
-            .GroupBy(x => x.LocalEstoqueId).ToDictionary(g => g.Key, g => g.Count());
-
-        var overrides = await db.MetasPremiacaoLoja.AsNoTracking()
-            .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes)
-            .ToDictionaryAsync(x => x.LocalEstoqueId, x => x, ct);
-
-        var lojas = await db.LocaisEstoque.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
-
-        var dict = new Dictionary<Guid, (decimal, decimal, decimal, int, bool)>();
-        foreach (var loja in lojas)
-        {
-            var fat = fatBase.TryGetValue(loja, out var f) ? f : 0m;
-            var media = Math.Round(fat / cfg.MesesBaseMeta, 2);
-            var vend = vendBase.TryGetValue(loja, out var vv) ? vv : 0;
-            if (overrides.TryGetValue(loja, out var ov))
-                dict[loja] = (ov.MetaLoja, ov.MetaIndividual, media, vend, true);
-            else
-            {
-                var metaLoja = Math.Round(media * cfg.FatorMetaLoja / 100m, 2);
-                var metaInd = Math.Round(metaLoja / Math.Max(1, vend), 2);
-                dict[loja] = (metaLoja, metaInd, media, vend, false);
-            }
-        }
-        return dict;
-    }
-
     // ── Avaliação semanal (Performance Comercial) ─────────────────────────
     [HttpGet("avaliacoes")]
     [Authorize(Roles = "Administrador,Financeiro")]
@@ -208,7 +160,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> Apuracao([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
     {
-        var resultados = await CalcularAsync(empresaId, ano, mes, null, ct);
+        var resultados = await calc.CalcularAsync(empresaId, ano, mes, null, ct);
         var porLoja = resultados
             .GroupBy(r => new { r.LocalEstoqueId, r.MetaLoja, r.FaturamentoLoja, r.PercentLoja })
             .Select(g => new
@@ -229,7 +181,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> MeuDesempenho([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
     {
-        var resultados = await CalcularAsync(empresaId, ano, mes, UsuarioId, ct);
+        var resultados = await calc.CalcularAsync(empresaId, ano, mes, UsuarioId, ct);
         if (resultados.Count == 0) return Ok(new { semDados = true });
         var meu = resultados[0];
         return Ok(Dto(meu.Res, incluirSemanas: true, avaliacoes: meu.Avaliacoes));
@@ -351,7 +303,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
                 });
 
                 var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/aceite/{a.Id}";
-                var qr = GerarQrPng(urlVerif);
+                var qr = PremiacaoCalculoService.GerarQrPng(urlVerif);
                 page.Footer().PaddingTop(8).Row(f =>
                 {
                     f.ConstantItem(60).Image(qr).FitArea();
@@ -376,14 +328,41 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         try { return Convert.FromBase64String(b64); } catch { return null; }
     }
 
-    private static byte[] GerarQrPng(string texto)
+    private string BaseUrl() => $"{Request.Scheme}://{Request.Host}";
+
+    // ── Arquivo mensal dos demonstrativos ─────────────────────────────────
+    /// <summary>Gera/arquiva manualmente os demonstrativos de uma competência (gestor).</summary>
+    [HttpPost("arquivar")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> Arquivar([FromQuery] Guid empresaId, [FromQuery] int ano, [FromQuery] int mes)
     {
-        using var gen = new QRCodeGenerator();
-        using var data = gen.CreateQrCode(texto, QRCodeGenerator.ECCLevel.M);
-        return new PngByteQRCode(data).GetGraphic(8);
+        var qtd = await arquivador.ArquivarAsync(empresaId, ano, mes);
+        return Ok(new { arquivados = qtd, competencia = $"{mes:00}/{ano}" });
     }
 
-    private string BaseUrl() => $"{Request.Scheme}://{Request.Host}";
+    [HttpGet("arquivo")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> ListarArquivo([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+    {
+        var q = db.DemonstrativosArquivados.AsNoTracking().Where(x => x.EmpresaId == empresaId);
+        if (ano.HasValue) q = q.Where(x => x.Ano == ano.Value);
+        if (mes.HasValue) q = q.Where(x => x.Mes == mes.Value);
+        var lista = await q.OrderByDescending(x => x.Ano).ThenByDescending(x => x.Mes).ThenBy(x => x.ColaboradorNome)
+            .Select(x => new { x.Id, x.ColaboradorNome, x.Ano, x.Mes, competencia = $"{x.Mes:00}/{x.Ano}", x.Premio, x.GeradoEm })
+            .ToListAsync(ct);
+        return Ok(lista);
+    }
+
+    [HttpGet("arquivo/{id:guid}/pdf")]
+    public async Task<IActionResult> ArquivoPdf(Guid id, CancellationToken ct)
+    {
+        var a = await db.DemonstrativosArquivados.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (a is null) return NotFound();
+        var ehGestor = User.IsInRole("Administrador") || User.IsInRole("Financeiro");
+        if (!ehGestor && a.ColaboradorId != UsuarioId) return Forbid();
+        return File(a.Pdf, "application/pdf", $"premio-{a.ColaboradorNome}-{a.Ano}-{a.Mes:00}.pdf");
+    }
 
     // ── Verificação pública (QR) ──────────────────────────────────────────
     [HttpGet("verificar/aceite/{id:guid}")]
@@ -405,7 +384,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
     public async Task<IActionResult> VerificarPremio([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid colaboradorId, CancellationToken ct)
     {
-        var res = await CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
+        var res = await calc.CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
         if (res.Count == 0) return Ok(new { encontrado = false });
         var r = res[0].Res;
         return Ok(new
@@ -426,159 +405,13 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         var ehGestor = User.IsInRole("Administrador") || User.IsInRole("Financeiro");
         if (!ehGestor && colaboradorId != UsuarioId) return Forbid();
 
-        var lista = await CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
+        var lista = await calc.CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
         if (lista.Count == 0) return NotFound();
         var t = lista[0];
-        var r = t.Res;
         var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empresaId, ct);
-
-        string M(decimal v) => "R$ " + v.ToString("N2", new System.Globalization.CultureInfo("pt-BR"));
         var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/premio?empresaId={empresaId}&ano={ano}&mes={mes}&colaboradorId={colaboradorId}";
-        var qr = GerarQrPng(urlVerif);
-
-        var pdf = Document.Create(doc => doc.Page(page =>
-        {
-            page.Margin(36); page.Size(PageSizes.A4);
-            page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1b241e"));
-            page.Header().Column(h =>
-            {
-                h.Item().Text("Demonstrativo de Premiação por Desempenho").FontSize(15).Bold().FontColor("#b5852a");
-                h.Item().Text($"Competência {mes:00}/{ano} · {empresa?.RazaoSocial}").FontSize(10).FontColor("#666");
-            });
-            page.Content().PaddingVertical(14).Column(c =>
-            {
-                c.Spacing(6);
-                void Linha(string k, string v, bool destaque = false) => c.Item().Row(row =>
-                {
-                    row.ConstantItem(210).Text(k).FontColor("#555").SemiBold();
-                    var span = row.RelativeItem().Text(v);
-                    span.FontSize(destaque ? 13 : 10).FontColor(destaque ? "#1e7a46" : "#1b241e");
-                    if (destaque) span.Bold();
-                });
-
-                Linha("Colaborador(a):", r.Colaborador);
-                Linha("Loja:", t.LojaNome);
-                c.Item().PaddingVertical(4).LineHorizontal(0.5f).LineColor("#e0e0e0");
-                Linha("Meta da loja:", $"{M(r.FaturamentoLoja)} de {M(r.MetaLoja)}  ({r.PercentLoja:0.#}%)");
-                Linha("Sua meta individual:", $"{M(r.VendaIndividual)} de {M(r.MetaIndividual)}  ({r.PercentIndividual:0.#}%)");
-                Linha("Performance comercial:", $"{r.PerformancePercent:0.#}% ({r.SemanasAvaliadas} semana(s))"
-                    + (r.DescontoValidade > 0 ? $"  — desconto validade: -{r.DescontoValidade:0.#}" : ""));
-                c.Item().PaddingVertical(4).LineHorizontal(0.5f).LineColor("#e0e0e0");
-                Linha("Valor base (ativação da loja):", M(r.BaseLoja));
-                Linha("Fator individual:", $"{r.FatorIndividual * 100:0}%");
-                Linha("Prêmio do mês:", M(r.Premio), destaque: true);
-                if (r.Premio == 0 && !string.IsNullOrEmpty(r.Motivo))
-                    c.Item().PaddingTop(4).Background("#F6EDD9").Padding(8).Text($"Sem prêmio neste mês: {r.Motivo}").FontSize(9).FontColor("#9a6b18");
-                c.Item().PaddingTop(8).Text("Cálculo: Valor base × Fator individual × Performance% (conforme o Regulamento). Documento informativo; o prêmio, quando devido, segue as condições do regulamento.")
-                    .FontSize(8).FontColor("#777");
-            });
-            page.Footer().PaddingTop(8).Row(f =>
-            {
-                f.ConstantItem(58).Image(qr).FitArea();
-                f.RelativeItem().PaddingLeft(8).AlignMiddle().Column(col =>
-                {
-                    col.Item().Text("Verificação (aponte a câmera)").FontSize(8).SemiBold().FontColor("#555");
-                    col.Item().Text($"Gerado em {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(7).FontColor("#999");
-                });
-            });
-        }));
-
-        return File(pdf.GeneratePdf(), "application/pdf", $"premio-{r.Colaborador}-{ano}-{mes:00}.pdf");
-    }
-
-    // ── Núcleo do cálculo ─────────────────────────────────────────────────
-    private async Task<List<(ResultadoPremio Res, string LojaNome, Guid LocalEstoqueId,
-        decimal FaturamentoLoja, decimal MetaLoja, decimal PercentLoja, List<AvaliacaoDesempenhoSemanal> Avaliacoes)>>
-        CalcularAsync(Guid empresaId, int ano, int mes, Guid? apenasColaborador, CancellationToken ct)
-    {
-        var cfg = await db.ConfiguracoesPremiacao.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct) ?? ConfiguracaoPremiacao.Padrao(empresaId);
-        var inicio = new DateTime(ano, mes, 1);
-        var fimExcl = inicio.AddMonths(1);
-
-        var metas = await ResolverMetasAsync(empresaId, ano, mes, cfg, ct);
-
-        var lojas = await db.LocaisEstoque.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
-
-        var fatLoja = (await db.Vendas.AsNoTracking()
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
-                && v.DataHora >= inicio && v.DataHora < fimExcl)
-            .GroupBy(v => v.LocalEstoqueId)
-            .Select(g => new { Loja = g.Key, Total = g.Sum(v => v.Total) }).ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Total);
-
-        var vendaVendedor = (await db.Vendas.AsNoTracking()
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
-                && v.VendedorId != null && v.DataHora >= inicio && v.DataHora < fimExcl)
-            .GroupBy(v => v.VendedorId!.Value)
-            .Select(g => new { Vend = g.Key, Total = g.Sum(v => v.Total) }).ToListAsync(ct))
-            .ToDictionary(x => x.Vend, x => x.Total);
-
-        var avaliacoes = (await db.AvaliacoesDesempenho.AsNoTracking()
-            .Where(a => a.EmpresaId == empresaId && a.Ano == ano && a.Mes == mes).ToListAsync(ct))
-            .GroupBy(a => a.ColaboradorId).ToDictionary(g => g.Key, g => g.ToList());
-
-        var apuracoes = await db.ApuracoesPremiacao.AsNoTracking()
-            .Where(a => a.EmpresaId == empresaId && a.Ano == ano && a.Mes == mes)
-            .ToDictionaryAsync(a => a.ColaboradorId, a => a, ct);
-
-        // Lojas com produto vencido em estoque → desconta os pontos de "Validade" (10)
-        // da performance de TODOS os colaboradores daquela unidade (automático).
-        var hoje = DateTime.Today;
-        var lojasComVencido = new HashSet<Guid>(await db.Lotes.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId && l.Quantidade > 0
-                && l.DataValidade != null && l.DataValidade < hoje)
-            .Select(l => l.LocalEstoqueId).Distinct().ToListAsync(ct));
-
-        // Roster = quem teve atividade no período (venda, avaliação ou apuração), com loja
-        // no cadastro. Não depende do flag Ativo (vendedores podem estar sem login/inativos).
-        var idsAtividade = new HashSet<Guid>(vendaVendedor.Keys);
-        idsAtividade.UnionWith(avaliacoes.Keys);
-        idsAtividade.UnionWith(apuracoes.Keys);
-        if (apenasColaborador.HasValue)
-            idsAtividade = new HashSet<Guid> { apenasColaborador.Value };
-
-        var roster = await db.Usuarios.AsNoTracking()
-            .Where(u => u.EmpresaId == empresaId && u.LocalEstoqueId != null && idsAtividade.Contains(u.Id))
-            .Select(u => new { u.Id, u.Nome, u.LocalEstoqueId })
-            .ToListAsync(ct);
-
-        var lista = new List<(ResultadoPremio, string, Guid, decimal, decimal, decimal, List<AvaliacaoDesempenhoSemanal>)>();
-        foreach (var u in roster)
-        {
-            var loja = u.LocalEstoqueId!.Value;
-            var metaTup = metas.TryGetValue(loja, out var mt) ? mt : default;
-            var metaLoja = metaTup.MetaLoja;
-            var metaInd = metaTup.MetaIndividual;
-            // Valor base por colaborador: fixo, ou dinâmico = % da meta individual (proporcional
-            // ao faturamento esperado → nunca fere o faturamento da loja).
-            var valorBaseLoja = cfg.ValorBaseDinamico && metaInd > 0
-                ? Math.Round(metaInd * cfg.PercentFaturamentoPremio / 100m, 2)
-                : cfg.ValorBase;
-            var fat = fatLoja.TryGetValue(loja, out var f) ? f : 0;
-            var vendaInd = vendaVendedor.TryGetValue(u.Id, out var vi) ? vi : 0;
-            var avalsU = avaliacoes.TryGetValue(u.Id, out var av) ? av : new List<AvaliacaoDesempenhoSemanal>();
-            var temVencido = lojasComVencido.Contains(loja);
-            decimal perf = 0, descValidade = 0;
-            if (avalsU.Count > 0)
-            {
-                if (temVencido)
-                {
-                    // Zera o item Validade (10 pts × nível) em cada semana.
-                    perf = Math.Round(avalsU.Average(a => Math.Max(0, a.Pontos - 10m * (int)a.Validade / 100m)), 1);
-                    descValidade = Math.Round(avalsU.Average(a => 10m * (int)a.Validade / 100m), 1);
-                }
-                else perf = Math.Round(avalsU.Average(a => a.Pontos), 1);
-            }
-            var apu = apuracoes.TryGetValue(u.Id, out var ap) ? ap : null;
-
-            var res = CalculoPremiacao.Calcular(u.Id, u.Nome, loja, fat, metaLoja, vendaInd, metaInd,
-                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade);
-            var pctLoja = metaLoja > 0 ? Math.Round(fat / metaLoja * 100, 1) : 0;
-            lista.Add((res, lojas.TryGetValue(loja, out var ln) ? ln : "—", loja, fat, metaLoja, pctLoja, avalsU));
-        }
-        return lista;
+        var bytes = calc.GerarDemonstrativoPdf(t, empresa?.RazaoSocial ?? "", ano, mes, urlVerif);
+        return File(bytes, "application/pdf", $"premio-{t.Res.Colaborador}-{ano}-{mes:00}.pdf");
     }
 
     private static object Dto(ResultadoPremio r, bool incluirSemanas = false, List<AvaliacaoDesempenhoSemanal>? avaliacoes = null)

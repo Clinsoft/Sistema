@@ -64,6 +64,20 @@ public class AvaliacaoDesempenhoSemanalConfiguration : IEntityTypeConfiguration<
     }
 }
 
+public class DemonstrativoArquivadoConfiguration : IEntityTypeConfiguration<DemonstrativoArquivado>
+{
+    public void Configure(EntityTypeBuilder<DemonstrativoArquivado> b)
+    {
+        b.ToTable("DemonstrativosArquivados");
+        b.HasKey(x => x.Id);
+        b.HasIndex(x => new { x.EmpresaId, x.ColaboradorId, x.Ano, x.Mes }).IsUnique();
+        b.HasIndex(x => new { x.EmpresaId, x.Ano, x.Mes });
+        b.Property(x => x.ColaboradorNome).HasMaxLength(150);
+        b.Property(x => x.Premio).HasPrecision(18, 2);
+        b.Property(x => x.Pdf).HasColumnType("varbinary(max)");
+    }
+}
+
 public class AceiteTermoPremiacaoConfiguration : IEntityTypeConfiguration<AceiteTermoPremiacao>
 {
     public void Configure(EntityTypeBuilder<AceiteTermoPremiacao> b)

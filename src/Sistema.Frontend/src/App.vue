@@ -101,6 +101,10 @@
               to="/financeiro/recebiveis-cartao" value="/financeiro/recebiveis-cartao" color="indigo" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-credit-card-settings-outline" title="Operadoras de Cartão"
               to="/financeiro/operadoras-cartao" value="/financeiro/operadoras-cartao" color="grey-darken-1" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-book-open-outline" title="Contabilidade"
+              to="/contabilidade" value="/contabilidade" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-account-multiple-outline" title="Crediário"
+              to="/crediario" value="/crediario" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
           <!-- 5. Relatórios -->
@@ -137,8 +141,8 @@
               to="/desempenho/meu" value="/desempenho/meu" color="amber-darken-2" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <!-- Restante em ordem alfabética -->
-          <v-list-item v-if="!ehAtendente" prepend-icon="mdi-book-open-outline" title="Contabilidade"
+          <!-- Contabilidade avulsa só para o Contador (o grupo Financeiro fica oculto para ele) -->
+          <v-list-item v-if="ehContador" prepend-icon="mdi-book-open-outline" title="Contabilidade"
             to="/contabilidade" value="/contabilidade" color="primary" rounded="lg" />
 
           <v-list-group v-if="!ehAtendente && !ehContador" value="compras">
@@ -163,9 +167,6 @@
           <!-- Tutoriais (ajuda) — atendente e gestor -->
           <v-list-item v-if="!ehContador" prepend-icon="mdi-school-outline" title="Tutoriais"
             to="/tutoriais" value="/tutoriais" color="primary" rounded="lg" />
-
-          <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-account-multiple-outline" title="Crediário"
-            to="/crediario" value="/crediario" color="primary" rounded="lg" />
 
           <!-- Estoque (sem Produtos) -->
           <v-list-group v-if="!ehContador" value="estoque">

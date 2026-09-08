@@ -54,6 +54,9 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3" icon="mdi-format-list-checks">
+            Adicione <b>todos os itens</b> na lista abaixo e clique em <b>Enviar</b> <u>uma única vez</u> — é <b>uma</b> requisição com vários itens (não envie um item de cada vez).
+          </v-alert>
           <div class="d-flex ga-2 mb-3">
             <v-autocomplete v-model="prodSel" :items="prodOpcoes" :loading="buscandoProd"
               item-title="descricao" item-value="id" return-object no-filter clearable
@@ -84,7 +87,7 @@
         <v-card-actions class="pa-4 justify-end">
           <v-btn variant="text" @click="dialogNova = false">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :loading="salvando" :disabled="!novaItens.length" @click="salvarNova">
-            Enviar requisição
+            Enviar requisição ({{ novaItens.length }} {{ novaItens.length === 1 ? 'item' : 'itens' }})
           </v-btn>
         </v-card-actions>
       </v-card>

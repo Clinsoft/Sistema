@@ -76,7 +76,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
 
         return Ok(lista.Select(x => new
         {
-            x.Id, x.CriadoEm, x.status, x.qtdItens,
+            x.Id,
+            criadoEm = DateTime.SpecifyKind(x.CriadoEm, DateTimeKind.Utc).ToLocalTime(),  // UTC → local (-03)
+            x.status, x.qtdItens,
             solicitante = usuarios.GetValueOrDefault(x.UsuarioId, "—"),
             loja = x.LocalEstoqueId.HasValue ? lojas.GetValueOrDefault(x.LocalEstoqueId.Value, "—") : "—",
         }));
@@ -107,7 +109,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
 
         return Ok(new
         {
-            req.Id, status = req.Status.ToString(), req.Observacao, req.CriadoEm,
+            req.Id, status = req.Status.ToString(), req.Observacao,
+            criadoEm = DateTime.SpecifyKind(req.CriadoEm, DateTimeKind.Utc).ToLocalTime(),
             itens = itens.Select(i =>
             {
                 var p = pmap.GetValueOrDefault(i.ProdutoId);

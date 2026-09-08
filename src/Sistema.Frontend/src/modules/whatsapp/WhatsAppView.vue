@@ -20,6 +20,9 @@
       <v-tab value="pedidos">Pedidos</v-tab>
       <v-tab v-if="!ehAtendente" value="mensagens">Mensagens Automáticas</v-tab>
       <v-tab v-if="!ehAtendente" value="templates">Templates</v-tab>
+      <v-tab v-if="!ehAtendente" value="reativacao">
+        <v-icon start size="18">mdi-account-clock-outline</v-icon>Clientes Sumidos
+      </v-tab>
       <v-tab v-if="!ehAtendente" value="historico">Histórico</v-tab>
       <v-tab v-if="!ehAtendente" value="config">Configuração</v-tab>
     </v-tabs>
@@ -455,6 +458,10 @@
       </v-window-item>
 
       <!-- Configuração -->
+      <v-window-item value="reativacao">
+        <ClientesSumidosView />
+      </v-window-item>
+
       <v-window-item value="config">
         <!-- Vitrine / Loja Online (e-commerce próprio) -->
         <v-card max-width="700" class="mb-4">
@@ -745,6 +752,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import ClientesSumidosView from '@/modules/relatorios/ClientesSumidosView.vue'
 import { rotuloStatus } from '@/utils/status'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'

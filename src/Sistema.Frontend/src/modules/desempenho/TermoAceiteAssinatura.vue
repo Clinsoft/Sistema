@@ -10,17 +10,11 @@
         assinando digitalmente (com foto, assinatura e localização). Isso confirma sua participação.
       </v-alert>
 
-      <!-- Texto do termo -->
-      <div ref="termoEl" class="termo-texto mb-4">
-        <p><b>ECOGRANEL COMÉRCIO DE PRODUTOS NATURAIS LTDA</b> — Regulamento de Premiação por Desempenho (Art. 457, §2º, CLT).</p>
-        <p>1. O <b>Prêmio</b> é uma liberalidade por desempenho superior ao ordinariamente esperado. <b>Não tem natureza salarial</b>, não se incorpora ao contrato de trabalho e não é base de encargos trabalhistas ou previdenciários.</p>
-        <p>2. O pagamento depende, cumulativamente, dos <b>critérios de elegibilidade</b> (presença mínima de 95%, sem falta injustificada, sem advertência, execução mínima das rotinas), da <b>ativação coletiva</b> (meta da loja) e da <b>ativação individual</b> (meta de venda), seguidos da apuração da <b>Performance Comercial</b> (avaliação semanal, 100 pontos).</p>
-        <p>3. Ocorrências como produto vencido exposto, falta injustificada, falha grave de higiene, não execução de rotina mínima ou reclamação relevante de cliente <b>zeram</b> o prêmio do período.</p>
-        <p>4. A apuração é mensal; o pagamento, quando devido, segue as condições do regulamento e depende de o contrato estar ativo na data do crédito.</p>
-        <p>5. O recebimento em um período <b>não gera direito adquirido</b> para períodos futuros.</p>
-        <p><b>Proteção de dados (LGPD):</b> para comprovar a identidade e a autoria deste aceite, coletamos sua <b>foto de rosto</b> (dado biométrico/sensível), sua <b>assinatura</b>, a <b>geolocalização</b>, o <b>IP</b> e a <b>data/hora</b>. A base legal é o seu <b>consentimento</b> (art. 7º, I, e art. 11, I, da Lei 13.709/2018) e a finalidade é <b>exclusivamente</b> registrar e comprovar sua adesão à premiação. A <b>foto</b> é mantida pelo prazo de <b>24 meses</b> e depois <b>apagada automaticamente</b> (as demais evidências são retidas para fins probatórios). Você pode solicitar acesso, correção ou exclusão dos seus dados a qualquer momento junto à empresa.</p>
-        <p>Ao assinar, declaro que <b>li, entendi e concordo</b> com todos os critérios acima, <b>consinto</b> com a coleta dos dados descritos e confirmo minha <b>participação</b> na premiação por desempenho, ciente de que o prêmio não possui natureza salarial.</p>
+      <!-- Texto do regulamento (buscado do servidor, com as metas da loja) -->
+      <div v-if="carregandoRegulamento" class="d-flex justify-center pa-6">
+        <v-progress-circular indeterminate color="amber-darken-2" />
       </div>
+      <pre v-else ref="termoEl" class="termo-texto mb-4">{{ regulamentoTexto }}</pre>
 
       <v-divider class="mb-4" />
 
@@ -91,7 +85,10 @@ import { useNotifStore } from '@/stores/notif'
 const emit = defineEmits<{ (e: 'assinado'): void }>()
 const auth = useAuthStore()
 const notif = useNotifStore()
-const TERMO_VERSAO = '1.0'
+
+const regulamentoTexto = ref('')
+const regulamentoVersao = ref('2.0')
+const carregandoRegulamento = ref(true)
 
 const termoEl = ref<HTMLElement>()
 const video = ref<HTMLVideoElement>()
@@ -106,7 +103,7 @@ const erroCam = ref('')
 let stream: MediaStream | null = null
 let assinou = ref(false)
 
-const podeAssinar = computed(() => concordo.value && !!foto.value && assinou.value)
+const podeAssinar = computed(() => concordo.value && !!foto.value && assinou.value && !!regulamentoTexto.value)
 
 // ── Webcam ──
 async function iniciarCam() {
@@ -158,13 +155,25 @@ async function sha256(txt: string) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+async function carregarRegulamento() {
+  carregandoRegulamento.value = true
+  try {
+    const r = await api.get('/premiacao/regulamento', { params: { empresaId: auth.empresaId } })
+    regulamentoTexto.value = r.data.texto ?? ''
+    regulamentoVersao.value = r.data.versao ?? '2.0'
+  } catch {
+    notif.erro('Não foi possível carregar o regulamento. Tente novamente.')
+  } finally { carregandoRegulamento.value = false }
+}
+
 async function assinar() {
   if (!podeAssinar.value) return
   enviando.value = true
   try {
-    const hash = await sha256(termoEl.value?.innerText ?? '')
+    const hash = await sha256(regulamentoTexto.value)
     await api.post('/premiacao/aceitar', {
-      empresaId: auth.empresaId, termoVersao: TERMO_VERSAO, termoHash: hash,
+      empresaId: auth.empresaId, termoVersao: regulamentoVersao.value, termoHash: hash,
+      textoRegulamento: regulamentoTexto.value,
       fotoBase64: foto.value, assinaturaBase64: canvas.value?.toDataURL('image/png'),
       latitude: geo.value?.lat ?? null, longitude: geo.value?.lng ?? null, precisaoMetros: geo.value?.acc ?? null,
     })
@@ -174,13 +183,14 @@ async function assinar() {
   finally { enviando.value = false }
 }
 
-onMounted(async () => { ajustarCanvas(); window.addEventListener('resize', ajustarCanvas); await iniciarCam(); capturarGeo() })
+onMounted(async () => { ajustarCanvas(); window.addEventListener('resize', ajustarCanvas); carregarRegulamento(); await iniciarCam(); capturarGeo() })
 onBeforeUnmount(() => { pararCam(); window.removeEventListener('resize', ajustarCanvas) })
 </script>
 
 <style scoped>
 .termo-wrap { max-width: 780px; margin: 0 auto; }
-.termo-texto { max-height: 280px; overflow-y: auto; font-size: 13px; line-height: 1.55;
+.termo-texto { max-height: 340px; overflow-y: auto; font-size: 12.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word; font-family: inherit; margin: 0;
   background: rgba(128,128,128,.06); border: 1px solid rgba(128,128,128,.18); border-radius: 12px; padding: 14px 16px; }
 .termo-texto p { margin: 0 0 10px; }
 .campo-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; }

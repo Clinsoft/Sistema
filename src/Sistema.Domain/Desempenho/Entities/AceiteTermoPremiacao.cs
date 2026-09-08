@@ -11,6 +11,7 @@ public class AceiteTermoPremiacao : Entity
     public string ColaboradorNome { get; private set; } = null!;
     public string TermoVersao { get; private set; } = null!;
     public string TermoHash { get; private set; } = null!;      // SHA-256 do texto aceito
+    public string? TextoRegulamento { get; private set; }       // texto exato do regulamento aceito (com os valores)
     public DateTime DataAceite { get; private set; }
 
     // Evidências (data URLs base64)
@@ -30,11 +31,12 @@ public class AceiteTermoPremiacao : Entity
 
     public static AceiteTermoPremiacao Criar(Guid empresaId, Guid colaboradorId, string colaboradorNome,
         string termoVersao, string termoHash, string? fotoBase64, string? assinaturaBase64,
-        double? latitude, double? longitude, double? precisaoMetros, string? ip, string? userAgent)
+        double? latitude, double? longitude, double? precisaoMetros, string? ip, string? userAgent,
+        string? textoRegulamento = null)
         => new()
         {
             EmpresaId = empresaId, ColaboradorId = colaboradorId, ColaboradorNome = colaboradorNome,
-            TermoVersao = termoVersao, TermoHash = termoHash, DataAceite = DateTime.UtcNow,
+            TermoVersao = termoVersao, TermoHash = termoHash, TextoRegulamento = textoRegulamento, DataAceite = DateTime.UtcNow,
             FotoBase64 = fotoBase64, AssinaturaBase64 = assinaturaBase64,
             Latitude = latitude, Longitude = longitude, PrecisaoMetros = precisaoMetros,
             Ip = ip, UserAgent = userAgent,

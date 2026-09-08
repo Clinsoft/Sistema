@@ -197,6 +197,46 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         return Ok(new { aceito = a != null, dataAceite = a?.DataAceite, termoVersao = a?.TermoVersao });
     }
 
+    /// <summary>Texto do Regulamento (com as metas da loja do colaborador) para leitura/assinatura.</summary>
+    [HttpGet("regulamento")]
+    public async Task<IActionResult> Regulamento([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
+    {
+        var a = ano ?? DateTime.Today.Year;
+        var m = mes ?? DateTime.Today.Month;
+        var loja = localEstoqueId
+            ?? (Guid.TryParse(User.FindFirst("localEstoqueId")?.Value, out var lid) ? lid : Guid.Empty);
+
+        var cfg = await db.ConfiguracoesPremiacao.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId, ct) ?? ConfiguracaoPremiacao.Padrao(empresaId);
+        var metas = await calc.ResolverMetasAsync(empresaId, a, m, cfg, ct);
+        var mt = loja != Guid.Empty && metas.TryGetValue(loja, out var v) ? v
+            : (metas.Count > 0 ? metas.Values.First() : new MetaResolvida(0, 0, 0, 0, false));
+        if (loja == Guid.Empty) loja = metas.FirstOrDefault(kv => kv.Value.Equals(mt)).Key;
+
+        var lojaNome = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.Id == loja).Select(l => l.Nome).FirstOrDefaultAsync(ct) ?? "—";
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empresaId, ct);
+
+        var valorBase = cfg.ValorBaseDinamico && mt.MetaIndividual > 0
+            ? Math.Round(mt.MetaIndividual * cfg.PercentFaturamentoPremio / 100m, 2)
+            : cfg.ValorBase;
+        var valorBaseReduzido = Math.Round(valorBase * cfg.RedutorPercent / 100m, 2);
+
+        var texto = RegulamentoPremiacao.Gerar(empresa?.RazaoSocial ?? "", lojaNome, a, m,
+            mt.MetaLoja, mt.MetaIndividual, valorBase, valorBaseReduzido,
+            cfg.MinPresenca, cfg.ThresholdLoja, cfg.ThresholdIndividual, cfg.RedutorPercent);
+
+        return Ok(new
+        {
+            versao = RegulamentoPremiacao.Versao,
+            loja = lojaNome, ano = a, mes = m,
+            metaLoja = mt.MetaLoja, metaIndividual = mt.MetaIndividual,
+            valorBase, valorBaseReduzido,
+            texto
+        });
+    }
+
     [HttpPost("aceitar")]
     public async Task<IActionResult> Aceitar([FromBody] AceiteRequest req, CancellationToken ct)
     {
@@ -205,9 +245,9 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
         var a = AceiteTermoPremiacao.Criar(req.EmpresaId, UsuarioId, nome,
-            string.IsNullOrWhiteSpace(req.TermoVersao) ? "1.0" : req.TermoVersao!, req.TermoHash ?? "",
+            string.IsNullOrWhiteSpace(req.TermoVersao) ? RegulamentoPremiacao.Versao : req.TermoVersao!, req.TermoHash ?? "",
             req.FotoBase64, req.AssinaturaBase64, req.Latitude, req.Longitude, req.PrecisaoMetros,
-            ip, ua?.Length > 400 ? ua[..400] : ua);
+            ip, ua?.Length > 400 ? ua[..400] : ua, req.TextoRegulamento);
         db.AceitesTermoPremiacao.Add(a);
         await db.SaveChangesAsync(ct);
         return Ok(new { a.Id, a.DataAceite });
@@ -300,6 +340,22 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
                         + "ciência de que o prêmio não possui natureza salarial. As evidências (foto, assinatura, "
                         + "geolocalização, IP, data/hora e hash do documento) foram registradas no ato do aceite para fins de comprovação.")
                         .FontSize(9).FontColor("#444");
+
+                    // Regulamento exato que foi aceito (com os valores das metas), em páginas seguintes.
+                    if (!string.IsNullOrWhiteSpace(a.TextoRegulamento))
+                    {
+                        c.Item().PageBreak();
+                        c.Item().Text("Regulamento aceito (íntegra)").FontSize(12).Bold().FontColor("#1e7a46");
+                        foreach (var raw in a.TextoRegulamento.Split('\n'))
+                        {
+                            var linha = raw.TrimEnd();
+                            if (linha.Length == 0) { c.Item().Height(4); continue; }
+                            var destaque = linha.StartsWith("CLÁUSULA") || linha.StartsWith("TERMO DE")
+                                || linha.StartsWith("Colaborador:");
+                            var it = c.Item().Text(linha).FontSize(8.5f).FontColor("#333");
+                            if (destaque) it.SemiBold();
+                        }
+                    }
                 });
 
                 var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/aceite/{a.Id}";
@@ -441,4 +497,5 @@ public record ApuracaoRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid Colabora
     decimal PresencaPercent, bool FaltaInjustificada, bool Advertencia, bool ExecucaoMinima,
     bool ProdutoVencidoExposto, bool HigieneGrave, bool RotinaNaoExecutada, bool ReclamacaoRelevante, string? Observacao);
 public record AceiteRequest(Guid EmpresaId, string? TermoVersao, string? TermoHash,
-    string? FotoBase64, string? AssinaturaBase64, double? Latitude, double? Longitude, double? PrecisaoMetros);
+    string? FotoBase64, string? AssinaturaBase64, double? Latitude, double? Longitude, double? PrecisaoMetros,
+    string? TextoRegulamento = null);

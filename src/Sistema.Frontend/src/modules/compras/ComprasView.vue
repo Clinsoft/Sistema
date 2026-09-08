@@ -48,6 +48,23 @@
         <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregando" @click="carregar">Buscar</v-btn>
       </div>
     </v-card>
+    <!-- Totalizador por unidade (ignora cancelados) -->
+    <div v-if="totaisPorUnidade.length" class="d-flex flex-wrap ga-2 mb-3">
+      <v-card v-for="t in totaisPorUnidade" :key="t.id" rounded="lg" elevation="1"
+        class="px-3 py-2 d-flex align-center ga-2" style="cursor:pointer"
+        :color="filtroLoja === t.id ? 'primary' : undefined"
+        :variant="filtroLoja === t.id ? 'tonal' : 'flat'"
+        @click="filtroLoja = (filtroLoja === t.id ? 'todas' : t.id)">
+        <v-icon size="18" :color="t.id === 'sem' ? 'warning' : 'primary'">
+          {{ t.id === 'sem' ? 'mdi-help-circle-outline' : 'mdi-store-marker-outline' }}
+        </v-icon>
+        <div>
+          <div class="text-caption text-medium-emphasis" style="line-height:1.1">{{ t.nome }} · {{ t.qtd }} pedido(s)</div>
+          <div class="font-weight-bold">R$ {{ fmt(t.total) }}</div>
+        </div>
+      </v-card>
+    </div>
+
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="pedidosFiltrados" :loading="carregando" density="compact" hover
         @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
@@ -357,6 +374,22 @@ const pedidosFiltrados = computed(() => {
   if (!f || f === 'todas') return pedidos.value
   if (f === 'sem') return pedidos.value.filter((p: any) => !p.localEstoqueId)
   return pedidos.value.filter((p: any) => p.localEstoqueId === f)
+})
+
+// Totais por unidade no período/status carregado (ignora cancelados)
+const totaisPorUnidade = computed(() => {
+  const mapa = new Map<string, { id: string; nome: string; qtd: number; total: number }>()
+  for (const p of pedidos.value) {
+    if (p.status === 'Cancelado') continue
+    const id = p.localEstoqueId ?? 'sem'
+    const nome = p.lojaNome ?? 'Sem unidade'
+    const acc = mapa.get(id) ?? { id, nome, qtd: 0, total: 0 }
+    acc.qtd++; acc.total += (p.totalPedido ?? 0)
+    mapa.set(id, acc)
+  }
+  // ordena: unidades nomeadas primeiro, "sem unidade" por último
+  return [...mapa.values()].sort((a, b) =>
+    a.id === 'sem' ? 1 : b.id === 'sem' ? -1 : a.nome.localeCompare(b.nome))
 })
 const np = ref<any>({ fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' })
 const it = ref({ produtoId:'', descricao:'', quantidade:1, precoUnitario:0 })

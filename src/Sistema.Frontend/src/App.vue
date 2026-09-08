@@ -87,10 +87,6 @@
               to="/financeiro/contas-pagar" value="/financeiro/contas-pagar" color="error" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-chart-line" title="DRE"
               to="/financeiro/dre" value="/financeiro/dre" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-chart-timeline-variant" title="DRE Mensal (evolução)"
-              to="/financeiro/dre-mensal" value="/financeiro/dre-mensal" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-store-outline" title="DRE por Loja"
-              to="/financeiro/dre-lojas" value="/financeiro/dre-lojas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-cash-flow" title="Fluxo de Caixa"
               to="/financeiro/fluxo-caixa" value="/financeiro/fluxo-caixa" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-bank-outline" title="Financiamentos"

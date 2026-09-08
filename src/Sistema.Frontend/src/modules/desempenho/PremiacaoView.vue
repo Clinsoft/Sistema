@@ -153,6 +153,7 @@
               {{ metasEdit[l.id]?.manual ? 'Manual (fixada)' : 'Automática' }}
             </v-chip>
             <span class="text-caption text-medium-emphasis">base: R$ {{ fmt(metasEdit[l.id]?.baseFaturamento || 0) }} · {{ metasEdit[l.id]?.vendedores || 0 }} vendedor(es)</span>
+            <v-chip size="x-small" color="amber-darken-2" variant="flat" class="ml-auto">Prêmio integral: R$ {{ fmt(metasEdit[l.id]?.valorBase || 0) }}/pessoa</v-chip>
           </div>
           <div class="d-flex align-center ga-3 flex-wrap">
             <v-text-field v-model.number="metasEdit[l.id].metaLoja" label="Meta da loja (R$)" type="number" prefix="R$"
@@ -166,9 +167,14 @@
       </v-card>
       <v-card rounded="lg" class="pa-4">
         <div class="text-subtitle-2 font-weight-bold mb-3">Regras gerais</div>
+        <div class="mb-2">
+          <v-switch v-model="cfg.valorBaseDinamico" color="amber-darken-2" hide-details inset density="compact"
+            label="Valor base proporcional ao faturamento (não fere a margem da loja)" />
+        </div>
         <v-row dense>
-          <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.valorBase" label="Valor base (R$)" type="number" prefix="R$" variant="outlined" density="compact" hide-details /></v-col>
-          <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.redutorPercent" label="Redutor 90–99% (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="80 = base cai p/ R$320" persistent-hint /></v-col>
+          <v-col v-if="cfg.valorBaseDinamico" cols="6" sm="4"><v-text-field v-model.number="cfg.percentFaturamentoPremio" label="% da meta individual" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="1,78% de R$22,5k ≈ R$400" persistent-hint /></v-col>
+          <v-col v-else cols="6" sm="4"><v-text-field v-model.number="cfg.valorBase" label="Valor base fixo (R$)" type="number" prefix="R$" variant="outlined" density="compact" hide-details /></v-col>
+          <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.redutorPercent" label="Redutor 90–99% (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="80 = base cai p/ 80%" persistent-hint /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.fatorMetaLoja" label="Fator da meta (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details hint="90 = meta é 90% do faturamento base" persistent-hint /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.mesesBaseMeta" label="Meses da base" type="number" variant="outlined" density="compact" hide-details hint="1 = mês anterior; 3 = média trimestral" persistent-hint /></v-col>
           <v-col cols="6" sm="4"><v-text-field v-model.number="cfg.minPresenca" label="Presença mín. (%)" type="number" suffix="%" variant="outlined" density="compact" hide-details /></v-col>
@@ -278,13 +284,13 @@ async function salvarElegibilidade() {
 }
 
 // ── Metas & config ──
-const cfg = ref<any>({ valorBase: 400, redutorPercent: 80, minPresenca: 95, thresholdLoja: 90, thresholdIndividual: 90, fatorMetaLoja: 90, mesesBaseMeta: 1 })
+const cfg = ref<any>({ valorBase: 400, redutorPercent: 80, minPresenca: 95, thresholdLoja: 90, thresholdIndividual: 90, fatorMetaLoja: 90, mesesBaseMeta: 3, valorBaseDinamico: true, percentFaturamentoPremio: 1.78 })
 const metasInfo = ref<any>({ baseInicio: '', baseFim: '' })
 const metasEdit = ref<Record<string, any>>({})
 async function carregarConfig() {
   try {
     const r = await api.get('/premiacao/config', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
-    cfg.value = { valorBase: r.data.valorBase, redutorPercent: r.data.redutorPercent, minPresenca: r.data.minPresenca, thresholdLoja: r.data.thresholdLoja, thresholdIndividual: r.data.thresholdIndividual, fatorMetaLoja: r.data.fatorMetaLoja, mesesBaseMeta: r.data.mesesBaseMeta }
+    cfg.value = { valorBase: r.data.valorBase, redutorPercent: r.data.redutorPercent, minPresenca: r.data.minPresenca, thresholdLoja: r.data.thresholdLoja, thresholdIndividual: r.data.thresholdIndividual, fatorMetaLoja: r.data.fatorMetaLoja, mesesBaseMeta: r.data.mesesBaseMeta, valorBaseDinamico: r.data.valorBaseDinamico, percentFaturamentoPremio: r.data.percentFaturamentoPremio }
     metasInfo.value = { baseInicio: r.data.baseInicio, baseFim: r.data.baseFim }
     const m: Record<string, any> = {}
     for (const l of lojas.value) {

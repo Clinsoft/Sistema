@@ -35,16 +35,20 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         return Ok(new
         {
             cfg.ValorBase, cfg.RedutorPercent, cfg.MinPresenca, cfg.ThresholdLoja, cfg.ThresholdIndividual,
-            cfg.FatorMetaLoja, cfg.MesesBaseMeta, cfg.Ativo,
+            cfg.FatorMetaLoja, cfg.MesesBaseMeta, cfg.ValorBaseDinamico, cfg.PercentFaturamentoPremio, cfg.Ativo,
             baseInicio = baseIni.ToString("yyyy-MM"), baseFim = new DateTime(a, m, 1).AddMonths(-1).ToString("yyyy-MM"),
             metas = lojas.Select(l =>
             {
                 var mt = metas.TryGetValue(l.Id, out var v) ? v : default;
+                var valorBase = cfg.ValorBaseDinamico && mt.MetaIndividual > 0
+                    ? Math.Round(mt.MetaIndividual * cfg.PercentFaturamentoPremio / 100m, 2)
+                    : cfg.ValorBase;
                 return new
                 {
                     localEstoqueId = l.Id, loja = l.Nome,
                     metaLoja = mt.MetaLoja, metaIndividual = mt.MetaIndividual,
-                    baseFaturamento = mt.BaseFaturamento, vendedores = mt.Vendedores, manual = mt.Manual
+                    baseFaturamento = mt.BaseFaturamento, vendedores = mt.Vendedores, manual = mt.Manual,
+                    valorBase
                 };
             })
         });
@@ -57,7 +61,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
         var cfg = await db.ConfiguracoesPremiacao.FirstOrDefaultAsync(c => c.EmpresaId == req.EmpresaId, ct);
         if (cfg is null) { cfg = ConfiguracaoPremiacao.Padrao(req.EmpresaId); db.ConfiguracoesPremiacao.Add(cfg); }
         cfg.Atualizar(req.ValorBase, req.RedutorPercent, req.MinPresenca, req.ThresholdLoja, req.ThresholdIndividual,
-            req.FatorMetaLoja, req.MesesBaseMeta, req.Ativo);
+            req.FatorMetaLoja, req.MesesBaseMeta, req.ValorBaseDinamico, req.PercentFaturamentoPremio, req.Ativo);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -292,6 +296,11 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             var metaTup = metas.TryGetValue(loja, out var mt) ? mt : default;
             var metaLoja = metaTup.MetaLoja;
             var metaInd = metaTup.MetaIndividual;
+            // Valor base por colaborador: fixo, ou dinâmico = % da meta individual (proporcional
+            // ao faturamento esperado → nunca fere o faturamento da loja).
+            var valorBaseLoja = cfg.ValorBaseDinamico && metaInd > 0
+                ? Math.Round(metaInd * cfg.PercentFaturamentoPremio / 100m, 2)
+                : cfg.ValorBase;
             var fat = fatLoja.TryGetValue(loja, out var f) ? f : 0;
             var vendaInd = vendaVendedor.TryGetValue(u.Id, out var vi) ? vi : 0;
             var avalsU = avaliacoes.TryGetValue(u.Id, out var av) ? av : new List<AvaliacaoDesempenhoSemanal>();
@@ -310,7 +319,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
             var apu = apuracoes.TryGetValue(u.Id, out var ap) ? ap : null;
 
             var res = CalculoPremiacao.Calcular(u.Id, u.Nome, loja, fat, metaLoja, vendaInd, metaInd,
-                perf, avalsU.Count, cfg, apu, descValidade);
+                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade);
             var pctLoja = metaLoja > 0 ? Math.Round(fat / metaLoja * 100, 1) : 0;
             lista.Add((res, lojas.TryGetValue(loja, out var ln) ? ln : "—", loja, fat, metaLoja, pctLoja, avalsU));
         }
@@ -335,7 +344,7 @@ public class PremiacaoController(SistemaDbContext db) : ControllerBase
 
 public record ConfigPremiacaoRequest(Guid EmpresaId, decimal ValorBase, decimal RedutorPercent,
     decimal MinPresenca, decimal ThresholdLoja, decimal ThresholdIndividual,
-    decimal FatorMetaLoja, int MesesBaseMeta, bool Ativo);
+    decimal FatorMetaLoja, int MesesBaseMeta, bool ValorBaseDinamico, decimal PercentFaturamentoPremio, bool Ativo);
 public record MetaLojaRequest(Guid EmpresaId, Guid LocalEstoqueId, int Ano, int Mes, decimal MetaLoja, decimal MetaIndividual);
 public record AvaliacaoRequest(Guid EmpresaId, Guid LocalEstoqueId, Guid ColaboradorId, string InicioSemana,
     int Abordagem, int Diagnostico, int ConexaoProduto, int SugestaoComplementar, int Fechamento,

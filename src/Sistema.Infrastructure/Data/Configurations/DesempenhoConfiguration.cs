@@ -17,6 +17,7 @@ public class ConfiguracaoPremiacaoConfiguration : IEntityTypeConfiguration<Confi
         b.Property(x => x.ThresholdLoja).HasPrecision(9, 2);
         b.Property(x => x.ThresholdIndividual).HasPrecision(9, 2);
         b.Property(x => x.FatorMetaLoja).HasPrecision(9, 2);
+        b.Property(x => x.PercentFaturamentoPremio).HasPrecision(9, 2);
     }
 }
 

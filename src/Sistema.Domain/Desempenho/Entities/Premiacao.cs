@@ -6,7 +6,11 @@ namespace Sistema.Domain.Desempenho.Entities;
 public class ConfiguracaoPremiacao : Entity
 {
     public Guid EmpresaId { get; private set; }
-    public decimal ValorBase { get; private set; } = 400m;        // prêmio integral
+    public decimal ValorBase { get; private set; } = 400m;        // prêmio integral (quando base FIXA)
+    // Valor base dinâmico: para não ferir o faturamento, o prêmio integral por colaborador
+    // = faturamento base médio da loja × PercentFaturamentoPremio / nº de vendedores.
+    public bool ValorBaseDinamico { get; private set; } = true;
+    public decimal PercentFaturamentoPremio { get; private set; } = 1.78m; // % da meta individual (1,78% de R$22,5k ≈ R$400)
     public decimal RedutorPercent { get; private set; } = 80m;    // loja 90-99% → 80% do base (=320)
     public decimal MinPresenca { get; private set; } = 95m;       // % mínimo de presença
     public decimal ThresholdLoja { get; private set; } = 90m;     // % mínimo p/ ativar a loja
@@ -20,11 +24,13 @@ public class ConfiguracaoPremiacao : Entity
     public static ConfiguracaoPremiacao Padrao(Guid empresaId) => new() { EmpresaId = empresaId };
 
     public void Atualizar(decimal valorBase, decimal redutorPercent, decimal minPresenca,
-        decimal thresholdLoja, decimal thresholdIndividual, decimal fatorMetaLoja, int mesesBaseMeta, bool ativo)
+        decimal thresholdLoja, decimal thresholdIndividual, decimal fatorMetaLoja, int mesesBaseMeta,
+        bool valorBaseDinamico, decimal percentFaturamentoPremio, bool ativo)
     {
         ValorBase = valorBase; RedutorPercent = redutorPercent; MinPresenca = minPresenca;
         ThresholdLoja = thresholdLoja; ThresholdIndividual = thresholdIndividual;
-        FatorMetaLoja = fatorMetaLoja; MesesBaseMeta = mesesBaseMeta < 1 ? 1 : mesesBaseMeta; Ativo = ativo;
+        FatorMetaLoja = fatorMetaLoja; MesesBaseMeta = mesesBaseMeta < 1 ? 1 : mesesBaseMeta;
+        ValorBaseDinamico = valorBaseDinamico; PercentFaturamentoPremio = percentFaturamentoPremio; Ativo = ativo;
         AtualizadoEm = DateTime.UtcNow;
     }
 }
@@ -169,7 +175,7 @@ public static class CalculoPremiacao
         decimal faturamentoLoja, decimal metaLoja,
         decimal vendaIndividual, decimal metaIndividual,
         decimal performancePercent, int semanasAvaliadas,
-        ConfiguracaoPremiacao cfg,
+        ConfiguracaoPremiacao cfg, decimal valorBaseLoja,
         ApuracaoMensalPremiacao? apuracao,
         decimal descontoValidade = 0)
     {
@@ -182,9 +188,9 @@ public static class CalculoPremiacao
             && !apuracao.FaltaInjustificada && !apuracao.Advertencia && apuracao.ExecucaoMinima);
         var temCorte = apuracao?.TemCorte ?? false;
 
-        // Base pela ativação da loja.
-        decimal baseLoja = percLoja >= 100 ? cfg.ValorBase
-            : percLoja >= cfg.ThresholdLoja ? Math.Round(cfg.ValorBase * cfg.RedutorPercent / 100m, 2)
+        // Base pela ativação da loja (usa o valor base da loja — fixo ou dinâmico por faturamento).
+        decimal baseLoja = percLoja >= 100 ? valorBaseLoja
+            : percLoja >= cfg.ThresholdLoja ? Math.Round(valorBaseLoja * cfg.RedutorPercent / 100m, 2)
             : 0m;
 
         // Fator pela ativação individual.

@@ -120,6 +120,8 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<MensagemWhatsApp> MensagensWhatsApp => Set<MensagemWhatsApp>();
     public DbSet<NumeroBloqueadoWhatsApp> NumerosBloqueadosWhatsApp => Set<NumeroBloqueadoWhatsApp>();
 
+    public DbSet<Sistema.Domain.Financeiro.Entities.HistoricoFaturamentoLoja> HistoricoFaturamentoLoja => Set<Sistema.Domain.Financeiro.Entities.HistoricoFaturamentoLoja>();
+
     // Premiação por desempenho
     public DbSet<Sistema.Domain.Desempenho.Entities.ConfiguracaoPremiacao> ConfiguracoesPremiacao => Set<Sistema.Domain.Desempenho.Entities.ConfiguracaoPremiacao>();
     public DbSet<Sistema.Domain.Desempenho.Entities.MetaPremiacaoLoja> MetasPremiacaoLoja => Set<Sistema.Domain.Desempenho.Entities.MetaPremiacaoLoja>();

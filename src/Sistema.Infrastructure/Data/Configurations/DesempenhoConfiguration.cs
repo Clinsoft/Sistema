@@ -4,6 +4,17 @@ using Sistema.Domain.Desempenho.Entities;
 
 namespace Sistema.Infrastructure.Data.Configurations;
 
+public class HistoricoFaturamentoLojaConfiguration : IEntityTypeConfiguration<Sistema.Domain.Financeiro.Entities.HistoricoFaturamentoLoja>
+{
+    public void Configure(EntityTypeBuilder<Sistema.Domain.Financeiro.Entities.HistoricoFaturamentoLoja> b)
+    {
+        b.ToTable("HistoricoFaturamentoLoja");
+        b.HasKey(x => x.Id);
+        b.HasIndex(x => new { x.EmpresaId, x.LocalEstoqueId, x.Ano, x.Mes }).IsUnique();
+        b.Property(x => x.Faturamento).HasPrecision(18, 2);
+    }
+}
+
 public class ConfiguracaoPremiacaoConfiguration : IEntityTypeConfiguration<ConfiguracaoPremiacao>
 {
     public void Configure(EntityTypeBuilder<ConfiguracaoPremiacao> b)

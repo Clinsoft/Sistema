@@ -103,6 +103,8 @@ const router = createRouter({
       meta: { titulo: 'Premiação por Desempenho' } },
     { path: '/desempenho/meu', component: () => import('@/modules/desempenho/MeuDesempenhoView.vue'),
       meta: { titulo: 'Meu Desempenho' } },
+    { path: '/relatorios/historico-faturamento', component: () => import('@/modules/relatorios/HistoricoFaturamentoView.vue'),
+      meta: { titulo: 'Histórico de Faturamento' } },
     { path: '/financeiro/fluxo-caixa', component: () => import('@/modules/financeiro/FluxoCaixaView.vue'),
       meta: { titulo: 'Fluxo de Caixa' } },
     { path: '/financeiro/custos-fixos', component: () => import('@/modules/financeiro/CustosFixosView.vue'),

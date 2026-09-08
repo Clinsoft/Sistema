@@ -116,6 +116,8 @@
             to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-calendar-check-outline" title="Resumo do Dia"
             to="/relatorios/resumo-dia" value="/relatorios/resumo-dia" color="primary" rounded="lg" />
+          <v-list-item v-if="ehGestor" prepend-icon="mdi-chart-line-variant" title="Histórico de Faturamento"
+            to="/relatorios/historico-faturamento" value="/relatorios/historico-faturamento" color="primary" rounded="lg" />
           <v-list-item v-if="ehGestor" prepend-icon="mdi-trophy-outline" title="Premiação por Desempenho"
             to="/desempenho/premiacao" value="/desempenho/premiacao" color="amber-darken-2" rounded="lg" />
           <v-list-item prepend-icon="mdi-medal-outline" title="Meu Desempenho"

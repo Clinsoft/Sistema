@@ -344,9 +344,10 @@
             <v-col cols="12" md="6">
               <v-autocomplete v-model="pedidoFornMap[forn]" v-for="forn in fornecedoresNoPedido" :key="forn"
                 :label="`Fornecedor cadastrado para '${forn}'`"
-                :items="forns" item-title="razaoSocial" item-value="id"
-                variant="outlined" density="compact" class="mb-2"
-                @update:search="buscarForns" />
+                :items="forns" :item-title="fornTitulo" item-value="id"
+                :loading="carregandoForns"
+                variant="outlined" density="compact" class="mb-2" clearable
+                no-data-text="Nenhum fornecedor encontrado" />
             </v-col>
           </v-row>
           <v-table density="compact" class="mt-2">
@@ -420,7 +421,18 @@ const selecionados = ref<string[]>([])
 const dialogPedido = ref(false)
 const salvando = ref(false)
 const forns = ref<any[]>([])
+const carregandoForns = ref(false)
 const pedidoFornMap = ref<Record<string, string>>({})
+
+function fornTitulo(f: any) {
+  if (!f) return ''
+  return f.nomeFantasia ? `${f.razaoSocial} (${f.nomeFantasia})` : f.razaoSocial
+}
+
+function normalizarNome(s: string) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+}
 
 const temPdf = computed(() => pdfs.value.some(p => p !== null))
 
@@ -682,18 +694,39 @@ function exportarCsv() {
   URL.revokeObjectURL(url)
 }
 
-async function buscarForns(q: string) {
-  if (!q || q.length < 2) return
-  const r = await api.get('/fornecedores', { params: { empresaId: auth.empresaId, q } })
-  forns.value = r.data
-}
-
 async function criarPedidoMelhores() {
-  await buscarForns('a')
+  carregandoForns.value = true
+  try {
+    const r = await api.get('/fornecedores', { params: { empresaId: auth.empresaId, ativo: true } })
+    forns.value = r.data
+  } finally { carregandoForns.value = false }
+
+  // Pré-seleciona, para cada fornecedor do PDF, o cadastro cujo nome mais combina
+  for (const nomePdf of fornecedoresNoPedido.value) {
+    if (pedidoFornMap.value[nomePdf]) continue
+    const alvo = normalizarNome(nomePdf)
+    const ruido = ['tabela', 'lista', 'preco', 'precos', 'cotacao', 'orcamento', 'atacado', 'fornecedor', 'pdf']
+    const tokensAlvo = alvo.split(' ').filter(t => t.length >= 3 && !/^\d+$/.test(t) && !ruido.includes(t))
+    let melhor: any = null, melhorScore = 0
+    for (const f of forns.value) {
+      const cad = normalizarNome(`${f.razaoSocial} ${f.nomeFantasia ?? ''}`)
+      const hits = tokensAlvo.filter(t => cad.includes(t)).length
+      const score = tokensAlvo.length ? hits / tokensAlvo.length : 0
+      if (score > melhorScore) { melhorScore = score; melhor = f }
+    }
+    if (melhor && melhorScore >= 0.5) pedidoFornMap.value[nomePdf] = melhor.id
+  }
+
   dialogPedido.value = true
 }
 
 async function confirmarPedido() {
+  // Todos os fornecedores do PDF precisam estar vinculados a um cadastro
+  const semVinculo = fornecedoresNoPedido.value.filter((f: string) => !pedidoFornMap.value[f])
+  if (semVinculo.length) {
+    notif.aviso(`Selecione o fornecedor cadastrado para: ${semVinculo.join(', ')}.`)
+    return
+  }
   salvando.value = true
   try {
     // Agrupa por fornecedor e cria um pedido por fornecedor

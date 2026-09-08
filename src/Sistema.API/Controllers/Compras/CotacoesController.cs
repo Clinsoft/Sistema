@@ -358,11 +358,14 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
     }
 
     // ── Matching por cobertura ────────────────────────────────────────────────
-    // Palavras genéricas (embalagem/origem) que não ajudam a identificar o produto.
+    // Palavras genéricas que não ajudam a identificar o produto: embalagem/origem
+    // e QUALIFICADORES comuns (adjetivos), p/ evitar que "Banana Chips Tradicional"
+    // case com "Provolone Chips Tradicional" só por "chips"+"tradicional".
     private static readonly HashSet<string> StopMatch =
     [
         "imp", "nac", "caixa", "cx", "saco", "sc", "pacote", "pct", "pote", "kg", "kgs", "gr", "grs",
-        "ml", "lt", "un", "und", "unid", "pc", "par", "premium", "organico", "natural", "importado", "nacional"
+        "ml", "lt", "un", "und", "unid", "pc", "par", "premium", "organico", "natural", "importado", "nacional",
+        "tradicional", "especial", "comum", "fino", "grosso", "puro", "selecionado", "tipo", "linha"
     ];
 
     private static HashSet<string> TokensCanon(string s) =>

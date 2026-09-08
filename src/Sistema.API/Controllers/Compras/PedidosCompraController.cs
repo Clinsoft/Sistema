@@ -44,6 +44,18 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         return NoContent();
     }
 
+    /// <summary>Define a unidade (loja) de entrega do pedido.</summary>
+    [HttpPatch("{id:guid}/loja")]
+    public async Task<IActionResult> DefinirLoja(Guid id, [FromBody] DefinirLojaRequest req, CancellationToken ct)
+    {
+        var pedido = await repo.ObterComItensAsync(id, ct);
+        if (pedido is null) return NotFound();
+        pedido.DefinirLocalEstoque(req.LocalEstoqueId);
+        repo.Atualizar(pedido);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/cancelar")]
     public async Task<IActionResult> Cancelar(Guid id, [FromQuery] Guid empresaId, CancellationToken ct)
     {
@@ -76,10 +88,18 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
                 .ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct)
             : new Dictionary<Guid, string>();
 
+        var lojaIds = pedidos.Where(p => p.LocalEstoqueId.HasValue).Select(p => p.LocalEstoqueId!.Value).Distinct().ToList();
+        var lojas = lojaIds.Count > 0
+            ? await db.LocaisEstoque.AsNoTracking().Where(l => lojaIds.Contains(l.Id))
+                .ToDictionaryAsync(l => l.Id, l => l.Nome, ct)
+            : new Dictionary<Guid, string>();
+
         return Ok(pedidos.Select(p => new
         {
             p.Id, p.Numero, p.FornecedorId,
             fornecedorNome = nomes.GetValueOrDefault(p.FornecedorId, "—"),
+            p.LocalEstoqueId,
+            lojaNome = p.LocalEstoqueId.HasValue ? lojas.GetValueOrDefault(p.LocalEstoqueId.Value, "—") : null,
             status = p.Status.ToString(),
             criadoEm = p.DataPedido, p.DataPedido, p.DataPrevisaoEntrega, p.DataRecebimento,
             totalPedido = p.Total, QtdItens = p.Itens.Count
@@ -91,9 +111,13 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
     {
         var pedido = await repo.ObterComItensAsync(id, ct);
         if (pedido is null) return NotFound();
+        var lojaNome = pedido.LocalEstoqueId.HasValue
+            ? await db.LocaisEstoque.AsNoTracking().Where(l => l.Id == pedido.LocalEstoqueId).Select(l => l.Nome).FirstOrDefaultAsync(ct)
+            : null;
         return Ok(new
         {
             pedido.Id, pedido.Numero, pedido.FornecedorId, pedido.Status,
+            pedido.LocalEstoqueId, lojaNome,
             pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.Total, pedido.AnexoUrl,
             Itens = pedido.Itens.Select(i => new
             {
@@ -187,4 +211,5 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
 }
 
 public record ReceberRequest(Guid LocalEstoqueId, Guid UsuarioId);
+public record DefinirLojaRequest(Guid? LocalEstoqueId);
 public record RemoverItensRequest(List<Guid> ItemIds);

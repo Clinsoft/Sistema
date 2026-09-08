@@ -736,6 +736,7 @@ async function confirmarPedido() {
       await api.post('/pedidos-compra', {
         empresaId: auth.empresaId,
         fornecedorId,
+        localEstoqueId: resultadoReq.value?.localEstoqueId ?? null,
         observacoes: `Gerado automaticamente pela comparação de cotações — ${forn}`,
         itens: (itens as any[]).map(i => ({
           produtoId: i.produtoId,

@@ -143,6 +143,16 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
         if (itensReq.Count == 0)
             return BadRequest("A requisição não tem itens.");
 
+        // Loja (unidade de entrega) da requisição — vai para os pedidos gerados
+        var req = await db.RequisicoesCompra.AsNoTracking()
+            .Where(r => r.Id == requisicaoId)
+            .Select(r => new { r.LocalEstoqueId })
+            .FirstOrDefaultAsync(ct);
+        var lojaId = req?.LocalEstoqueId;
+        var lojaNome = lojaId.HasValue
+            ? await db.LocaisEstoque.AsNoTracking().Where(l => l.Id == lojaId).Select(l => l.Nome).FirstOrDefaultAsync(ct)
+            : null;
+
         var prodIds = itensReq.Select(i => i.ProdutoId).Distinct().ToList();
         var produtos = await db.Produtos.AsNoTracking()
             .Where(p => prodIds.Contains(p.Id))
@@ -221,6 +231,7 @@ public class CotacoesController(SistemaDbContext db) : ControllerBase
         return Ok(new
         {
             requisicaoId,
+            localEstoqueId = lojaId, lojaNome,
             fornecedores = cotacoesPorFornecedor.Select(cf => cf.Fornecedor).ToList(),
             itens = linhas,
             totaisPorFornecedor = totaisPorForn.Select(kv => new

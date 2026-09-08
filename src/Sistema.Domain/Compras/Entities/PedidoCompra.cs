@@ -8,6 +8,7 @@ public class PedidoCompra : Entity
     public string Numero { get; private set; } = null!;
     public Guid FornecedorId { get; private set; }
     public Guid UsuarioId { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }   // unidade/loja de entrega do pedido
     public StatusPedidoCompra Status { get; private set; }
     public DateTime DataPedido { get; private set; }
     public DateTime? DataPrevisaoEntrega { get; private set; }
@@ -22,17 +23,21 @@ public class PedidoCompra : Entity
     private PedidoCompra() { }
 
     public static PedidoCompra Criar(Guid empresaId, Guid fornecedorId, Guid usuarioId, string numero,
-        DateTime? previsaoEntrega = null)
+        DateTime? previsaoEntrega = null, Guid? localEstoqueId = null)
         => new()
         {
             EmpresaId = empresaId,
             FornecedorId = fornecedorId,
             UsuarioId = usuarioId,
+            LocalEstoqueId = localEstoqueId,
             Numero = numero,
             Status = StatusPedidoCompra.Rascunho,
             DataPedido = DateTime.Now,
             DataPrevisaoEntrega = previsaoEntrega
         };
+
+    /// <summary>Define/ajusta a unidade (loja) de entrega do pedido.</summary>
+    public void DefinirLocalEstoque(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
 
     public void AdicionarItem(Guid produtoId, string descricao, decimal quantidade, decimal precoUnitario)
     {

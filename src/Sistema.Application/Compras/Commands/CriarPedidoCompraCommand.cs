@@ -12,7 +12,8 @@ public record CriarPedidoCompraCommand(
     Guid EmpresaId, Guid FornecedorId, Guid UsuarioId,
     IList<ItemPedidoCompraDto> Itens,
     DateTime? PrevisaoEntrega = null,
-    string? Observacao = null) : IRequest<Guid>;
+    string? Observacao = null,
+    Guid? LocalEstoqueId = null) : IRequest<Guid>;
 
 public class CriarPedidoCompraValidator : AbstractValidator<CriarPedidoCompraCommand>
 {
@@ -35,7 +36,7 @@ public class CriarPedidoCompraHandler(IPedidoCompraRepository repo, IUnitOfWork 
     public async Task<Guid> Handle(CriarPedidoCompraCommand cmd, CancellationToken ct)
     {
         var numero = await repo.ProximoNumeroAsync(cmd.EmpresaId, ct);
-        var pedido = PedidoCompra.Criar(cmd.EmpresaId, cmd.FornecedorId, cmd.UsuarioId, numero, cmd.PrevisaoEntrega);
+        var pedido = PedidoCompra.Criar(cmd.EmpresaId, cmd.FornecedorId, cmd.UsuarioId, numero, cmd.PrevisaoEntrega, cmd.LocalEstoqueId);
 
         foreach (var item in cmd.Itens)
             pedido.AdicionarItem(item.ProdutoId, item.Descricao, item.Quantidade, item.PrecoUnitario);

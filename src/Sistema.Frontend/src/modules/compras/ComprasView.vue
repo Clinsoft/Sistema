@@ -251,6 +251,13 @@
         <v-card-text class="pa-4">
           <div class="d-flex flex-wrap ga-4 mb-3 text-body-2 align-center">
             <div><span class="text-medium-emphasis">Fornecedor:</span> <b>{{ det.fornecedorNome }}</b></div>
+            <div class="d-flex align-center ga-2">
+              <span class="text-medium-emphasis">Unidade de entrega:</span>
+              <v-select :model-value="det.localEstoqueId" @update:model-value="definirLojaPedido"
+                :items="locaisEstoque" item-title="nome" item-value="id"
+                density="compact" variant="outlined" hide-details
+                placeholder="Selecione a unidade" style="min-width:210px" />
+            </div>
             <div v-if="det.dataPrevisaoEntrega"><span class="text-medium-emphasis">Previsão:</span> {{ new Date(det.dataPrevisaoEntrega).toLocaleDateString('pt-BR') }}</div>
             <v-spacer />
             <v-btn v-if="det.anexoUrl" size="small" variant="tonal" color="red-darken-1"
@@ -430,6 +437,7 @@ async function salvar() {
       empresaId: auth.empresaId,
       fornecedorId: np.value.fornecedorId,
       usuarioId: auth.usuario?.id,
+      localEstoqueId: np.value.localEstoqueId ?? auth.lojaAtualId ?? null,
       previsaoEntrega: np.value.previsaoEntrega || null,
       observacao: np.value.observacoes || null,
       itens: np.value.itens.map((i: any) => ({
@@ -521,10 +529,20 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
     const foneDig = String(forn?.celular || '').replace(/\D/g, '')
     const intl = foneDig ? (foneDig.length >= 12 && foneDig.startsWith('55') ? foneDig : '55' + foneDig) : ''
 
+    // Unidade (loja) de entrega — identifica para o fornecedor onde entregar.
+    // Se o pedido ainda não tem loja, usa a loja ativa e grava no pedido.
+    let lojaId = d.localEstoqueId ?? auth.lojaAtualId
+      ?? locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
+    let lojaNome = d.lojaNome ?? locaisEstoque.value.find((l: any) => l.id === lojaId)?.nome ?? null
+    if (!d.localEstoqueId && lojaId) {
+      try { await api.patch(`/pedidos-compra/${item.id}/loja`, { localEstoqueId: lojaId }); await carregar() } catch { /* segue mesmo assim */ }
+    }
+
     const itens = d.itens ?? []
     const linhas = itens.map((i: any) => `• ${i.quantidade}x ${i.descricao}`).join('\n')
     const total = itens.reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0)
-    let msg = `*Pedido de Compra Nº ${d.numero}*\n\nOlá${forn?.razaoSocial ? ' ' + forn.razaoSocial : ''}! Segue nosso pedido:\n\n${linhas}\n\n*Total: R$ ${fmt(total)}*`
+    const unidade = lojaNome ? `\n📍 *Unidade de entrega:* ${lojaNome}` : ''
+    let msg = `*Pedido de Compra Nº ${d.numero}*${unidade}\n\nOlá${forn?.razaoSocial ? ' ' + forn.razaoSocial : ''}! Segue nosso pedido:\n\n${linhas}\n\n*Total: R$ ${fmt(total)}*`
     if (item.dataPrevisaoEntrega || item.previsaoEntrega) {
       const dt = new Date((item.dataPrevisaoEntrega || item.previsaoEntrega))
       if (!isNaN(dt.getTime())) msg += `\nPrevisão de entrega: ${dt.toLocaleDateString('pt-BR')}`
@@ -547,6 +565,17 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
   finally { enviandoId.value = null }
 }
 function enviar(item: any) { return abrirWhatsApp(item, true) }
+
+async function definirLojaPedido(localEstoqueId: string | null) {
+  if (!det.value) return
+  try {
+    await api.patch(`/pedidos-compra/${det.value.id}/loja`, { localEstoqueId })
+    det.value.localEstoqueId = localEstoqueId
+    det.value.lojaNome = locaisEstoque.value.find((l: any) => l.id === localEstoqueId)?.nome ?? null
+    await carregar()
+    notif.ok('Unidade de entrega definida.')
+  } catch { notif.erro('Erro ao definir a unidade.') }
+}
 async function cancelar(item: any) {
   if (!confirm(`Cancelar o pedido ${item.numero}?`)) return
   try {

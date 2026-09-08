@@ -518,12 +518,22 @@ function pedirFaltantes() {
 
 // Monta a mensagem do pedido e abre o link wa.me (WhatsApp) do fornecedor.
 // marcarEnviado = true também muda o status para "Enviado".
+function fmtCep(cep: string): string {
+  const d = String(cep || '').replace(/\D/g, '')
+  return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : (cep || '')
+}
+function fmtFone(fone: string): string {
+  const d = String(fone || '').replace(/\D/g, '')
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
+  return fone || ''
+}
 function enderecoLoja(l: any): string {
   if (!l) return ''
   const linha1 = [[l.logradouro, l.numero].filter(Boolean).join(' '), l.complemento, l.bairro]
     .filter((s: string) => s && s.trim()).join(', ')
   const cidUf = [l.cidade, l.uf].filter(Boolean).join(l.uf ? '/' : '')
-  const linha2 = [cidUf, l.cep ? `CEP ${l.cep}` : ''].filter((s: string) => s && s.trim()).join(' ')
+  const linha2 = [cidUf, l.cep ? `CEP ${fmtCep(l.cep)}` : ''].filter((s: string) => s && s.trim()).join(' ')
   return [linha1, linha2].filter((s: string) => s && s.trim()).join(' - ')
 }
 
@@ -552,7 +562,7 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
     const total = itens.reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0)
     const loja = locaisEstoque.value.find((l: any) => l.id === lojaId)
     const endereco = enderecoLoja(loja)
-    const foneLoja = loja?.telefone ? `\n📞 ${loja.telefone}` : ''
+    const foneLoja = loja?.telefone ? `\n📞 ${fmtFone(loja.telefone)}` : ''
     const unidade = lojaNome
       ? `\n📍 *Entregar em:* ${lojaNome}${endereco ? `\n${endereco}` : ''}${foneLoja}`
       : ''

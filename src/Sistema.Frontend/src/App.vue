@@ -164,10 +164,6 @@
           <v-list-item v-if="ehAtendente" prepend-icon="mdi-clipboard-text-outline" title="Requisição de Compra"
             to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" />
 
-          <!-- Tutoriais (ajuda) — atendente e gestor -->
-          <v-list-item v-if="!ehContador" prepend-icon="mdi-school-outline" title="Tutoriais"
-            to="/tutoriais" value="/tutoriais" color="primary" rounded="lg" />
-
           <!-- Estoque (sem Produtos) -->
           <v-list-group v-if="!ehContador" value="estoque">
             <template #activator="{ props }">
@@ -237,6 +233,8 @@
         <template #append>
           <v-divider />
           <v-list density="compact" nav class="pb-2">
+            <v-list-item v-if="!ehContador" prepend-icon="mdi-school-outline" title="Tutoriais"
+              to="/tutoriais" value="/tutoriais" color="primary" rounded="lg" />
             <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-cog-outline" title="Configurações"
               to="/configuracoes" color="primary" rounded="lg" />
             <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-store-outline" title="Filiais / Unidades"

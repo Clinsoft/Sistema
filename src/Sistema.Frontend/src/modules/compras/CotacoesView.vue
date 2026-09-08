@@ -747,7 +747,25 @@ async function confirmarPedido() {
         }))
       })
     }
-    notif.ok('Pedidos criados com sucesso!')
+
+    // Pedido de observação: itens da requisição SEM cotação em nenhum PDF (para não perder o que falta)
+    const faltantes = (resultadoReq.value?.itens ?? []).filter((p: any) => !p.melhorFornecedor)
+    if (faltantes.length) {
+      await api.post('/pedidos-compra', {
+        empresaId: auth.empresaId,
+        fornecedorId: null,
+        localEstoqueId: resultadoReq.value?.localEstoqueId ?? null,
+        requisicaoCompraId: resultadoReq.value?.requisicaoId ?? null,
+        observacao: 'ITENS SEM COTAÇÃO nos orçamentos — definir fornecedor e cotar.',
+        itens: faltantes.map((p: any) => ({
+          produtoId: p.produtoId, descricao: p.descricao, quantidade: p.quantidade ?? 1, precoUnitario: 0,
+        })),
+      })
+    }
+
+    notif.ok(faltantes.length
+      ? `Pedidos criados! Gerado também um pedido de observação com ${faltantes.length} item(ns) sem cotação.`
+      : 'Pedidos criados com sucesso!')
     dialogPedido.value = false
   } catch {
     notif.erro('Erro ao criar os pedidos.')

@@ -9,7 +9,7 @@ namespace Sistema.Application.Compras.Commands;
 public record ItemPedidoCompraDto(Guid ProdutoId, string Descricao, decimal Quantidade, decimal PrecoUnitario);
 
 public record CriarPedidoCompraCommand(
-    Guid EmpresaId, Guid FornecedorId, Guid UsuarioId,
+    Guid EmpresaId, Guid? FornecedorId, Guid UsuarioId,
     IList<ItemPedidoCompraDto> Itens,
     DateTime? PrevisaoEntrega = null,
     string? Observacao = null,
@@ -20,7 +20,7 @@ public class CriarPedidoCompraValidator : AbstractValidator<CriarPedidoCompraCom
 {
     public CriarPedidoCompraValidator()
     {
-        RuleFor(x => x.FornecedorId).NotEmpty();
+        // FornecedorId pode ser nulo (pedido de faltantes "a definir").
         RuleFor(x => x.Itens).NotEmpty().WithMessage("O pedido deve ter ao menos um item.");
         RuleForEach(x => x.Itens).ChildRules(i =>
         {

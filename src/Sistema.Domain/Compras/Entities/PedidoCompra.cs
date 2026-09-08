@@ -6,7 +6,7 @@ public class PedidoCompra : Entity
 {
     public Guid EmpresaId { get; private set; }
     public string Numero { get; private set; } = null!;
-    public Guid FornecedorId { get; private set; }
+    public Guid? FornecedorId { get; private set; }   // nulo = "a definir" (ex.: pedido de faltantes/observação)
     public Guid UsuarioId { get; private set; }
     public Guid? LocalEstoqueId { get; private set; }   // unidade/loja de entrega do pedido
     public Guid? RequisicaoCompraId { get; private set; }   // requisição de origem (quando gerado dela)
@@ -23,7 +23,7 @@ public class PedidoCompra : Entity
 
     private PedidoCompra() { }
 
-    public static PedidoCompra Criar(Guid empresaId, Guid fornecedorId, Guid usuarioId, string numero,
+    public static PedidoCompra Criar(Guid empresaId, Guid? fornecedorId, Guid usuarioId, string numero,
         DateTime? previsaoEntrega = null, Guid? localEstoqueId = null, Guid? requisicaoCompraId = null)
         => new()
         {
@@ -40,6 +40,9 @@ public class PedidoCompra : Entity
 
     /// <summary>Define/ajusta a unidade (loja) de entrega do pedido.</summary>
     public void DefinirLocalEstoque(Guid? localEstoqueId) => LocalEstoqueId = localEstoqueId;
+
+    /// <summary>Define o fornecedor (ex.: pedido de faltantes que estava "a definir").</summary>
+    public void DefinirFornecedor(Guid? fornecedorId) => FornecedorId = fornecedorId;
 
     public void AdicionarItem(Guid produtoId, string descricao, decimal quantidade, decimal precoUnitario)
     {

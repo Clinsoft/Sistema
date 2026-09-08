@@ -68,6 +68,12 @@
     <v-card rounded="xl" elevation="1">
       <v-data-table :headers="headers" :items="pedidosFiltrados" :loading="carregando" density="compact" hover
         @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
+        <template #item.fornecedorNome="{ item }">
+          <span v-if="item.fornecedorNome">{{ item.fornecedorNome }}</span>
+          <v-chip v-else size="small" variant="tonal" color="warning">
+            <v-icon start size="13">mdi-account-question-outline</v-icon>A definir
+          </v-chip>
+        </template>
         <template #item.lojaNome="{ item }">
           <v-chip v-if="item.lojaNome" size="small" variant="tonal" color="primary">
             <v-icon start size="13">mdi-store-marker-outline</v-icon>{{ item.lojaNome }}
@@ -281,7 +287,14 @@
         <v-divider />
         <v-card-text class="pa-4">
           <div class="d-flex flex-wrap ga-4 mb-3 text-body-2 align-center">
-            <div><span class="text-medium-emphasis">Fornecedor:</span> <b>{{ det.fornecedorNome }}</b></div>
+            <div class="d-flex align-center ga-2">
+              <span class="text-medium-emphasis">Fornecedor:</span>
+              <b v-if="det.fornecedorId">{{ det.fornecedorNome }}</b>
+              <v-autocomplete v-else :model-value="det.fornecedorId" @update:model-value="definirFornecedorPedido"
+                :items="forns" item-title="razaoSocial" item-value="id"
+                density="compact" variant="outlined" hide-details
+                placeholder="Definir fornecedor" style="min-width:240px" />
+            </div>
             <div class="d-flex align-center ga-2">
               <span class="text-medium-emphasis">Unidade de entrega:</span>
               <v-select :model-value="det.localEstoqueId" @update:model-value="definirLojaPedido"
@@ -597,7 +610,12 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
   try {
     const r = await api.get(`/pedidos-compra/${item.id}`)
     const d = r.data
-    const forn = forns.value.find((f: any) => f.id === item.fornecedorId)
+    if (!d.fornecedorId) {
+      notif.aviso('Este é um pedido de observação (itens faltantes). Abra o pedido e defina o fornecedor antes de enviar.')
+      enviandoId.value = null
+      return
+    }
+    const forn = forns.value.find((f: any) => f.id === (item.fornecedorId ?? d.fornecedorId))
     // Usa o CELULAR do fornecedor (setor de pedidos). O telefone é da empresa e não
     // deve receber o pedido — se não houver celular, abre sem número para escolher.
     const foneDig = String(forn?.celular || '').replace(/\D/g, '')
@@ -644,6 +662,17 @@ async function abrirWhatsApp(item: any, marcarEnviado: boolean) {
   finally { enviandoId.value = null }
 }
 function enviar(item: any) { return abrirWhatsApp(item, true) }
+
+async function definirFornecedorPedido(fornecedorId: string | null) {
+  if (!det.value || !fornecedorId) return
+  try {
+    await api.patch(`/pedidos-compra/${det.value.id}/fornecedor`, { fornecedorId })
+    det.value.fornecedorId = fornecedorId
+    det.value.fornecedorNome = forns.value.find((f: any) => f.id === fornecedorId)?.razaoSocial ?? null
+    await carregar()
+    notif.ok('Fornecedor definido.')
+  } catch { notif.erro('Erro ao definir o fornecedor.') }
+}
 
 async function definirLojaPedido(localEstoqueId: string | null) {
   if (!det.value) return

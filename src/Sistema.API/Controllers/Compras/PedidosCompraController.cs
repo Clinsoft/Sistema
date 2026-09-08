@@ -55,6 +55,18 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         return NoContent();
     }
 
+    /// <summary>Define o fornecedor de um pedido (ex.: pedido de faltantes "a definir").</summary>
+    [HttpPatch("{id:guid}/fornecedor")]
+    public async Task<IActionResult> DefinirFornecedor(Guid id, [FromBody] DefinirFornecedorRequest req, CancellationToken ct)
+    {
+        var pedido = await repo.ObterComItensAsync(id, ct);
+        if (pedido is null) return NotFound();
+        pedido.DefinirFornecedor(req.FornecedorId);
+        repo.Atualizar(pedido);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     /// <summary>Define a unidade (loja) de entrega do pedido.</summary>
     [HttpPatch("{id:guid}/loja")]
     public async Task<IActionResult> DefinirLoja(Guid id, [FromBody] DefinirLojaRequest req, CancellationToken ct)
@@ -92,7 +104,7 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
             && Enum.TryParse<StatusPedidoCompra>(status, out var st))
             pedidos = pedidos.Where(p => p.Status == st).ToList();
 
-        var fornecedorIds = pedidos.Select(p => p.FornecedorId).Distinct().ToList();
+        var fornecedorIds = pedidos.Where(p => p.FornecedorId.HasValue).Select(p => p.FornecedorId!.Value).Distinct().ToList();
         var nomes = fornecedorIds.Count > 0
             ? await db.Fornecedores.AsNoTracking()
                 .Where(f => fornecedorIds.Contains(f.Id))
@@ -108,7 +120,7 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         return Ok(pedidos.Select(p => new
         {
             p.Id, p.Numero, p.FornecedorId,
-            fornecedorNome = nomes.GetValueOrDefault(p.FornecedorId, "—"),
+            fornecedorNome = p.FornecedorId.HasValue ? nomes.GetValueOrDefault(p.FornecedorId.Value, "—") : null,
             p.LocalEstoqueId,
             lojaNome = p.LocalEstoqueId.HasValue ? lojas.GetValueOrDefault(p.LocalEstoqueId.Value, "—") : null,
             status = p.Status.ToString(),
@@ -223,4 +235,5 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
 
 public record ReceberRequest(Guid LocalEstoqueId, Guid UsuarioId);
 public record DefinirLojaRequest(Guid? LocalEstoqueId);
+public record DefinirFornecedorRequest(Guid? FornecedorId);
 public record RemoverItensRequest(List<Guid> ItemIds);

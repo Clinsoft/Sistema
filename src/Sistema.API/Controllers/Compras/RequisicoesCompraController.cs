@@ -154,12 +154,14 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         if (pedidosLig.Count == 0)
         {
             aproximado = true;
+            // Aproximado: pedidos não vinculados da mesma loja (sem filtro de data —
+            // a data da requisição pode ser posterior à do pedido, ex.: requisições
+            // que foram unificadas manualmente).
             pedidosLig = await db.PedidosCompra.AsNoTracking()
                 .Where(p => p.EmpresaId == req.EmpresaId
                     && p.RequisicaoCompraId == null
                     && p.Status != StatusPedidoCompra.Cancelado
-                    && p.LocalEstoqueId == req.LocalEstoqueId
-                    && p.DataPedido >= req.CriadoEm)
+                    && p.LocalEstoqueId == req.LocalEstoqueId)
                 .Select(p => new { p.Id, p.Numero }).ToListAsync(ct);
         }
 

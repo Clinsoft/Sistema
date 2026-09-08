@@ -145,6 +145,22 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
                 id.ValueGenerated = Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never;
         }
 
+        // Fuso: CriadoEm/AtualizadoEm são sempre gravados em UTC (DateTime.UtcNow). Marcamos
+        // Kind=Utc na leitura para o JSON serializar com 'Z' e o cliente converter ao horário
+        // local automaticamente. Campos de operação (Venda.DataHora, PDV, NF…) continuam locais
+        // (Kind=Unspecified) — não são tocados, pois os relatórios filtram por eles no horário local.
+        var utc = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+            v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+        var utcN = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime?, DateTime?>(
+            v => v, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+        foreach (var entity in modelBuilder.Model.GetEntityTypes())
+            foreach (var prop in entity.GetProperties())
+                if (prop.Name is "CriadoEm" or "AtualizadoEm")
+                {
+                    if (prop.ClrType == typeof(DateTime)) prop.SetValueConverter(utc);
+                    else if (prop.ClrType == typeof(DateTime?)) prop.SetValueConverter(utcN);
+                }
+
         base.OnModelCreating(modelBuilder);
     }
 

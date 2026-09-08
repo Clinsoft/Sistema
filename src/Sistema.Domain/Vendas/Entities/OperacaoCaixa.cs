@@ -24,7 +24,7 @@ public class OperacaoCaixa : Entity
             Valor = valor,
             Descricao = descricao,
             UsuarioId = usuarioId,
-            CriadoEm = DateTime.Now
+            // CriadoEm herda o padrão da Entity (UTC), para o fuso ser consistente na exibição.
         };
 }
 

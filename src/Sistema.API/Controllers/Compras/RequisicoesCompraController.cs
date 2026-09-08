@@ -76,9 +76,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
 
         return Ok(lista.Select(x => new
         {
-            x.Id,
-            criadoEm = DateTime.SpecifyKind(x.CriadoEm, DateTimeKind.Utc).ToLocalTime(),  // UTC → local (-03)
-            x.status, x.qtdItens,
+            x.Id, x.CriadoEm, x.status, x.qtdItens,
             solicitante = usuarios.GetValueOrDefault(x.UsuarioId, "—"),
             loja = x.LocalEstoqueId.HasValue ? lojas.GetValueOrDefault(x.LocalEstoqueId.Value, "—") : "—",
         }));

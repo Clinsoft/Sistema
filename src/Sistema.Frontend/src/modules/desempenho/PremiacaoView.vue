@@ -73,7 +73,7 @@
       <v-card rounded="lg" class="pa-4 mb-3">
         <v-row dense>
           <v-col cols="12" sm="6">
-            <v-select v-model="avColab" label="Colaborador" :items="colaboradores" item-title="nome" item-value="id"
+            <v-select v-model="avColab" label="Colaborador" :items="colaboradoresAtivos" item-title="nome" item-value="id"
               variant="outlined" density="compact" hide-details @update:model-value="carregarAvaliacao" />
           </v-col>
           <v-col cols="12" sm="6">
@@ -109,7 +109,7 @@
     <!-- ══ ELEGIBILIDADE & CORTES ══ -->
     <div v-else-if="aba === 'elegibilidade'">
       <v-card rounded="lg" class="pa-4 mb-3">
-        <v-select v-model="elColab" label="Colaborador" :items="colaboradores" item-title="nome" item-value="id"
+        <v-select v-model="elColab" label="Colaborador" :items="colaboradoresAtivos" item-title="nome" item-value="id"
           variant="outlined" density="compact" hide-details style="max-width:380px" @update:model-value="carregarElegibilidade" />
       </v-card>
       <div v-if="elColab">
@@ -211,6 +211,8 @@ const pct = (v: number) => (v ?? 0).toFixed(1)
 
 const apuracao = ref<any>(null)
 const colaboradores = ref<any[]>([])
+// Avaliação/Elegibilidade só para colaboradores ATIVOS.
+const colaboradoresAtivos = computed(() => colaboradores.value.filter(c => c.ativo))
 const lojas = computed(() => (auth.lojas ?? []) as any[])
 
 async function carregar() {

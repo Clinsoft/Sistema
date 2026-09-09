@@ -204,8 +204,8 @@
             </td>
             <td class="text-right px-3 text-medium-emphasis">{{ fmtR(m.realizadoAnoAnt) }}</td>
             <td class="text-right px-3 font-weight-bold">{{ fmtR(m.realizado) }}</td>
-            <td class="text-right px-3">{{ m.qtdVendas }}</td>
-            <td class="text-right px-3">{{ fmtR(m.ticketMedio) }}</td>
+            <td class="text-right px-3">{{ m.qtdVendas > 0 ? m.qtdVendas : (m.realizado > 0 ? '—' : 0) }}</td>
+            <td class="text-right px-3">{{ m.qtdVendas > 0 ? fmtR(m.ticketMedio) : '—' }}</td>
             <td class="text-right px-3 text-error">
               {{ m.totalDesconto > 0 ? '- ' + fmtR(m.totalDesconto) : '—' }}
             </td>
@@ -405,14 +405,15 @@ async function _carregar() {
       }
     } catch { /* sem plano salvo — usa a sugestão automática */ }
 
+  } catch {
+    /* sem dados — estado vazio */
+  } finally {
+    // Desenha SÓ depois de carregando=false (senão o <canvas> ainda não está no DOM)
+    carregando.value = false
     await nextTick()
     desenharBarras()
     desenharLinha()
     desenharGauge()
-  } catch {
-    /* sem dados — estado vazio */
-  } finally {
-    carregando.value = false
   }
 }
 

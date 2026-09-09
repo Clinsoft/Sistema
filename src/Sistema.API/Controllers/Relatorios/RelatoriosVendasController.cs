@@ -224,13 +224,25 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Select(v => new { v.DataHora, v.Total, v.TotalDesconto, v.SubTotal })
             .ToListAsync(ct);
 
+        // Histórico de faturamento IMPORTADO (ex.: 2025, antes do sistema) — base do
+        // realizado quando não há venda registrada no mês (soma todas as lojas).
+        var histRows = await db.HistoricoFaturamentoLoja.AsNoTracking()
+            .Where(h => h.EmpresaId == empresaId && (h.Ano == ano || h.Ano == anoAnterior))
+            .Select(h => new { h.Ano, h.Mes, h.Faturamento })
+            .ToListAsync(ct);
+        var hist = histRows.GroupBy(h => new { h.Ano, h.Mes })
+            .ToDictionary(g => (g.Key.Ano, g.Key.Mes), g => g.Sum(x => x.Faturamento));
+
         var meses = Enumerable.Range(1, 12).Select(mes =>
         {
             var realizadoAno     = vendas.Where(v => v.DataHora.Year == ano     && v.DataHora.Month == mes).ToList();
             var realizadoAnoAnt  = vendas.Where(v => v.DataHora.Year == anoAnterior && v.DataHora.Month == mes).ToList();
 
-            var totalAno    = realizadoAno.Sum(v => v.Total);
-            var totalAnoAnt = realizadoAnoAnt.Sum(v => v.Total);
+            // Realizado = vendas do mês; se não houver venda no mês, usa o histórico importado
+            var vendasAno    = realizadoAno.Sum(v => v.Total);
+            var vendasAnoAnt = realizadoAnoAnt.Sum(v => v.Total);
+            var totalAno     = vendasAno    > 0 ? vendasAno    : hist.GetValueOrDefault((ano, mes), 0m);
+            var totalAnoAnt  = vendasAnoAnt > 0 ? vendasAnoAnt : hist.GetValueOrDefault((anoAnterior, mes), 0m);
             var qtdAno      = realizadoAno.Count;
             var qtdAnoAnt   = realizadoAnoAnt.Count;
 

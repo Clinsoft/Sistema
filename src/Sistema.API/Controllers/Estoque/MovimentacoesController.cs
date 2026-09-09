@@ -69,6 +69,14 @@ public class MovimentacoesController(IMediator mediator, IMovimentacaoEstoqueRep
                 .ToDictionaryAsync(l => l.Id, l => l.Nome, ct)
             : new();
 
+        // Venda registra o VendaId como documento — resolve para "Venda #número"
+        var vendaIds = movs.Select(m => m.DocumentoOrigem)
+            .Where(d => Guid.TryParse(d, out _)).Select(d => Guid.Parse(d!)).Distinct().ToList();
+        var vendaNums = vendaIds.Count > 0
+            ? await db.Vendas.AsNoTracking().Where(v => vendaIds.Contains(v.Id))
+                .ToDictionaryAsync(v => v.Id, v => v.Numero, ct)
+            : new();
+
         var resultado = movs.Select(m => new
         {
             m.Id, m.ProdutoId, m.LocalEstoqueId,
@@ -79,7 +87,9 @@ public class MovimentacoesController(IMediator mediator, IMovimentacaoEstoqueRep
             // Quantidade sinalizada: saída/ajuste negativo ficam negativos
             quantidade = m.Tipo is TipoMovimentacao.Saida or TipoMovimentacao.AjusteNegativo
                 ? -m.Quantidade : m.Quantidade,
-            m.CustoUnitario, m.DocumentoOrigem, m.Observacao,
+            m.CustoUnitario,
+            documentoOrigem = DocumentoRotulo(m.DocumentoOrigem, vendaNums),
+            m.Observacao,
             dataHora = m.CriadoEm
         });
 
@@ -95,4 +105,26 @@ public class MovimentacoesController(IMediator mediator, IMovimentacaoEstoqueRep
         TipoMovimentacao.AjustePositivo or TipoMovimentacao.AjusteNegativo => "Ajuste",
         _ => t.ToString()
     };
+
+    /// <summary>Converte o DocumentoOrigem cru (id de venda, prefixos) em rótulo legível.</summary>
+    private static string? DocumentoRotulo(string? doc, Dictionary<Guid, string> vendaNums)
+    {
+        if (string.IsNullOrWhiteSpace(doc)) return null;
+        if (Guid.TryParse(doc, out var gid))
+            return vendaNums.TryGetValue(gid, out var n) && !string.IsNullOrEmpty(n) ? $"Venda #{n}" : "Venda";
+        if (doc.StartsWith("VENCIDO:", StringComparison.OrdinalIgnoreCase))
+        {
+            var suf = doc[8..].Trim();
+            return suf.Equals("Descarte", StringComparison.OrdinalIgnoreCase) || suf.Length == 0
+                ? "Descarte (vencido)" : $"Vencido: {suf}";
+        }
+        if (doc.StartsWith("TRANSF", StringComparison.OrdinalIgnoreCase)) return "Transferência";
+        if (doc.StartsWith("DEVOL", StringComparison.OrdinalIgnoreCase)) return "Devolução";
+        if (doc.Equals("AJUSTE", StringComparison.OrdinalIgnoreCase)) return "Ajuste";
+        if (doc.Equals("INVENTARIO", StringComparison.OrdinalIgnoreCase)) return "Inventário";
+        if (doc.Equals("COMPRA", StringComparison.OrdinalIgnoreCase)) return "Compra";
+        // Chave de NF-e (44 dígitos) → entrada por nota
+        if (doc.Length >= 40 && doc.All(char.IsDigit)) return "Entrada (NF-e)";
+        return doc;
+    }
 }

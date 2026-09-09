@@ -11,6 +11,6 @@ public class MetaVendaMensalConfiguration : IEntityTypeConfiguration<MetaVendaMe
         b.ToTable("MetasVendaMensal");
         b.HasKey(m => m.Id);
         b.Property(m => m.Valor).HasColumnType("decimal(18,2)");
-        b.HasIndex(m => new { m.EmpresaId, m.Ano, m.Mes }).IsUnique();
+        b.HasIndex(m => new { m.EmpresaId, m.LocalEstoqueId, m.Ano, m.Mes }).IsUnique();
     }
 }

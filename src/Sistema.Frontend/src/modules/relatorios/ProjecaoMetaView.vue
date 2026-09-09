@@ -3,6 +3,9 @@
     <v-row align="center" class="mb-2">
       <v-col><h2 class="text-h5 font-weight-bold">Projeção de Meta</h2></v-col>
       <v-col cols="auto">
+        <v-select v-model="localEstoqueId" :items="lojasOpcoes" item-title="nome" item-value="id"
+          label="Unidade" variant="outlined" density="compact" hide-details
+          style="min-width:200px" class="d-inline-block mr-2" @update:model-value="carregar" />
         <v-btn variant="tonal" color="primary" :loading="carregando" prepend-icon="mdi-refresh" @click="carregar">
           Atualizar
         </v-btn>
@@ -94,6 +97,12 @@ interface Proj {
 
 const carregando = ref(true)
 const d = ref<Proj | null>(null)
+const localEstoqueId = ref<string | null>(null)
+const lojas = ref<any[]>([])
+const lojasOpcoes = computed(() => [{ id: null, nome: 'Todas as unidades' }, ...lojas.value])
+async function carregarLojas() {
+  try { const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }); lojas.value = r.data ?? [] } catch { /* */ }
+}
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const corFalta = computed(() => {
@@ -105,10 +114,10 @@ async function carregar() {
   if (!auth.empresaId) { carregando.value = false; return }
   carregando.value = true
   try {
-    const res = await api.get<Proj>('/dashboard/projecao-meta', { params: { empresaId: auth.empresaId } })
+    const res = await api.get<Proj>('/dashboard/projecao-meta', { params: { empresaId: auth.empresaId, localEstoqueId: localEstoqueId.value || undefined } })
     d.value = res.data
   } catch { d.value = null } finally { carregando.value = false }
 }
 
-onMounted(carregar)
+onMounted(() => { carregarLojas(); carregar() })
 </script>

@@ -11,6 +11,16 @@
       <v-col cols="12" md="6">
         <div class="d-flex flex-wrap ga-3 justify-end align-center">
           <v-select
+            v-model="localEstoqueId"
+            :items="lojasOpcoes" item-title="nome" item-value="id"
+            label="Unidade"
+            variant="outlined"
+            density="compact"
+            hide-details
+            style="max-width:200px"
+            @update:model-value="carregar"
+          />
+          <v-select
             v-model="ano"
             :items="anosDisponiveis"
             label="Ano base"
@@ -274,6 +284,17 @@ const carregando = ref(false)
 
 const anosDisponiveis = Array.from({ length: 5 }, (_, i) => anoAtual - i)
 
+// ── Unidade (loja) ──
+const localEstoqueId = ref<string | null>(null)
+const lojas = ref<any[]>([])
+const lojasOpcoes = computed(() => [{ id: null, nome: 'Todas as unidades' }, ...lojas.value])
+async function carregarLojas() {
+  try {
+    const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
+    lojas.value = r.data ?? []
+  } catch { /* silencioso */ }
+}
+
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface MesData {
   mes: number; nomeMes: string
@@ -360,7 +381,7 @@ async function _carregar() {
   carregando.value = true
   try {
     const res = await api.get('/relatorios/vendas/anual', {
-      params: { empresaId: auth.empresaId, ano: ano.value, crescimentoMeta: meta.value }
+      params: { empresaId: auth.empresaId, ano: ano.value, crescimentoMeta: meta.value, localEstoqueId: localEstoqueId.value || undefined }
     })
     const d = res.data
     meses.value     = d.meses
@@ -373,7 +394,7 @@ async function _carregar() {
     // Sobrepõe com metas SALVAS do ano-alvo, se existirem
     try {
       const rp = await api.get('/relatorios/planejamento-anual', {
-        params: { empresaId: auth.empresaId, ano: anoAlvo.value },
+        params: { empresaId: auth.empresaId, ano: anoAlvo.value, localEstoqueId: localEstoqueId.value || undefined },
       })
       const salvo = rp.data
       if (salvo?.meses?.length) {
@@ -423,9 +444,11 @@ async function salvarPlano() {
     await api.post('/relatorios/planejamento-anual', {
       empresaId: auth.empresaId,
       ano: anoAlvo.value,
+      localEstoqueId: localEstoqueId.value || null,
       metas: meses.value.map(m => ({ mes: m.mes, valor: m.meta ?? 0 })),
     })
-    notif.ok(`Plano de ${anoAlvo.value} salvo!`)
+    const nomeLoja = lojasOpcoes.value.find(l => l.id === localEstoqueId.value)?.nome ?? 'Todas as unidades'
+    notif.ok(`Plano de ${anoAlvo.value} salvo (${nomeLoja})!`)
   } catch { notif.erro('Erro ao salvar o plano.') }
   finally { salvando.value = false }
 }
@@ -434,7 +457,7 @@ async function limparPlano() {
   if (!confirm(`Excluir o plano salvo de ${anoAlvo.value}? As metas voltam à sugestão automática.`)) return
   try {
     await api.delete('/relatorios/planejamento-anual', {
-      params: { empresaId: auth.empresaId, ano: anoAlvo.value },
+      params: { empresaId: auth.empresaId, ano: anoAlvo.value, localEstoqueId: localEstoqueId.value || undefined },
     })
     notif.ok('Plano excluído.')
     await _carregar()
@@ -583,7 +606,7 @@ function desenharGauge() {
   ctx.textAlign = 'right'; ctx.fillText('50%', cx + r + 4, cy + 16)
 }
 
-onMounted(() => carregar())
+onMounted(() => { carregarLojas(); carregar() })
 watch([ano, meta], () => carregar())
 
 function imprimir() {

@@ -206,7 +206,7 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
     [HttpGet("projecao-meta")]
     [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
     public async Task<IActionResult> ProjecaoMeta([FromQuery] Guid empresaId,
-        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+        [FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var hoje = DateTime.Today;
         var a = ano ?? hoje.Year;
@@ -222,12 +222,16 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
 
         var realizado = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                     && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                      && v.DataHora >= inicioMes && v.DataHora < fimMesEx)
             .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
 
-        var meta = await db.MetasVendaMensal.AsNoTracking()
-            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m)
-            .Select(x => (decimal?)x.Valor).FirstOrDefaultAsync(ct);
+        // Meta: da loja informada, ou soma das lojas (rede) quando não informada
+        var metasMes = await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m
+                && (localEstoqueId == null || x.LocalEstoqueId == localEstoqueId))
+            .Select(x => x.Valor).ToListAsync(ct);
+        var meta = metasMes.Count > 0 ? (decimal?)metasMes.Sum() : null;
 
         var mediaDia = diasDecorridos > 0 ? realizado / diasDecorridos : 0m;
         var projecao = Math.Round(mediaDia * diasNoMes, 2);

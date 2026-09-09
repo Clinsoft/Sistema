@@ -6,14 +6,15 @@ namespace Sistema.Domain.Vendas.Entities;
 public class MetaVendaMensal : Entity
 {
     public Guid EmpresaId { get; private set; }
+    public Guid? LocalEstoqueId { get; private set; }   // unidade/loja da meta (null = rede/consolidado)
     public int Ano { get; private set; }
     public int Mes { get; private set; }
     public decimal Valor { get; private set; }
 
     private MetaVendaMensal() { }
 
-    public static MetaVendaMensal Criar(Guid empresaId, int ano, int mes, decimal valor)
-        => new() { EmpresaId = empresaId, Ano = ano, Mes = mes, Valor = valor };
+    public static MetaVendaMensal Criar(Guid empresaId, int ano, int mes, decimal valor, Guid? localEstoqueId = null)
+        => new() { EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, Ano = ano, Mes = mes, Valor = valor };
 
     public void DefinirValor(decimal valor) => Valor = valor;
 }

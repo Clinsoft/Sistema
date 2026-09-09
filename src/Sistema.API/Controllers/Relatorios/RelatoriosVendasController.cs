@@ -204,6 +204,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
         [FromQuery] Guid empresaId,
         [FromQuery] int ano,
         [FromQuery] decimal crescimentoMeta = 10m,
+        [FromQuery] Guid? localEstoqueId = null,
         CancellationToken ct = default)
     {
         var nomesMes = new[]
@@ -220,14 +221,16 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.DataHora >= inicioConsulta && v.DataHora <= fimConsulta)
             .Select(v => new { v.DataHora, v.Total, v.TotalDesconto, v.SubTotal })
             .ToListAsync(ct);
 
         // Histórico de faturamento IMPORTADO (ex.: 2025, antes do sistema) — base do
-        // realizado quando não há venda registrada no mês (soma todas as lojas).
+        // realizado quando não há venda registrada no mês (por loja, ou soma da rede).
         var histRows = await db.HistoricoFaturamentoLoja.AsNoTracking()
-            .Where(h => h.EmpresaId == empresaId && (h.Ano == ano || h.Ano == anoAnterior))
+            .Where(h => h.EmpresaId == empresaId && (h.Ano == ano || h.Ano == anoAnterior)
+                && (localEstoqueId == null || h.LocalEstoqueId == localEstoqueId))
             .Select(h => new { h.Ano, h.Mes, h.Faturamento })
             .ToListAsync(ct);
         var hist = histRows.GroupBy(h => new { h.Ano, h.Mes })

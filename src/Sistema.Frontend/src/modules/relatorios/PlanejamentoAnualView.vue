@@ -95,7 +95,7 @@
             <div v-if="carregando" class="d-flex justify-center pa-8">
               <v-progress-circular indeterminate color="primary" />
             </div>
-            <canvas v-else ref="barCanvas" height="220" />
+            <canvas v-else ref="barCanvas" height="220" style="width:100%;display:block" />
           </v-card-text>
         </v-card>
 
@@ -106,7 +106,7 @@
             Acumulado anual — Realizado vs Meta projetada
           </v-card-title>
           <v-card-text>
-            <canvas v-if="!carregando" ref="lineCanvas" height="160" />
+            <canvas v-if="!carregando" ref="lineCanvas" height="160" style="width:100%;display:block" />
           </v-card-text>
         </v-card>
       </v-col>
@@ -120,7 +120,7 @@
             Crescimento necessário
           </v-card-title>
           <v-card-text class="text-center pt-0">
-            <canvas ref="gaugeCanvas" height="130" />
+            <canvas ref="gaugeCanvas" height="130" style="width:100%;display:block" />
             <div class="text-h4 font-weight-bold mt-n2"
               :class="crescimentoNecessario >= 0 ? 'text-success' : 'text-error'">
               {{ crescimentoNecessario >= 0 ? '+' : '' }}{{ crescimentoNecessario }}%
@@ -204,7 +204,11 @@
             </td>
             <td class="text-right px-3 text-medium-emphasis">{{ fmtR(m.realizadoAnoAnt) }}</td>
             <td class="text-right px-3 font-weight-bold">{{ fmtR(m.realizado) }}</td>
-            <td class="text-right px-3">{{ m.qtdVendas > 0 ? m.qtdVendas : (m.realizado > 0 ? '—' : 0) }}</td>
+            <td class="text-right px-3">
+              <span :title="m.qtdEstimada ? 'Estimado pelo ticket médio (histórico só tem faturamento)' : ''">
+                {{ m.qtdEstimada ? '~' : '' }}{{ m.qtdVendas > 0 ? m.qtdVendas.toLocaleString('pt-BR') : 0 }}
+              </span>
+            </td>
             <td class="text-right px-3">{{ m.qtdVendas > 0 ? fmtR(m.ticketMedio) : '—' }}</td>
             <td class="text-right px-3 text-error">
               {{ m.totalDesconto > 0 ? '- ' + fmtR(m.totalDesconto) : '—' }}
@@ -298,7 +302,7 @@ async function carregarLojas() {
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface MesData {
   mes: number; nomeMes: string
-  realizado: number; qtdVendas: number; ticketMedio: number; totalDesconto: number
+  realizado: number; qtdVendas: number; qtdEstimada?: boolean; ticketMedio: number; totalDesconto: number
   realizadoAnoAnt: number; qtdVendasAnoAnt: number; variacaoYoy: number
   meta: number; crescimentoMeta: number; atingiuMeta: boolean
 }

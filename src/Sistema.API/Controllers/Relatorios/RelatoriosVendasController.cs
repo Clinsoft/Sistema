@@ -236,6 +236,15 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
         var hist = histRows.GroupBy(h => new { h.Ano, h.Mes })
             .ToDictionary(g => (g.Key.Ano, g.Key.Mes), g => g.Sum(x => x.Faturamento));
 
+        // Ticket médio de referência (das vendas reais) para ESTIMAR a qtd de vendas
+        // nos meses que só têm faturamento histórico (sem contagem de cupons).
+        var ticketRef = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId
+                && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId))
+            .Select(v => (decimal?)v.Total).AverageAsync(ct) ?? 25m;
+        if (ticketRef <= 0) ticketRef = 25m;
+
         var meses = Enumerable.Range(1, 12).Select(mes =>
         {
             var realizadoAno     = vendas.Where(v => v.DataHora.Year == ano     && v.DataHora.Month == mes).ToList();
@@ -246,7 +255,9 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             var vendasAnoAnt = realizadoAnoAnt.Sum(v => v.Total);
             var totalAno     = vendasAno    > 0 ? vendasAno    : hist.GetValueOrDefault((ano, mes), 0m);
             var totalAnoAnt  = vendasAnoAnt > 0 ? vendasAnoAnt : hist.GetValueOrDefault((anoAnterior, mes), 0m);
-            var qtdAno      = realizadoAno.Count;
+            // Meses vindos do histórico não têm contagem de vendas → estima pela do ticket de referência
+            var qtdEstimada = vendasAno <= 0 && totalAno > 0;
+            var qtdAno      = qtdEstimada ? (int)Math.Round(totalAno / ticketRef) : realizadoAno.Count;
             var qtdAnoAnt   = realizadoAnoAnt.Count;
 
             // Meta do próximo exercício = realizado do ano base × (1 + crescimento%)
@@ -264,6 +275,7 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
                 // Ano atual (base do planejamento)
                 realizado        = totalAno,
                 qtdVendas        = qtdAno,
+                qtdEstimada,
                 ticketMedio      = qtdAno > 0 ? Math.Round(totalAno / qtdAno, 2) : 0m,
                 totalDesconto    = realizadoAno.Sum(v => v.TotalDesconto),
                 // Ano anterior (comparação histórica)

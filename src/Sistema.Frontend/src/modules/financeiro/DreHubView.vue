@@ -11,11 +11,13 @@
       <v-tab value="lojas"><v-icon start size="18">mdi-store-outline</v-icon>Por loja</v-tab>
     </v-tabs>
 
-    <v-window v-model="aba">
-      <v-window-item value="periodo"><DreView /></v-window-item>
-      <v-window-item value="mensal"><DreMensalView /></v-window-item>
-      <v-window-item value="lojas"><DreLojasView /></v-window-item>
-    </v-window>
+    <!-- Renderiza a aba ativa direto (sem v-window, que restringia o layout).
+         keep-alive mantém a aba viva depois de visitada. -->
+    <keep-alive>
+      <DreView v-if="aba === 'periodo'" />
+      <DreMensalView v-else-if="aba === 'mensal'" />
+      <DreLojasView v-else-if="aba === 'lojas'" />
+    </keep-alive>
   </div>
 </template>
 

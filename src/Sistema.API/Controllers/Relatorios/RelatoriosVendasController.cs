@@ -250,13 +250,18 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             var realizadoAno     = vendas.Where(v => v.DataHora.Year == ano     && v.DataHora.Month == mes).ToList();
             var realizadoAnoAnt  = vendas.Where(v => v.DataHora.Year == anoAnterior && v.DataHora.Month == mes).ToList();
 
-            // Realizado = vendas do mês; se não houver venda no mês, usa o histórico importado
+            // Realizado = o MAIOR entre venda registrada e faturamento histórico do mês.
+            // (Ex.: jul/2026 tem só R$19k de vendas registradas, mas o faturamento real
+            // foi R$97,8k — o PDV começou a gravar no meio do mês; o histórico é a verdade.)
             var vendasAno    = realizadoAno.Sum(v => v.Total);
             var vendasAnoAnt = realizadoAnoAnt.Sum(v => v.Total);
-            var totalAno     = vendasAno    > 0 ? vendasAno    : hist.GetValueOrDefault((ano, mes), 0m);
-            var totalAnoAnt  = vendasAnoAnt > 0 ? vendasAnoAnt : hist.GetValueOrDefault((anoAnterior, mes), 0m);
-            // Meses vindos do histórico não têm contagem de vendas → estima pela do ticket de referência
-            var qtdEstimada = vendasAno <= 0 && totalAno > 0;
+            var histAno      = hist.GetValueOrDefault((ano, mes), 0m);
+            var histAnoAnt   = hist.GetValueOrDefault((anoAnterior, mes), 0m);
+            var usouHist     = histAno > vendasAno;   // histórico maior = registro parcial no sistema
+            var totalAno     = Math.Max(vendasAno, histAno);
+            var totalAnoAnt  = Math.Max(vendasAnoAnt, histAnoAnt);
+            // Quando o realizado vem do histórico (sem contagem de cupons), estima a qtd pelo ticket
+            var qtdEstimada = usouHist && totalAno > 0;
             var qtdAno      = qtdEstimada ? (int)Math.Round(totalAno / ticketRef) : realizadoAno.Count;
             var qtdAnoAnt   = realizadoAnoAnt.Count;
 

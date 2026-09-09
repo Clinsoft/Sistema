@@ -52,8 +52,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
+const notif = useNotifStore()
 
 interface Mes {
   mes: string; label: string; receita: number; cmv: number
@@ -95,7 +97,10 @@ async function carregar() {
       params: { empresaId: auth.empresaId, meses: meses.value },
     })
     itens.value = res.data.itens ?? []
-  } catch { itens.value = [] } finally { carregando.value = false }
+  } catch (e: any) {
+    itens.value = []
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o DRE mensal.')
+  } finally { carregando.value = false }
 }
 
 onMounted(carregar)

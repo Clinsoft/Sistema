@@ -91,7 +91,7 @@
               to="/financeiro/fluxo-caixa" value="/financeiro/fluxo-caixa" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-bank-outline" title="Financiamentos"
               to="/financeiro/financiamentos" value="/financeiro/financiamentos" color="brown" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-calendar-month-outline" title="Planejamento Anual"
+            <v-list-item prepend-icon="mdi-calendar-check-outline" title="Planejamento & Metas"
               to="/relatorios/planejamento-anual" value="/relatorios/planejamento-anual" color="blue-darken-2" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-credit-card-clock-outline" title="Recebíveis de Cartão"
               to="/financeiro/recebiveis-cartao" value="/financeiro/recebiveis-cartao" color="indigo" rounded="lg" class="pl-4" />
@@ -116,8 +116,6 @@
               to="/relatorios/clientes-sumidos" value="/relatorios/clientes-sumidos" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-finance" title="Rentabilidade por Categoria"
               to="/relatorios/rentabilidade-categoria" value="/relatorios/rentabilidade-categoria" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="ehGestor" prepend-icon="mdi-target" title="Projeção de Meta"
-              to="/relatorios/projecao-meta" value="/relatorios/projecao-meta" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-calendar-check-outline" title="Resumo do Dia"
               to="/relatorios/resumo-dia" value="/relatorios/resumo-dia" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-chart-line-variant" title="Histórico de Faturamento"

@@ -167,12 +167,12 @@ const router = createRouter({
       meta: { titulo: 'Clientes Sumidos' } },
     { path: '/relatorios/rentabilidade-categoria', component: () => import('@/modules/relatorios/RentabilidadeCategoriaView.vue'),
       meta: { titulo: 'Rentabilidade por Categoria' } },
-    { path: '/relatorios/projecao-meta', component: () => import('@/modules/relatorios/ProjecaoMetaView.vue'),
-      meta: { titulo: 'Projeção de Meta' } },
+    // Projeção de Meta virou aba do hub de Planejamento
+    { path: '/relatorios/projecao-meta', redirect: '/relatorios/planejamento-anual?aba=projecao' },
     { path: '/relatorios/resumo-dia', component: () => import('@/modules/relatorios/ResumoDiaView.vue'),
       meta: { titulo: 'Resumo do Dia' } },
-    { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoAnualView.vue'),
-      meta: { titulo: 'Planejamento Anual de Vendas' } },
+    { path: '/relatorios/planejamento-anual', component: () => import('@/modules/relatorios/PlanejamentoHubView.vue'),
+      meta: { titulo: 'Planejamento & Metas' } },
     { path: '/relatorios/materiais', component: () => import('@/modules/relatorios/RelatoriosMateriaisView.vue'),
       meta: { titulo: 'Relatórios de Materiais de Consumo' } },
 

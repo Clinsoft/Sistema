@@ -27,6 +27,15 @@
             <v-chip size="small" :color="lj.percentLoja >= 100 ? 'success' : lj.percentLoja >= 90 ? 'amber-darken-2' : 'error'" variant="tonal">
               Loja {{ fmt(lj.faturamentoLoja) }} / {{ fmt(lj.metaLoja) }} · {{ pct(lj.percentLoja) }}%
             </v-chip>
+            <v-tooltip v-if="lj.projecaoLoja" location="top"
+              :text="'No ritmo atual, projeção do mês: R$ ' + fmt(lj.projecaoLoja.projecao) + (lj.projecaoLoja.falta > 0 ? ' · falta R$ ' + fmt(lj.projecaoLoja.falta) + ' (R$ ' + fmt(lj.projecaoLoja.porDia) + '/dia nos ' + lj.projecaoLoja.diasRestantes + ' dias restantes)' : '')">
+              <template #activator="{ props }">
+                <v-chip v-bind="props" size="small" variant="flat" :color="lj.projecaoLoja.vaiBater ? 'success' : 'error'">
+                  <v-icon start size="14">{{ lj.projecaoLoja.vaiBater ? 'mdi-check-bold' : 'mdi-alert' }}</v-icon>
+                  No ritmo: {{ lj.projecaoLoja.vaiBater ? 'bate a meta' : 'NÃO bate' }} ({{ lj.projecaoLoja.percentProjecao }}%)
+                </v-chip>
+              </template>
+            </v-tooltip>
             <v-spacer />
             <div class="text-body-2">Total de prêmios: <b>R$ {{ fmt(lj.totalPremios) }}</b></div>
           </div>
@@ -37,6 +46,7 @@
                   <th>Colaborador</th>
                   <th class="text-right">Venda ind.</th>
                   <th class="text-right">% meta</th>
+                  <th class="text-center">No ritmo</th>
                   <th class="text-right">Performance</th>
                   <th class="text-center">Status</th>
                   <th class="text-right">Prêmio</th>
@@ -48,6 +58,17 @@
                   <td class="font-weight-medium">{{ c.colaborador }}</td>
                   <td class="text-right">{{ fmt(c.vendaIndividual) }} <span class="text-caption text-medium-emphasis">/ {{ fmt(c.metaIndividual) }}</span></td>
                   <td class="text-right" :class="c.percentIndividual >= 100 ? 'text-success' : c.percentIndividual >= 90 ? 'text-amber-darken-2' : 'text-error'">{{ pct(c.percentIndividual) }}%</td>
+                  <td class="text-center">
+                    <v-tooltip v-if="c.projecao" location="top"
+                      :text="'Projeção do mês: R$ ' + fmt(c.projecao.projecao) + (c.projecao.falta > 0 ? ' · falta R$ ' + fmt(c.projecao.falta) + ' (R$ ' + fmt(c.projecao.porDia) + '/dia)' : '')">
+                      <template #activator="{ props }">
+                        <v-chip v-bind="props" size="x-small" variant="tonal" :color="c.projecao.vaiBater ? 'success' : 'error'">
+                          {{ c.projecao.vaiBater ? 'bate' : 'não bate' }} · {{ c.projecao.percentProjecao }}%
+                        </v-chip>
+                      </template>
+                    </v-tooltip>
+                    <span v-else class="text-caption text-medium-emphasis">—</span>
+                  </td>
                   <td class="text-right">
                     {{ pct(c.performancePercent) }}% <span class="text-caption text-medium-emphasis">({{ c.semanasAvaliadas }}s)</span>
                     <v-tooltip v-if="c.descontoValidade > 0" text="Produto vencido na loja: pontos de Validade descontados de toda a equipe"><template #activator="{ props }">

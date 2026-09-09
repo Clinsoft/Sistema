@@ -170,8 +170,10 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
                 faturamentoLoja = g.Key.FaturamentoLoja,
                 metaLoja = g.Key.MetaLoja,
                 percentLoja = g.Key.PercentLoja,
+                projecaoLoja = ProjecaoLinha(g.Key.FaturamentoLoja, g.Key.MetaLoja, ano, mes),
                 totalPremios = Math.Round(g.Sum(x => x.Res.Premio), 2),
-                colaboradores = g.OrderByDescending(x => x.Res.Premio).Select(x => Dto(x.Res)).ToList()
+                colaboradores = g.OrderByDescending(x => x.Res.Premio)
+                    .Select(x => Dto(x.Res, projecao: ProjecaoLinha(x.Res.VendaIndividual, x.Res.MetaIndividual, ano, mes))).ToList()
             }).OrderByDescending(x => x.faturamentoLoja).ToList();
         return Ok(new { ano, mes, lojas = porLoja });
     }
@@ -500,6 +502,27 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         var urlVerif = $"{BaseUrl()}/api/premiacao/verificar/premio?empresaId={empresaId}&ano={ano}&mes={mes}&colaboradorId={colaboradorId}";
         var bytes = calc.GerarDemonstrativoPdf(t, empresa?.RazaoSocial ?? "", ano, mes, urlVerif);
         return File(bytes, "application/pdf", $"premio-{t.Res.Colaborador}-{ano}-{mes:00}.pdf");
+    }
+
+    /// <summary>Projeção pelo ritmo do mês corrente (null nos meses fechados).</summary>
+    private static object? ProjecaoLinha(decimal feito, decimal meta, int ano, int mes)
+    {
+        var hoje = DateTime.Today;
+        if (ano != hoje.Year || mes != hoje.Month) return null;
+        var diasNoMes = DateTime.DaysInMonth(ano, mes);
+        var diasDec = hoje.Day;
+        var diasRest = Math.Max(0, diasNoMes - diasDec);
+        var proj = diasDec > 0 ? Math.Round(feito / diasDec * diasNoMes, 2) : 0m;
+        var falta = Math.Max(0m, meta - feito);
+        return new
+        {
+            diasNoMes, diasDecorridos = diasDec, diasRestantes = diasRest,
+            realizado = Math.Round(feito, 2), meta = Math.Round(meta, 2), projecao = proj,
+            vaiBater = meta > 0 && proj >= meta, falta,
+            porDia = diasRest > 0 ? Math.Round(falta / diasRest, 2) : falta,
+            percentProjecao = meta > 0 ? Math.Round(proj / meta * 100, 0) : (decimal?)null,
+            percentAtual = meta > 0 ? Math.Round(feito / meta * 100, 0) : (decimal?)null,
+        };
     }
 
     private static object Dto(ResultadoPremio r, bool incluirSemanas = false, List<AvaliacaoDesempenhoSemanal>? avaliacoes = null,

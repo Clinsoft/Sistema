@@ -1298,6 +1298,19 @@ async function confirmarPagamento() {
 }
 
 function abrirEditar(item: any) {
+  const beneficiarioId = item.fornecedorId ?? item.colaboradorId ?? null
+  // Garante que o beneficiário salvo apareça no autocomplete mesmo se estiver
+  // INATIVO (ex.: colaborador desligado após rescisão) — senão mostra o GUID.
+  if (beneficiarioId && item.fornecedorNome
+      && !fornecedores.value.some((x: any) => x.id === beneficiarioId)) {
+    fornecedores.value = [...fornecedores.value, {
+      id: beneficiarioId,
+      nome: item.fornecedorNome,
+      tipo: item.colaboradorId ? 'Colaborador' : 'Fornecedor',
+      documento: null,
+      inativo: true,
+    }].sort((a, b) => a.nome.localeCompare(b.nome))
+  }
   edicao.value = {
     id: item.id,
     descricao: item.descricao,
@@ -1305,7 +1318,7 @@ function abrirEditar(item: any) {
     valorOriginal: item.valorOriginal,
     dataVencimento: item.dataVencimento?.slice(0, 10) ?? '',
     observacao: item.observacao ?? '',
-    fornecedorId: item.fornecedorId ?? item.colaboradorId ?? null,
+    fornecedorId: beneficiarioId,
     localEstoqueId: item.localEstoqueId ?? null,
     modo: 'unico',
     quantas: 2,

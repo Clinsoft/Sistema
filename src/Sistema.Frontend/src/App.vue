@@ -198,18 +198,8 @@
               to="/fiscal/cte-recebidos" value="/fiscal/cte-recebidos" color="primary" rounded="lg" class="pl-4" />
           </v-list-group>
 
-          <v-list-group v-if="!ehContador" value="marketing">
-            <template #activator="{ props }">
-              <v-list-item v-bind="props" prepend-icon="mdi-bullhorn-outline"
-                title="Marketing" color="primary" rounded="lg" />
-            </template>
-            <v-list-item prepend-icon="mdi-image-multiple-outline" title="Artes para Redes"
-              to="/marketing" value="/marketing" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-star-circle-outline" title="Clube de Promoções"
-              to="/marketing/clube" value="/marketing/clube" color="purple" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tag-multiple-outline" title="Promoções"
-              to="/marketing/promocoes" value="/marketing/promocoes" color="error" rounded="lg" class="pl-4" />
-          </v-list-group>
+          <v-list-item v-if="!ehContador" prepend-icon="mdi-bullhorn-outline" title="Marketing"
+            to="/marketing" value="/marketing" color="primary" rounded="lg" />
 
           <v-list-item v-if="!ehContador" prepend-icon="mdi-whatsapp" title="WhatsApp"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />

@@ -134,12 +134,11 @@ const router = createRouter({
       meta: { titulo: 'Catálogo WhatsApp' } },
 
     // Marketing
-    { path: '/marketing', component: () => import('@/modules/marketing/MarketingView.vue'),
+    { path: '/marketing', component: () => import('@/modules/marketing/MarketingHubView.vue'),
       meta: { titulo: 'Marketing' } },
-    { path: '/marketing/clube', component: () => import('@/modules/marketing/ClubePromocoesView.vue'),
-      meta: { titulo: 'Clube de Promoções' } },
-    { path: '/marketing/promocoes', component: () => import('@/modules/marketing/PromocoesView.vue'),
-      meta: { titulo: 'Promoções' } },
+    // Rotas antigas → abas do hub
+    { path: '/marketing/clube', redirect: '/marketing?aba=clube' },
+    { path: '/marketing/promocoes', redirect: '/marketing?aba=promocoes' },
 
     // Cadastros
     { path: '/cadastros', component: () => import('@/modules/cadastros/CadastrosView.vue'),

@@ -1186,12 +1186,28 @@ async function abrirCaixa() {
   }
   abrindoCaixa.value = true
   try {
-    const r = await api.post('/pdv/sessoes/abrir', {
+    const enviar = (forcar: boolean) => api.post('/pdv/sessoes/abrir', {
       empresaId: auth.empresaId,
       usuarioId: auth.usuario?.id,
       localEstoqueId: localEstoqueIdCaixa.value,
       saldoAbertura: saldoInicial.value,
+      forcar,
     })
+    let r
+    try {
+      r = await enviar(false)
+    } catch (e: any) {
+      // 409 = já há caixa aberto nesta loja → pede confirmação e reenvia com forçar
+      if (e?.response?.status === 409 && e.response.data?.exigeConfirmacao) {
+        if (!confirm(e.response.data.mensagem + '\n\nAbrir outro caixa mesmo assim?')) {
+          abrindoCaixa.value = false
+          return
+        }
+        r = await enviar(true)
+      } else {
+        throw e
+      }
+    }
     // O endpoint 'abrir' retorna apenas { id }; completa os dados da sessão localmente.
     sessaoAtual.value = {
       id: r.data.id,
@@ -1201,10 +1217,8 @@ async function abrirCaixa() {
     }
     dialogAbrirCaixa.value = false
     notif.ok('Caixa aberto!')
-  } catch {
-    sessaoAtual.value = { id: 'dev', numero: 1, abertoEm: new Date().toISOString() }
-    dialogAbrirCaixa.value = false
-    notif.ok('Caixa aberto!')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível abrir o caixa.')
   } finally {
     abrindoCaixa.value = false
   }

@@ -6,8 +6,8 @@ using Sistema.Domain.Vendas.Interfaces;
 
 namespace Sistema.Application.Vendas.Commands;
 
-public record AbrirSessaoCommand(Guid EmpresaId, Guid UsuarioId, Guid LocalEstoqueId, decimal SaldoAbertura)
-    : IRequest<Guid>;
+public record AbrirSessaoCommand(Guid EmpresaId, Guid UsuarioId, Guid LocalEstoqueId, decimal SaldoAbertura,
+    bool Forcar = false) : IRequest<Guid>;
 
 public class AbrirSessaoValidator : AbstractValidator<AbrirSessaoCommand>
 {

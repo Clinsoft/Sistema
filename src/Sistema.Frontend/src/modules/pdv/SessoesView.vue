@@ -132,18 +132,26 @@
           <v-spacer />
           <v-btn size="small" variant="text" icon="mdi-refresh" @click="carregarCaixasAbertos" />
         </div>
+        <v-alert v-if="caixasAbertos.some(c => c.alertaAberto)" type="warning" variant="tonal"
+          density="compact" class="mb-3">
+          {{ caixasAbertos.filter(c => c.alertaAberto).length }} caixa(s) aberto(s) há muito tempo —
+          confira se algum foi esquecido aberto e feche.
+        </v-alert>
         <v-row dense>
           <v-col v-for="c in caixasAbertos" :key="c.id" cols="12" md="6">
-            <v-card variant="tonal" color="success" rounded="lg">
+            <v-card variant="tonal" :color="c.alertaAberto ? 'warning' : 'success'" rounded="lg">
               <v-card-text class="pa-3">
                 <div class="d-flex align-center mb-2">
-                  <v-avatar color="success" size="32" class="mr-2">
-                    <v-icon icon="mdi-account" color="white" size="18" />
+                  <v-avatar :color="c.alertaAberto ? 'warning' : 'success'" size="32" class="mr-2">
+                    <v-icon :icon="c.alertaAberto ? 'mdi-clock-alert-outline' : 'mdi-account'" color="white" size="18" />
                   </v-avatar>
                   <div class="flex-grow-1">
                     <div class="text-body-2 font-weight-bold">{{ c.operador ?? '—' }}</div>
                     <div class="text-caption text-medium-emphasis">
                       {{ c.localEstoque ?? '—' }} · desde {{ fmtHora(c.abertura) }}
+                      <v-chip v-if="c.alertaAberto" size="x-small" color="warning" label class="ml-1">
+                        aberto há {{ Math.round(c.horasAberto) }}h
+                      </v-chip>
                     </div>
                   </div>
                   <v-btn size="small" variant="text" icon="mdi-printer-outline"
@@ -545,17 +553,26 @@ async function abrirCaixa() {
   if (!abertura.value.localEstoqueId) { notif.aviso('Selecione o local de estoque.'); return }
   abrindo.value = true
   try {
-    await api.post('/pdv/sessoes/abrir', {
+    const enviar = (forcar: boolean) => api.post('/pdv/sessoes/abrir', {
       empresaId: auth.empresaId,
       usuarioId: auth.usuario?.id,
       localEstoqueId: abertura.value.localEstoqueId,
       saldoAbertura: abertura.value.saldoAbertura,
+      forcar,
     })
+    try {
+      await enviar(false)
+    } catch (e: any) {
+      if (e?.response?.status === 409 && e.response.data?.exigeConfirmacao) {
+        if (!confirm(e.response.data.mensagem + '\n\nAbrir outro caixa mesmo assim?')) { abrindo.value = false; return }
+        await enviar(true)
+      } else throw e
+    }
     notif.ok('Caixa aberto com sucesso!')
     dialogAbrir.value = false
     await Promise.all([carregarSessaoAtiva(), listar(), carregarCaixasAbertos()])
   } catch (e: any) {
-    notif.erro(e?.response?.data?.title ?? 'Erro ao abrir caixa.')
+    notif.erro(e?.response?.data?.mensagem ?? e?.response?.data?.title ?? 'Erro ao abrir caixa.')
   } finally { abrindo.value = false }
 }
 

@@ -99,6 +99,56 @@
       </v-col>
     </v-row>
 
+    <!-- Metas do mês por loja: no ritmo atual, bate a meta? -->
+    <v-row v-if="projLojas && projLojas.lojas.length" class="mt-3">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
+            <v-icon icon="mdi-speedometer" class="mr-1" color="deep-purple" />
+            Metas do mês — no ritmo atual
+            <v-chip v-if="projLojas.noRitmo" size="small" color="success" variant="tonal">
+              {{ projLojas.noRitmo }} no ritmo
+            </v-chip>
+            <v-chip v-if="projLojas.foraRitmo" size="small" color="error" variant="tonal">
+              {{ projLojas.foraRitmo }} fora do ritmo
+            </v-chip>
+            <v-spacer />
+            <span class="text-caption text-medium-emphasis">faltam {{ projLojas.diasRestantes }} dia(s)</span>
+          </v-card-title>
+          <v-card-text>
+            <v-row dense>
+              <v-col v-for="l in projLojas.lojas" :key="l.lojaId" cols="12" md="6">
+                <v-card variant="tonal" :color="!l.temMeta ? 'grey' : l.vaiBater ? 'success' : 'error'" rounded="lg" class="pa-3">
+                  <div class="d-flex align-center mb-1">
+                    <v-icon :icon="!l.temMeta ? 'mdi-store-outline' : l.vaiBater ? 'mdi-check-bold' : 'mdi-alert'" class="mr-1" size="18" />
+                    <span class="text-body-1 font-weight-bold">{{ l.loja }}</span>
+                    <v-spacer />
+                    <v-chip v-if="l.temMeta" size="small" :color="l.vaiBater ? 'success' : 'error'" variant="flat">
+                      {{ l.vaiBater ? 'bate a meta' : 'NÃO bate' }}
+                    </v-chip>
+                    <v-chip v-else size="small" variant="tonal">sem meta definida</v-chip>
+                  </div>
+                  <div class="text-body-2">
+                    Realizado <b>R$ {{ fmtNum(l.realizado) }}</b>
+                    <template v-if="l.temMeta">
+                      de R$ {{ fmtNum(l.meta) }} <span class="text-medium-emphasis">({{ l.percentAtual }}%)</span>
+                    </template>
+                  </div>
+                  <div v-if="l.temMeta" class="text-body-2">
+                    Projeção do mês: <b>R$ {{ fmtNum(l.projecao) }}</b>
+                    <span class="text-medium-emphasis">({{ l.percentProjecao }}% da meta)</span>
+                  </div>
+                  <div v-if="l.temMeta && l.falta > 0" class="text-caption mt-1">
+                    Falta R$ {{ fmtNum(l.falta) }} — vender <b>R$ {{ fmtNum(l.porDia) }}/dia</b> nos dias restantes.
+                  </div>
+                </v-card>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- Vendas + Contas a Pagar (agendas do mês, lado a lado) -->
     <v-row class="mt-3">
       <v-col cols="12" md="6">
@@ -854,6 +904,16 @@ async function carregarPlanejamento() {
 }
 
 const fmt = (v: number) => 'R$ ' + (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNum = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Resumo de metas por loja (no ritmo / fora do ritmo) — só para gestor
+const projLojas = ref<any>(null)
+async function carregarProjLojas() {
+  try {
+    const r = await api.get('/dashboard/projecao-lojas', { params: { empresaId: auth.empresaId } })
+    projLojas.value = r.data
+  } catch { projLojas.value = null }
+}
 const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '-'
 const iniciais = (nome: string) => nome.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 
@@ -1515,6 +1575,7 @@ const lojasMovimento = computed(() => (movimento.value?.lojas ?? []).map((loja: 
 onMounted(async () => {
   await Promise.all([
     carregarResumo(),
+    carregarProjLojas(),
     carregarMovimento(),
     carregarVendasMes(),
     carregarPe(),

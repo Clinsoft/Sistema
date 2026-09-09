@@ -253,6 +253,66 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>Resumo por loja do mês: no ritmo atual, cada loja bate a própria meta?</summary>
+    [HttpGet("projecao-lojas")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> ProjecaoLojas([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+    {
+        var hoje = DateTime.Today;
+        var a = ano ?? hoje.Year;
+        var m = mes ?? hoje.Month;
+        var inicio = new DateTime(a, m, 1);
+        var fimEx = inicio.AddMonths(1);
+        var diasNoMes = DateTime.DaysInMonth(a, m);
+        var diasDec = (a == hoje.Year && m == hoje.Month) ? hoje.Day : diasNoMes;
+        var diasRest = Math.Max(0, diasNoMes - diasDec);
+
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId && l.Ativo)
+            .Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
+
+        var realizadoPorLoja = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                && v.DataHora >= inicio && v.DataHora < fimEx)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Total = g.Sum(x => x.Total) })
+            .ToListAsync(ct)).ToDictionary(x => x.Loja, x => x.Total);
+
+        var metaPorLoja = (await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m && x.LocalEstoqueId != null)
+            .GroupBy(x => x.LocalEstoqueId!.Value)
+            .Select(g => new { Loja = g.Key, Meta = g.Sum(x => x.Valor) })
+            .ToListAsync(ct)).ToDictionary(x => x.Loja, x => x.Meta);
+
+        var itens = lojas.Select(l =>
+        {
+            var realizado = realizadoPorLoja.GetValueOrDefault(l.Id, 0m);
+            var meta = metaPorLoja.GetValueOrDefault(l.Id, 0m);
+            var projecao = diasDec > 0 ? Math.Round(realizado / diasDec * diasNoMes, 2) : 0m;
+            var falta = Math.Max(0m, meta - realizado);
+            return new
+            {
+                lojaId = l.Id, loja = l.Nome,
+                realizado = Math.Round(realizado, 2), meta = Math.Round(meta, 2), projecao,
+                vaiBater = meta > 0 && projecao >= meta,
+                temMeta = meta > 0,
+                falta, porDia = diasRest > 0 ? Math.Round(falta / diasRest, 2) : falta,
+                percentProjecao = meta > 0 ? Math.Round(projecao / meta * 100, 0) : (decimal?)null,
+                percentAtual = meta > 0 ? Math.Round(realizado / meta * 100, 0) : (decimal?)null,
+            };
+        }).Where(x => x.temMeta || x.realizado > 0)
+          .OrderByDescending(x => x.realizado).ToList();
+
+        return Ok(new
+        {
+            ano = a, mes = m, diasRestantes = diasRest,
+            noRitmo = itens.Count(x => x.temMeta && x.vaiBater),
+            foraRitmo = itens.Count(x => x.temMeta && !x.vaiBater),
+            lojas = itens
+        });
+    }
+
     /// <summary>Clientes que compravam mas sumiram: última compra há mais de `diasSem`
     /// dias, com total já gasto e telefone — para reativar (ex.: WhatsApp).</summary>
     [HttpGet("clientes-sumidos")]

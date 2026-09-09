@@ -184,7 +184,39 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         var resultados = await calc.CalcularAsync(empresaId, ano, mes, UsuarioId, ct);
         if (resultados.Count == 0) return Ok(new { semDados = true });
         var meu = resultados[0];
-        return Ok(Dto(meu.Res, incluirSemanas: true, avaliacoes: meu.Avaliacoes));
+
+        // Projeção pelo ritmo (só no mês corrente): no ritmo atual, vai/não vai bater a meta
+        object? projecao = null;
+        var hoje = DateTime.Today;
+        if (ano == hoje.Year && mes == hoje.Month)
+        {
+            var r = meu.Res;
+            var diasNoMes = DateTime.DaysInMonth(ano, mes);
+            var diasDec = hoje.Day;
+            var diasRest = Math.Max(0, diasNoMes - diasDec);
+            decimal Proj(decimal feito) => diasDec > 0 ? Math.Round(feito / diasDec * diasNoMes, 2) : 0m;
+            object Linha(decimal feito, decimal meta)
+            {
+                var proj = Proj(feito);
+                var falta = Math.Max(0m, meta - feito);
+                return new
+                {
+                    realizado = Math.Round(feito, 2), meta = Math.Round(meta, 2), projecao = proj,
+                    vaiBater = meta > 0 && proj >= meta,
+                    falta, porDia = diasRest > 0 ? Math.Round(falta / diasRest, 2) : falta,
+                    percentProjecao = meta > 0 ? Math.Round(proj / meta * 100, 0) : (decimal?)null,
+                    percentAtual = meta > 0 ? Math.Round(feito / meta * 100, 0) : (decimal?)null,
+                };
+            }
+            projecao = new
+            {
+                diasNoMes, diasDecorridos = diasDec, diasRestantes = diasRest,
+                individual = Linha(r.VendaIndividual, r.MetaIndividual),
+                loja = Linha(r.FaturamentoLoja, r.MetaLoja),
+            };
+        }
+
+        return Ok(Dto(meu.Res, incluirSemanas: true, avaliacoes: meu.Avaliacoes, projecao: projecao));
     }
 
     // ── Termo de Aceite (assinatura digital) ─────────────────────────────
@@ -470,7 +502,8 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         return File(bytes, "application/pdf", $"premio-{t.Res.Colaborador}-{ano}-{mes:00}.pdf");
     }
 
-    private static object Dto(ResultadoPremio r, bool incluirSemanas = false, List<AvaliacaoDesempenhoSemanal>? avaliacoes = null)
+    private static object Dto(ResultadoPremio r, bool incluirSemanas = false, List<AvaliacaoDesempenhoSemanal>? avaliacoes = null,
+        object? projecao = null)
         => new
         {
             r.ColaboradorId, colaborador = r.Colaborador,
@@ -480,6 +513,7 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
             baseLoja = r.BaseLoja, fatorIndividual = r.FatorIndividual,
             elegivel = r.Elegivel, temCorte = r.TemCorte, motivo = r.Motivo, premio = r.Premio,
             descontoValidade = r.DescontoValidade,
+            projecao,
             avaliacoes = incluirSemanas && avaliacoes != null
                 ? avaliacoes.OrderBy(a => a.InicioSemana).Select(a => new { inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"), pontos = a.Pontos }).ToList<object>()
                 : null

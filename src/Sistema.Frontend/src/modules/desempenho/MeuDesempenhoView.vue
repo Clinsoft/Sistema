@@ -69,6 +69,48 @@
         </v-col>
       </v-row>
 
+      <!-- Projeção pelo ritmo: no ritmo atual, vai bater a meta? -->
+      <v-card v-if="d.projecao" rounded="lg" class="pa-4 mb-3">
+        <div class="d-flex align-center mb-2">
+          <v-icon icon="mdi-speedometer" color="deep-purple" class="mr-2" />
+          <span class="text-subtitle-1 font-weight-bold">No ritmo de hoje, você bate a meta?</span>
+          <v-spacer />
+          <span class="text-caption text-medium-emphasis">faltam {{ d.projecao.diasRestantes }} dia(s) no mês</span>
+        </div>
+        <v-row dense>
+          <v-col v-for="p in [
+              { t: 'Minha meta', x: d.projecao.individual },
+              { t: 'Meta da loja', x: d.projecao.loja }
+            ]" :key="p.t" cols="12" md="6">
+            <v-card variant="tonal" :color="p.x.vaiBater ? 'success' : 'error'" rounded="lg" class="pa-3 h-100">
+              <div class="d-flex align-center mb-1">
+                <span class="text-caption font-weight-bold text-uppercase">{{ p.t }}</span>
+                <v-spacer />
+                <v-chip size="small" :color="p.x.vaiBater ? 'success' : 'error'" variant="flat">
+                  <v-icon start size="14">{{ p.x.vaiBater ? 'mdi-check-bold' : 'mdi-alert' }}</v-icon>
+                  {{ p.x.vaiBater ? 'No ritmo, bate!' : 'No ritmo, NÃO bate' }}
+                </v-chip>
+              </div>
+              <div class="text-body-2">
+                Projeção do mês: <b>R$ {{ fmt(p.x.projecao) }}</b>
+                <span class="text-medium-emphasis"> ({{ p.x.percentProjecao ?? '—' }}% da meta de R$ {{ fmt(p.x.meta) }})</span>
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                Já feito: R$ {{ fmt(p.x.realizado) }} ({{ p.x.percentAtual ?? '—' }}%)
+              </div>
+              <v-divider class="my-2" />
+              <div v-if="p.x.falta > 0" class="text-body-2">
+                Falta <b>R$ {{ fmt(p.x.falta) }}</b> —
+                venda <b>R$ {{ fmt(p.x.porDia) }}/dia</b> nos dias que restam.
+              </div>
+              <div v-else class="text-body-2 font-weight-bold" :class="p.x.vaiBater ? 'text-success' : ''">
+                Meta já atingida! 🎉
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-card>
+
       <!-- Como o prêmio é formado -->
       <v-card rounded="lg" class="pa-4 mb-3">
         <div class="text-subtitle-2 font-weight-bold mb-2">Como seu prêmio é calculado</div>

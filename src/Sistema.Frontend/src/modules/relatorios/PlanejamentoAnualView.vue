@@ -187,6 +187,7 @@
             <th class="text-right px-3">Qtd Vendas</th>
             <th class="text-right px-3">Ticket Médio</th>
             <th class="text-right px-3">Descontos</th>
+            <th class="text-right px-3">% Desc.</th>
             <th class="text-right px-3">Var. YoY</th>
             <th class="text-right px-3 font-weight-bold text-teal">Meta {{ ano + 1 }}</th>
             <th class="text-right px-3 text-teal">Crescimento</th>
@@ -212,6 +213,9 @@
             <td class="text-right px-3">{{ m.qtdVendas > 0 ? fmtR(m.ticketMedio) : '—' }}</td>
             <td class="text-right px-3 text-error">
               {{ m.totalDesconto > 0 ? '- ' + fmtR(m.totalDesconto) : '—' }}
+            </td>
+            <td class="text-right px-3" :class="pctDesconto(m) >= 5 ? 'text-error font-weight-bold' : 'text-medium-emphasis'">
+              {{ m.totalDesconto > 0 && m.realizado > 0 ? pctDesconto(m).toFixed(1) + '%' : '—' }}
             </td>
             <td class="text-right px-3">
               <v-chip
@@ -245,6 +249,10 @@
             <td class="text-right px-3">{{ fmtR(totais.ticketMedioGeral) }}</td>
             <td class="text-right px-3 text-error">
               {{ totais.totalDesconto > 0 ? '- ' + fmtR(totais.totalDesconto) : '—' }}
+            </td>
+            <td class="text-right px-3 font-weight-bold">
+              {{ totais.totalDesconto > 0 && totais.totalRealizadoAno > 0
+                ? (totais.totalDesconto / totais.totalRealizadoAno * 100).toFixed(1) + '%' : '—' }}
             </td>
             <td class="text-right px-3">
               <v-chip size="x-small"
@@ -287,6 +295,11 @@ const meta = ref(10)
 const carregando = ref(false)
 
 const anosDisponiveis = Array.from({ length: 5 }, (_, i) => anoAtual - i)
+
+// % de desconto do mês = desconto ÷ faturamento realizado
+function pctDesconto(m: { totalDesconto: number; realizado: number }) {
+  return m.realizado > 0 ? (m.totalDesconto / m.realizado) * 100 : 0
+}
 
 // ── Unidade (loja) ──
 const localEstoqueId = ref<string | null>(null)

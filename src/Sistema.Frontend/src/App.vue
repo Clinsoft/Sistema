@@ -168,26 +168,16 @@
             </template>
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-view-dashboard" title="Painel Estoque"
               to="/estoque" value="/estoque" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-swap-horizontal" title="Movimentações"
-              to="/estoque/movimentacoes" value="/estoque/movimentacoes" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-list-status" title="Posição de Estoque"
-              to="/estoque/posicao" value="/estoque/posicao" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-chart-bar-stacked" title="Curva ABC de Produtos"
-              to="/estoque/curva-abc" value="/estoque/curva-abc" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item prepend-icon="mdi-clipboard-list-outline" title="Relatórios"
+              to="/estoque/relatorios" value="/estoque/relatorios" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-transfer" title="Transferências"
               to="/estoque/transferencias" value="/estoque/transferencias" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-tune-vertical" title="Ajuste de Estoque"
               to="/estoque/ajuste" value="/estoque/ajuste" color="primary" rounded="lg" class="pl-4" />
-            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-alert-octagon-outline" title="Estoque Negativo"
-              to="/estoque/negativos" value="/estoque/negativos" color="error" rounded="lg" class="pl-4" />
-            <v-list-item v-if="ehGestor" prepend-icon="mdi-timer-sand-empty" title="Produtos Parados"
-              to="/estoque/produtos-parados" value="/estoque/produtos-parados" color="warning" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-tag-outline" title="Etiquetas"
               to="/estoque/etiquetas" value="/estoque/etiquetas" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-calendar-alert" title="Controle de Validade"
               to="/estoque/validade" value="/estoque/validade" color="error" rounded="lg" class="pl-4" />
-            <v-list-item prepend-icon="mdi-cash-remove" title="Perdas por Validade"
-              to="/estoque/perdas-validade" value="/estoque/perdas-validade" color="error" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-scale" title="Exportar para Balança"
               to="/estoque/balanca" value="/estoque/balanca" color="teal" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-package-variant-closed" title="Materiais de Consumo"

@@ -256,16 +256,37 @@
             </v-col>
           </v-row>
           <v-table density="compact">
-            <thead><tr><th>Produto</th><th>Pedido</th><th>Recebido</th></tr></thead>
+            <thead><tr><th>Produto</th><th>Pedido</th><th>Recebido</th><th></th></tr></thead>
             <tbody>
               <tr v-for="(item, i) in rec.itens" :key="i">
-                <td>{{ item.descricao }}</td>
-                <td>{{ item.quantidadePedida }}</td>
+                <td>
+                  {{ item.descricao }}
+                  <v-chip v-if="item.extra" size="x-small" color="warning" variant="tonal" class="ml-1">fora da OC</v-chip>
+                </td>
+                <td>{{ item.extra ? '—' : item.quantidadePedida }}</td>
                 <td><v-text-field v-model.number="item.quantidadeRecebida" type="number"
                   variant="outlined" density="compact" hide-details style="width:80px" /></td>
+                <td>
+                  <v-btn v-if="item.extra" icon="mdi-close" size="x-small" variant="text" color="error"
+                    @click="rec.itens.splice(i, 1)" title="Remover" />
+                </td>
               </tr>
             </tbody>
           </v-table>
+          <v-row dense align="center" class="mt-3">
+            <v-col cols="9">
+              <v-autocomplete v-model="recProdSel" :items="prods" item-title="descricao" item-value="id"
+                label="Chegou algo fora da OC? Adicione o produto" variant="outlined" density="compact"
+                hide-details clearable />
+            </v-col>
+            <v-col cols="3">
+              <v-btn block variant="tonal" color="primary" prepend-icon="mdi-plus"
+                :disabled="!recProdSel" @click="addItemRec">Incluir</v-btn>
+            </v-col>
+          </v-row>
+          <div class="text-caption text-medium-emphasis mt-1">
+            Itens fora da OC entram no estoque e geram um rascunho de compra para regularizar.
+          </div>
         </v-card-text>
         <v-card-actions class="pa-4 justify-end">
           <v-btn variant="text" @click="dialogRec = false">Cancelar</v-btn>
@@ -411,6 +432,7 @@ const totaisPorUnidade = computed(() => {
 const np = ref<any>({ fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' })
 const it = ref({ produtoId:'', descricao:'', quantidade:1, precoUnitario:0 })
 const rec = ref<any>({ pedidoId:'', dataRecebimento: new Date().toISOString().slice(0,10), numeroNf:'', itens:[] })
+const recProdSel = ref<string | null>(null)
 const totalNp = computed(() => np.value.itens.reduce((s: number, i: any) => s + i.quantidade * i.precoUnitario, 0))
 const headers = [
   { title:'Nº', key:'numero' }, { title:'Fornecedor', key:'fornecedorNome', sortable:true },
@@ -701,21 +723,38 @@ async function abrirRecebimento(item: any) {
     const detalhe = r.data
     const localPadrao = locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
     rec.value = { pedidoId: item.id, localEstoqueId: localPadrao, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '',
-      itens: (detalhe.itens ?? []).map((i: any) => ({ itemPedidoId: i.id, descricao: i.descricao ?? i.produtoNome, quantidadePedida: i.quantidade, quantidadeRecebida: i.quantidade })) }
+      itens: (detalhe.itens ?? []).map((i: any) => ({ itemPedidoId: i.id, produtoId: i.produtoId, precoUnitario: i.precoUnitario ?? 0, descricao: i.descricao ?? i.produtoNome, quantidadePedida: i.quantidade, quantidadeRecebida: i.quantidade, extra: false })) }
   } catch {
     rec.value = { pedidoId: item.id, localEstoqueId: locaisEstoque.value[0]?.id ?? null, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '', itens: [] }
   }
   dialogRec.value = true
 }
+function addItemRec() {
+  const p = prods.value.find((x: any) => x.id === recProdSel.value)
+  if (!p) return
+  if ((rec.value.itens ?? []).some((i: any) => i.produtoId === p.id)) {
+    notif.aviso('Esse produto já está na lista.'); return
+  }
+  rec.value.itens.push({ itemPedidoId: null, produtoId: p.id, precoUnitario: p.custoUnitario ?? 0,
+    descricao: p.descricao, quantidadePedida: 0, quantidadeRecebida: 1, extra: true })
+  recProdSel.value = null
+}
 async function confirmarRec() {
   if (!rec.value.localEstoqueId) { notif.erro('Selecione o local de estoque para dar entrada.'); return }
   salvando.value = true
   try {
-    await api.post(`/pedidos-compra/${rec.value.pedidoId}/receber`, {
+    const itens = (rec.value.itens ?? [])
+      .filter((i: any) => i.produtoId && Number(i.quantidadeRecebida) > 0)
+      .map((i: any) => ({ produtoId: i.produtoId, descricao: i.descricao,
+        quantidade: Number(i.quantidadeRecebida), precoUnitario: i.precoUnitario ?? 0 }))
+    const r = await api.post(`/pedidos-compra/${rec.value.pedidoId}/receber`, {
       localEstoqueId: rec.value.localEstoqueId,
       usuarioId: auth.usuario?.id,
+      itens,
     })
     notif.ok('Recebimento registrado! Estoque atualizado.')
+    if (r.data?.divergentes > 0 && r.data?.rascunhoNumero)
+      notif.aviso(`${r.data.divergentes} item(ns) recebido(s) fora da OC — criei o rascunho de compra #${r.data.rascunhoNumero}.`)
     dialogRec.value = false
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao receber pedido.') }

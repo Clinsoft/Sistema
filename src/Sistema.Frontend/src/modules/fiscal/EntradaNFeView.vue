@@ -1455,12 +1455,14 @@ async function finalizarEntrada() {
     const faturasEnviar = lancarFinanceiro.value
       ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
       : []
-    await api.post(`/fiscal/entradas/${entradaId}/processar`, {
+    const resp = await api.post(`/fiscal/entradas/${entradaId}/processar`, {
       faturas: faturasEnviar,
       categoria: lancarFinanceiro.value ? categoriaFinanceira.value : null,
       formaPagamento: lancarFinanceiro.value ? formaPagamento.value : null,
     })
     notif.ok('Entrada escriturada com sucesso!')
+    if (resp.data?.divergentes > 0 && resp.data?.rascunhoNumero)
+      notif.aviso(`Chegaram ${resp.data.divergentes} item(ns) fora da OC — criei o rascunho de compra #${resp.data.rascunhoNumero} com eles.`)
     await carregar()
     passo.value = 6
   } catch (e: any) {

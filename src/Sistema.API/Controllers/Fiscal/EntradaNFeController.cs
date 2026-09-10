@@ -1010,8 +1010,9 @@ public class EntradaNFeController(SistemaDbContext db,
         if (ehAtivo)
         {
             foreach (var item in entrada.Itens) item.MarcarEstoqueMovimentado();
-            await LancarFinanceiroEProcessarAsync(entrada, req, ct);
-            return Ok(new { mensagem = "Entrada de ativo imobilizado processada.", itens = entrada.Itens.Count });
+            var rAtivo = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            return Ok(new { mensagem = "Entrada de ativo imobilizado processada.", itens = entrada.Itens.Count,
+                rascunhoNumero = rAtivo.RascunhoNumero, divergentes = rAtivo.Divergentes });
         }
 
         // Ratear frete nos itens (proporcional ao valor) e calcular o custo final
@@ -1038,8 +1039,9 @@ public class EntradaNFeController(SistemaDbContext db,
 
                 item.MarcarEstoqueMovimentado();
             }
-            await LancarFinanceiroEProcessarAsync(entrada, req, ct);
-            return Ok(new { mensagem = "Entrada de materiais processada.", itens = entrada.Itens.Count });
+            var rMat = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            return Ok(new { mensagem = "Entrada de materiais processada.", itens = entrada.Itens.Count,
+                rascunhoNumero = rMat.RascunhoNumero, divergentes = rMat.Divergentes });
         }
 
         // 1. Movimentar estoque
@@ -1082,9 +1084,10 @@ public class EntradaNFeController(SistemaDbContext db,
         }
 
         // 2. Lançar faturas em contas a pagar e concluir
-        await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+        var r = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
 
-        return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id });
+        return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id,
+            rascunhoNumero = r.RascunhoNumero, divergentes = r.Divergentes });
     }
 
     /// <summary>
@@ -1099,9 +1102,11 @@ public class EntradaNFeController(SistemaDbContext db,
         return int.TryParse(ultimo, out var n) ? (n + 1).ToString("D6") : "000001";
     }
 
-    private async Task LancarFinanceiroEProcessarAsync(
+    private async Task<(string? RascunhoNumero, int Divergentes)> LancarFinanceiroEProcessarAsync(
         EntradaNFe entrada, ProcessarEntradaRequest req, CancellationToken ct)
     {
+        string? rascunhoNumero = null;
+        var qtdDivergentes = 0;
         var nNF = entrada.ChaveAcesso.Length >= 34
             ? int.Parse(entrada.ChaveAcesso.Substring(25, 9)).ToString()
             : entrada.ChaveAcesso;
@@ -1158,12 +1163,15 @@ public class EntradaNFeController(SistemaDbContext db,
                             d.ProdutoDescricao ?? d.DescricaoXml, d.QuantidadeEstoque, d.CustoUnitarioFinal);
                     rascunho.DefinirObservacao($"Itens recebidos na NF {nNF} que não estavam na OC {pedido.Numero}.");
                     db.PedidosCompra.Add(rascunho);
+                    rascunhoNumero = numero;
+                    qtdDivergentes = divergentes.Count;
                 }
             }
         }
 
         entrada.Processar();
         await db.SaveChangesAsync(ct);
+        return (rascunhoNumero, qtdDivergentes);
     }
 
     // ──────────────────────────────────────────────────────────────────

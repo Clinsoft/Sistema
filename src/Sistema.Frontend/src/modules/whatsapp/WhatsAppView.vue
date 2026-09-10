@@ -581,6 +581,17 @@
                   A conversa fica no inbox e o atendente pode assumir a qualquer momento.
                 </div>
               </v-col>
+              <v-col cols="12">
+                <v-divider class="mb-2" />
+                <v-switch v-model="cfgMsg.enviarBoasVindas" color="success" density="compact" hide-details
+                  label="👋 Resposta automática de primeiro contato" />
+                <div class="text-caption text-medium-emphasis ml-2 mb-2">
+                  Enviada uma única vez, quando o cliente manda a primeira mensagem. Funciona mesmo com a IA desligada.
+                </div>
+                <v-textarea v-model="cfgMsg.mensagemBoasVindas" label="Mensagem de boas-vindas"
+                  variant="outlined" density="compact" rows="5" auto-grow
+                  :disabled="!cfgMsg.enviarBoasVindas" @blur="salvarCfgMsg" />
+              </v-col>
             </v-row>
           </v-card-text>
           <v-card-actions>
@@ -1243,6 +1254,7 @@ const cfgMsg = ref({
   ativo: false, enviarAniversario: true, enviarPromocoes: true,
   enviarNovidades: false, horaDisparo: 8, iaAtendimentoAtiva: false,
   enviarResumoDiario: false, telefoneResumoDiario: '',
+  enviarBoasVindas: false, mensagemBoasVindas: '',
 })
 const mostrarToken = ref(false)
 

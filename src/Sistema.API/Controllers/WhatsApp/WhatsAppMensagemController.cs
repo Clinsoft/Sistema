@@ -45,6 +45,8 @@ public class WhatsAppMensagemController(
             cfg.IaAtendimentoAtiva,
             cfg.EnviarResumoDiario,
             cfg.TelefoneResumoDiario,
+            cfg.EnviarBoasVindas,
+            cfg.MensagemBoasVindas,
         });
     }
 
@@ -76,6 +78,7 @@ public class WhatsAppMensagemController(
             req.HoraDisparo);
         cfg.DefinirIaAtendimento(req.IaAtendimentoAtiva);
         cfg.DefinirResumoDiario(req.EnviarResumoDiario, req.TelefoneResumoDiario);
+        cfg.DefinirBoasVindas(req.EnviarBoasVindas, req.MensagemBoasVindas);
 
         await uow.SalvarAsync(ct);
         return NoContent();
@@ -813,6 +816,10 @@ public class WhatsAppMensagemController(
 
         // Mensagens de texto recebidas que devem acionar o atendimento por IA (após salvar).
         var atendimentosIa = new List<(ConfiguracaoWhatsAppMensagem cfg, string de, string? nome, string texto)>();
+        // Respostas de boas-vindas (primeiro contato) a enviar após salvar. jaSaudados evita
+        // enviar duas vezes quando o cliente manda várias mensagens no mesmo lote do webhook.
+        var boasVindas = new List<(ConfiguracaoWhatsAppMensagem cfg, string de, string? nome)>();
+        var jaSaudados = new HashSet<string>();
 
         try
         {
@@ -898,6 +905,18 @@ public class WhatsAppMensagemController(
                             // Número bloqueado → ignora a mensagem (compara só dígitos).
                             var fromDig = new string(from.Where(char.IsDigit).ToArray());
                             if (bloqueados.Contains(fromDig)) continue;
+
+                            // Primeiro contato: se não há histórico anterior com este número e a
+                            // resposta de boas-vindas está ativa, agenda o envio (uma vez só).
+                            if (cfg.EnviarBoasVindas && !string.IsNullOrWhiteSpace(cfg.MensagemBoasVindas)
+                                && jaSaudados.Add(from))
+                            {
+                                var jaConversou = await db.MensagensWhatsApp.AsNoTracking().AnyAsync(x =>
+                                    x.EmpresaId == empresaId && x.Telefone == from
+                                    && (localEstoqueId == null || x.LocalEstoqueId == localEstoqueId), ct);
+                                if (!jaConversou)
+                                    boasVindas.Add((cfg, from, nome));
+                            }
                             var tipo = m.TryGetProperty("type", out var tpEl) ? tpEl.GetString() ?? "text" : "text";
                             var dataHora = m.TryGetProperty("timestamp", out var tsEl)
                                 && long.TryParse(tsEl.GetString(), out var ts)
@@ -949,6 +968,20 @@ public class WhatsAppMensagemController(
             }
             await uow.SalvarAsync(ct);
 
+            // Boas-vindas de primeiro contato (independe da IA): envia a mensagem fixa e registra
+            // na caixa de entrada como mensagem enviada pela loja.
+            foreach (var b in boasVindas)
+            {
+                if (string.IsNullOrWhiteSpace(b.cfg.PhoneNumberId) || string.IsNullOrWhiteSpace(b.cfg.AccessToken)) continue;
+                var (ok, wamId, _) = await whatsAppService.EnviarTexto(
+                    b.cfg.PhoneNumberId, b.cfg.AccessToken, b.de, b.cfg.MensagemBoasVindas!);
+                if (ok)
+                    db.MensagensWhatsApp.Add(MensagemWhatsApp.Enviar(
+                        b.cfg.EmpresaId, b.de, b.nome, b.cfg.MensagemBoasVindas!, wamId,
+                        localEstoqueId: b.cfg.LocalEstoqueId));
+            }
+            if (boasVindas.Count > 0) await uow.SalvarAsync(ct);
+
             // Atendimento por IA: responde e monta o pedido para cada mensagem recebida.
             foreach (var a in atendimentosIa)
                 await iaAtendente.AtenderAsync(a.cfg, a.de, a.nome, a.texto, ct);
@@ -981,7 +1014,8 @@ public record SalvarConfigWhatsAppRequest(
     string? WebhookVerifyToken, string? AppId, bool Ativo,
     bool EnviarAniversario, bool EnviarPromocoes, bool EnviarNovidades,
     int HoraDisparo = 8, bool IaAtendimentoAtiva = false,
-    bool EnviarResumoDiario = false, string? TelefoneResumoDiario = null);
+    bool EnviarResumoDiario = false, string? TelefoneResumoDiario = null,
+    bool EnviarBoasVindas = false, string? MensagemBoasVindas = null);
 
 public record SalvarConfigCatalogoRequest(
     Guid EmpresaId, string? PhoneNumberId, string? AccessToken,

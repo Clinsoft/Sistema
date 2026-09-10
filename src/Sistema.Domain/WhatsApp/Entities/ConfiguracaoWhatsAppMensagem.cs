@@ -28,6 +28,17 @@ public class ConfiguracaoWhatsAppMensagem : Entity
 
     public void DefinirIaAtendimento(bool ativa) => IaAtendimentoAtiva = ativa;
 
+    // Resposta automática de primeiro contato (independe da IA): enviada uma única vez,
+    // quando o cliente manda a PRIMEIRA mensagem (não há histórico anterior com o número).
+    public bool    EnviarBoasVindas    { get; private set; } = false;
+    public string? MensagemBoasVindas  { get; private set; }
+
+    public void DefinirBoasVindas(bool enviar, string? mensagem)
+    {
+        EnviarBoasVindas   = enviar;
+        MensagemBoasVindas = string.IsNullOrWhiteSpace(mensagem) ? null : mensagem.Trim();
+    }
+
     // Regras de disparo automático
     public bool   EnviarAniversario   { get; private set; } = true;
     public bool   EnviarPromocoes     { get; private set; } = true;

@@ -36,22 +36,24 @@ public class WhatsAppIaAtendenteService(
                 .Where(e => e.Id == cfg.EmpresaId).Select(e => e.NomeFantasia ?? e.RazaoSocial).FirstOrDefaultAsync(ct)
                 ?? "nossa loja";
 
-            // Estoque da LOJA que está atendendo: só oferecer o que TEM saldo nessa loja.
-            // Produtos são cadastrados por empresa, mas o estoque é por loja — sem isto a IA
-            // ofereceria produto que só existe em outra loja (ex.: coco ralado só em Rio Claro).
+            // Saldo da LOJA que está atendendo (IDs com saldo > 0). NÃO filtra mais o catálogo:
+            // serve só para MARCAR cada produto como "em estoque" ou "sob consulta". Assim a IA
+            // nunca nega um produto que existe no cadastro — no máximo avisa que confirma a
+            // disponibilidade — evitando o "não temos" falso quando o saldo do sistema está zerado.
             var comSaldo = await ProdutosComSaldoNaLojaAsync(cfg.EmpresaId, cfg.LocalEstoqueId, ct);
 
-            // Catálogo: produtos ativos com preço (e, quando há loja, com saldo nela).
+            // Catálogo: TODOS os produtos ativos com preço da empresa (sem filtrar por saldo).
             // PorPeso = vendido por kg (balança/fracionado).
-            var catQuery = db.Produtos.AsNoTracking()
-                .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0);
-            if (comSaldo is not null)
-                catQuery = catQuery.Where(p => comSaldo.Contains(p.Id));
-            var catalogo = await catQuery
+            var catalogo = await db.Produtos.AsNoTracking()
+                .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0)
                 .OrderBy(p => p.Descricao)
                 .Select(p => new { p.Id, p.Descricao, p.PrecoVenda, PorPeso = p.ProdutoBalanca || p.VendidoFracionado })
-                .Take(1000).ToListAsync(ct);   // catálogo da loja (cabe no contexto do modelo)
+                .Take(1000).ToListAsync(ct);   // catálogo da empresa (cabe no contexto do modelo)
             if (catalogo.Count == 0) return;
+
+            // Quando não há filtro de saldo (comSaldo == null: loja sem estoque controlado),
+            // trata tudo como disponível — não mostra marcador de "sob consulta".
+            bool EmEstoque(Guid id) => comSaldo is null || comSaldo.Contains(id);
 
             // Histórico recente da conversa (contexto).
             var hist = await db.MensagensWhatsApp.AsNoTracking()
@@ -66,15 +68,19 @@ public class WhatsAppIaAtendenteService(
             sys.AppendLine("IMPORTANTE: o cliente escreve com ERROS DE DIGITAÇÃO, sem acento ou abreviado. Encontre o produto por SEMELHANÇA na lista (ex.: 'psylium'/'psilio' = PSYLLIUM; 'acafrao'/'curcuma' = CÚRCUMA/AÇAFRÃO; 'linhaça' = LINHACA). Procure BEM na lista inteira antes de dizer que não temos — só diga que não temos se realmente não existir nada parecido.");
             sys.AppendLine("Produtos marcados [por peso] são vendidos por QUILO. SEMPRE informe o preço POR 100g (é assim que o cliente compra); mencione o valor por kg só se ajudar.");
             sys.AppendLine("Ao montar o pedido de item POR PESO, a 'quantidade' deve estar em QUILOS: 100g = 0.1, 250g = 0.25, 500g = 0.5, 1kg = 1. Para itens por unidade, 'quantidade' é o número de unidades.");
-            sys.AppendLine("A lista abaixo é o ESTOQUE DESTA LOJA (só o que temos disponível aqui). Ajude o cliente a montar o pedido. Se ele pedir algo que não está na lista, diga que não temos esse produto disponível nesta loja no momento e sugira um similar da lista.");
+            sys.AppendLine("DISPONIBILIDADE: todos os produtos da lista fazem parte do nosso catálogo. Os marcados [sob consulta] podem estar com estoque baixo aqui — você PODE oferecê-los normalmente, mas avise que vai CONFIRMAR a disponibilidade antes de fechar (nunca diga que 'não temos'). Os demais estão disponíveis. NUNCA negue um produto que está na lista: se ele estiver [sob consulta], ofereça e diga que confirma; só diga que não temos se o produto realmente NÃO aparecer em lugar nenhum da lista.");
             sys.AppendLine("Se a conversa sair do escopo (reclamação, troca, entrega complexa, algo que você não sabe), responda que vai chamar um atendente humano.");
             sys.AppendLine("Responda SEMPRE em JSON: {\"resposta\": \"texto que será enviado ao cliente\", \"itens\": [{\"nome\": \"NOME EXATO DA LISTA\", \"quantidade\": N}], \"finalizarPedido\": false}.");
             sys.AppendLine("Em 'itens' liste o pedido ACUMULADO até agora (todos os itens que o cliente quer); use o nome EXATO da lista. Vazio se ainda não pediu nada.");
             sys.AppendLine("'finalizarPedido' = true SOMENTE quando o cliente confirmar que quer fechar o pedido.");
 
-            string Linha(string desc, decimal preco, bool porPeso) => porPeso
-                ? $"- {desc} — R$ {preco / 10m:0.00} por 100g (R$ {preco:0.00}/kg) [por peso]"
-                : $"- {desc} — R$ {preco:0.00} (unidade)";
+            string Linha(string desc, decimal preco, bool porPeso, bool emEstoque)
+            {
+                var marca = emEstoque ? "" : " [sob consulta]";
+                return porPeso
+                    ? $"- {desc} — R$ {preco / 10m:0.00} por 100g (R$ {preco:0.00}/kg) [por peso]{marca}"
+                    : $"- {desc} — R$ {preco:0.00} (unidade){marca}";
+            }
 
             // Busca aproximada: produtos que compartilham trechos (4 letras) com as palavras
             // da mensagem — tolera erro de digitação ("psylium"→"PSYLLIUM") e destaca no topo.
@@ -88,7 +94,7 @@ public class WhatsAppIaAtendenteService(
                 : Enumerable.Range(0, w.Length - 3).Select(i => w.Substring(i, 4))).ToHashSet();
             var relevantes = gramas.Count == 0 ? new List<string>()
                 : catalogo.Where(p => { var n = Norm(p.Descricao); return gramas.Any(g => n.Contains(g)); })
-                    .Take(30).Select(p => Linha(p.Descricao, p.PrecoVenda, p.PorPeso)).ToList();
+                    .Take(30).Select(p => Linha(p.Descricao, p.PrecoVenda, p.PorPeso, EmEstoque(p.Id))).ToList();
 
             var user = new StringBuilder();
             if (relevantes.Count > 0)
@@ -99,7 +105,7 @@ public class WhatsAppIaAtendenteService(
             }
             user.AppendLine("=== CATÁLOGO COMPLETO (nome — preço) ===");
             foreach (var p in catalogo)
-                user.AppendLine(Linha(p.Descricao, p.PrecoVenda, p.PorPeso));
+                user.AppendLine(Linha(p.Descricao, p.PrecoVenda, p.PorPeso, EmEstoque(p.Id)));
             user.AppendLine();
             user.AppendLine("=== CONVERSA ATÉ AGORA ===");
             foreach (var m in hist)
@@ -122,7 +128,7 @@ public class WhatsAppIaAtendenteService(
                 cfg.EmpresaId, telefone, nomeContato, texto, wamId, localEstoqueId: cfg.LocalEstoqueId));
 
             if (r!.itens is { Count: > 0 })
-                await AtualizarPedidoAsync(cfg, telefone, nomeContato, r.itens, r.finalizarPedido, comSaldo, ct);
+                await AtualizarPedidoAsync(cfg, telefone, nomeContato, r.itens, r.finalizarPedido, ct);
 
             await db.SaveChangesAsync(ct);
         }
@@ -133,14 +139,12 @@ public class WhatsAppIaAtendenteService(
     }
 
     private async Task AtualizarPedidoAsync(ConfiguracaoWhatsAppMensagem cfg, string telefone,
-        string? nomeContato, List<ItemIa> itens, bool finalizar, HashSet<Guid>? comSaldo, CancellationToken ct)
+        string? nomeContato, List<ItemIa> itens, bool finalizar, CancellationToken ct)
     {
-        // Produtos da loja (só com saldo, quando informada) para casar pelo nome (exato → contém).
-        var prodQuery = db.Produtos.AsNoTracking()
-            .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0);
-        if (comSaldo is not null)
-            prodQuery = prodQuery.Where(p => comSaldo.Contains(p.Id));
-        var produtos = await prodQuery
+        // Catálogo completo da empresa (sem filtrar por saldo) para casar pelo nome (exato → contém).
+        // Itens [sob consulta] também podem entrar no pedido — a disponibilidade é confirmada depois.
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == cfg.EmpresaId && p.Ativo && p.PrecoVenda > 0)
             .Select(p => new { p.Id, p.Descricao, p.PrecoVenda }).ToListAsync(ct);
 
         // Pedido em aberto (Novo/Confirmado) da loja para este telefone, ou cria.

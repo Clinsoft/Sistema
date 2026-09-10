@@ -67,6 +67,11 @@
           <v-btn size="x-small" variant="tonal" color="error" class="ml-1"
             :disabled="item.situacao === 'Cancelada' || item.valorTotal <= 0"
             prepend-icon="mdi-cash-plus" @click="abrirLancar(item)">Financeiro</v-btn>
+          <v-btn size="x-small" variant="tonal" color="teal" class="ml-1"
+            :disabled="item.situacao === 'Cancelada' || item.valorTotal <= 0 || !(item.nfesAssociadas || []).some(n => n.recebida)"
+            :loading="aplicandoCusto === item.id"
+            prepend-icon="mdi-tag-arrow-up" title="Rateia o frete no custo dos produtos das NF-e"
+            @click="aplicarAoCusto(item)">Custo</v-btn>
         </template>
         <template #no-data>
           <div class="text-center text-medium-emphasis py-6">
@@ -109,6 +114,29 @@ const notif = useNotifStore()
 
 const ctes = ref<any[]>([])
 const carregando = ref(false)
+const aplicandoCusto = ref<string | null>(null)
+
+async function aplicarAoCusto(cte: any) {
+  const recebidas = (cte.nfesAssociadas || []).filter((n: any) => n.recebida && n.chave)
+  if (!recebidas.length) { notif.aviso('Nenhuma NF-e deste CT-e foi escriturada no sistema.'); return }
+  const porNf = cte.valorTotal / recebidas.length
+  if (!confirm(`Aplicar o frete do CT-e (R$ ${fmt(cte.valorTotal)}) ao CUSTO dos produtos de ${recebidas.length} nota(s)?\n\n`
+    + 'O frete é rateado por valor e somado ao custo unitário; o preço sobe mantendo o markup. '
+    + 'Só faça uma vez por CT-e (evita somar em dobro).')) return
+  aplicandoCusto.value = cte.id
+  try {
+    let afetados = 0
+    for (const nf of recebidas) {
+      const r = await api.post('/fiscal/entradas/aplicar-frete-cte', {
+        empresaId: auth.empresaId, chaveNfe: nf.chave, valorFrete: porNf, atualizarPreco: true,
+      })
+      afetados += r.data?.afetados ?? 0
+    }
+    notif.ok(`Frete aplicado ao custo de ${afetados} produto(s).`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao aplicar o frete ao custo.')
+  } finally { aplicandoCusto.value = null }
+}
 const consultando = ref(false)
 const filtros = ref({ emitente: '', dataInicio: '', dataFim: '' })
 

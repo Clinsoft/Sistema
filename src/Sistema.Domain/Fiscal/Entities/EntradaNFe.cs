@@ -164,6 +164,10 @@ public class EntradaNFe : Entity
     }
 
     public decimal FreteTotal => ValorFrete + ValorFreteManual;
+
+    /// <summary>Frete de CT-e(s) já aplicado ao custo dos produtos após a entrada.</summary>
+    public decimal FreteCteAplicado { get; private set; }
+    public void RegistrarFreteCteAplicado(decimal valor) => FreteCteAplicado += valor;
 }
 
 public class ItemEntradaNFe : Entity

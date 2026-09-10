@@ -197,6 +197,22 @@ public class Produto : Entity
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
     }
 
+    /// <summary>Soma ao custo unitário o frete rateado (ex.: CT-e que chegou após a entrada).
+    /// Se <paramref name="manterMarkup"/>, sobe o preço mantendo o multiplicador atual.</summary>
+    public void AjustarCustoComFrete(decimal deltaCustoUnitario, bool manterMarkup)
+    {
+        var novoCusto = CustoUnitario + deltaCustoUnitario;
+        if (novoCusto < 0) novoCusto = 0;
+        CustoUnitario = novoCusto;
+        if (manterMarkup && Markup > 0)
+        {
+            var novoPreco = Math.Round(novoCusto * Markup, 2);
+            if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
+            PrecoVenda = novoPreco;
+        }
+        MargemLucro = PrecoVenda > 0 ? Math.Round((PrecoVenda - CustoUnitario) / PrecoVenda * 100, 2) : 0;
+    }
+
     // NCM/CEST/CFOP vão no XML fiscal só com DÍGITOS (sem pontos). O usuário pode
     // digitar "1904.90.00" — normalizamos para "19049000" e evitamos estourar a coluna.
     private static string? SoDigitos(string? s, int max)

@@ -660,6 +660,41 @@ public class EntradaNFeController(SistemaDbContext db,
         return Ok(new { freteTotal = entrada.FreteTotal });
     }
 
+    /// <summary>
+    /// Aplica o frete de um CT-e (que chegou DEPOIS da entrada) ao custo dos produtos
+    /// da nota: rateia por valor, soma ao custo unitário e (opcional) sobe o preço
+    /// mantendo o markup. Idempotência fica a cargo do usuário (registra o acumulado).
+    /// </summary>
+    [HttpPost("aplicar-frete-cte")]
+    public async Task<IActionResult> AplicarFreteCte([FromBody] AplicarFreteCteRequest req, CancellationToken ct)
+    {
+        if (req.ValorFrete <= 0) return BadRequest(new { mensagem = "Informe o valor do frete do CT-e." });
+
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.EmpresaId == req.EmpresaId && e.ChaveAcesso == req.ChaveNfe, ct);
+        if (entrada is null) return NotFound(new { mensagem = "Entrada da NF-e não encontrada para essa chave." });
+
+        // Custo por item ANTES (com o frete atual) e DEPOIS (somando o frete do CT-e).
+        entrada.RatearFrete();
+        var antes = entrada.Itens.ToDictionary(i => i.Id, i => i.CustoUnitarioFinal);
+        entrada.DefinirFreteManual(entrada.ValorFreteManual + req.ValorFrete);
+        entrada.RatearFrete();
+
+        int afetados = 0;
+        foreach (var item in entrada.Itens.Where(i => i.ProdutoId.HasValue))
+        {
+            var delta = item.CustoUnitarioFinal - antes.GetValueOrDefault(item.Id, item.CustoUnitarioFinal);
+            if (delta == 0m) continue;
+            var produto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == item.ProdutoId!.Value, ct);
+            if (produto is null) continue;
+            produto.AjustarCustoComFrete(delta, req.AtualizarPreco);
+            afetados++;
+        }
+        entrada.RegistrarFreteCteAplicado(req.ValorFrete);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { afetados, freteAplicado = req.ValorFrete, freteCteAcumulado = entrada.FreteCteAplicado });
+    }
+
     [HttpPatch("{id:guid}/pedido-compra")]
     public async Task<IActionResult> VincularPedidoCompra(
         Guid id, [FromBody] VincularPedidoRequest req, CancellationToken ct)
@@ -2016,6 +2051,7 @@ public record VincularAtivoRequest(Guid AtivoImobilizadoId);
 /// <summary>Categoria e vida útil padrão para os bens criados a partir da nota.</summary>
 public record CadastrarAtivosRequest(string? Categoria = "Equipamento", int VidaUtilMeses = 60);
 public record VincularPedidoRequest(Guid PedidoCompraId);
+public record AplicarFreteCteRequest(Guid EmpresaId, string ChaveNfe, decimal ValorFrete, bool AtualizarPreco = true);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);
 public record ProcessarEntradaRequest(
     List<FaturaRequest> Faturas,

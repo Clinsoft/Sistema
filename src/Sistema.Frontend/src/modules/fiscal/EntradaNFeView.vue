@@ -1694,7 +1694,11 @@ function emDias(n: number) {
 async function carregarAuxiliares() {
   const [locais, pedidos, prods, unds, cats, mrcs, cfg] = await Promise.all([
     api.get('/locais-estoque', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
-    api.get('/compras/pedidos', { params: { empresaId: auth.empresaId, status: 'Enviado' } }).catch(() => ({ data: [] })),
+    // Ordens de compra em aberto (últimos ~6 meses) para vincular à nota
+    api.get('/pedidos-compra', { params: {
+      empresaId: auth.empresaId,
+      inicio: emDias(-180), fim: emDias(1),
+    } }).catch(() => ({ data: [] })),
     api.get('/produtos', { params: { empresaId: auth.empresaId, tamanhoPagina: 2000 } }).catch(() => ({ data: [] })),
     api.get('/unidades-medida', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
     api.get('/categorias', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] })),
@@ -1704,10 +1708,12 @@ async function carregarAuxiliares() {
   ])
   configFiscal.value = cfg.data ?? null
   locaisEstoque.value = locais.data
-  pedidosCompra.value = pedidos.data.map((p: any) => ({
-    ...p,
-    label: `OC #${p.numero} – ${fmtData(p.dataPedido)}`,
-  }))
+  pedidosCompra.value = (pedidos.data ?? [])
+    .filter((p: any) => p.status !== 'Recebido' && p.status !== 'Cancelado')
+    .map((p: any) => ({
+      ...p,
+      label: `OC #${p.numero} · ${p.fornecedorNome ?? '—'} · ${fmtData(p.dataPedido)}${p.status ? ' · ' + p.status : ''}`,
+    }))
   produtos.value = prods.data?.itens ?? prods.data ?? []
   unidadesMedida.value = unds.data.items ?? unds.data
   unidades.value = unidadesMedida.value.map((u: any) => u.sigla ?? u.nome ?? u)

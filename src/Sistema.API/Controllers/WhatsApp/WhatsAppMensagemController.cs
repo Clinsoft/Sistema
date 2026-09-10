@@ -504,17 +504,15 @@ public class WhatsAppMensagemController(
     }
 
     /// <summary>Mensagens de uma conversa (marca as recebidas como lidas).</summary>
-    // Números internos (gestor/resumo) que o atendente não deve ver na caixa de entrada.
+    // Números "internos": DESATIVADO. O resumo diário é enviado por template direto ao celular
+    // do gestor (ResumoDiarioJob) e NUNCA é gravado na caixa de entrada — então esconder a
+    // conversa do número do resumo só ocultava o bate-papo normal do atendente, sem proteger
+    // nada. Retorna vazio para que o atendente veja/atenda essas conversas; o resumo segue
+    // privado (fora do inbox). Para reativar o filtro, repovoar o set por TelefoneResumoDiario.
     private async Task<HashSet<string>> NumerosInternosAsync(Guid empresaId, CancellationToken ct)
     {
-        var tels = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
-            .Where(c => c.EmpresaId == empresaId && c.TelefoneResumoDiario != null)
-            .Select(c => c.TelefoneResumoDiario!).ToListAsync(ct);
-        var set = new HashSet<string>();
-        foreach (var t in tels)
-            foreach (var n in t.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries))
-                set.Add(SoDigitos(n));
-        return set;
+        await Task.CompletedTask;
+        return new HashSet<string>();
     }
     private static string SoDigitos(string? v) => new((v ?? "").Where(char.IsDigit).ToArray());
 

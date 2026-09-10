@@ -60,6 +60,8 @@ public class PedidoCompra : Entity
 
     public void DefinirAnexo(string? url) => AnexoUrl = url;
 
+    public void DefinirObservacao(string? observacao) => Observacao = observacao;
+
     public void Enviar() => Status = StatusPedidoCompra.Enviado;
 
     public string? NotaFiscalRecebimento { get; private set; }   // NF-e que recebeu a OC (nº/chave)

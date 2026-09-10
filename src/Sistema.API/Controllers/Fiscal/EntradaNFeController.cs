@@ -1092,6 +1092,13 @@ public class EntradaNFeController(SistemaDbContext db,
     /// Compartilhado pelas entradas de mercadoria e de material de consumo — o
     /// financeiro é igual nos dois casos; só o destino do estoque muda.
     /// </summary>
+    private async Task<string> ProximoNumeroPedidoAsync(Guid empresaId, CancellationToken ct)
+    {
+        var ultimo = await db.PedidosCompra.Where(p => p.EmpresaId == empresaId)
+            .OrderByDescending(p => p.CriadoEm).Select(p => p.Numero).FirstOrDefaultAsync(ct);
+        return int.TryParse(ultimo, out var n) ? (n + 1).ToString("D6") : "000001";
+    }
+
     private async Task LancarFinanceiroEProcessarAsync(
         EntradaNFe entrada, ProcessarEntradaRequest req, CancellationToken ct)
     {
@@ -1123,14 +1130,36 @@ public class EntradaNFeController(SistemaDbContext db,
             db.LancamentosFinanceiros.Add(lanc);
         }
 
-        // Se a entrada foi vinculada a uma Ordem de Compra, marca a OC como Recebida.
+        // Se a entrada foi vinculada a uma Ordem de Compra, marca a OC como Recebida
+        // e confronta os itens: o que veio na NF-e e NÃO estava na OC vira um rascunho.
         if (entrada.PedidoCompraId is Guid pedidoId)
         {
-            var pedido = await db.PedidosCompra.FirstOrDefaultAsync(p => p.Id == pedidoId, ct);
+            var pedido = await db.PedidosCompra.Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == pedidoId, ct);
             if (pedido is not null
                 && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Recebido
                 && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Cancelado)
+            {
                 pedido.ReceberComNota($"NF {nNF}");
+
+                // Itens recebidos (com produto) que NÃO estavam na OC.
+                var naOc = pedido.Itens.Select(i => i.ProdutoId).ToHashSet();
+                var divergentes = entrada.Itens
+                    .Where(i => i.ProdutoId.HasValue && !naOc.Contains(i.ProdutoId!.Value))
+                    .ToList();
+                if (divergentes.Count > 0)
+                {
+                    var numero = await ProximoNumeroPedidoAsync(entrada.EmpresaId, ct);
+                    var rascunho = Sistema.Domain.Compras.Entities.PedidoCompra.Criar(
+                        entrada.EmpresaId, pedido.FornecedorId, pedido.UsuarioId, numero,
+                        localEstoqueId: entrada.LocalEstoqueId);
+                    foreach (var d in divergentes)
+                        rascunho.AdicionarItem(d.ProdutoId!.Value,
+                            d.ProdutoDescricao ?? d.DescricaoXml, d.QuantidadeEstoque, d.CustoUnitarioFinal);
+                    rascunho.DefinirObservacao($"Itens recebidos na NF {nNF} que não estavam na OC {pedido.Numero}.");
+                    db.PedidosCompra.Add(rascunho);
+                }
+            }
         }
 
         entrada.Processar();

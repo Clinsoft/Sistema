@@ -39,7 +39,7 @@ public class ReceberPedidoCompraHandler(
             produtoRepo.Atualizar(produto);
         }
 
-        pedido.Receber();
+        pedido.ReceberComNota("Recebimento manual (sem NF-e)");
         pedidoRepo.Atualizar(pedido);
         await uow.SalvarAsync(ct);
     }

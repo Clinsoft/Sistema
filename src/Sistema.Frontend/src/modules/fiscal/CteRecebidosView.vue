@@ -125,14 +125,18 @@ async function aplicarAoCusto(cte: any) {
     + 'Só faça uma vez por CT-e (evita somar em dobro).')) return
   aplicandoCusto.value = cte.id
   try {
-    let afetados = 0
+    let afetados = 0, jaAplicadas = 0
     for (const nf of recebidas) {
       const r = await api.post('/fiscal/entradas/aplicar-frete-cte', {
         empresaId: auth.empresaId, chaveNfe: nf.chave, valorFrete: porNf, atualizarPreco: true,
+        chaveCte: cte.chaveAcesso,
       })
-      afetados += r.data?.afetados ?? 0
+      if (r.data?.jaAplicado) jaAplicadas++
+      else afetados += r.data?.afetados ?? 0
     }
-    notif.ok(`Frete aplicado ao custo de ${afetados} produto(s).`)
+    if (jaAplicadas === recebidas.length) notif.aviso('Este CT-e já havia sido aplicado ao custo. Nada foi alterado.')
+    else if (jaAplicadas > 0) notif.ok(`Frete aplicado a ${afetados} produto(s). ${jaAplicadas} nota(s) já tinham este CT-e.`)
+    else notif.ok(`Frete aplicado ao custo de ${afetados} produto(s).`)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Erro ao aplicar o frete ao custo.')
   } finally { aplicandoCusto.value = null }

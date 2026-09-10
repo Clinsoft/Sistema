@@ -167,7 +167,19 @@ public class EntradaNFe : Entity
 
     /// <summary>Frete de CT-e(s) já aplicado ao custo dos produtos após a entrada.</summary>
     public decimal FreteCteAplicado { get; private set; }
-    public void RegistrarFreteCteAplicado(decimal valor) => FreteCteAplicado += valor;
+    /// <summary>Chaves dos CT-e já aplicados ao custo (separadas por ';') — evita aplicar em dobro.</summary>
+    public string? CtesFreteAplicado { get; private set; }
+
+    public bool FreteCteJaAplicado(string? chaveCte) =>
+        !string.IsNullOrEmpty(chaveCte) && !string.IsNullOrEmpty(CtesFreteAplicado)
+        && CtesFreteAplicado.Split(';', StringSplitOptions.RemoveEmptyEntries).Contains(chaveCte);
+
+    public void RegistrarFreteCteAplicado(decimal valor, string? chaveCte)
+    {
+        FreteCteAplicado += valor;
+        if (!string.IsNullOrEmpty(chaveCte) && !FreteCteJaAplicado(chaveCte))
+            CtesFreteAplicado = string.IsNullOrEmpty(CtesFreteAplicado) ? chaveCte : CtesFreteAplicado + ";" + chaveCte;
+    }
 }
 
 public class ItemEntradaNFe : Entity

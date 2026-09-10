@@ -674,6 +674,10 @@ public class EntradaNFeController(SistemaDbContext db,
             .FirstOrDefaultAsync(e => e.EmpresaId == req.EmpresaId && e.ChaveAcesso == req.ChaveNfe, ct);
         if (entrada is null) return NotFound(new { mensagem = "Entrada da NF-e não encontrada para essa chave." });
 
+        // Trava anti-duplicação: este CT-e já foi aplicado ao custo desta nota.
+        if (entrada.FreteCteJaAplicado(req.ChaveCte))
+            return Ok(new { afetados = 0, jaAplicado = true, freteCteAcumulado = entrada.FreteCteAplicado });
+
         // Custo por item ANTES (com o frete atual) e DEPOIS (somando o frete do CT-e).
         entrada.RatearFrete();
         var antes = entrada.Itens.ToDictionary(i => i.Id, i => i.CustoUnitarioFinal);
@@ -690,9 +694,9 @@ public class EntradaNFeController(SistemaDbContext db,
             produto.AjustarCustoComFrete(delta, req.AtualizarPreco);
             afetados++;
         }
-        entrada.RegistrarFreteCteAplicado(req.ValorFrete);
+        entrada.RegistrarFreteCteAplicado(req.ValorFrete, req.ChaveCte);
         await db.SaveChangesAsync(ct);
-        return Ok(new { afetados, freteAplicado = req.ValorFrete, freteCteAcumulado = entrada.FreteCteAplicado });
+        return Ok(new { afetados, jaAplicado = false, freteAplicado = req.ValorFrete, freteCteAcumulado = entrada.FreteCteAplicado });
     }
 
     [HttpPatch("{id:guid}/pedido-compra")]
@@ -2051,7 +2055,8 @@ public record VincularAtivoRequest(Guid AtivoImobilizadoId);
 /// <summary>Categoria e vida útil padrão para os bens criados a partir da nota.</summary>
 public record CadastrarAtivosRequest(string? Categoria = "Equipamento", int VidaUtilMeses = 60);
 public record VincularPedidoRequest(Guid PedidoCompraId);
-public record AplicarFreteCteRequest(Guid EmpresaId, string ChaveNfe, decimal ValorFrete, bool AtualizarPreco = true);
+public record AplicarFreteCteRequest(Guid EmpresaId, string ChaveNfe, decimal ValorFrete,
+    bool AtualizarPreco = true, string? ChaveCte = null);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);
 public record ProcessarEntradaRequest(
     List<FaturaRequest> Faturas,

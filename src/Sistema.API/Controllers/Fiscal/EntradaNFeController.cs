@@ -1123,6 +1123,16 @@ public class EntradaNFeController(SistemaDbContext db,
             db.LancamentosFinanceiros.Add(lanc);
         }
 
+        // Se a entrada foi vinculada a uma Ordem de Compra, marca a OC como Recebida.
+        if (entrada.PedidoCompraId is Guid pedidoId)
+        {
+            var pedido = await db.PedidosCompra.FirstOrDefaultAsync(p => p.Id == pedidoId, ct);
+            if (pedido is not null
+                && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Recebido
+                && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Cancelado)
+                pedido.Receber();
+        }
+
         entrada.Processar();
         await db.SaveChangesAsync(ct);
     }

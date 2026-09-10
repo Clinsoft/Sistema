@@ -1712,7 +1712,7 @@ async function carregarAuxiliares() {
     .filter((p: any) => p.status !== 'Recebido' && p.status !== 'Cancelado')
     .map((p: any) => ({
       ...p,
-      label: `OC #${p.numero} · ${p.fornecedorNome ?? '—'} · ${fmtData(p.dataPedido)}${p.status ? ' · ' + p.status : ''}`,
+      label: `OC #${p.numero} · ${p.lojaNome ?? 'sem unidade'} · ${p.fornecedorNome ?? '—'} · ${fmtData(p.dataPedido)}${p.status ? ' · ' + p.status : ''}`,
     }))
   produtos.value = prods.data?.itens ?? prods.data ?? []
   unidadesMedida.value = unds.data.items ?? unds.data

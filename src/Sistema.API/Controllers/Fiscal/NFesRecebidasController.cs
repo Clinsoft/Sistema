@@ -114,6 +114,10 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
                 // CT-e: se o frete já foi lançado como conta a pagar.
                 Lancado = db.LancamentosFinanceiros
                     .Any(l => l.EmpresaId == empresaId && l.DocumentoOrigem == "CT-e " + n.ChaveAcesso),
+                // CT-e: se o frete já foi aplicado ao CUSTO de alguma nota escriturada.
+                FreteAplicadoCusto = db.EntradasNFe
+                    .Any(e => e.EmpresaId == empresaId && e.CtesFreteAplicado != null
+                        && e.CtesFreteAplicado.Contains(n.ChaveAcesso)),
                 n.ChavesReferenciadas,
             })
             .ToListAsync(ct);
@@ -136,7 +140,7 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
             n.Id, n.ChaveAcesso, n.NSU, n.Modelo, n.Serie, n.Numero, n.DataEmissao,
             n.EmitenteCnpj, n.EmitenteNome, n.EmitenteUF, n.ValorTotal, n.Situacao,
             n.Manifestacao, n.DataManifestacao, n.JustificativaManifestacao, n.TemXml,
-            n.DataConsulta, n.EntradaId, n.EntradaStatus, n.Lancado,
+            n.DataConsulta, n.EntradaId, n.EntradaStatus, n.Lancado, n.FreteAplicadoCusto,
             // NF-e transportadas por este CT-e (número quando já recebida; chave se não).
             NfesAssociadas = string.IsNullOrEmpty(n.ChavesReferenciadas)
                 ? new List<object>()

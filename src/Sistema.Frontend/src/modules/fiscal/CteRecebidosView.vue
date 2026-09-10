@@ -67,7 +67,9 @@
           <v-btn size="x-small" variant="tonal" color="error" class="ml-1"
             :disabled="item.situacao === 'Cancelada' || item.valorTotal <= 0"
             prepend-icon="mdi-cash-plus" @click="abrirLancar(item)">Financeiro</v-btn>
-          <v-btn size="x-small" variant="tonal" color="teal" class="ml-1"
+          <v-chip v-if="item.freteAplicadoCusto" size="x-small" color="teal" variant="tonal" class="ml-1"
+            prepend-icon="mdi-check">Custo aplicado</v-chip>
+          <v-btn v-else size="x-small" variant="tonal" color="teal" class="ml-1"
             :disabled="item.situacao === 'Cancelada' || item.valorTotal <= 0 || !(item.nfesAssociadas || []).some(n => n.recebida)"
             :loading="aplicandoCusto === item.id"
             prepend-icon="mdi-tag-arrow-up" title="Rateia o frete no custo dos produtos das NF-e"
@@ -137,6 +139,7 @@ async function aplicarAoCusto(cte: any) {
     if (jaAplicadas === recebidas.length) notif.aviso('Este CT-e já havia sido aplicado ao custo. Nada foi alterado.')
     else if (jaAplicadas > 0) notif.ok(`Frete aplicado a ${afetados} produto(s). ${jaAplicadas} nota(s) já tinham este CT-e.`)
     else notif.ok(`Frete aplicado ao custo de ${afetados} produto(s).`)
+    await carregar()   // atualiza o selo "Custo aplicado"
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Erro ao aplicar o frete ao custo.')
   } finally { aplicandoCusto.value = null }

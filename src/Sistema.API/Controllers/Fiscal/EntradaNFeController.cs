@@ -1130,7 +1130,7 @@ public class EntradaNFeController(SistemaDbContext db,
             if (pedido is not null
                 && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Recebido
                 && pedido.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Cancelado)
-                pedido.Receber();
+                pedido.ReceberComNota($"NF {nNF}");
         }
 
         entrada.Processar();

@@ -125,6 +125,7 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
             lojaNome = p.LocalEstoqueId.HasValue ? lojas.GetValueOrDefault(p.LocalEstoqueId.Value, "—") : null,
             status = p.Status.ToString(),
             criadoEm = p.DataPedido, p.DataPedido, p.DataPrevisaoEntrega, p.DataRecebimento,
+            p.NotaFiscalRecebimento,
             totalPedido = p.Total, QtdItens = p.Itens.Count
         }));
     }
@@ -141,7 +142,8 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         {
             pedido.Id, pedido.Numero, pedido.FornecedorId, pedido.Status,
             pedido.LocalEstoqueId, lojaNome,
-            pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.Total, pedido.AnexoUrl,
+            pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.DataRecebimento,
+            pedido.NotaFiscalRecebimento, pedido.Total, pedido.AnexoUrl,
             Itens = pedido.Itens.Select(i => new
             {
                 i.Id, i.ProdutoId, i.Descricao,

@@ -84,6 +84,7 @@
         </template>
         <template #item.status="{ item }">
           <v-chip :color="corStatus(item.status)" size="small" variant="tonal">{{ item.status }}</v-chip>
+          <div v-if="item.notaFiscalRecebimento" class="text-caption text-success mt-1">{{ item.notaFiscalRecebimento }}</div>
         </template>
         <template #item.totalPedido="{ item }">R$ {{ fmt(item.totalPedido) }}</template>
         <template #item.criadoEm="{ item }">{{ new Date(item.criadoEm).toLocaleDateString('pt-BR') }}</template>
@@ -303,6 +304,9 @@
                 placeholder="Selecione a unidade" style="min-width:210px" />
             </div>
             <div v-if="det.dataPrevisaoEntrega"><span class="text-medium-emphasis">Previsão:</span> {{ new Date(det.dataPrevisaoEntrega).toLocaleDateString('pt-BR') }}</div>
+            <v-chip v-if="det.notaFiscalRecebimento" size="small" color="success" variant="tonal">
+              <v-icon start size="14">mdi-file-check-outline</v-icon>Recebido pela {{ det.notaFiscalRecebimento }}
+            </v-chip>
             <v-spacer />
             <v-btn v-if="det.anexoUrl" size="small" variant="tonal" color="red-darken-1"
               prepend-icon="mdi-file-pdf-box" :href="det.anexoUrl" target="_blank">Ver PDF do fornecedor</v-btn>

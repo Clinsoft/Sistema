@@ -62,10 +62,19 @@ public class PedidoCompra : Entity
 
     public void Enviar() => Status = StatusPedidoCompra.Enviado;
 
+    public string? NotaFiscalRecebimento { get; private set; }   // NF-e que recebeu a OC (nº/chave)
+
     public void Receber()
     {
         Status = StatusPedidoCompra.Recebido;
         DataRecebimento = DateTime.Now;
+    }
+
+    /// <summary>Recebe a OC registrando a NF-e (nº ou chave) que a atendeu.</summary>
+    public void ReceberComNota(string? notaRef)
+    {
+        Receber();
+        NotaFiscalRecebimento = notaRef;
     }
 
     public void Cancelar() => Status = StatusPedidoCompra.Cancelado;

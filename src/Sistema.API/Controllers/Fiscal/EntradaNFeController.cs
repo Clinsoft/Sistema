@@ -1136,7 +1136,8 @@ public class EntradaNFeController(SistemaDbContext db,
         }
 
         // Se a entrada foi vinculada a uma Ordem de Compra, marca a OC como Recebida
-        // e confronta os itens: o que veio na NF-e e NÃO estava na OC vira um rascunho.
+        // e confronta os itens: o que foi PEDIDO na OC e NÃO veio na NF são os FALTANTES,
+        // que viram um rascunho com o mesmo fornecedor para re-pedir depois.
         if (entrada.PedidoCompraId is Guid pedidoId)
         {
             var pedido = await db.PedidosCompra.Include(p => p.Itens)
@@ -1147,24 +1148,25 @@ public class EntradaNFeController(SistemaDbContext db,
             {
                 pedido.ReceberComNota($"NF {nNF}");
 
-                // Itens recebidos (com produto) que NÃO estavam na OC.
-                var naOc = pedido.Itens.Select(i => i.ProdutoId).ToHashSet();
-                var divergentes = entrada.Itens
-                    .Where(i => i.ProdutoId.HasValue && !naOc.Contains(i.ProdutoId!.Value))
+                // Itens da OC que NÃO vieram na NF (faltaram) → re-pedir ao fornecedor.
+                var naNf = entrada.Itens
+                    .Where(i => i.ProdutoId.HasValue).Select(i => i.ProdutoId!.Value).ToHashSet();
+                var faltantes = pedido.Itens
+                    .Where(i => !naNf.Contains(i.ProdutoId))
                     .ToList();
-                if (divergentes.Count > 0)
+                if (faltantes.Count > 0)
                 {
                     var numero = await ProximoNumeroPedidoAsync(entrada.EmpresaId, ct);
                     var rascunho = Sistema.Domain.Compras.Entities.PedidoCompra.Criar(
                         entrada.EmpresaId, pedido.FornecedorId, pedido.UsuarioId, numero,
-                        localEstoqueId: entrada.LocalEstoqueId);
-                    foreach (var d in divergentes)
-                        rascunho.AdicionarItem(d.ProdutoId!.Value,
-                            d.ProdutoDescricao ?? d.DescricaoXml, d.QuantidadeEstoque, d.CustoUnitarioFinal);
-                    rascunho.DefinirObservacao($"Itens recebidos na NF {nNF} que não estavam na OC {pedido.Numero}.");
+                        localEstoqueId: pedido.LocalEstoqueId ?? entrada.LocalEstoqueId,
+                        requisicaoCompraId: pedido.RequisicaoCompraId);
+                    foreach (var f in faltantes)
+                        rascunho.AdicionarItem(f.ProdutoId, f.Descricao, f.Quantidade, f.PrecoUnitario);
+                    rascunho.DefinirObservacao($"Itens da OC {pedido.Numero} que NÃO vieram na NF {nNF} — re-pedir ao fornecedor.");
                     db.PedidosCompra.Add(rascunho);
                     rascunhoNumero = numero;
-                    qtdDivergentes = divergentes.Count;
+                    qtdDivergentes = faltantes.Count;
                 }
             }
         }

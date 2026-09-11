@@ -1462,7 +1462,7 @@ async function finalizarEntrada() {
     })
     notif.ok('Entrada escriturada com sucesso!')
     if (resp.data?.divergentes > 0 && resp.data?.rascunhoNumero)
-      notif.aviso(`Chegaram ${resp.data.divergentes} item(ns) fora da OC — criei o rascunho de compra #${resp.data.rascunhoNumero} com eles.`)
+      notif.aviso(`Faltaram ${resp.data.divergentes} item(ns) da OC (não vieram na NF) — criei o rascunho de compra #${resp.data.rascunhoNumero} para re-pedir ao fornecedor.`)
     await carregar()
     passo.value = 6
   } catch (e: any) {

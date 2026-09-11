@@ -27,4 +27,13 @@ public class ItemPedidoCompra : Entity
         };
 
     public void Receber(decimal quantidade) => QuantidadeRecebida += quantidade;
+
+    /// <summary>Ajusta o item com a quantidade e o custo REAIS da NF recebida e recalcula o total.</summary>
+    public void AjustarPeloRecebido(decimal quantidade, decimal precoUnitario)
+    {
+        Quantidade = quantidade;
+        PrecoUnitario = precoUnitario;
+        Total = Math.Round(quantidade * precoUnitario, 2);
+        QuantidadeRecebida = quantidade;
+    }
 }

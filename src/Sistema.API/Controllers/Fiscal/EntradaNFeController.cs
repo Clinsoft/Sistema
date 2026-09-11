@@ -1148,6 +1148,20 @@ public class EntradaNFeController(SistemaDbContext db,
             {
                 pedido.ReceberComNota($"NF {nNF}");
 
+                // Atualiza os itens da OC com a quantidade e o custo REAIS da NF (o que
+                // realmente chegou), recalculando o total do pedido.
+                var reais = entrada.Itens
+                    .Where(i => i.ProdutoId.HasValue)
+                    .GroupBy(i => i.ProdutoId!.Value)
+                    .ToDictionary(g => g.Key, g =>
+                    {
+                        var qtd = g.Sum(x => x.QuantidadeEstoque);
+                        var valor = g.Sum(x => x.QuantidadeEstoque * x.CustoUnitarioFinal);
+                        var preco = qtd > 0 ? Math.Round(valor / qtd, 4) : g.Max(x => x.CustoUnitarioFinal);
+                        return (Qtd: qtd, Preco: preco);
+                    });
+                pedido.AplicarRecebimentoReal(reais);
+
                 // Itens da OC que NÃO vieram na NF (faltaram) → re-pedir ao fornecedor.
                 var naNf = entrada.Itens
                     .Where(i => i.ProdutoId.HasValue).Select(i => i.ProdutoId!.Value).ToHashSet();

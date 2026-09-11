@@ -58,6 +58,16 @@ public class PedidoCompra : Entity
         Total = _itens.Sum(i => i.Total);
     }
 
+    /// <summary>Ajusta os itens com a quantidade/custo REAIS da NF recebida (por produto) e
+    /// recalcula o total. Itens não presentes na NF ficam inalterados.</summary>
+    public void AplicarRecebimentoReal(IReadOnlyDictionary<Guid, (decimal Qtd, decimal Preco)> reais)
+    {
+        foreach (var it in _itens)
+            if (reais.TryGetValue(it.ProdutoId, out var r))
+                it.AjustarPeloRecebido(r.Qtd, r.Preco);
+        Total = _itens.Sum(i => i.Total);
+    }
+
     public void DefinirAnexo(string? url) => AnexoUrl = url;
 
     public void DefinirObservacao(string? observacao) => Observacao = observacao;

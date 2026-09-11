@@ -276,6 +276,11 @@
                 <div class="text-caption text-medium-emphasis mt-2">
                   Requer o template <b>resumo_diario_gestor</b> aprovado na Meta.
                 </div>
+                <v-btn size="small" variant="tonal" color="success" class="mt-3"
+                  prepend-icon="mdi-send-check" :loading="testandoResumo"
+                  :disabled="!cfgMsg.enviarResumoDiario" @click="testarResumo">
+                  Disparar resumo agora (teste)
+                </v-btn>
               </v-card-text>
             </v-card>
           </v-col>
@@ -1281,6 +1286,17 @@ async function salvarCfgMsg() {
   } catch {
     notif.erro('Erro ao salvar configuração.')
   }
+}
+
+const testandoResumo = ref(false)
+async function testarResumo() {
+  testandoResumo.value = true
+  try {
+    const { data } = await api.post('/whatsapp/mensagem/resumo-diario/testar', {})
+    notif.ok(data?.mensagem || 'Resumo diário disparado.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao disparar o resumo.')
+  } finally { testandoResumo.value = false }
 }
 
 // Templates

@@ -84,6 +84,16 @@ public class WhatsAppMensagemController(
         return NoContent();
     }
 
+    /// <summary>Dispara o resumo diário AGORA (teste), para os números configurados.</summary>
+    [HttpPost("resumo-diario/testar")]
+    [Authorize(Roles = "Administrador,Gerente")]
+    public async Task<IActionResult> TestarResumoDiario(
+        [FromServices] Sistema.Infrastructure.Jobs.ResumoDiarioJob job, CancellationToken ct)
+    {
+        await job.ExecutarAsync();
+        return Ok(new { mensagem = "Resumo diário disparado. Confira os números configurados." });
+    }
+
     // ─── Configuração do Catálogo (bloco separado na tela) ────────────────────
 
     [HttpGet("/api/whatsapp/configuracao")]

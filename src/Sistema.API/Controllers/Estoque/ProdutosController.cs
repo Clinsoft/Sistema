@@ -337,7 +337,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return File(ms, "image/jpeg");
     }
 
-    /// <summary>Sugere a descrição complementar (benefícios) de um produto usando IA.
+    /// <summary>Sugere a descrição complementar ("para que serve", em tópicos) de um produto usando IA.
     /// Prefere a OpenAI (ChatGPT); usa o Gemini como alternativa se a OpenAI não estiver configurada.</summary>
     [HttpPost("sugerir-descricao")]
     public async Task<IActionResult> SugerirDescricao([FromBody] SugerirDescricaoRequest req, CancellationToken ct)
@@ -364,7 +364,55 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         }
     }
 
-    /// <summary>Monta o prompt (com foco nos melhores benefícios + contexto) e chama a IA.</summary>
+    /// <summary>Manutenção: regenera a descrição complementar ("para que serve", em tópicos) de
+    /// TODOS os produtos por quilo (granel) via IA. Restrito a chamadas LOCAIS (loopback), sem proxy.</summary>
+    [HttpPost("regerar-descricoes-granel")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RegerarDescricoesGranel(
+        [FromQuery] Guid empresaId, [FromQuery] bool somenteVazias = false, CancellationToken ct = default)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress;
+        if (ip is null || !System.Net.IPAddress.IsLoopback(ip) || Request.Headers.ContainsKey("X-Forwarded-For"))
+            return NotFound();   // endpoint de manutenção: só chamadas locais
+
+        if (!openai.Configurado && !gemini.Configurado)
+            return StatusCode(503, new { mensagem = "IA não configurada." });
+
+        var produtos = await (
+            from p in db.Produtos
+            join u in db.UnidadesMedida on p.UnidadeMedidaId equals u.Id into us
+            from u in us.DefaultIfEmpty()
+            join c in db.Categorias on p.CategoriaId equals c.Id into cs
+            from c in cs.DefaultIfEmpty()
+            join m in db.Marcas on p.MarcaId equals m.Id into ms
+            from m in ms.DefaultIfEmpty()
+            where p.EmpresaId == empresaId && p.Ativo
+                && (p.ProdutoBalanca || p.VendidoFracionado || (u != null && (u.Pesavel || u.Sigla == "KG")))
+                && (!somenteVazias || p.DescricaoComplementar == null || p.DescricaoComplementar == "")
+            select new { p.Id, p.Descricao, Categoria = c != null ? c.Nome : null, Marca = m != null ? m.Nome : null }
+        ).ToListAsync(ct);
+
+        int ok = 0, falhas = 0;
+        foreach (var pr in produtos)
+        {
+            try
+            {
+                var texto = await GerarDescricaoIaAsync(pr.Descricao, pr.Categoria, pr.Marca, ct);
+                if (!string.IsNullOrWhiteSpace(texto))
+                {
+                    var prod = await db.Produtos.FirstAsync(x => x.Id == pr.Id, ct);
+                    prod.DefinirDescricaoComplementar(texto);
+                    await db.SaveChangesAsync(ct);
+                    ok++;
+                }
+                else falhas++;
+            }
+            catch { falhas++; }
+        }
+        return Ok(new { total = produtos.Count, atualizados = ok, falhas });
+    }
+
+    /// <summary>Monta o prompt ("para que serve" em tópicos + contexto) e chama a IA.</summary>
     private async Task<string> GerarDescricaoIaAsync(string nome, string? categoria, string? marca, CancellationToken ct)
     {
         var contexto = "";
@@ -374,10 +422,11 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
 
         var prompt =
             $"Você é um especialista em produtos naturais e saudáveis de uma loja brasileira. " +
-            $"Escreva uma descrição complementar CURTA E OBJETIVA (1 a 2 frases, no máximo 300 caracteres, em português do Brasil) para o produto \"{nome}\".{contexto} " +
-            $"Destaque os 2 principais benefícios reais para a saúde/bem-estar. Direto ao ponto, sem enrolação. " +
+            $"Para o produto \"{nome}\".{contexto} " +
+            $"Escreva PARA QUE SERVE o produto, em TÓPICOS curtos: de 3 a 4 itens, cada um numa linha, começando com \"• \". " +
+            $"Cada tópico com no máximo 8 palavras, direto ao ponto, em português do Brasil. " +
             $"Linguagem comercial e honesta: não invente números nutricionais nem prometa cura, tratamento ou emagrecimento. " +
-            $"Responda apenas com o texto corrido, sem título, sem markdown, sem aspas e sem lista.";
+            $"Responda APENAS com os tópicos (um por linha), sem título, sem introdução, sem markdown e sem aspas.";
 
         var texto = openai.Configurado
             ? await openai.GerarTextoAsync(prompt, ct)

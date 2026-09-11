@@ -225,14 +225,94 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                 && (sessao.Fechamento == null || v.DataHora <= sessao.Fechamento))
             .SumAsync(v => v.Troco, ct);
 
-        var pdf = GerarFechamentoTermico(sessao, empresa, operador, local,
+        // HTML térmico (80mm, altura automática) — imprime pelo navegador sem desperdício de papel.
+        var html = GerarFechamentoHtml(sessao, empresa, operador, local,
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Dinheiro),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Pix),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoCredito),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.CartaoDebito),
             Forma(Sistema.Domain.Vendas.Entities.FormaPagamento.Crediario),
             troco);
-        return File(pdf, "application/pdf", "fechamento-caixa.pdf");
+        return Content(html, "text/html; charset=utf-8");
+    }
+
+    private static string GerarFechamentoHtml(
+        Sistema.Domain.Vendas.Entities.PDVSessao s,
+        Sistema.Domain.Cadastros.Entities.Empresa empresa,
+        string? operador, string? local,
+        decimal dinheiro, decimal pix, decimal credito, decimal debito, decimal crediario,
+        decimal troco)
+    {
+        var dinheiroLiquido = dinheiro - troco;
+        var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+        const int larg = 36;
+        static string LinhaTxt(string esq, string dir)
+        {
+            if (esq.Length + dir.Length + 1 > larg)
+                esq = esq[..Math.Max(0, larg - dir.Length - 1)];
+            return esq + new string(' ', Math.Max(1, larg - esq.Length - dir.Length)) + dir;
+        }
+        var traco = new string('-', larg);
+        string M(decimal v) => v.ToString("N2", brl);
+        static string E(string? v) => System.Net.WebUtility.HtmlEncode(v ?? "");
+
+        var esperadoDinheiro = s.SaldoAbertura + dinheiroLiquido + s.TotalSuprimentos - s.TotalSangrias;
+        var fechado = s.Fechamento != null;
+        var diferenca = fechado ? s.SaldoFechamento - esperadoDinheiro : 0m;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append(LinhaTxt("Saldo inicial", M(s.SaldoAbertura))).Append('\n');
+        sb.Append(LinhaTxt("Total de vendas", M(dinheiroLiquido + pix + credito + debito + crediario))).Append('\n');
+        sb.Append(LinhaTxt("Suprimentos", M(s.TotalSuprimentos))).Append('\n');
+        sb.Append(LinhaTxt("Sangrias", "-" + M(s.TotalSangrias))).Append('\n');
+        sb.Append(traco).Append('\n');
+        sb.Append("VENDAS POR FORMA").Append('\n');
+        sb.Append(LinhaTxt("Dinheiro", M(dinheiro))).Append('\n');
+        if (troco > 0) sb.Append(LinhaTxt("(-) Troco", "-" + M(troco))).Append('\n');
+        sb.Append(LinhaTxt("Pix", M(pix))).Append('\n');
+        sb.Append(LinhaTxt("Cartao Credito", M(credito))).Append('\n');
+        sb.Append(LinhaTxt("Cartao Debito", M(debito))).Append('\n');
+        if (crediario > 0) sb.Append(LinhaTxt("Crediario (a receber)", M(crediario))).Append('\n');
+        sb.Append(traco).Append('\n');
+        sb.Append(LinhaTxt("Esperado em dinheiro", M(esperadoDinheiro))).Append('\n');
+        if (fechado)
+        {
+            sb.Append(LinhaTxt("Contado (gaveta)", M(s.SaldoFechamento))).Append('\n');
+            sb.Append(LinhaTxt("Diferenca", (diferenca >= 0 ? "" : "-") + M(Math.Abs(diferenca)))).Append('\n');
+        }
+
+        var obs = string.IsNullOrWhiteSpace(s.ObservacaoFechamento) ? "" :
+            $"<hr><div class=\"sm\">Obs: {E(s.ObservacaoFechamento)}</div>";
+
+        return $@"<!doctype html><html lang=""pt-BR""><head><meta charset=""utf-8"">
+<title>Fechamento de Caixa</title>
+<style>
+@page {{ size: 80mm auto; margin: 0; }}
+html,body {{ margin:0; padding:0; }}
+body {{ width:80mm; font-family:'Courier New',monospace; color:#000; }}
+.wrap {{ padding:2mm 3mm 3mm; }}
+.c {{ text-align:center; }}
+.b {{ font-weight:bold; }}
+.tit {{ font-size:14px; }}
+.sub {{ font-size:12px; }}
+.sm {{ font-size:11px; }}
+pre {{ margin:0; font-family:inherit; font-size:12px; white-space:pre-wrap; word-break:break-word; }}
+hr {{ border:0; border-top:1px dashed #000; margin:4px 0; }}
+.head {{ font-size:11px; }}
+</style></head><body><div class=""wrap"">
+<div class=""c b tit"">{E(empresa.NomeFantasia)}</div>
+<div class=""c b sub"">FECHAMENTO DE CAIXA</div>
+<hr>
+<div class=""head"">Operador: {E(operador)}</div>
+<div class=""head"">Caixa: {E(local)}</div>
+<div class=""head"">Abertura: {s.Abertura:dd/MM/yyyy HH:mm}</div>
+<div class=""head"">Fechamento: {(s.Fechamento != null ? s.Fechamento.Value.ToString("dd/MM/yyyy HH:mm") : "-")}</div>
+<hr>
+<pre>{sb}</pre>
+{obs}
+<hr>
+<div class=""c sm"">Conferencia de caixa - sem valor fiscal</div>
+</div></body></html>";
     }
 
     private static byte[] GerarFechamentoTermico(

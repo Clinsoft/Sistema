@@ -145,10 +145,23 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.ProdutoId, i.Descricao, i.Quantidade })
             .ToListAsync(ct);
 
+        // "Vai chegar" = o produto DEU ENTRADA no estoque desta loja a partir da data da
+        // requisição (NF processada / recebimento). Independe de qual OC/requisição casou a NF,
+        // refletindo a chegada física real. O resto fica "aguardando fornecedor".
+        var reqProdutoIds = itens.Select(i => i.ProdutoId).ToList();
+        var chegaram = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == req.EmpresaId
+                && m.LocalEstoqueId == req.LocalEstoqueId
+                && m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                && m.CriadoEm >= req.CriadoEm
+                && reqProdutoIds.Contains(m.ProdutoId))
+            .Select(m => m.ProdutoId).Distinct().ToListAsync(ct);
+        var chegaramSet = chegaram.ToHashSet();
+
         // Pedidos vinculados a esta requisição (exato). Se não houver, cai no aproximado.
         var pedidosLig = await db.PedidosCompra.AsNoTracking()
             .Where(p => p.RequisicaoCompraId == id && p.Status != StatusPedidoCompra.Cancelado)
-            .Select(p => new { p.Id, p.Numero }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
 
         var aproximado = false;
         if (pedidosLig.Count == 0)
@@ -162,7 +175,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                     && p.RequisicaoCompraId == null
                     && p.Status != StatusPedidoCompra.Cancelado
                     && p.LocalEstoqueId == req.LocalEstoqueId)
-                .Select(p => new { p.Id, p.Numero }).ToListAsync(ct);
+                .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
         }
 
         var pedidoIds = pedidosLig.Select(p => p.Id).ToList();
@@ -179,6 +192,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             var pedido = casados.Sum(c => c.Quantidade);
             var numeros = casados.Select(c => numeroPorId.GetValueOrDefault(c.PedidoCompraId))
                 .Where(n => n is not null).Distinct().ToList();
+            // "Vai chegar" quando o produto já deu entrada no estoque da loja (NF processada).
+            var vaiChegar = chegaramSet.Contains(it.ProdutoId);
             return new
             {
                 produtoId = it.ProdutoId,
@@ -187,6 +202,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 pedido,
                 pendente = Math.Max(0, it.Quantidade - pedido),
                 pedidos = numeros,
+                situacao = vaiChegar ? "VaiChegar" : "Aguardando",
             };
         }).ToList();
 
@@ -195,8 +211,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             requisicaoId = id,
             aproximado,
             totalItens = linhas.Count,
-            itensPendentes = linhas.Count(l => l.pendente > 0),
-            completo = linhas.All(l => l.pendente <= 0),
+            itensPendentes = linhas.Count(l => l.situacao != "VaiChegar"),
+            vaoChegar = linhas.Count(l => l.situacao == "VaiChegar"),
+            completo = linhas.All(l => l.situacao == "VaiChegar"),
             itens = linhas,
         });
     }

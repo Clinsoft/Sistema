@@ -108,37 +108,33 @@
         <v-card-text class="pa-4">
           <div v-if="det.observacao" class="text-body-2 mb-3"><b>Obs.:</b> {{ det.observacao }}</div>
 
-          <!-- Conferência: requisitado × pedido -->
-          <v-alert v-if="conf" :type="conf.completo ? 'success' : 'warning'" variant="tonal"
+          <!-- Acompanhamento: o que vai chegar (NF já cruzada) x aguardando fornecedor -->
+          <v-alert v-if="conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
-            <div class="d-flex align-center flex-wrap ga-2">
-              <b v-if="conf.completo">Tudo a caminho — todos os {{ conf.totalItens }} itens já foram pedidos ao fornecedor (vão chegar).</b>
-              <b v-else>{{ conf.itensPendentes }} de {{ conf.totalItens }} itens vão faltar (ainda não pedidos).</b>
-              <v-spacer />
-              <v-btn size="x-small" variant="text" @click="mostrarConf = !mostrarConf">
-                {{ mostrarConf ? 'ocultar' : 'ver detalhe' }}
-              </v-btn>
-            </div>
-            <div v-if="conf.aproximado" class="text-caption mt-1">
-              * Conferência aproximada (por produto/loja) para pedidos antigos sem vínculo direto.
-            </div>
-            <v-table v-if="mostrarConf" density="compact" class="mt-2 bg-transparent">
-              <thead><tr><th>Produto</th><th class="text-center" style="width:90px">Pediu</th>
-                <th class="text-center text-success" style="width:100px">Vão chegar</th>
-                <th class="text-center text-warning" style="width:100px">Vão faltar</th>
-                <th style="width:120px">Pedidos</th></tr></thead>
+            <b v-if="conf.completo">Todos os {{ conf.totalItens }} itens já foram cruzados com a nota — vão chegar.</b>
+            <b v-else>{{ conf.vaoChegar }} de {{ conf.totalItens }} vão chegar · {{ conf.itensPendentes }} aguardando fornecedor.</b>
+            <v-table density="compact" class="mt-2 bg-transparent">
+              <thead><tr><th>Produto</th><th class="text-center" style="width:70px">Qtd</th>
+                <th class="text-center" style="width:180px">Situação</th></tr></thead>
               <tbody>
-                <tr v-for="l in conf.itens" :key="l.produtoId" :class="l.pendente > 0 ? 'text-warning' : ''">
+                <tr v-for="l in conf.itens" :key="l.produtoId">
                   <td>{{ l.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
-                  <td class="text-center">{{ fmtQtd(l.pedido) }}</td>
-                  <td class="text-center font-weight-bold">{{ l.pendente > 0 ? fmtQtd(l.pendente) : '—' }}</td>
-                  <td class="text-caption">{{ (l.pedidos || []).join(', ') || '—' }}</td>
+                  <td class="text-center">
+                    <v-chip v-if="l.situacao === 'VaiChegar'" size="small" color="success" variant="tonal">
+                      <v-icon start size="14">mdi-truck-check-outline</v-icon>Vai chegar
+                    </v-chip>
+                    <v-chip v-else size="small" color="warning" variant="tonal">
+                      <v-icon start size="14">mdi-clock-outline</v-icon>Aguardando fornecedor
+                    </v-chip>
+                  </td>
                 </tr>
               </tbody>
             </v-table>
           </v-alert>
 
+          <!-- Agrupamento por fornecedor + gerar pedido: só para o gestor -->
+          <template v-if="ehGestor">
           <v-card v-for="g in porFornecedor" :key="g.fornecedor" rounded="lg" variant="outlined" class="mb-3">
             <v-card-title class="text-body-2 font-weight-bold d-flex align-center py-2 flex-wrap ga-2">
               <v-icon icon="mdi-truck-outline" size="18" class="mr-1" /> {{ g.fornecedor }}
@@ -153,17 +149,19 @@
             </v-alert>
             <v-table density="compact">
               <thead><tr><th>Produto</th><th class="text-center" style="width:90px">Qtd</th>
-                <th class="text-right" style="width:110px">Custo un.</th><th class="text-right" style="width:120px">Estimado</th></tr></thead>
+                <th v-if="ehGestor" class="text-right" style="width:110px">Custo un.</th>
+                <th v-if="ehGestor" class="text-right" style="width:120px">Estimado</th></tr></thead>
               <tbody>
                 <tr v-for="i in g.itens" :key="i.produtoId">
                   <td>{{ i.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(i.quantidade) }}</td>
-                  <td class="text-right">R$ {{ fmt(i.custoUnitario) }}</td>
-                  <td class="text-right">R$ {{ fmt(i.quantidade * i.custoUnitario) }}</td>
+                  <td v-if="ehGestor" class="text-right">R$ {{ fmt(i.custoUnitario) }}</td>
+                  <td v-if="ehGestor" class="text-right">R$ {{ fmt(i.quantidade * i.custoUnitario) }}</td>
                 </tr>
               </tbody>
             </v-table>
           </v-card>
+          </template>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -191,7 +189,7 @@ interface ItemDet { produtoId: string; descricao: string; quantidade: number; cu
 
 const carregando = ref(false)
 const lista = ref<any[]>([])
-const filtroStatus = ref('Aberta')
+const filtroStatus = ref('Todas')
 const headers = [
   { title: 'Data', key: 'criadoEm' }, { title: 'Loja', key: 'loja' },
   { title: 'Solicitante', key: 'solicitante' }, { title: 'Itens', key: 'qtdItens', align: 'center' as const },

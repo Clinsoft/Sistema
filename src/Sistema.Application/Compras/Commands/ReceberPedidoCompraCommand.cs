@@ -7,19 +7,19 @@ using Sistema.Domain.Shared.Interfaces;
 
 namespace Sistema.Application.Compras.Commands;
 
-/// <summary>Item efetivamente recebido no balcão (confronto do recebimento manual).</summary>
-public record ItemRecebido(Guid ProdutoId, string Descricao, decimal Quantidade, decimal PrecoUnitario);
+/// <summary>Quantidade efetivamente recebida de um item da OC (confronto do recebimento manual).</summary>
+public record ItemRecebido(Guid ProdutoId, decimal Quantidade);
 
 /// <summary>
-/// Recebe um pedido de compra manualmente (sem NF-e). Quando <paramref name="Itens"/> é informado,
-/// confronta o que chegou com a OC: itens que NÃO estavam na OC entram no estoque e viram um rascunho
-/// de pedido, para o comprador regularizar depois.
+/// Recebe um pedido de compra manualmente (sem NF-e). <paramref name="Itens"/> traz a quantidade
+/// RECEBIDA de cada item da OC. O que foi pedido e não veio (faltou) vira um rascunho com o mesmo
+/// fornecedor, para re-pedir depois.
 /// </summary>
 public record ReceberPedidoCompraCommand(
     Guid PedidoId, Guid LocalEstoqueId, Guid UsuarioId,
     List<ItemRecebido>? Itens = null) : IRequest<ReceberPedidoCompraResult>;
 
-public record ReceberPedidoCompraResult(string? RascunhoNumero, int Divergentes);
+public record ReceberPedidoCompraResult(string? RascunhoNumero, int Faltantes);
 
 public class ReceberPedidoCompraHandler(
     IPedidoCompraRepository pedidoRepo,
@@ -36,49 +36,59 @@ public class ReceberPedidoCompraHandler(
         if (pedido.Status != StatusPedidoCompra.Enviado)
             throw new InvalidOperationException("Apenas pedidos com status 'Enviado' podem ser recebidos.");
 
-        // Base: o que foi recebido. Sem lista informada, recebe a OC como está (compatível).
-        var recebidos = cmd.Itens is { Count: > 0 }
-            ? cmd.Itens
-            : pedido.Itens.Select(i => new ItemRecebido(i.ProdutoId, i.Descricao, i.Quantidade, i.PrecoUnitario)).ToList();
+        // Quantidade recebida por produto (sem lista = recebe tudo o que foi pedido).
+        var recebidoPorProduto = cmd.Itens is { Count: > 0 }
+            ? cmd.Itens.GroupBy(i => i.ProdutoId).ToDictionary(g => g.Key, g => g.Sum(x => x.Quantidade))
+            : pedido.Itens.ToDictionary(i => i.ProdutoId, i => i.Quantidade);
 
-        foreach (var item in recebidos)
+        // Faltantes: item da OC cuja quantidade recebida ficou abaixo da pedida.
+        var faltantes = new List<(Guid ProdutoId, string Descricao, decimal Qtd, decimal Preco)>();
+
+        foreach (var item in pedido.Itens)
         {
-            if (item.Quantidade <= 0) continue;
-            var produto = await produtoRepo.ObterPorIdAsync(item.ProdutoId, ct);
-            if (produto is null) continue;
+            var recebida = recebidoPorProduto.TryGetValue(item.ProdutoId, out var q) ? q : item.Quantidade;
+            if (recebida < 0) recebida = 0;
 
-            var mov = MovimentacaoEstoque.Criar(
-                pedido.EmpresaId, item.ProdutoId, cmd.LocalEstoqueId,
-                TipoMovimentacao.Entrada, item.Quantidade, item.PrecoUnitario,
-                documentoOrigem: pedido.Numero, usuarioId: cmd.UsuarioId);
+            // Entra no estoque o que realmente chegou.
+            if (recebida > 0)
+            {
+                var produto = await produtoRepo.ObterPorIdAsync(item.ProdutoId, ct);
+                if (produto is not null)
+                {
+                    var mov = MovimentacaoEstoque.Criar(
+                        pedido.EmpresaId, item.ProdutoId, cmd.LocalEstoqueId,
+                        TipoMovimentacao.Entrada, recebida, item.PrecoUnitario,
+                        documentoOrigem: pedido.Numero, usuarioId: cmd.UsuarioId);
+                    produto.AjustarEstoque(recebida);
+                    await movRepo.AdicionarAsync(mov, ct);
+                    produtoRepo.Atualizar(produto);
+                }
+            }
 
-            produto.AjustarEstoque(item.Quantidade);
-            await movRepo.AdicionarAsync(mov, ct);
-            produtoRepo.Atualizar(produto);
+            var faltou = item.Quantidade - recebida;
+            if (faltou > 0)
+                faltantes.Add((item.ProdutoId, item.Descricao, faltou, item.PrecoUnitario));
         }
 
         pedido.ReceberComNota("Recebimento manual (sem NF-e)");
         pedidoRepo.Atualizar(pedido);
 
-        // Confronto: recebidos que NÃO estavam na OC viram um rascunho para regularizar.
+        // Faltou algo → rascunho com o mesmo fornecedor para re-pedir.
         string? rascunhoNumero = null;
-        var divergentes = 0;
-        var naOc = pedido.Itens.Select(i => i.ProdutoId).ToHashSet();
-        var extras = recebidos.Where(r => r.Quantidade > 0 && !naOc.Contains(r.ProdutoId)).ToList();
-        if (extras.Count > 0)
+        if (faltantes.Count > 0)
         {
             rascunhoNumero = await pedidoRepo.ProximoNumeroAsync(pedido.EmpresaId, ct);
             var rascunho = PedidoCompra.Criar(
                 pedido.EmpresaId, pedido.FornecedorId, cmd.UsuarioId, rascunhoNumero,
-                localEstoqueId: cmd.LocalEstoqueId);
-            foreach (var e in extras)
-                rascunho.AdicionarItem(e.ProdutoId, e.Descricao, e.Quantidade, e.PrecoUnitario);
-            rascunho.DefinirObservacao($"Itens recebidos no balcão que não estavam na OC {pedido.Numero}.");
+                localEstoqueId: pedido.LocalEstoqueId ?? cmd.LocalEstoqueId,
+                requisicaoCompraId: pedido.RequisicaoCompraId);
+            foreach (var f in faltantes)
+                rascunho.AdicionarItem(f.ProdutoId, f.Descricao, f.Qtd, f.Preco);
+            rascunho.DefinirObservacao($"Itens da OC {pedido.Numero} que faltaram no recebimento — re-pedir ao fornecedor.");
             await pedidoRepo.AdicionarAsync(rascunho, ct);
-            divergentes = extras.Count;
         }
 
         await uow.SalvarAsync(ct);
-        return new ReceberPedidoCompraResult(rascunhoNumero, divergentes);
+        return new ReceberPedidoCompraResult(rascunhoNumero, faltantes.Count);
     }
 }

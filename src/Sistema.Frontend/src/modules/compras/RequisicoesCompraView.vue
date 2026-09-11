@@ -112,8 +112,8 @@
           <v-alert v-if="conf" :type="conf.completo ? 'success' : 'warning'" variant="tonal"
             density="comfortable" class="mb-3">
             <div class="d-flex align-center flex-wrap ga-2">
-              <b v-if="conf.completo">Tudo pedido — todos os {{ conf.totalItens }} itens já estão em pedidos de compra.</b>
-              <b v-else>Faltam pedir {{ conf.itensPendentes }} de {{ conf.totalItens }} itens.</b>
+              <b v-if="conf.completo">Tudo a caminho — todos os {{ conf.totalItens }} itens já foram pedidos ao fornecedor (vão chegar).</b>
+              <b v-else>{{ conf.itensPendentes }} de {{ conf.totalItens }} itens vão faltar (ainda não pedidos).</b>
               <v-spacer />
               <v-btn size="x-small" variant="text" @click="mostrarConf = !mostrarConf">
                 {{ mostrarConf ? 'ocultar' : 'ver detalhe' }}
@@ -123,8 +123,9 @@
               * Conferência aproximada (por produto/loja) para pedidos antigos sem vínculo direto.
             </div>
             <v-table v-if="mostrarConf" density="compact" class="mt-2 bg-transparent">
-              <thead><tr><th>Produto</th><th class="text-center" style="width:90px">Requisit.</th>
-                <th class="text-center" style="width:90px">Pedido</th><th class="text-center" style="width:90px">Pendente</th>
+              <thead><tr><th>Produto</th><th class="text-center" style="width:90px">Pediu</th>
+                <th class="text-center text-success" style="width:100px">Vão chegar</th>
+                <th class="text-center text-warning" style="width:100px">Vão faltar</th>
                 <th style="width:120px">Pedidos</th></tr></thead>
               <tbody>
                 <tr v-for="l in conf.itens" :key="l.produtoId" :class="l.pendente > 0 ? 'text-warning' : ''">

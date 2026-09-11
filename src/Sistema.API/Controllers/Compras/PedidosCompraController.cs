@@ -52,11 +52,11 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
     public async Task<IActionResult> Receber(Guid id, [FromBody] ReceberRequest req, CancellationToken ct)
     {
         var itens = req.Itens?
-            .Where(i => i.ProdutoId != Guid.Empty && i.Quantidade > 0)
-            .Select(i => new ItemRecebido(i.ProdutoId, i.Descricao ?? "", i.Quantidade, i.PrecoUnitario))
+            .Where(i => i.ProdutoId != Guid.Empty && i.Quantidade >= 0)
+            .Select(i => new ItemRecebido(i.ProdutoId, i.Quantidade))
             .ToList();
         var r = await mediator.Send(new ReceberPedidoCompraCommand(id, req.LocalEstoqueId, req.UsuarioId, itens), ct);
-        return Ok(new { rascunhoNumero = r.RascunhoNumero, divergentes = r.Divergentes });
+        return Ok(new { rascunhoNumero = r.RascunhoNumero, faltantes = r.Faltantes });
     }
 
     /// <summary>Define o fornecedor de um pedido (ex.: pedido de faltantes "a definir").</summary>
@@ -240,7 +240,7 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
 }
 
 public record ReceberRequest(Guid LocalEstoqueId, Guid UsuarioId, List<ReceberItemRequest>? Itens = null);
-public record ReceberItemRequest(Guid ProdutoId, string? Descricao, decimal Quantidade, decimal PrecoUnitario);
+public record ReceberItemRequest(Guid ProdutoId, decimal Quantidade);
 public record DefinirLojaRequest(Guid? LocalEstoqueId);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 public record RemoverItensRequest(List<Guid> ItemIds);

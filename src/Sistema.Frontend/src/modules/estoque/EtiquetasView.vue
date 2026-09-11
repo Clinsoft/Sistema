@@ -1180,7 +1180,8 @@ function imprimir() {
         font-size: 14pt; padding: 6px 8px; word-break: break-word; line-height: 1.2; }
       .pote-corpo { flex: 1; display: flex; flex-direction: column;
         justify-content: center; align-items: center; gap: 6px; padding: 8px; }
-      .pote-descricao { font-size: 9pt; color: #444; text-align: center; line-height: 1.3; }
+      .pote-descricao { font-size: 9pt; color: #444; text-align: center; line-height: 1.3;
+        white-space: pre-line; }
       .pote-plu { display: flex; align-items: center; gap: 4px; font-size: 8pt; color: #666; }
       .pote-plu-valor { font-family: monospace; font-weight: bold; font-size: 10pt; color: #333; }
       .pote-preco-bloco { text-align: center; }
@@ -1369,7 +1370,8 @@ function imprimir() {
   padding: 10px 12px; word-break: break-word; line-height: 1.25; color: white; }
 .pote-corpo { flex: 1; display: flex; flex-direction: column;
   justify-content: center; align-items: center; gap: 8px; padding: 10px 12px; }
-.pote-descricao { font-size: 11px; color: #555; text-align: center; line-height: 1.4; }
+.pote-descricao { font-size: 11px; color: #555; text-align: center; line-height: 1.4;
+  white-space: pre-line; }
 .pote-plu { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #666; }
 .pote-plu-valor { font-family: monospace; font-weight: bold; font-size: 13px; color: #333; }
 .pote-preco-bloco { text-align: center; }

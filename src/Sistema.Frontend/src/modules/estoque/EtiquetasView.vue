@@ -329,14 +329,8 @@
               </div>
               <div v-if="camposGondola.precoKg" class="gon-por-unidade">{{ fmtPrecoKg(p) }}</div>
               <div v-if="camposGondola.validade && validade" class="gon-validade">Val: {{ fmtData(validade) }}</div>
-              <div v-if="camposGondola.codBarras && p.codigoBarras" class="gon-barcode-area">
-                <div class="gon-barcode-bars">
-                  <span v-for="i in 50" :key="i"
-                    :style="{ width: (i % 3 === 0 ? 2 : 1) + 'px', background: i % 7 === 0 ? '#fff' : '#111' }"
-                    class="gon-bar" />
-                </div>
-                <div class="gon-barcode-num">{{ p.codigoBarras }}</div>
-              </div>
+              <div v-if="camposGondola.codBarras && ean13Svg(p.codigoBarras)" class="gon-barcode-area"
+                v-html="ean13Svg(p.codigoBarras, { moduleW: 1, height: 22 })"></div>
               <div v-if="camposGondola.codigoPlu && p.codigoPlu" class="gon-plu">
                 PLU: {{ String(p.codigoPlu).padStart(6, '0') }}
               </div>
@@ -895,9 +889,9 @@ function imprimirGondola() {
     if (c.precoKg) partes.push(`<div class="g-kg">${escHtml(fmtPrecoKg(p))}</div>`)
     if (c.validade && val) partes.push(`<div class="g-val">Val: ${fmtData(val)}</div>`)
     if (c.codigoPlu && p.codigoPlu) partes.push(`<div class="g-plu">PLU: ${String(p.codigoPlu).padStart(6, '0')}</div>`)
-    const svgBc = ean13Svg(p.codigoBarras ?? '', { moduleW: 1.3, height: 36 })
+    const svgBc = ean13Svg(p.codigoBarras ?? '', { moduleW: 1, height: 22 })
     const barcode = (c.codBarras && svgBc) ? `<div class="g-bc">${svgBc}</div>` : ''
-    return `<div class="g-etq">${barcode}${partes.join('')}</div>`
+    return `<div class="g-etq">${partes.join('')}${barcode}</div>`
   }).join('')
 
   const win = window.open('', '_blank')
@@ -907,19 +901,17 @@ function imprimirGondola() {
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:Arial,sans-serif;background:#fff}
       .grid{display:grid;grid-template-columns:repeat(${cols}, ${w}mm)}
-      .g-etq{width:${w}mm;height:${h}mm;border:1px solid #999;border-left:4px solid #1565C0;
+      .g-etq{width:${w}mm;height:${h}mm;
         padding:2mm 3mm;position:relative;overflow:hidden;display:flex;flex-direction:column;
-        justify-content:space-between;page-break-inside:avoid}
+        justify-content:center;align-items:center;text-align:center;page-break-inside:avoid}
       .g-nome{font-weight:bold;color:#1a1a1a;line-height:1.15;word-break:break-word}
-      .g-preco{font-weight:900;color:#1565C0;line-height:1}
+      .g-preco{font-weight:900;color:#111;line-height:1}
       .g-rs{font-size:.45em;font-weight:bold;margin-right:2px}
       .g-kg{font-size:9px;color:#555}
       .g-val{font-size:9px;color:#666}
       .g-plu{font-size:9px;color:#666;font-family:monospace}
-      .g-bc{position:absolute;right:3px;top:3px;bottom:3px;width:58px;display:flex;
-        flex-direction:column;align-items:center;justify-content:center}
-      .g-bars{display:flex;align-items:stretch;height:60%}
-      .g-bcnum{font-family:monospace;font-size:6px;color:#333;margin-top:1px;text-align:center}
+      .g-bc{display:flex;align-items:center;justify-content:center;margin-top:1mm;max-width:100%}
+      .g-bc svg{max-width:100%;height:auto}
       @page{margin:5mm}
     </style></head>
     <body><div class="grid">${labels}</div>
@@ -1342,21 +1334,18 @@ function imprimir() {
   background: #e8e8e8; padding: 12px; border-radius: 8px; min-height: 100px;
 }
 .gondola-etiqueta {
-  background: white; border: 1px solid #bbb; border-left: 5px solid #1565C0;
-  display: flex; flex-direction: column; justify-content: space-between;
+  background: white;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
   padding: 5px 7px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
   overflow: hidden; position: relative;
 }
 .gon-nome { font-weight: bold; color: #1a1a1a; line-height: 1.2; word-break: break-word; }
-.gon-preco { font-weight: 900; color: #1565C0; line-height: 1; display: flex; align-items: baseline; gap: 2px; }
+.gon-preco { font-weight: 900; color: #111; line-height: 1; display: flex; align-items: baseline; justify-content: center; gap: 2px; }
 .gon-preco-rs { font-size: 0.45em; font-weight: bold; padding-bottom: 2px; }
 .gon-por-unidade { font-size: 9px; color: #555; }
 .gon-validade { font-size: 8px; color: #888; }
-.gon-barcode-area { position: absolute; right: 4px; top: 4px; bottom: 4px; width: 60px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.gon-barcode-bars { display: flex; align-items: stretch; height: 70%; }
-.gon-bar { display: inline-block; height: 100%; }
-.gon-barcode-num { font-family: monospace; font-size: 6px; color: #333; margin-top: 2px; text-align: center; }
+.gon-barcode-area { display: flex; align-items: center; justify-content: center; margin-top: 3px; max-width: 100%; }
+.gon-barcode-area svg { max-width: 100%; height: auto; }
 .gon-plu { font-size: 8px; color: #666; font-family: monospace; }
 
 /* ── Pote 9×9cm ── */

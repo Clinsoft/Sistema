@@ -1452,6 +1452,10 @@ async function finalizarEntrada() {
   processando.value = true
   try {
     if (itensAlterados.value > 0) await salvarTodos()
+    // Garante que o vínculo com a OC esteja PERSISTIDO antes de processar (idempotente).
+    // Sem isto, se a vinculação anterior falhou (ex.: 502), a nota seria escriturada sem OC.
+    if (pedidoCompraId.value)
+      await api.patch(`/fiscal/entradas/${entradaId}/pedido-compra`, { pedidoCompraId: pedidoCompraId.value })
     const faturasEnviar = lancarFinanceiro.value
       ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
       : []
@@ -1752,8 +1756,13 @@ async function salvarFreteManual() {
 
 async function salvarPedidoCompra(id: string | null) {
   if (!id) return
-  await api.patch(`/fiscal/entradas/${entradaId}/pedido-compra`, { pedidoCompraId: id })
-    .then(() => notif.ok('Ordem de compra vinculada.'))
+  try {
+    await api.patch(`/fiscal/entradas/${entradaId}/pedido-compra`, { pedidoCompraId: id })
+    notif.ok('Ordem de compra vinculada.')
+  } catch (e: any) {
+    notif.erro('Não foi possível vincular a ordem de compra. Selecione novamente antes de escriturar.')
+    await carregar()   // recarrega o vínculo REAL — reverte a seleção que não salvou
+  }
 }
 
 // Aplica os padrões do produto cadastrado ao item: unidade de estoque e markup.

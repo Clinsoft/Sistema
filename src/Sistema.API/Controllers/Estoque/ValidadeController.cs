@@ -18,7 +18,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     // ─── Painel ──────────────────────────────────────────────────────────────
 
     [HttpGet("painel")]
-    public async Task<IActionResult> Painel([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> Painel([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var cfg = await CarregarConfig(empresaId, ct);
         var hoje = DateTime.Today;
@@ -33,6 +33,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
             join u in db.UnidadesMedida on p.UnidadeMedidaId equals u.Id into unids
             from u in unids.DefaultIfEmpty()
             where l.EmpresaId == empresaId
+               && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)   // validade é por LOJA
                && l.DataValidade.HasValue
                && l.Quantidade > 0
                && p.Ativo

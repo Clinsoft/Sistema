@@ -918,7 +918,7 @@ const resumoCards = computed(() => [
 async function carregarPainel() {
   carregando.value = true
   try {
-    const r = await api.get('/validade/painel', { params: { empresaId: auth.empresaId } })
+    const r = await api.get('/validade/painel', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined } })
     painel.value = r.data.itens
     resumo.value = r.data.resumo
     if (r.data.resumo.configuracao) Object.assign(cfg.value, r.data.resumo.configuracao)

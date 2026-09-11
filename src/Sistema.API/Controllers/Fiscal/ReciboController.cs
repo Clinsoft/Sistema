@@ -44,8 +44,122 @@ public class ReciboController(SistemaDbContext db, IDanfeService danfe) : Contro
                 .Select(u => u.Nome).FirstOrDefaultAsync(ct)
             : null;
 
-        var pdf = GerarDanfeNFCeTermico(nota, empresa, venda, vendedor);
-        return File(pdf, "application/pdf", $"nfce-{nota.Numero:D9}.pdf");
+        // HTML térmico (80mm, altura automática) — imprime pelo navegador sem desperdício de papel.
+        var html = GerarDanfeNFCeHtml(nota, empresa, venda, vendedor);
+        return Content(html, "text/html; charset=utf-8");
+    }
+
+    // Versão HTML do DANFE NFC-e: @page 80mm com altura do conteúdo, para o Edge imprimir
+    // exatamente a tira do cupom (o PDF 80mm caía numa folha grande, desperdiçando papel).
+    private static string GerarDanfeNFCeHtml(
+        Sistema.Domain.Fiscal.Entities.NotaFiscal nota,
+        Sistema.Domain.Cadastros.Entities.Empresa empresa,
+        Sistema.Domain.Vendas.Entities.Venda? venda,
+        string? vendedor)
+    {
+        var brl = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+        const int larg = 36;
+        static string LinhaTxt(string esq, string dir, int larg2 = 36)
+        {
+            if (esq.Length + dir.Length + 1 > larg2) esq = esq[..Math.Max(0, larg2 - dir.Length - 1)];
+            return esq + new string(' ', Math.Max(1, larg2 - esq.Length - dir.Length)) + dir;
+        }
+        var traco = new string('-', larg);
+        static string E(string? v) => System.Net.WebUtility.HtmlEncode(v ?? "");
+
+        // QR Code como data URI (mesma geração do PDF).
+        string qrImg = "";
+        if (!string.IsNullOrEmpty(nota.QrCode))
+        {
+            using var qrGen = new QRCoder.QRCodeGenerator();
+            var qrData = qrGen.CreateQrCode(nota.QrCode, QRCoder.QRCodeGenerator.ECCLevel.M);
+            var png = new QRCoder.PngByteQRCode(qrData).GetGraphic(10);
+            qrImg = "data:image/png;base64," + Convert.ToBase64String(png);
+        }
+
+        var chave = nota.ChaveAcesso ?? "";
+        var chaveFmt = string.Join(" ", Enumerable.Range(0, (chave.Length + 3) / 4)
+            .Select(i => chave.Substring(i * 4, Math.Min(4, chave.Length - i * 4))));
+        var docCons = nota.CpfCnpjDestinatario ?? nota.CpfCnpjConsumidor;
+
+        // Corpo monoespaçado: itens, totais e pagamentos (alinhamento por caracteres).
+        var sb = new System.Text.StringBuilder();
+        foreach (var item in nota.Itens)
+        {
+            sb.Append(E($"{item.Codigo} {item.Descricao}")).Append('\n');
+            var qtd = item.Pesavel ? item.Quantidade.ToString("N3", brl) : item.Quantidade.ToString("N0", brl);
+            sb.Append(E(LinhaTxt($"  {qtd} {item.UnidadeMedida} x {item.ValorUnitario.ToString("N2", brl)}",
+                item.ValorTotal.ToString("N2", brl)))).Append('\n');
+        }
+        sb.Append(traco).Append('\n');
+        sb.Append(E(LinhaTxt("Qtde. total de itens", nota.Itens.Count.ToString()))).Append('\n');
+        sb.Append(E(LinhaTxt("Valor total R$", nota.TotalNota.ToString("N2", brl)))).Append('\n');
+        sb.Append("<b>").Append(E(LinhaTxt("Valor a Pagar R$", nota.TotalNota.ToString("N2", brl)))).Append("</b>\n");
+        sb.Append(traco).Append('\n');
+        sb.Append(E(LinhaTxt("FORMA PAGTO", "VALOR R$"))).Append('\n');
+        if (venda is not null)
+        {
+            foreach (var pag in venda.Pagamentos)
+                sb.Append(E(LinhaTxt(FormaPagamentoTexto(pag.Forma), pag.Valor.ToString("N2", brl)))).Append('\n');
+            if (venda.Troco > 0)
+                sb.Append(E(LinhaTxt("Troco", "R$ " + venda.Troco.ToString("N2", brl)))).Append('\n');
+        }
+
+        string Cab(string t, bool bold = false, int fs = 11) =>
+            $"<div class=\"c\" style=\"font-size:{fs}px\">{(bold ? "<b>" + E(t) + "</b>" : E(t))}</div>";
+
+        var footer = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(vendedor)) footer.Append(Cab($"Vendedor: {vendedor}"));
+        footer.Append(Cab(empresa.NomeFantasia ?? ""));
+        footer.Append(Cab("Trib aprox: Sem parametros p/ calculo"));
+        footer.Append(Cab($"Numero: {nota.Numero}  Serie: {nota.Serie}"));
+        footer.Append(Cab($"Emissao: {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}"));
+        footer.Append(Cab("Via consumidor"));
+        footer.Append("<div style='height:4px'></div>");
+        footer.Append(Cab("Consulte pela chave de acesso em"));
+        if (!string.IsNullOrEmpty(nota.UrlConsultaQrCode)) footer.Append(Cab(nota.UrlConsultaQrCode));
+        footer.Append("<div style='height:4px'></div>");
+        footer.Append(Cab("CHAVE DE ACESSO", true));
+        footer.Append(Cab(chaveFmt));
+        footer.Append(Cab(string.IsNullOrWhiteSpace(docCons) ? "Consumidor nao identificado" : $"Consumidor: {docCons}"));
+        if (!string.IsNullOrEmpty(nota.Protocolo))
+        {
+            footer.Append("<hr>");
+            footer.Append(Cab("Protocolo de Autorizacao"));
+            footer.Append(Cab($"{nota.Protocolo}  {nota.DataEmissao:dd/MM/yyyy HH:mm:ss}"));
+        }
+        if (qrImg.Length > 0)
+        {
+            footer.Append("<hr>");
+            footer.Append(Cab("CONSULTA VIA LEITOR DE QRCODE"));
+            footer.Append($"<div class=\"c\" style=\"margin-top:4px\"><img src=\"{qrImg}\" style=\"width:38mm;height:38mm\"></div>");
+        }
+
+        return $@"<!doctype html><html lang=""pt-BR""><head><meta charset=""utf-8"">
+<title>Cupom Fiscal NFC-e {nota.Numero}</title>
+<style>
+@page {{ size: 80mm auto; margin: 0; }}
+html,body {{ margin:0; padding:0; }}
+body {{ width:80mm; font-family:'Courier New',monospace; color:#000; }}
+.wrap {{ padding:2mm 3mm 3mm; }}
+.c {{ text-align:center; font-size:11px; }}
+pre {{ margin:0; font-family:inherit; font-size:12px; white-space:pre-wrap; word-break:break-word; }}
+hr {{ border:0; border-top:1px dashed #000; margin:4px 0; }}
+img {{ display:inline-block; }}
+</style></head><body><div class=""wrap"">
+<div class=""c""><b style=""font-size:13px"">{E(empresa.RazaoSocial)}</b></div>
+{Cab($"CNPJ: {empresa.Cnpj}")}
+{Cab($"IE: {empresa.InscricaoEstadual}")}
+{Cab($"{empresa.Logradouro}, {empresa.Numero} - {empresa.Bairro}")}
+{Cab($"{empresa.Cidade} - {empresa.Uf}")}
+<hr>
+<div class=""c""><b>DANFE NFC-e</b></div>
+{Cab("Documento Auxiliar da Nota Fiscal de Consumidor Eletronica")}
+<hr>
+<pre>{sb}</pre>
+<hr>
+{footer}
+</div></body></html>";
     }
 
     // Gera o DANFE NFC-e no formato de cupom térmico 80mm (padrão SEFAZ).

@@ -178,6 +178,10 @@
                     <span v-if="item.desconto > 0" style="color:#fbbf24;margin-left:4px">
                       − R$ {{ fmt(item.desconto) }}
                     </span>
+                    <span v-if="i === promoItemIndex && descontoPromo > 0"
+                      style="color:#10b981;margin-left:4px;font-weight:600">
+                      🎁 −R$ {{ fmt(descontoPromo) }} (promo {{ promoMenorValor?.desconto }}%)
+                    </span>
                   </div>
                 </div>
 
@@ -228,6 +232,10 @@
           <div v-if="desconto > 0" class="pdv-totais-linha" style="color:#f59e0b">
             <span>Desconto aplicado</span>
             <span>− R$ {{ fmt(desconto) }}</span>
+          </div>
+          <div v-if="descontoPromo > 0" class="pdv-totais-linha" style="color:#10b981">
+            <span>🎁 Promoção · menor valor {{ promoMenorValor?.desconto }}%</span>
+            <span>− R$ {{ fmt(descontoPromo) }}</span>
           </div>
           <div v-if="cashbackAplicado > 0" class="pdv-totais-linha" style="color:#10b981">
             <span><v-icon size="14" class="mr-1">mdi-wallet-giftcard</v-icon>Cashback usado</span>
@@ -1236,8 +1244,37 @@ const nomeOperador = computed(() => auth.usuario?.nome?.split(' ')[0] ?? 'Operad
 // ── Computed ──────────────────────────────────────────────────────
 const totalItens = computed(() => itens.value.reduce((s, i) => s + i.quantidade, 0))
 const subtotal = computed(() => itens.value.reduce((s, i) => s + i.total, 0))
+
+// ── Promoção automática "menor valor" (ex.: levou 2+, o de menor valor ganha X% OFF) ──
+// Peças elegíveis: itens por unidade contam pela quantidade; granel (por peso) conta 1.
+const pecasElegiveis = computed(() =>
+  itens.value.reduce((s, i) => s + (i.porPeso ? 1 : i.quantidade), 0))
+// Valor de referência do "produto de menor valor": 1 unidade (por unidade) ou o
+// valor da porção pesada (granel = preço/kg × quantidade). Nunca maior que a linha.
+function valorRefPromo(it: ItemVenda): number {
+  return it.porPeso ? it.precoUnitario * it.quantidade : it.precoUnitario
+}
+// Índice do item de MENOR valor (recebe o desconto), quando há promo e mín. de peças.
+const promoItemIndex = computed(() => {
+  const p = promoMenorValor.value
+  if (!p || !itens.value.length) return -1
+  const min = Math.max(2, Number(p.qtdeLeve) || 2)
+  if (pecasElegiveis.value < min) return -1
+  let idx = -1, menor = Infinity
+  itens.value.forEach((it, i) => { const v = valorRefPromo(it); if (v < menor) { menor = v; idx = i } })
+  return idx
+})
+// Valor do desconto da promo = X% do valor de referência, limitado ao total da linha.
+const descontoPromo = computed(() => {
+  const p = promoMenorValor.value
+  if (!p || promoItemIndex.value < 0) return 0
+  const it = itens.value[promoItemIndex.value]
+  const bruto = (Number(p.desconto) / 100) * valorRefPromo(it)
+  return Math.round(Math.min(bruto, it.total) * 100) / 100
+})
+
 // Base para calcular o teto do cashback (antes de aplicar o próprio cashback).
-const totalAntesCashback = computed(() => Math.max(0, subtotal.value - desconto.value))
+const totalAntesCashback = computed(() => Math.max(0, subtotal.value - desconto.value - descontoPromo.value))
 const cashbackMax = computed(() => {
   const info = cashbackInfo.value
   if (!info || !info.podeResgatar) return 0
@@ -1862,13 +1899,16 @@ async function finalizar() {
     })
     const vendaId = inicioRes.data.id
 
-    for (const item of itens.value) {
+    for (let i = 0; i < itens.value.length; i++) {
+      const item = itens.value[i]
+      // Desconto do item = desconto manual + (desconto da promoção "menor valor", se for este item).
+      const descRs = item.desconto + (i === promoItemIndex.value ? descontoPromo.value : 0)
       await api.post(`/vendas/${vendaId}/itens`, {
         produtoId: item.produtoId,
         quantidade: item.quantidade,
         precoUnitario: item.precoUnitario,
-        percentualDesconto: item.desconto > 0
-          ? (item.desconto / (item.precoUnitario * item.quantidade)) * 100
+        percentualDesconto: descRs > 0
+          ? (descRs / (item.precoUnitario * item.quantidade)) * 100
           : 0,
       })
     }
@@ -2249,6 +2289,7 @@ async function lerFoto(e: Event) {
 // ── Promoções ativas ───────────────────────────────────────────────
 const todasPromocoes = ref<string[]>([])
 const sorteios = ref<any[]>([])
+const promoMenorValor = ref<any>(null)   // promo "menor valor ganha X%" aplicada automaticamente no carrinho
 const promoIdx = ref(0)
 const promoDismissed = ref(false)
 const promoAtiva = computed(() => todasPromocoes.value[promoIdx.value] ?? null)
@@ -2286,6 +2327,8 @@ async function carregarPromocoes() {
     const daLoja = promos.filter((p: any) => !p.localEstoqueId || (lojaN && norm(p.localEstoqueId) === lojaN))
     // Sorteios ativos desta loja (para o aviso e a geração do cupom).
     sorteios.value = daLoja.filter((p: any) => p.tipo === 'Sorteio')
+    // Promoção "menor valor ganha X%" — aplicada automaticamente no carrinho.
+    promoMenorValor.value = daLoja.find((p: any) => p.tipo === 'MenorValorDesconto') ?? null
     const nomes = daLoja.filter((p: any) => p.tipo !== 'Sorteio').map((p: any) => {
       const desc = p.tipoDesconto === 'ValorFixo'
         ? `R$ ${Number(p.desconto).toFixed(2)} OFF`

@@ -94,6 +94,93 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
         return NoContent();
     }
 
+    /// <summary>
+    /// Exclui um pedido de compra definitivamente (e seus itens). Bloqueado para pedidos
+    /// já RECEBIDOS ou vinculados a uma escrituração de entrada. Só gestor.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Excluir(Guid id, [FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        if (User.IsInRole("Atendente")) return Forbid();
+
+        var pedido = await db.PedidosCompra.FirstOrDefaultAsync(p => p.Id == id && p.EmpresaId == empresaId, ct);
+        if (pedido is null) return NotFound();
+
+        if (pedido.Status == StatusPedidoCompra.Recebido)
+            return BadRequest(new { mensagem = "Não é possível excluir um pedido já recebido — ele faz parte do histórico de entrada." });
+
+        var temEscrituracao = await db.EntradasNFe.AnyAsync(e => e.PedidoCompraId == id, ct);
+        if (temEscrituracao)
+            return BadRequest(new { mensagem = "Este pedido está vinculado a uma escrituração de entrada. Desvincule antes de excluir." });
+
+        var itens = await db.ItensPedidoCompra.Where(i => i.PedidoCompraId == id).ToListAsync(ct);
+        db.ItensPedidoCompra.RemoveRange(itens);
+        db.PedidosCompra.Remove(pedido);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Une vários pedidos de compra (em RASCUNHO, do MESMO fornecedor) em um único pedido:
+    /// soma as quantidades por produto (preço = média ponderada) e remove os originais.
+    /// Só gestor.
+    /// </summary>
+    [HttpPost("unir")]
+    public async Task<IActionResult> Unir([FromBody] UnirPedidosRequest req, CancellationToken ct)
+    {
+        if (User.IsInRole("Atendente")) return Forbid();
+        if (req.PedidoIds is null || req.PedidoIds.Count < 2)
+            return BadRequest(new { mensagem = "Selecione ao menos 2 pedidos para unir." });
+
+        var pedidos = await db.PedidosCompra
+            .Where(p => p.EmpresaId == req.EmpresaId && req.PedidoIds.Contains(p.Id))
+            .ToListAsync(ct);
+        if (pedidos.Count < 2)
+            return BadRequest(new { mensagem = "Pedidos não encontrados para unir." });
+
+        if (pedidos.Any(p => p.Status != StatusPedidoCompra.Rascunho && p.Status != StatusPedidoCompra.Enviado))
+            return BadRequest(new { mensagem = "Só é possível unir pedidos em Rascunho ou Enviado (não recebidos nem cancelados)." });
+
+        if (pedidos.Select(p => p.FornecedorId).Distinct().Count() > 1)
+            return BadRequest(new { mensagem = "Os pedidos têm fornecedores diferentes — um pedido de compra tem um único fornecedor. Una apenas pedidos do mesmo fornecedor." });
+
+        var fornecedorId = pedidos[0].FornecedorId;
+        var lojas = pedidos.Select(p => p.LocalEstoqueId).Distinct().ToList();
+        var lojaId = lojas.Count == 1 ? lojas[0] : pedidos.FirstOrDefault(p => p.LocalEstoqueId != null)?.LocalEstoqueId;
+
+        var ids = pedidos.Select(p => p.Id).ToList();
+        var itens = await db.ItensPedidoCompra.AsNoTracking()
+            .Where(i => ids.Contains(i.PedidoCompraId)).ToListAsync(ct);
+
+        var numero = await repo.ProximoNumeroAsync(req.EmpresaId, ct);
+        var novo = PedidoCompra.Criar(req.EmpresaId, fornecedorId, req.UsuarioId, numero, null, lojaId);
+        foreach (var g in itens.GroupBy(i => i.ProdutoId))
+        {
+            var qtd = g.Sum(x => x.Quantidade);
+            var preco = qtd > 0 ? Math.Round(g.Sum(x => x.Total) / qtd, 4) : g.First().PrecoUnitario;
+            novo.AdicionarItem(g.Key, g.First().Descricao, qtd, preco);
+        }
+        novo.DefinirObservacao($"Unido dos pedidos: {string.Join(", ", pedidos.Select(p => p.Numero).OrderBy(n => n))}");
+        // Se todos os originais já estavam Enviados, o unido nasce Enviado (mantém o "a caminho").
+        if (pedidos.All(p => p.Status == StatusPedidoCompra.Enviado))
+            novo.Enviar();
+        db.PedidosCompra.Add(novo);
+
+        // Remove os originais (rascunho, sem escrituração) e seus itens.
+        var itensOriginais = await db.ItensPedidoCompra.Where(i => ids.Contains(i.PedidoCompraId)).ToListAsync(ct);
+        db.ItensPedidoCompra.RemoveRange(itensOriginais);
+        db.PedidosCompra.RemoveRange(pedidos);
+
+        await uow.SalvarAsync(ct);
+        return Ok(new
+        {
+            id = novo.Id, numero,
+            produtos = novo.Itens.Count,
+            unidos = pedidos.Count,
+            mensagem = $"{pedidos.Count} pedidos unidos no pedido {numero} ({novo.Itens.Count} produtos).",
+        });
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId,
@@ -244,3 +331,4 @@ public record ReceberItemRequest(Guid ProdutoId, decimal Quantidade);
 public record DefinirLojaRequest(Guid? LocalEstoqueId);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 public record RemoverItensRequest(List<Guid> ItemIds);
+public record UnirPedidosRequest(Guid EmpresaId, Guid UsuarioId, List<Guid> PedidoIds);

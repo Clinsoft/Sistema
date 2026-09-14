@@ -106,9 +106,10 @@ public class WhatsAppDisparoJob(
             .ToListAsync();
 
         var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Aniversario);
+        var colaboradores = await TelefonesColaboradoresAsync(empresaId);
 
         int enviados = 0, falhas = 0;
-        foreach (var c in destinatarios.Where(c => !jaEnviados.Contains(c.Id)))
+        foreach (var c in destinatarios.Where(c => !jaEnviados.Contains(c.Id) && !EhColaborador(colaboradores, c.Telefone)))
         {
             var ctx = VariaveisComuns(c, nomeEmpresa);
             var (ok, wamId, erro) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Aniversario, template, ctx, cfg, localEstoqueId);
@@ -186,6 +187,8 @@ public class WhatsAppDisparoJob(
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
+        var colaboradores = await TelefonesColaboradoresAsync(empresaId);
+        clientes = clientes.Where(c => !EhColaborador(colaboradores, c.Telefone)).ToList();
         if (clientes.Count == 0) return;
 
         int enviados = 0, falhas = 0;
@@ -248,6 +251,9 @@ public class WhatsAppDisparoJob(
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
 
+        var colaboradores = await TelefonesColaboradoresAsync(empresaId);
+        clientes = clientes.Where(c => !EhColaborador(colaboradores, c.Telefone)).ToList();
+
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
@@ -280,6 +286,9 @@ public class WhatsAppDisparoJob(
                          || (ehMatriz && c.LocalEstoqueId == null)))
             .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
             .ToListAsync();
+
+        var colaboradores = await TelefonesColaboradoresAsync(empresaId);
+        clientes = clientes.Where(c => !EhColaborador(colaboradores, c.Telefone)).ToList();
 
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
@@ -348,6 +357,23 @@ public class WhatsAppDisparoJob(
     private async Task<TemplateWhatsAppMensagem?> ObterTemplate(Guid empresaId, TipoDisparoWhatsApp tipo)
         => await db.TemplatesWhatsAppMensagem.AsNoTracking()
             .FirstOrDefaultAsync(t => t.EmpresaId == empresaId && t.TipoDisparo == tipo && t.Ativo);
+
+    // Telefones dos COLABORADORES (tabela Usuarios) — nunca recebem campanha, mesmo que
+    // tenham sido cadastrados como cliente (ativo ou desativado). Casa pelos últimos 8
+    // dígitos para ignorar diferenças de DDI/DDD/formatação.
+    private async Task<HashSet<string>> TelefonesColaboradoresAsync(Guid empresaId)
+    {
+        var fones = await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.Telefone != null && u.Telefone != "")
+            .Select(u => u.Telefone!)
+            .ToListAsync();
+        return fones.Select(Fim8).Where(s => s.Length >= 8).ToHashSet();
+    }
+
+    private static string SoDigitos(string? v) => new((v ?? "").Where(char.IsDigit).ToArray());
+    private static string Fim8(string? v) { var d = SoDigitos(v); return d.Length <= 8 ? d : d[^8..]; }
+    private static bool EhColaborador(HashSet<string> colaboradores, string? telefone)
+        => colaboradores.Contains(Fim8(telefone));
 
     private async Task<List<Guid?>> JaEnviadosHoje(Guid empresaId, TipoDisparoWhatsApp tipo)
     {

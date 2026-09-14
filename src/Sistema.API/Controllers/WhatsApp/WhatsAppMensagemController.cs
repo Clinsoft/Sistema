@@ -427,6 +427,30 @@ public class WhatsAppMensagemController(
         return Accepted(new { mensagem = "Disparo de novidade enfileirado. Aguarde alguns instantes." });
     }
 
+    /// <summary>Dispara a promoção ativa para os clientes de TODAS as lojas ativas da empresa,
+    /// cada loja pelo seu próprio número. Restrito a chamadas LOCAIS (loopback), sem proxy —
+    /// usado para o disparo pós-aprovação da Meta sem depender de uma sessão logada.</summary>
+    [HttpPost("disparar-promocao-todas-lojas")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DispararPromocaoTodasLojas([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress;
+        if (ip is null || !System.Net.IPAddress.IsLoopback(ip) || Request.Headers.ContainsKey("X-Forwarded-For"))
+            return NotFound();   // endpoint de manutenção: só chamadas locais
+
+        var lojas = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo
+                     && c.PhoneNumberId != null && c.AccessToken != null)
+            .Select(c => c.LocalEstoqueId)
+            .ToListAsync(ct);
+
+        foreach (var loja in lojas)
+            Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
+                j => j.DispararPromocaoManualAsync(empresaId, loja));
+
+        return Ok(new { mensagem = "Disparo de promoção enfileirado para todas as lojas.", lojas = lojas.Count });
+    }
+
     // ─── Histórico ────────────────────────────────────────────────────────────
 
     [HttpGet("historico")]

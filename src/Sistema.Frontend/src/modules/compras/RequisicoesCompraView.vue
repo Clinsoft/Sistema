@@ -2,6 +2,8 @@
   <div>
     <div class="d-flex align-center mb-4 gap-2">
       <div class="text-h6 font-weight-bold flex-grow-1">Requisições de Compra</div>
+      <v-btn v-if="ehGestor" color="secondary" variant="tonal" prepend-icon="mdi-merge" rounded="lg"
+        class="mr-2" @click="abrirConsolidar">Consolidar pendências</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNova">Nova Requisição</v-btn>
     </div>
 
@@ -111,21 +113,39 @@
           <!-- Acompanhamento: o que vai chegar (NF já cruzada) x aguardando fornecedor -->
           <v-alert v-if="conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
-            <b v-if="conf.completo">Todos os {{ conf.totalItens }} itens já foram cruzados com a nota — vão chegar.</b>
-            <b v-else>{{ conf.vaoChegar }} de {{ conf.totalItens }} vão chegar · {{ conf.itensPendentes }} aguardando fornecedor.</b>
+            <b v-if="conf.completo">Todos os {{ conf.totalItens }} itens já estão cobertos (vão chegar ou já em pedido) — evite pedir de novo.</b>
+            <b v-else>{{ conf.jaEmPedido }} já em pedido · {{ conf.vaoChegar }} vão chegar · {{ conf.itensPendentes }} ainda sem pedido (de {{ conf.totalItens }}).</b>
+            <div class="text-caption text-medium-emphasis mt-1">
+              A coluna <b>Já em pedido</b> mostra em qual pedido de compra o item já está — se estiver lá, <b>não peça de novo</b>.
+            </div>
             <v-table density="compact" class="mt-2 bg-transparent">
-              <thead><tr><th>Produto</th><th class="text-center" style="width:70px">Qtd</th>
-                <th class="text-center" style="width:180px">Situação</th></tr></thead>
+              <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
+                <th style="width:200px">Já em pedido</th>
+                <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
-                <tr v-for="l in conf.itens" :key="l.produtoId">
+                <tr v-for="l in conf.itens" :key="l.produtoId"
+                  :class="l.jaPedido ? 'bg-amber-lighten-5' : ''">
                   <td>{{ l.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
+                  <td>
+                    <template v-if="l.pedidos && l.pedidos.length">
+                      <v-chip v-for="p in l.pedidos" :key="p.numero" size="x-small" class="mr-1 mb-1"
+                        :color="p.status === 'Recebido' ? 'success' : (p.status === 'Enviado' ? 'info' : 'warning')"
+                        variant="tonal" :title="p.status">
+                        {{ p.numero }} · {{ p.status }}
+                      </v-chip>
+                    </template>
+                    <span v-else class="text-caption text-medium-emphasis">—</span>
+                  </td>
                   <td class="text-center">
                     <v-chip v-if="l.situacao === 'VaiChegar'" size="small" color="success" variant="tonal">
                       <v-icon start size="14">mdi-truck-check-outline</v-icon>Vai chegar
                     </v-chip>
+                    <v-chip v-else-if="l.situacao === 'JaPedido'" size="small" color="info" variant="tonal">
+                      <v-icon start size="14">mdi-cart-check</v-icon>Já pedido
+                    </v-chip>
                     <v-chip v-else size="small" color="warning" variant="tonal">
-                      <v-icon start size="14">mdi-clock-outline</v-icon>Aguardando fornecedor
+                      <v-icon start size="14">mdi-clock-outline</v-icon>Sem pedido
                     </v-chip>
                   </td>
                 </tr>
@@ -152,8 +172,14 @@
                 <th v-if="ehGestor" class="text-right" style="width:110px">Custo un.</th>
                 <th v-if="ehGestor" class="text-right" style="width:120px">Estimado</th></tr></thead>
               <tbody>
-                <tr v-for="i in g.itens" :key="i.produtoId">
-                  <td>{{ i.descricao }}</td>
+                <tr v-for="i in g.itens" :key="i.itemId ?? i.produtoId">
+                  <td>
+                    {{ i.descricao }}
+                    <v-chip v-if="i.movido" size="x-small" color="info" variant="tonal" class="ml-1">movido</v-chip>
+                    <v-btn v-if="ehGestor && det.status !== 'Cancelada'" icon="mdi-account-switch"
+                      size="x-small" variant="text" color="primary" class="ml-1"
+                      @click="abrirMover(i)" title="Mover para outro fornecedor" />
+                  </td>
                   <td class="text-center">{{ fmtQtd(i.quantidade) }}</td>
                   <td v-if="ehGestor" class="text-right">R$ {{ fmt(i.custoUnitario) }}</td>
                   <td v-if="ehGestor" class="text-right">R$ {{ fmt(i.quantidade * i.custoUnitario) }}</td>
@@ -171,6 +197,93 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog: mover item para outro fornecedor -->
+    <v-dialog v-model="dialogMover" max-width="480">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center">
+          <v-icon icon="mdi-account-switch" class="mr-2" />Mover item para fornecedor
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="dialogMover = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="text-body-2 mb-3"><b>{{ itemMover?.descricao }}</b></div>
+          <v-autocomplete v-model="fornMoverId" :items="fornecedores"
+            item-title="razaoSocial" item-value="id" clearable
+            label="Fornecedor (vazio = principal do produto)" variant="outlined" density="compact"
+            no-data-text="Nenhum fornecedor" />
+          <div class="text-caption text-medium-emphasis mt-1">
+            Isto muda para qual pedido este item vai, sem afetar os outros itens.
+          </div>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogMover = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="movendo" @click="confirmarMover">Mover</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: consolidar pendências por loja -->
+    <v-dialog v-model="dialogConsol" max-width="720" persistent scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center">
+          <v-icon icon="mdi-merge" class="mr-2" />Consolidar pendências por loja
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="dialogConsol = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
+            Reúne, em <b>uma única requisição aberta por loja</b>, tudo o que está solto:
+            os itens das <b>requisições abertas</b> e dos <b>pedidos de compra em rascunho</b> (não processados).
+            As origens são <b>canceladas</b> para não duplicar. Pedidos já enviados/recebidos não são tocados.
+          </v-alert>
+
+          <div v-if="carregandoConsol" class="text-center py-6"><v-progress-circular indeterminate color="primary" /></div>
+
+          <template v-else-if="consol">
+            <div class="d-flex ga-2 mb-3">
+              <v-chip color="warning" variant="tonal" size="small">Requisições abertas: {{ consol.requisicoesAbertas }}</v-chip>
+              <v-chip color="orange" variant="tonal" size="small">Pedidos em rascunho: {{ consol.pedidosRascunho }}</v-chip>
+            </div>
+
+            <v-alert v-if="!consol.temPendencias" type="success" variant="tonal" density="comfortable">
+              Nada a consolidar — não há requisições abertas nem pedidos em rascunho.
+            </v-alert>
+
+            <v-expansion-panels v-else multiple>
+              <v-expansion-panel v-for="lj in consol.porLoja" :key="lj.localEstoqueId">
+                <v-expansion-panel-title>
+                  <b>{{ lj.loja }}</b>&nbsp;— {{ lj.itens.length }} produto(s)
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-table density="compact">
+                    <thead><tr><th class="text-left">Produto</th><th class="text-right">Qtde</th></tr></thead>
+                    <tbody>
+                      <tr v-for="it in lj.itens" :key="it.produtoId">
+                        <td>{{ it.descricao }}</td>
+                        <td class="text-right">{{ fmtQtd(it.quantidade) }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </template>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogConsol = false">Cancelar</v-btn>
+          <v-btn color="secondary" rounded="lg" prepend-icon="mdi-merge"
+            :loading="consolidando" :disabled="!consol?.temPendencias"
+            @click="confirmarConsolidar">
+            Consolidar em 1 requisição por loja
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -185,7 +298,7 @@ const notif = useNotifStore()
 const ehGestor = computed(() => ['Administrador', 'Gerente'].includes(auth.usuario?.role ?? ''))
 const lojaAtual = computed(() => auth.lojaAtualId ?? auth.usuario?.localEstoqueId ?? null)
 
-interface ItemDet { produtoId: string; descricao: string; quantidade: number; custoUnitario: number; fornecedorId: string | null; fornecedor: string }
+interface ItemDet { itemId?: string; produtoId: string; descricao: string; quantidade: number; custoUnitario: number; fornecedorId: string | null; fornecedor: string; movido?: boolean }
 
 const carregando = ref(false)
 const lista = ref<any[]>([])
@@ -294,6 +407,43 @@ async function abrirDetalhe(item: any) {
     carregarConferencia()
   } catch { notif.erro('Erro ao carregar a requisição.') }
 }
+async function recarregarDetalhe() {
+  if (!det.value?.id) return
+  const loja = det.value.loja, solic = det.value.solicitante
+  const r = await api.get(`/requisicoes-compra/${det.value.id}`)
+  det.value = { ...r.data, loja, solicitante: solic }
+  carregarConferencia()
+}
+
+// ── Mover item para outro fornecedor ──
+const fornecedores = ref<any[]>([])
+const dialogMover = ref(false)
+const movendo = ref(false)
+const itemMover = ref<ItemDet | null>(null)
+const fornMoverId = ref<string | null>(null)
+async function carregarFornecedores() {
+  try {
+    const r = await api.get('/fornecedores', { params: { empresaId: auth.empresaId, ativo: true } })
+    fornecedores.value = r.data ?? []
+  } catch { fornecedores.value = [] }
+}
+function abrirMover(i: ItemDet) {
+  itemMover.value = i
+  fornMoverId.value = i.movido ? (i.fornecedorId ?? null) : null
+  dialogMover.value = true
+}
+async function confirmarMover() {
+  if (!itemMover.value?.itemId) return
+  movendo.value = true
+  try {
+    await api.patch(`/requisicoes-compra/itens/${itemMover.value.itemId}/fornecedor`,
+      { fornecedorId: fornMoverId.value || null })
+    notif.ok('Item movido de fornecedor.')
+    dialogMover.value = false
+    await recarregarDetalhe()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao mover o item.') }
+  finally { movendo.value = false }
+}
 
 async function gerarPedido(g: { fornecedor: string; fornecedorId: string | null; itens: ItemDet[] }) {
   if (!g.fornecedorId) { notif.aviso('Grupo sem fornecedor vinculado.'); return }
@@ -345,5 +495,38 @@ async function excluir(item: any) {
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao excluir.') }
 }
 
-onMounted(carregar)
+// ── Consolidar pendências por loja ──
+const dialogConsol = ref(false)
+const carregandoConsol = ref(false)
+const consolidando = ref(false)
+const consol = ref<any>(null)
+
+async function abrirConsolidar() {
+  dialogConsol.value = true
+  carregandoConsol.value = true
+  consol.value = null
+  try {
+    const r = await api.get('/requisicoes-compra/pendencias', { params: { empresaId: auth.empresaId } })
+    consol.value = r.data
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao carregar pendências.') }
+  finally { carregandoConsol.value = false }
+}
+
+async function confirmarConsolidar() {
+  if (!consol.value?.temPendencias) return
+  if (!confirm('Consolidar todas as pendências em uma requisição por loja? As requisições abertas e os pedidos em rascunho atuais serão cancelados.')) return
+  consolidando.value = true
+  try {
+    const r = await api.post('/requisicoes-compra/consolidar', {
+      empresaId: auth.empresaId,
+      usuarioId: auth.usuario?.id,
+    })
+    notif.ok(r.data?.mensagem ?? 'Pendências consolidadas!')
+    dialogConsol.value = false
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao consolidar.') }
+  finally { consolidando.value = false }
+}
+
+onMounted(() => { carregar(); if (ehGestor.value) carregarFornecedores() })
 </script>

@@ -6,6 +6,10 @@
         rounded="lg" @click="$router.push('/compras/cotacoes')">
         Comparar Cotações
       </v-btn>
+      <v-btn v-if="podeVerValor && selUnir.length >= 2" color="secondary" variant="tonal"
+        prepend-icon="mdi-merge" rounded="lg" :loading="unindo" @click="unir">
+        Unir {{ selUnir.length }} pedidos
+      </v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNovo">Novo Pedido</v-btn>
     </div>
 
@@ -66,7 +70,11 @@
     </div>
 
     <v-card rounded="xl" elevation="1">
+      <div v-if="podeVerValor && selUnir.length" class="px-3 pt-3 text-caption text-medium-emphasis">
+        {{ selUnir.length }} selecionado(s). Selecione 2+ pedidos <b>em rascunho ou enviados, do mesmo fornecedor</b> e clique em <b>Unir pedidos</b>.
+      </div>
       <v-data-table :headers="headers" :items="pedidosFiltrados" :loading="carregando" density="compact" hover
+        :show-select="podeVerValor" v-model="selUnir" item-value="id"
         @click:row="(_e: any, { item }: any) => verPedido(item)" style="cursor:pointer">
         <template #item.fornecedorNome="{ item }">
           <span v-if="item.fornecedorNome">{{ item.fornecedorNome }}</span>
@@ -100,6 +108,9 @@
             color="success" @click="abrirRecebimento(item)" title="Receber" />
           <v-btn v-if="item.status==='Rascunho' || item.status==='Enviado'" icon="mdi-cancel"
             size="x-small" variant="text" color="error" @click="cancelar(item)" title="Cancelar pedido" />
+          <v-btn v-if="podeVerValor && (item.status==='Cancelado' || item.status==='Rascunho')"
+            icon="mdi-delete-outline" size="x-small" variant="text" color="error"
+            @click="excluir(item)" title="Excluir pedido definitivamente" />
         </template>
       </v-data-table>
     </v-card>
@@ -705,6 +716,40 @@ async function cancelar(item: any) {
     await api.post(`/pedidos-compra/${item.id}/cancelar`, null, { params: { empresaId: auth.empresaId } })
     notif.ok('Pedido cancelado.'); await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao cancelar.') }
+}
+async function excluir(item: any) {
+  if (!confirm(`Excluir DEFINITIVAMENTE o pedido ${item.numero}? Esta ação não pode ser desfeita.`)) return
+  try {
+    await api.delete(`/pedidos-compra/${item.id}`, { params: { empresaId: auth.empresaId } })
+    notif.ok('Pedido excluído.'); await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao excluir o pedido.') }
+}
+
+// ── Unir pedidos ──
+const selUnir = ref<any[]>([])
+const unindo = ref(false)
+async function unir() {
+  const ids = selUnir.value.map((s: any) => (typeof s === 'object' ? s.id : s))
+  if (ids.length < 2) return
+  const sel = pedidos.value.filter((p: any) => ids.includes(p.id))
+  if (sel.some((p: any) => p.status !== 'Rascunho' && p.status !== 'Enviado')) {
+    notif.aviso('Só é possível unir pedidos em Rascunho ou Enviado.'); return
+  }
+  const forn = [...new Set(sel.map((p: any) => p.fornecedorId ?? null))]
+  if (forn.length > 1) {
+    notif.aviso('Selecione pedidos do mesmo fornecedor — um pedido tem um único fornecedor.'); return
+  }
+  if (!confirm(`Unir ${ids.length} pedidos em um só? Os originais serão removidos.`)) return
+  unindo.value = true
+  try {
+    const r = await api.post('/pedidos-compra/unir', {
+      empresaId: auth.empresaId, usuarioId: auth.usuario?.id, pedidoIds: ids,
+    })
+    notif.ok(r.data?.mensagem ?? 'Pedidos unidos!')
+    selUnir.value = []
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao unir os pedidos.') }
+  finally { unindo.value = false }
 }
 async function abrirRecebimento(item: any) {
   try {

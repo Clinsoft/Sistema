@@ -44,6 +44,10 @@ public class ItemRequisicaoCompra : Entity
     public string Descricao { get; private set; } = null!;
     public decimal Quantidade { get; private set; }
 
+    /// <summary>Fornecedor escolhido para ESTE item (sobrepõe o fornecedor principal do produto
+    /// no agrupamento). null = usa o fornecedor principal do produto.</summary>
+    public Guid? FornecedorId { get; private set; }
+
     private ItemRequisicaoCompra() { }
 
     public static ItemRequisicaoCompra Criar(Guid requisicaoId, Guid produtoId, string descricao, decimal quantidade)
@@ -54,6 +58,9 @@ public class ItemRequisicaoCompra : Entity
             Descricao = descricao,
             Quantidade = quantidade,
         };
+
+    /// <summary>Move o item para outro fornecedor (ou volta ao principal do produto, com null).</summary>
+    public void DefinirFornecedor(Guid? fornecedorId) => FornecedorId = fornecedorId;
 }
 
 public enum StatusRequisicaoCompra { Aberta, Processada, Cancelada }

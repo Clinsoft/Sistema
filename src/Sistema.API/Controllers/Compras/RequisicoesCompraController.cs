@@ -82,6 +82,122 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         }));
     }
 
+    /// <summary>
+    /// Pendências de compra para consolidação: itens das requisições ABERTAS + dos pedidos
+    /// de compra em RASCUNHO (não processados), agrupados por loja (produto × quantidade).
+    /// Mostra ao gestor o que está solto para reunir numa requisição única por loja.
+    /// </summary>
+    [HttpGet("pendencias")]
+    public async Task<IActionResult> Pendencias([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var reqAbertas = await db.RequisicoesCompra.AsNoTracking()
+            .Where(r => r.EmpresaId == empresaId && r.Status == StatusRequisicaoCompra.Aberta)
+            .Select(r => new { r.Id, r.LocalEstoqueId }).ToListAsync(ct);
+        var pedRascunho = await db.PedidosCompra.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Status == StatusPedidoCompra.Rascunho)
+            .Select(p => new { p.Id, p.Numero, p.LocalEstoqueId }).ToListAsync(ct);
+
+        var reqIds = reqAbertas.Select(x => x.Id).ToList();
+        var pedIds = pedRascunho.Select(x => x.Id).ToList();
+        var reqLoja = reqAbertas.ToDictionary(x => x.Id, x => x.LocalEstoqueId);
+        var pedLoja = pedRascunho.ToDictionary(x => x.Id, x => x.LocalEstoqueId);
+
+        var itensReq = await db.ItensRequisicaoCompra.AsNoTracking()
+            .Where(i => reqIds.Contains(i.RequisicaoCompraId))
+            .Select(i => new { i.RequisicaoCompraId, i.ProdutoId, i.Descricao, i.Quantidade }).ToListAsync(ct);
+        var itensPed = await db.ItensPedidoCompra.AsNoTracking()
+            .Where(i => pedIds.Contains(i.PedidoCompraId))
+            .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Descricao, i.Quantidade }).ToListAsync(ct);
+
+        var todos = itensReq
+            .Select(i => new { Loja = reqLoja.GetValueOrDefault(i.RequisicaoCompraId), i.ProdutoId, i.Descricao, i.Quantidade })
+            .Concat(itensPed.Select(i => new { Loja = pedLoja.GetValueOrDefault(i.PedidoCompraId), i.ProdutoId, i.Descricao, i.Quantidade }))
+            .Where(x => x.Loja != null)
+            .ToList();
+
+        var lojaIds = todos.Select(x => x.Loja!.Value).Distinct().ToList();
+        var lojas = await db.LocaisEstoque.AsNoTracking().Where(l => lojaIds.Contains(l.Id))
+            .Select(l => new { l.Id, l.Nome }).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        var porLoja = todos.GroupBy(x => x.Loja!.Value).Select(g => new
+        {
+            localEstoqueId = g.Key,
+            loja = lojas.GetValueOrDefault(g.Key, "—"),
+            itens = g.GroupBy(y => y.ProdutoId).Select(gp => new
+            {
+                produtoId = gp.Key,
+                descricao = gp.First().Descricao,
+                quantidade = gp.Sum(z => z.Quantidade),
+            }).OrderBy(i => i.descricao).ToList(),
+        }).OrderBy(x => x.loja).ToList();
+
+        return Ok(new
+        {
+            requisicoesAbertas = reqAbertas.Count,
+            pedidosRascunho = pedRascunho.Count,
+            temPendencias = porLoja.Count > 0,
+            porLoja,
+        });
+    }
+
+    /// <summary>
+    /// Consolida as pendências: cria UMA requisição de compra (Aberta) por loja com os itens
+    /// das requisições abertas + pedidos em rascunho, e CANCELA essas origens (para não duplicar).
+    /// Só gestor. Espelha a limpeza manual que reúne tudo num único lugar por loja.
+    /// </summary>
+    [HttpPost("consolidar")]
+    public async Task<IActionResult> Consolidar([FromBody] ConsolidarRequest req, CancellationToken ct)
+    {
+        if (User.IsInRole("Atendente"))
+            return Forbid();
+
+        var empresaId = req.EmpresaId;
+        var abertas = await db.RequisicoesCompra
+            .Where(r => r.EmpresaId == empresaId && r.Status == StatusRequisicaoCompra.Aberta).ToListAsync(ct);
+        var rascunhos = await db.PedidosCompra
+            .Where(p => p.EmpresaId == empresaId && p.Status == StatusPedidoCompra.Rascunho).ToListAsync(ct);
+
+        var reqIds = abertas.Select(r => r.Id).ToList();
+        var pedIds = rascunhos.Select(p => p.Id).ToList();
+        var reqLoja = abertas.ToDictionary(r => r.Id, r => r.LocalEstoqueId);
+        var pedLoja = rascunhos.ToDictionary(p => p.Id, p => p.LocalEstoqueId);
+
+        var itensReq = await db.ItensRequisicaoCompra.AsNoTracking()
+            .Where(i => reqIds.Contains(i.RequisicaoCompraId)).ToListAsync(ct);
+        var itensPed = await db.ItensPedidoCompra.AsNoTracking()
+            .Where(i => pedIds.Contains(i.PedidoCompraId)).ToListAsync(ct);
+
+        var todos = itensReq
+            .Select(i => new { Loja = reqLoja.GetValueOrDefault(i.RequisicaoCompraId), i.ProdutoId, i.Descricao, i.Quantidade })
+            .Concat(itensPed.Select(i => new { Loja = pedLoja.GetValueOrDefault(i.PedidoCompraId), i.ProdutoId, i.Descricao, i.Quantidade }))
+            .Where(x => x.Loja != null)
+            .ToList();
+
+        if (todos.Count == 0)
+            return BadRequest(new { mensagem = "Não há pendências (requisições abertas ou pedidos em rascunho) para consolidar." });
+
+        var criadas = new List<object>();
+        foreach (var g in todos.GroupBy(x => x.Loja!.Value))
+        {
+            var nova = RequisicaoCompra.Criar(empresaId, req.UsuarioId, g.Key,
+                $"Consolidada em {DateTime.Now:dd/MM/yyyy} (requisições abertas + pedidos em rascunho)");
+            foreach (var it in g.GroupBy(y => y.ProdutoId))
+                nova.AdicionarItem(it.Key, it.First().Descricao, it.Sum(z => z.Quantidade));
+            db.RequisicoesCompra.Add(nova);
+            criadas.Add(new { nova.Id, localEstoqueId = g.Key, itens = g.Select(y => y.ProdutoId).Distinct().Count() });
+        }
+
+        foreach (var r in abertas) r.Cancelar();
+        foreach (var p in rascunhos) p.Cancelar();
+
+        await uow.SalvarAsync(ct);
+        return Ok(new
+        {
+            mensagem = $"{criadas.Count} requisição(ões) consolidada(s). {abertas.Count} requisição(ões) e {rascunhos.Count} pedido(s) em rascunho foram cancelados.",
+            criadas,
+        });
+    }
+
     /// <summary>Detalhe: itens já com fornecedor principal e custo, para agrupar no cliente.</summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Obter(Guid id, CancellationToken ct)
@@ -100,8 +216,11 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .ToListAsync(ct);
         var pmap = produtos.ToDictionary(p => p.Id);
 
+        // Fornecedores: principais dos produtos + os escolhidos por item (override).
         var fornIds = produtos.Where(p => p.FornecedorPrincipalId.HasValue)
-            .Select(p => p.FornecedorPrincipalId!.Value).Distinct().ToList();
+            .Select(p => p.FornecedorPrincipalId!.Value)
+            .Concat(itens.Where(i => i.FornecedorId.HasValue).Select(i => i.FornecedorId!.Value))
+            .Distinct().ToList();
         var forns = await db.Fornecedores.AsNoTracking().Where(f => fornIds.Contains(f.Id))
             .Select(f => new { f.Id, f.RazaoSocial }).ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct);
 
@@ -112,15 +231,19 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             itens = itens.Select(i =>
             {
                 var p = pmap.GetValueOrDefault(i.ProdutoId);
+                // Fornecedor efetivo = o escolhido no item (override) ou o principal do produto.
+                var effForn = i.FornecedorId ?? p?.FornecedorPrincipalId;
                 return new
                 {
+                    itemId = i.Id,
                     produtoId = i.ProdutoId,
                     descricao = i.Descricao,
                     quantidade = i.Quantidade,
                     custoUnitario = p?.CustoUnitario ?? 0m,
-                    fornecedorId = p?.FornecedorPrincipalId,
-                    fornecedor = p?.FornecedorPrincipalId is Guid fid && forns.TryGetValue(fid, out var fn)
+                    fornecedorId = effForn,
+                    fornecedor = effForn is Guid fid && forns.TryGetValue(fid, out var fn)
                         ? fn : "(sem fornecedor)",
+                    movido = i.FornecedorId.HasValue,
                 };
             }).ToList()
         });
@@ -158,28 +281,16 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(m => m.ProdutoId).Distinct().ToListAsync(ct);
         var chegaramSet = chegaram.ToHashSet();
 
-        // Pedidos vinculados a esta requisição (exato). Se não houver, cai no aproximado.
-        var pedidosLig = await db.PedidosCompra.AsNoTracking()
-            .Where(p => p.RequisicaoCompraId == id && p.Status != StatusPedidoCompra.Cancelado)
-            .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
+        // TODOS os pedidos NÃO cancelados da MESMA loja (vinculados ou não, Rascunho/Enviado/
+        // Recebido) — para detectar se o item já está em algum pedido e evitar pedir duplicado.
+        var pedidosLoja = await db.PedidosCompra.AsNoTracking()
+            .Where(p => p.EmpresaId == req.EmpresaId
+                && p.LocalEstoqueId == req.LocalEstoqueId
+                && p.Status != StatusPedidoCompra.Cancelado)
+            .Select(p => new { p.Id, p.Numero, Status = p.Status.ToString() }).ToListAsync(ct);
 
-        var aproximado = false;
-        if (pedidosLig.Count == 0)
-        {
-            aproximado = true;
-            // Aproximado: pedidos não vinculados da mesma loja (sem filtro de data —
-            // a data da requisição pode ser posterior à do pedido, ex.: requisições
-            // que foram unificadas manualmente).
-            pedidosLig = await db.PedidosCompra.AsNoTracking()
-                .Where(p => p.EmpresaId == req.EmpresaId
-                    && p.RequisicaoCompraId == null
-                    && p.Status != StatusPedidoCompra.Cancelado
-                    && p.LocalEstoqueId == req.LocalEstoqueId)
-                .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
-        }
-
-        var pedidoIds = pedidosLig.Select(p => p.Id).ToList();
-        var numeroPorId = pedidosLig.ToDictionary(p => p.Id, p => p.Numero);
+        var pedidoIds = pedidosLoja.Select(p => p.Id).ToList();
+        var infoPorId = pedidosLoja.ToDictionary(p => p.Id, p => new { p.Numero, p.Status });
 
         var itensPedido = await db.ItensPedidoCompra.AsNoTracking()
             .Where(i => pedidoIds.Contains(i.PedidoCompraId))
@@ -190,10 +301,14 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         {
             var casados = itensPedido.Where(ip => ip.ProdutoId == it.ProdutoId).ToList();
             var pedido = casados.Sum(c => c.Quantidade);
-            var numeros = casados.Select(c => numeroPorId.GetValueOrDefault(c.PedidoCompraId))
-                .Where(n => n is not null).Distinct().ToList();
-            // "Vai chegar" quando o produto já deu entrada no estoque da loja (NF processada).
+            var pedidosDoItem = casados
+                .Select(c => infoPorId.GetValueOrDefault(c.PedidoCompraId))
+                .Where(x => x is not null)
+                .GroupBy(x => x!.Numero)
+                .Select(gg => new { numero = gg.Key, status = gg.First()!.Status })
+                .OrderBy(x => x.numero).ToList();
             var vaiChegar = chegaramSet.Contains(it.ProdutoId);
+            var jaPedido = pedido > 0;
             return new
             {
                 produtoId = it.ProdutoId,
@@ -201,21 +316,36 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 requisitado = it.Quantidade,
                 pedido,
                 pendente = Math.Max(0, it.Quantidade - pedido),
-                pedidos = numeros,
-                situacao = vaiChegar ? "VaiChegar" : "Aguardando",
+                jaPedido,
+                pedidos = pedidosDoItem,
+                situacao = vaiChegar ? "VaiChegar" : (jaPedido ? "JaPedido" : "Aguardando"),
             };
         }).ToList();
 
         return Ok(new
         {
             requisicaoId = id,
-            aproximado,
+            aproximado = false,
             totalItens = linhas.Count,
-            itensPendentes = linhas.Count(l => l.situacao != "VaiChegar"),
+            jaEmPedido = linhas.Count(l => l.jaPedido),
+            itensPendentes = linhas.Count(l => !l.jaPedido && l.situacao != "VaiChegar"),
             vaoChegar = linhas.Count(l => l.situacao == "VaiChegar"),
-            completo = linhas.All(l => l.situacao == "VaiChegar"),
+            completo = linhas.All(l => l.situacao == "VaiChegar" || l.jaPedido),
             itens = linhas,
         });
+    }
+
+    /// <summary>Move um item da requisição para outro fornecedor (override do fornecedor
+    /// principal do produto). Passe fornecedorId = null para voltar ao principal. Só gestor.</summary>
+    [HttpPatch("itens/{itemId:guid}/fornecedor")]
+    public async Task<IActionResult> MoverItemFornecedor(Guid itemId, [FromBody] MoverItemFornecedorRequest req, CancellationToken ct)
+    {
+        if (User.IsInRole("Atendente")) return Forbid();
+        var item = await db.ItensRequisicaoCompra.FirstOrDefaultAsync(i => i.Id == itemId, ct);
+        if (item is null) return NotFound();
+        item.DefinirFornecedor(req.FornecedorId);
+        await uow.SalvarAsync(ct);
+        return NoContent();
     }
 
     [HttpPatch("{id:guid}/processar")]
@@ -257,3 +387,7 @@ public record CriarRequisicaoRequest(
     List<ItemRequisicaoRequest> Itens);
 
 public record ItemRequisicaoRequest(Guid ProdutoId, decimal Quantidade);
+
+public record ConsolidarRequest(Guid EmpresaId, Guid UsuarioId);
+
+public record MoverItemFornecedorRequest(Guid? FornecedorId);

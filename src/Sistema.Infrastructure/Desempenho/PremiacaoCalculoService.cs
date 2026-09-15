@@ -43,15 +43,6 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes)
             .ToDictionaryAsync(x => x.LocalEstoqueId, x => x, ct);
 
-        // Meta do Planejamento (a mesma exibida no Dashboard). Quando existe, a premiação
-        // usa esse valor automaticamente — mantém as duas telas alinhadas sem override manual.
-        var metasPlanej = (await db.MetasVendaMensal.AsNoTracking()
-            .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes && x.LocalEstoqueId != null)
-            .GroupBy(x => x.LocalEstoqueId!.Value)
-            .Select(g => new { Loja = g.Key, Valor = g.Sum(x => x.Valor) })
-            .ToListAsync(ct))
-            .ToDictionary(x => x.Loja, x => x.Valor);
-
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
 
@@ -63,14 +54,9 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             var vend = vendedoresAtivos.TryGetValue(loja, out var vv) ? vv : 0;
             if (overrides.TryGetValue(loja, out var ov))
                 dict[loja] = new MetaResolvida(ov.MetaLoja, ov.MetaIndividual, media, vend, true);
-            else if (metasPlanej.TryGetValue(loja, out var metaPlan) && metaPlan > 0)
-            {
-                // Meta do Planejamento (Dashboard): individual = meta ÷ nº de vendedores da base.
-                var metaInd = Math.Round(metaPlan / Math.Max(1, vend), 2);
-                dict[loja] = new MetaResolvida(metaPlan, metaInd, media, vend, false);
-            }
             else
             {
+                // Meta automática = faturamento do mês anterior × Fator (100%); individual = meta ÷ colaboradores ativos.
                 var metaLoja = Math.Round(media * cfg.FatorMetaLoja / 100m, 2);
                 var metaInd = Math.Round(metaLoja / Math.Max(1, vend), 2);
                 dict[loja] = new MetaResolvida(metaLoja, metaInd, media, vend, false);

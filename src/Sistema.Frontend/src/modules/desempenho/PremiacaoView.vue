@@ -428,7 +428,10 @@ const resumoPorLoja = computed(() => {
   return Object.entries(map).map(([loja, itens]) => {
     const avals = itens.filter(i => i.avaliado)
     const media = avals.length ? Math.round(avals.reduce((s, i) => s + i.pontos, 0) / avals.length) : 0
-    return { loja, itens, avaliados: avals.length, media }
+    // Pendentes primeiro; depois por nome.
+    const ordenados = [...itens].sort((a, b) =>
+      (Number(a.avaliado) - Number(b.avaliado)) || a.nome.localeCompare(b.nome))
+    return { loja, itens: ordenados, avaliados: avals.length, media }
   }).sort((a, b) => a.loja.localeCompare(b.loja))
 })
 

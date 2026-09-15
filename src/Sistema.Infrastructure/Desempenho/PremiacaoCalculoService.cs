@@ -29,15 +29,28 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             .Select(g => new { Loja = g.Key, Total = g.Sum(v => v.Total) }).ToListAsync(ct))
             .ToDictionary(x => x.Loja, x => x.Total);
 
-        var vendBase = (await db.Vendas.AsNoTracking()
-            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada && v.VendedorId != null
-                && v.DataHora >= baseIni && v.DataHora < baseFim)
-            .Select(v => new { v.LocalEstoqueId, v.VendedorId }).Distinct().ToListAsync(ct))
-            .GroupBy(x => x.LocalEstoqueId).ToDictionary(g => g.Key, g => g.Count());
+        // Nº de colaboradores da loja para dividir a meta individual = quadro ATIVO atual
+        // (atendentes/vendedores cadastrados na loja), não os vendedores do mês base.
+        var vendedoresAtivos = (await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.Ativo && u.LocalEstoqueId != null
+                && (u.Perfil == "Atendente" || u.Perfil == "Vendedor"))
+            .GroupBy(u => u.LocalEstoqueId!.Value)
+            .Select(g => new { Loja = g.Key, Qtd = g.Count() })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Qtd);
 
         var overrides = await db.MetasPremiacaoLoja.AsNoTracking()
             .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes)
             .ToDictionaryAsync(x => x.LocalEstoqueId, x => x, ct);
+
+        // Meta do Planejamento (a mesma exibida no Dashboard). Quando existe, a premiação
+        // usa esse valor automaticamente — mantém as duas telas alinhadas sem override manual.
+        var metasPlanej = (await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes && x.LocalEstoqueId != null)
+            .GroupBy(x => x.LocalEstoqueId!.Value)
+            .Select(g => new { Loja = g.Key, Valor = g.Sum(x => x.Valor) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => x.Valor);
 
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
@@ -47,9 +60,15 @@ public class PremiacaoCalculoService(SistemaDbContext db)
         {
             var fat = fatBase.TryGetValue(loja, out var f) ? f : 0m;
             var media = Math.Round(fat / cfg.MesesBaseMeta, 2);
-            var vend = vendBase.TryGetValue(loja, out var vv) ? vv : 0;
+            var vend = vendedoresAtivos.TryGetValue(loja, out var vv) ? vv : 0;
             if (overrides.TryGetValue(loja, out var ov))
                 dict[loja] = new MetaResolvida(ov.MetaLoja, ov.MetaIndividual, media, vend, true);
+            else if (metasPlanej.TryGetValue(loja, out var metaPlan) && metaPlan > 0)
+            {
+                // Meta do Planejamento (Dashboard): individual = meta ÷ nº de vendedores da base.
+                var metaInd = Math.Round(metaPlan / Math.Max(1, vend), 2);
+                dict[loja] = new MetaResolvida(metaPlan, metaInd, media, vend, false);
+            }
             else
             {
                 var metaLoja = Math.Round(media * cfg.FatorMetaLoja / 100m, 2);

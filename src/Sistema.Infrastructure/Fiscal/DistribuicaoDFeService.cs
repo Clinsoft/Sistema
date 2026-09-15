@@ -611,9 +611,11 @@ public class DistribuicaoDFeService(
         if (config?.CertificadoPfxBase64 is null) return (null, config);
 
         var bytes = Convert.FromBase64String(config.CertificadoPfxBase64);
+        // No Linux/OpenSSL 3, EphemeralKeySet + TLS de cliente causa SIGSEGV (use-after-free)
+        // logo após a chamada ao SEFAZ. PersistKeySet mantém a chave estável e evita o crash.
         var flags = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
                         System.Runtime.InteropServices.OSPlatform.Linux)
-            ? X509KeyStorageFlags.Exportable | X509KeyStorageFlags.EphemeralKeySet
+            ? X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet
             : X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet;
         var cert  = new X509Certificate2(bytes, config.CertificadoSenha, flags);
 

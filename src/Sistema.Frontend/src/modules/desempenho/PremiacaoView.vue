@@ -133,6 +133,52 @@
           <v-spacer />
           <v-btn color="amber-darken-2" :loading="salvando" prepend-icon="mdi-content-save" @click="salvarAvaliacao">Salvar avaliação</v-btn>
         </div>
+
+        <!-- ══ PENALIDADES LANÇADAS NO MÊS ══ -->
+        <v-card rounded="lg" variant="outlined" class="mt-5">
+          <div class="pa-3 d-flex align-center">
+            <v-icon color="error" class="mr-2">mdi-alert-decagram</v-icon>
+            <div class="text-subtitle-1 font-weight-bold">Penalidades de {{ meses.find(m => m.value === mes)?.label }} / {{ ano }}</div>
+            <v-spacer />
+            <v-chip color="error" variant="flat" size="small">−{{ (penal?.descontoValidade ?? 0) + (penal?.descontoWhatsapp ?? 0) }} pts na performance</v-chip>
+          </div>
+          <v-divider />
+
+          <!-- Produtos vencidos -->
+          <div class="pa-3 d-flex align-center av-item">
+            <v-icon color="amber-darken-3" class="mr-2">mdi-food-off</v-icon>
+            <div class="flex-grow-1">
+              <div class="font-weight-medium">Produtos vencidos na loja</div>
+              <div class="text-caption text-medium-emphasis">Desconto de validade aplicado à equipe da loja quando há lote vencido em estoque</div>
+            </div>
+            <v-chip v-if="(penal?.descontoValidade ?? 0) > 0" color="error" variant="tonal" size="small">−{{ penal.descontoValidade }} pts</v-chip>
+            <v-chip v-else color="success" variant="tonal" size="small">Sem desconto</v-chip>
+          </div>
+          <v-divider />
+
+          <!-- Falta de atendimento no WhatsApp -->
+          <div class="pa-3">
+            <div class="d-flex align-center">
+              <v-icon color="green-darken-2" class="mr-2">mdi-whatsapp</v-icon>
+              <div class="flex-grow-1">
+                <div class="font-weight-medium">Falta de atendimento no WhatsApp</div>
+                <div class="text-caption text-medium-emphasis">Conversas não respondidas em 6h de funcionamento — 10 pts por conversa</div>
+              </div>
+              <v-chip v-if="(penal?.descontoWhatsapp ?? 0) > 0" color="error" variant="tonal" size="small">−{{ penal.descontoWhatsapp }} pts</v-chip>
+              <v-chip v-else color="success" variant="tonal" size="small">Sem desconto</v-chip>
+            </div>
+            <v-table v-if="penal?.whatsapp?.length" density="compact" class="mt-2">
+              <thead><tr><th>Data/hora</th><th>Telefone</th><th class="text-right">Pontos</th></tr></thead>
+              <tbody>
+                <tr v-for="(w, i) in penal.whatsapp" :key="i">
+                  <td>{{ dataHora(w.data) }}</td>
+                  <td>{{ w.telefone }}</td>
+                  <td class="text-right text-error">−{{ w.pontos }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </v-card>
       </div>
       <v-alert v-else type="info" variant="tonal">Selecione um colaborador e a semana.</v-alert>
     </div>
@@ -325,6 +371,19 @@ async function carregarAvaliacao() {
     const a = (r.data as any[]).find(x => x.inicioSemana === avSemana.value)
     if (a) itensKeys.forEach(i => aval.value[i.key] = a[i.key] ?? 0)
   } catch { /* nova avaliação */ }
+  await carregarPenalidades()
+}
+
+// ── Penalidades lançadas no mês (produtos vencidos + WhatsApp) ──
+const penal = ref<any>(null)
+const dataHora = (s: string) => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+async function carregarPenalidades() {
+  penal.value = null
+  if (!avColab.value) return
+  try {
+    const r = await api.get('/premiacao/penalidades', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value, colaboradorId: avColab.value } })
+    penal.value = r.data
+  } catch { penal.value = null }
 }
 async function salvarAvaliacao() {
   const c = colaboradores.value.find(x => x.id === avColab.value)
@@ -426,6 +485,7 @@ async function baixarArquivo(x: any) {
 }
 
 watch(aba, v => { if (v === 'metas') carregarConfig(); if (v === 'arquivo') carregarArquivo() })
+watch([mes, ano], () => { if (aba.value === 'avaliacao' && avColab.value) carregarPenalidades() })
 
 onMounted(async () => {
   if (!auth.lojas?.length) await auth.carregarLojas()

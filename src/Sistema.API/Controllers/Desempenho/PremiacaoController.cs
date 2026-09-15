@@ -117,6 +117,31 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         }));
     }
 
+    /// <summary>Penalidades lançadas no mês para um colaborador: produtos vencidos (desconto de
+    /// validade) e falta de atendimento no WhatsApp (conversas sem resposta em 6h úteis).</summary>
+    [HttpGet("penalidades")]
+    [Authorize(Roles = "Administrador,Financeiro")]
+    public async Task<IActionResult> ListarPenalidades([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid colaboradorId, CancellationToken ct)
+    {
+        // Desconto de validade é agregado mensal (derivado da apuração); pega do cálculo.
+        var resultados = await calc.CalcularAsync(empresaId, ano, mes, colaboradorId, ct);
+        var r = resultados.Count > 0 ? resultados[0].Res : null;
+
+        var whats = await db.PenalidadesAtendimentoWhatsApp.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ano == ano && p.Mes == mes && p.ColaboradorId == colaboradorId)
+            .OrderBy(p => p.DataOcorrencia)
+            .Select(p => new { data = p.DataOcorrencia, telefone = p.Telefone, pontos = p.Pontos })
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            descontoValidade = r?.DescontoValidade ?? 0,
+            descontoWhatsapp = r?.DescontoAtendimentoWhatsApp ?? 0,
+            whatsapp = whats
+        });
+    }
+
     [HttpPost("avaliacoes")]
     [Authorize(Roles = "Administrador,Financeiro")]
     public async Task<IActionResult> SalvarAvaliacao([FromBody] AvaliacaoRequest req, CancellationToken ct)

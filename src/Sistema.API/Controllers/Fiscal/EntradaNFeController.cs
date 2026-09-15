@@ -1213,6 +1213,8 @@ public class EntradaNFeController(SistemaDbContext db,
                         rascunho.AdicionarItem(f.ProdutoId, f.Descricao, f.Quantidade, f.PrecoUnitario);
                     rascunho.DefinirObservacao($"Itens da OC {pedido.Numero} que NÃO vieram na NF {nNF} — re-pedir ao fornecedor.");
                     db.PedidosCompra.Add(rascunho);
+                    // Remove os faltantes do pedido RECEBIDO: ele passa a refletir só o que chegou.
+                    pedido.RemoverItens(faltantes.Select(f => f.Id));
                     rascunhoNumero = numero;
                     qtdDivergentes = faltantes.Count;
                 }

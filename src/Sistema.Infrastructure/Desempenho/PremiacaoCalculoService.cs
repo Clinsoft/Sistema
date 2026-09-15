@@ -95,6 +95,14 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             .Where(a => a.EmpresaId == empresaId && a.Ano == ano && a.Mes == mes)
             .ToDictionaryAsync(a => a.ColaboradorId, a => a, ct);
 
+        // Penalidades por conversa do WhatsApp não respondida em 6h úteis (descontam performance).
+        var penalidadesWhats = (await db.PenalidadesAtendimentoWhatsApp.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ano == ano && p.Mes == mes)
+            .GroupBy(p => p.ColaboradorId)
+            .Select(g => new { ColaboradorId = g.Key, Pontos = g.Sum(x => x.Pontos) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.ColaboradorId, x => x.Pontos);
+
         var hoje = DateTime.Today;
         var lojasComVencido = new HashSet<Guid>(await db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Quantidade > 0
@@ -138,8 +146,12 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             }
             var apu = apuracoes.TryGetValue(u.Id, out var ap) ? ap : null;
 
+            // Desconto por conversas do WhatsApp não respondidas em 6h úteis.
+            var descWhats = penalidadesWhats.TryGetValue(u.Id, out var dw) ? dw : 0m;
+            if (descWhats > 0) perf = Math.Max(0, perf - descWhats);
+
             var res = CalculoPremiacao.Calcular(u.Id, u.Nome, loja, fat, metaLoja, vendaInd, metaInd,
-                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade);
+                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade, descWhats);
             var pctLoja = metaLoja > 0 ? Math.Round(fat / metaLoja * 100, 1) : 0;
             lista.Add(new PremiacaoLinha(res, lojas.TryGetValue(loja, out var ln) ? ln : "—", loja, fat, metaLoja, pctLoja, avalsU));
         }

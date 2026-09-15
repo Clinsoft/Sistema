@@ -74,6 +74,9 @@
                     <v-tooltip v-if="c.descontoValidade > 0" text="Produto vencido na loja: pontos de Validade descontados de toda a equipe"><template #activator="{ props }">
                       <v-chip v-bind="props" size="x-small" color="error" variant="tonal" class="ml-1">−{{ c.descontoValidade }} validade</v-chip>
                     </template></v-tooltip>
+                    <v-tooltip v-if="c.descontoAtendimentoWhatsapp > 0" text="Conversas do WhatsApp não respondidas em 6h de funcionamento: 10 pts por conversa, descontados de todos os atendentes da loja"><template #activator="{ props }">
+                      <v-chip v-bind="props" size="x-small" color="error" variant="tonal" class="ml-1">−{{ c.descontoAtendimentoWhatsapp }} atend.</v-chip>
+                    </template></v-tooltip>
                   </td>
                   <td class="text-center">
                     <v-chip v-if="c.premio > 0" size="x-small" color="success" variant="tonal">Elegível</v-chip>

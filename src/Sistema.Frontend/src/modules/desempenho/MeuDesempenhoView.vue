@@ -64,6 +64,7 @@
             <div class="text-caption text-medium-emphasis">{{ d.semanasAvaliadas }} semana(s) avaliada(s)</div>
             <v-progress-linear :model-value="d.performancePercent" height="8" rounded class="mt-2" color="amber-darken-2" />
             <div v-if="d.descontoValidade > 0" class="text-caption mt-1 text-error">−{{ d.descontoValidade }} pts: produto vencido na loja</div>
+            <div v-if="d.descontoAtendimentoWhatsapp > 0" class="text-caption mt-1 text-error">−{{ d.descontoAtendimentoWhatsapp }} pts: conversas do WhatsApp sem resposta em 6h</div>
             <div v-else class="text-caption mt-1 text-medium-emphasis">multiplica o valor base</div>
           </v-card>
         </v-col>

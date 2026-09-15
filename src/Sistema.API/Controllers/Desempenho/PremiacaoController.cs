@@ -536,6 +536,7 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
             baseLoja = r.BaseLoja, fatorIndividual = r.FatorIndividual,
             elegivel = r.Elegivel, temCorte = r.TemCorte, motivo = r.Motivo, premio = r.Premio,
             descontoValidade = r.DescontoValidade,
+            descontoAtendimentoWhatsapp = r.DescontoAtendimentoWhatsApp,
             projecao,
             avaliacoes = incluirSemanas && avaliacoes != null
                 ? avaliacoes.OrderBy(a => a.InicioSemana).Select(a => new { inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"), pontos = a.Pontos }).ToList<object>()

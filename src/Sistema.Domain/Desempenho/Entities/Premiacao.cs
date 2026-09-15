@@ -165,7 +165,7 @@ public record ResultadoPremio(
     decimal PerformancePercent, int SemanasAvaliadas,
     decimal BaseLoja, decimal FatorIndividual,
     bool Elegivel, bool TemCorte, string? Motivo,
-    decimal Premio, decimal DescontoValidade = 0);
+    decimal Premio, decimal DescontoValidade = 0, decimal DescontoAtendimentoWhatsApp = 0);
 
 /// <summary>Fórmula do prêmio (cláusulas 3ª–6ª do Regulamento).</summary>
 public static class CalculoPremiacao
@@ -177,7 +177,7 @@ public static class CalculoPremiacao
         decimal performancePercent, int semanasAvaliadas,
         ConfiguracaoPremiacao cfg, decimal valorBaseLoja,
         ApuracaoMensalPremiacao? apuracao,
-        decimal descontoValidade = 0)
+        decimal descontoValidade = 0, decimal descontoAtendimentoWhatsApp = 0)
     {
         var percLoja = metaLoja > 0 ? Math.Round(faturamentoLoja / metaLoja * 100, 1) : 0;
         var percInd = metaIndividual > 0 ? Math.Round(vendaIndividual / metaIndividual * 100, 1) : 0;
@@ -211,6 +211,6 @@ public static class CalculoPremiacao
             faturamentoLoja, metaLoja, percLoja,
             vendaIndividual, metaIndividual, percInd,
             performancePercent, semanasAvaliadas,
-            baseLoja, fatorInd, elegivel, temCorte, motivo, premio, descontoValidade);
+            baseLoja, fatorInd, elegivel, temCorte, motivo, premio, descontoValidade, descontoAtendimentoWhatsApp);
     }
 }

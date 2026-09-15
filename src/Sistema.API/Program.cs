@@ -212,6 +212,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.DespesasFixasJob>(
     job => job.ExecutarAsync(),
     "10 6 1 * *", optsBR);  // 06:10 BRT do dia 1º — mensalidades fixas (contador, aluguel, etc.)
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>(
+    "whatsapp-sla-6h",
+    job => job.ExecutarAsync(),
+    "15 * * * *", optsBR);  // toda hora (min 15) — penaliza conversas sem resposta em 6h úteis
+
 app.MapControllers();
 
 app.Run();

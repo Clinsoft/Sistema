@@ -17,6 +17,10 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
     private const decimal PontosPorOcorrencia = 10m;
     private const int PrazoMinutosUteis = 360;   // 6 horas de funcionamento
 
+    // Só penaliza conversas iniciadas a partir da ativação da regra (UTC). Ocorrências
+    // anteriores a esta data são ignoradas.
+    private static readonly DateTime AtivadoEmUtc = new(2026, 9, 15, 18, 0, 0, DateTimeKind.Utc);
+
     private static readonly TimeZoneInfo Tz = ResolverTz();
     private static TimeZoneInfo ResolverTz()
     {
@@ -90,6 +94,7 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
             {
                 var m = ordenadas[i];
                 if (m.Direcao != DirecaoMensagemWhatsApp.Recebida) continue;
+                if (m.DataHora < AtivadoEmUtc) continue;   // ignora ocorrências anteriores à ativação da regra
                 // Só o INÍCIO de um turno do cliente (mensagem anterior foi enviada por nós, ou é a 1ª).
                 if (i > 0 && ordenadas[i - 1].Direcao == DirecaoMensagemWhatsApp.Recebida) continue;
                 if (jaPenalizadas.Contains(m.Id)) continue;

@@ -205,6 +205,15 @@ public class WhatsAppDisparoJob(
             if (ok) enviados++; else falhas++;
         }
 
+        if (ehMatriz)
+            await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, template,
+                new Dictionary<string, string>
+                {
+                    ["produto_nome"] = produtoNome, ["produto_preco"] = precoDeTxt,
+                    ["produto_preco_promo"] = precoPromoTxt, ["data_validade"] = promo.DataFim?.ToString("dd/MM/yyyy") ?? "",
+                    ["desconto"] = descontoTxt, ["nome_promocao"] = promo.Nome,
+                }, localEstoqueId);
+
         logger.LogInformation("[WhatsApp] Promoções {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);
     }
@@ -262,6 +271,9 @@ public class WhatsAppDisparoJob(
             if (ok) enviados++; else falhas++;
         }
 
+        if (ehMatriz)
+            await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Novidade, template, null, localEstoqueId);
+
         logger.LogInformation("[WhatsApp] Novidades {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);
     }
@@ -297,6 +309,9 @@ public class WhatsAppDisparoJob(
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Novidade, template, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
+
+        if (ehMatriz)
+            await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Novidade, template, null, localEstoqueId);
 
         logger.LogInformation("[WhatsApp] Novidades manual {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);
@@ -394,6 +409,11 @@ public class WhatsAppDisparoJob(
             var (ok, _, _) = await Enviar(empresaId, c, template.TipoDisparo, template, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
+
+        // Cópia para os administradores (uma vez, na passagem da 1ª loja).
+        if (incluirSemLoja)
+            await EnviarCopiasAdminAsync(empresaId, empresa.NomeFantasia, cfg, template.TipoDisparo, template, null, localEstoqueId);
+
         logger.LogInformation("[WhatsApp] Template {Nome} {Empresa}: {E} enviados, {F} falhas",
             nomeMeta, empresa.NomeFantasia, enviados, falhas);
     }
@@ -456,6 +476,37 @@ public class WhatsAppDisparoJob(
 
         await db.SaveChangesAsync();
         return (sucesso, wamId, erro);
+    }
+
+    /// <summary>Envia uma CÓPIA do disparo para os telefones dos ADMINISTRADORES (acompanhamento).
+    /// Chamado uma única vez por disparo (não por loja). Logado com cliente nulo.</summary>
+    private async Task EnviarCopiasAdminAsync(Guid empresaId, string nomeEmpresa,
+        ConfiguracaoWhatsAppMensagem cfg, TipoDisparoWhatsApp tipo, TemplateWhatsAppMensagem template,
+        Dictionary<string, string>? extra, Guid? localEstoqueId)
+    {
+        var admins = await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.Perfil == "Administrador"
+                     && u.Telefone != null && u.Telefone != "")
+            .Select(u => new { u.Nome, u.Telefone })
+            .ToListAsync();
+
+        foreach (var a in admins)
+        {
+            var ctx = VariaveisComuns(new ClienteInfo(Guid.Empty, a.Nome, a.Telefone!, null), nomeEmpresa);
+            if (extra != null) foreach (var kv in extra) ctx[kv.Key] = kv.Value;
+            var variaveis = ResolverVariaveis(template.VariaveisJson, ctx);
+
+            var hist = HistoricoMensagemWhatsApp.Criar(
+                empresaId, null, a.Telefone!, a.Nome + " (admin)", tipo, template.NomeMeta, localEstoqueId);
+            db.HistoricosMensagensWhatsApp.Add(hist);
+            await db.SaveChangesAsync();
+
+            var (ok, wamId, erro) = await whatsApp.EnviarTemplate(
+                cfg.PhoneNumberId!, cfg.AccessToken!, a.Telefone!, template.NomeMeta, template.Idioma, variaveis,
+                string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl);
+            if (ok) hist.MarcarEnviada(wamId!); else hist.MarcarFalha(erro ?? "Erro desconhecido");
+            await db.SaveChangesAsync();
+        }
     }
 
     // O VariaveisJson usa chaves minúsculas ("posicao"/"campo"); sem case-insensitive,

@@ -105,13 +105,48 @@
         <v-row dense>
           <v-col cols="12" sm="6">
             <v-select v-model="avColab" label="Colaborador" :items="colaboradoresAtivos" item-title="nome" item-value="id"
-              variant="outlined" density="compact" hide-details @update:model-value="carregarAvaliacao" />
+              variant="outlined" density="compact" hide-details clearable @update:model-value="carregarAvaliacao" />
           </v-col>
           <v-col cols="12" sm="6">
             <v-text-field v-model="avSemana" label="Semana (segunda-feira)" type="date"
-              variant="outlined" density="compact" hide-details @change="carregarAvaliacao" />
+              variant="outlined" density="compact" hide-details @change="carregarResumoSemana" />
           </v-col>
         </v-row>
+      </v-card>
+
+      <!-- ══ RESUMO: colaboradores + total de pontos da semana ══ -->
+      <v-card rounded="lg" variant="outlined" class="mb-3">
+        <v-table density="comfortable">
+          <thead>
+            <tr>
+              <th>Colaborador</th>
+              <th>Loja</th>
+              <th class="text-right">Pontos da semana</th>
+              <th class="text-center">Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in resumoSemana" :key="c.id"
+                :class="{ 'av-row-sel': c.id === avColab }" style="cursor:pointer" @click="selecionarColab(c.id)">
+              <td class="font-weight-medium">{{ c.nome }}</td>
+              <td class="text-caption text-medium-emphasis">{{ c.loja }}</td>
+              <td class="text-right">
+                <b v-if="c.avaliado" :class="c.pontos >= 70 ? 'text-success' : 'text-amber-darken-2'">{{ c.pontos }}</b>
+                <span v-else class="text-medium-emphasis">—</span>
+              </td>
+              <td class="text-center">
+                <v-chip size="x-small" :color="c.avaliado ? 'success' : 'grey'" variant="tonal">
+                  {{ c.avaliado ? 'Avaliado' : 'Pendente' }}
+                </v-chip>
+              </td>
+              <td class="text-right">
+                <v-btn size="x-small" variant="text" icon="mdi-pencil" @click.stop="selecionarColab(c.id)" />
+              </td>
+            </tr>
+            <tr v-if="!resumoSemana.length"><td colspan="5" class="text-center text-medium-emphasis py-3">Nenhum colaborador ativo.</td></tr>
+          </tbody>
+        </v-table>
       </v-card>
 
       <div v-if="avColab" class="av-grid">
@@ -363,6 +398,25 @@ function resetAval() { const o: Record<string, number> = {}; itensKeys.forEach(i
 resetAval()
 const totalAval = computed(() => Math.round(itensKeys.reduce((s, i) => s + i.pts * (aval.value[i.key] ?? 0) / 100, 0)))
 
+// ── Resumo da semana: todos os colaboradores + total de pontos ──
+const resumoSemana = ref<any[]>([])
+async function carregarResumoSemana() {
+  const lojaNome = (id: string) => (lojas.value.find(l => l.id === id)?.nome ?? '—')
+  let porColab: Record<string, number> = {}
+  if (avSemana.value) {
+    try {
+      const r = await api.get('/premiacao/avaliacoes', { params: { empresaId: auth.empresaId, ano: new Date(avSemana.value).getFullYear(), mes: new Date(avSemana.value).getMonth() + 1 } })
+      for (const a of (r.data as any[])) if (a.inicioSemana === avSemana.value) porColab[a.colaboradorId] = a.pontos
+    } catch { porColab = {} }
+  }
+  resumoSemana.value = colaboradoresAtivos.value.map(c => ({
+    id: c.id, nome: c.nome, loja: lojaNome(c.localEstoqueId),
+    avaliado: c.id in porColab, pontos: porColab[c.id] ?? 0,
+  }))
+  if (avColab.value) await carregarPenalidades()
+}
+function selecionarColab(id: string) { avColab.value = id; carregarAvaliacao() }
+
 async function carregarAvaliacao() {
   if (!avColab.value || !avSemana.value) return
   resetAval()
@@ -395,6 +449,7 @@ async function salvarAvaliacao() {
       inicioSemana: avSemana.value, ...aval.value,
     })
     notif.ok('Avaliação salva.')
+    await carregarResumoSemana()
   } catch { notif.erro('Erro ao salvar avaliação.') } finally { salvando.value = false }
 }
 
@@ -484,7 +539,7 @@ async function baixarArquivo(x: any) {
   setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
 
-watch(aba, v => { if (v === 'metas') carregarConfig(); if (v === 'arquivo') carregarArquivo() })
+watch(aba, v => { if (v === 'metas') carregarConfig(); if (v === 'arquivo') carregarArquivo(); if (v === 'avaliacao') carregarResumoSemana() })
 watch([mes, ano], () => { if (aba.value === 'avaliacao' && avColab.value) carregarPenalidades() })
 
 onMounted(async () => {
@@ -492,10 +547,12 @@ onMounted(async () => {
   const r = await api.get('/usuarios', { params: { empresaId: auth.empresaId } }).catch(() => ({ data: [] }))
   colaboradores.value = (r.data as any[]).filter(u => u.localEstoqueId)
   await carregar()
+  if (aba.value === 'avaliacao') await carregarResumoSemana()
 })
 </script>
 
 <style scoped>
 .av-item:not(:last-child){border-bottom:1px solid rgba(128,128,128,.15)}
+.av-row-sel{background:rgba(255,193,7,.12)}
 .ga-x-6{column-gap:24px}
 </style>

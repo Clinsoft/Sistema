@@ -55,6 +55,13 @@ public class EntradaNFeController(SistemaDbContext db,
             .FirstOrDefaultAsync(e => e.Id == id, ct);
         if (entrada is null) return NotFound();
 
+        // Pedidos vinculados (múltiplos): o primário + os da tabela de vínculo.
+        var pedidosVinc = await db.EntradasNFePedidos.AsNoTracking()
+            .Where(v => v.EntradaNFeId == id).Select(v => v.PedidoCompraId).ToListAsync(ct);
+        var pedidosCompraIds = new List<Guid>();
+        if (entrada.PedidoCompraId is Guid pp) pedidosCompraIds.Add(pp);
+        pedidosCompraIds.AddRange(pedidosVinc.Where(x => !pedidosCompraIds.Contains(x)));
+
         return Ok(new
         {
             entrada.Id,
@@ -69,6 +76,7 @@ public class EntradaNFeController(SistemaDbContext db,
             entrada.LocalEstoqueId,
             entrada.FornecedorId,
             entrada.PedidoCompraId,
+            pedidosCompraIds,
             entrada.NaturezaOperacao,
             Status = entrada.Status.ToString(),
             TipoEntrada = entrada.TipoEntrada.ToString(),
@@ -713,6 +721,32 @@ public class EntradaNFeController(SistemaDbContext db,
     }
 
     /// <summary>
+    /// Vincula VÁRIOS pedidos de compra à mesma entrada (uma NF que atende vários pedidos).
+    /// O primeiro da lista vira o pedido "primário" (usado no confronto de faltantes ao
+    /// processar); os demais ficam na tabela de vínculo e também são marcados como recebidos.
+    /// </summary>
+    [HttpPatch("{id:guid}/pedidos-compra")]
+    public async Task<IActionResult> VincularPedidosCompra(
+        Guid id, [FromBody] VincularPedidosRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        var ids = (req.PedidoIds ?? []).Distinct().ToList();
+
+        // Substitui os vínculos existentes.
+        var atuais = await db.EntradasNFePedidos.Where(v => v.EntradaNFeId == id).ToListAsync(ct);
+        db.EntradasNFePedidos.RemoveRange(atuais);
+
+        entrada.VincularPedidoCompra(ids.Count > 0 ? ids[0] : null);
+        foreach (var pid in ids.Skip(1))
+            db.EntradasNFePedidos.Add(EntradaNFePedido.Criar(id, pid));
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { primario = ids.FirstOrDefault(), total = ids.Count });
+    }
+
+    /// <summary>
     /// Define se a nota é de mercadoria para venda ou de material de consumo.
     /// Trocar o tipo limpa os vínculos dos itens, que apontam para cadastros diferentes.
     /// </summary>
@@ -1183,6 +1217,19 @@ public class EntradaNFeController(SistemaDbContext db,
                     qtdDivergentes = faltantes.Count;
                 }
             }
+        }
+
+        // Demais pedidos vinculados (NF única que atende vários pedidos): marca cada um
+        // como recebido também. O confronto de faltantes/valores reais roda só no primário.
+        var outrosVinc = await db.EntradasNFePedidos.AsNoTracking()
+            .Where(v => v.EntradaNFeId == entrada.Id).Select(v => v.PedidoCompraId).ToListAsync(ct);
+        foreach (var pid in outrosVinc.Where(x => x != entrada.PedidoCompraId))
+        {
+            var ped = await db.PedidosCompra.FirstOrDefaultAsync(p => p.Id == pid, ct);
+            if (ped is not null
+                && ped.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Recebido
+                && ped.Status != Sistema.Domain.Compras.Entities.StatusPedidoCompra.Cancelado)
+                ped.ReceberComNota($"NF {nNF}");
         }
 
         entrada.Processar();
@@ -2118,6 +2165,7 @@ public record VincularAtivoRequest(Guid AtivoImobilizadoId);
 /// <summary>Categoria e vida útil padrão para os bens criados a partir da nota.</summary>
 public record CadastrarAtivosRequest(string? Categoria = "Equipamento", int VidaUtilMeses = 60);
 public record VincularPedidoRequest(Guid PedidoCompraId);
+public record VincularPedidosRequest(List<Guid> PedidoIds);
 public record AplicarFreteCteRequest(Guid EmpresaId, string ChaveNfe, decimal ValorFrete,
     bool AtualizarPreco = true, string? ChaveCte = null);
 public record FaturaRequest(decimal Valor, DateTime Vencimento);

@@ -98,6 +98,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<NotaFiscalRecebida> NotasFiscaisRecebidas => Set<NotaFiscalRecebida>();
     public DbSet<EntradaNFe> EntradasNFe => Set<EntradaNFe>();
     public DbSet<ItemEntradaNFe> ItensEntradaNFe => Set<ItemEntradaNFe>();
+    public DbSet<EntradaNFePedido> EntradasNFePedidos => Set<EntradaNFePedido>();
 
     // Marketing
     public DbSet<TemplateMarketing> TemplatesMarketing => Set<TemplateMarketing>();

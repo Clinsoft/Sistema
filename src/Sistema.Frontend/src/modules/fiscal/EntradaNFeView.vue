@@ -161,10 +161,16 @@
                   @update:model-value="salvarLocalEstoque" />
               </v-col>
               <v-col cols="12">
-                <v-autocomplete v-model="pedidoCompraId" label="Vincular Ordem de Compra"
-                  :items="pedidosCompra" item-title="label" item-value="id"
-                  variant="outlined" density="compact" clearable
-                  @update:model-value="salvarPedidoCompra" />
+                <v-autocomplete v-model="pedidosCompraIds" label="Vincular Ordens de Compra"
+                  :items="pedidosCompraFiltrados" item-title="label" item-value="id"
+                  variant="outlined" density="compact" clearable multiple chips closable-chips
+                  :hint="mostrarTodosPedidos
+                    ? 'Mostrando TODOS os pedidos pendentes.'
+                    : 'Mostrando só os pedidos deste fornecedor e desta loja. Uma NF pode atender vários — selecione todos que ela cobre.'"
+                  persistent-hint
+                  @update:model-value="salvarPedidosCompra" />
+                <v-switch v-model="mostrarTodosPedidos" color="primary" density="compact" hide-details
+                  label="Mostrar todos os pedidos (ignorar fornecedor/loja)" class="mt-1" />
               </v-col>
             </v-row>
           </v-card>
@@ -1454,8 +1460,7 @@ async function finalizarEntrada() {
     if (itensAlterados.value > 0) await salvarTodos()
     // Garante que o vínculo com a OC esteja PERSISTIDO antes de processar (idempotente).
     // Sem isto, se a vinculação anterior falhou (ex.: 502), a nota seria escriturada sem OC.
-    if (pedidoCompraId.value)
-      await api.patch(`/fiscal/entradas/${entradaId}/pedido-compra`, { pedidoCompraId: pedidoCompraId.value })
+    await api.patch(`/fiscal/entradas/${entradaId}/pedidos-compra`, { pedidoIds: pedidosCompraIds.value ?? [] })
     const faturasEnviar = lancarFinanceiro.value
       ? faturas.value.map(f => ({ valor: f.valor, vencimento: f.vencimento }))
       : []
@@ -1541,6 +1546,19 @@ const freteManual = ref(0)
 const freteManualStr = ref('0')
 const localEstoqueId = ref<string | null>(null)
 const pedidoCompraId = ref<string | null>(null)
+const pedidosCompraIds = ref<string[]>([])
+const mostrarTodosPedidos = ref(false)
+// Mostra só os pedidos do MESMO fornecedor e MESMA loja da nota (já conhecidos),
+// mantendo sempre os já selecionados. Facilita a escrituração e evita associação errada.
+const pedidosCompraFiltrados = computed(() => {
+  const fid = entrada.value?.fornecedorId ?? null
+  const lid = localEstoqueId.value ?? entrada.value?.localEstoqueId ?? null
+  if (mostrarTodosPedidos.value) return pedidosCompra.value
+  const sel = new Set(pedidosCompraIds.value ?? [])
+  return pedidosCompra.value.filter((p: any) =>
+    sel.has(p.id) ||
+    ((!fid || p.fornecedorId === fid) && (!lid || p.localEstoqueId === lid)))
+})
 
 // Financeiro
 const faturas = ref<{ label: string; valor: number; vencimento: string }[]>([])
@@ -1651,6 +1669,9 @@ async function carregar() {
   freteManualStr.value = String(freteManual.value)
   localEstoqueId.value = r.data.localEstoqueId ?? null
   pedidoCompraId.value = r.data.pedidoCompraId ?? null
+  pedidosCompraIds.value = (r.data.pedidosCompraIds && r.data.pedidosCompraIds.length)
+    ? r.data.pedidosCompraIds
+    : (r.data.pedidoCompraId ? [r.data.pedidoCompraId] : [])
   popularItensEditaveis(r.data.itens ?? [])
   // Repopula preço atual / markup atual e o novo preço sugerido dos itens já
   // vinculados (popularItensEditaveis não faz isso). Sem esta chamada, o "Novo
@@ -1754,13 +1775,12 @@ async function salvarFreteManual() {
   }
 }
 
-async function salvarPedidoCompra(id: string | null) {
-  if (!id) return
+async function salvarPedidosCompra(ids: string[]) {
   try {
-    await api.patch(`/fiscal/entradas/${entradaId}/pedido-compra`, { pedidoCompraId: id })
-    notif.ok('Ordem de compra vinculada.')
+    await api.patch(`/fiscal/entradas/${entradaId}/pedidos-compra`, { pedidoIds: ids ?? [] })
+    notif.ok((ids?.length ?? 0) > 1 ? `${ids.length} ordens de compra vinculadas.` : 'Ordem de compra vinculada.')
   } catch (e: any) {
-    notif.erro('Não foi possível vincular a ordem de compra. Selecione novamente antes de escriturar.')
+    notif.erro('Não foi possível vincular. Selecione novamente antes de escriturar.')
     await carregar()   // recarrega o vínculo REAL — reverte a seleção que não salvou
   }
 }

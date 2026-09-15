@@ -146,7 +146,7 @@ public class EntradaNFe : Entity
 
     public void VincularFornecedor(Guid fornecedorId) => FornecedorId = fornecedorId;
 
-    public void VincularPedidoCompra(Guid pedidoId) => PedidoCompraId = pedidoId;
+    public void VincularPedidoCompra(Guid? pedidoId) => PedidoCompraId = pedidoId;
 
     public void Processar()
     {

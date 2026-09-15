@@ -260,15 +260,19 @@ public class WhatsAppMensagemController(
         var nome = req.Nome.Trim().ToLowerInvariant().Replace(' ', '_');
         var categoria = string.IsNullOrWhiteSpace(req.Categoria) ? "UTILITY" : req.Categoria.ToUpperInvariant();
 
-        // Imagem de cabeçalho (opcional). Prioridade: arquivo enviado do computador
-        // (ImagemBase64) e, se não houver, uma arte já gerada no sistema (ComImagem).
+        // Mídia de cabeçalho (opcional): imagem/vídeo/documento enviado do computador
+        // (ImagemBase64, com prefixo data:) e, se não houver, uma arte já gerada (ComImagem).
         byte[]? imagem = null;
+        var mime = "image/png";
         if (!string.IsNullOrWhiteSpace(req.ImagemBase64))
         {
+            // Extrai o mime do prefixo data:<mime>;base64,
+            var m = System.Text.RegularExpressions.Regex.Match(req.ImagemBase64, @"^data:([^;]+);base64,");
+            if (m.Success) mime = m.Groups[1].Value.ToLowerInvariant();
             var b64 = req.ImagemBase64.Contains(',') ? req.ImagemBase64[(req.ImagemBase64.IndexOf(',') + 1)..] : req.ImagemBase64;
             try { imagem = Convert.FromBase64String(b64); } catch { imagem = null; }
             if (imagem is null || imagem.Length == 0)
-                return BadRequest(new { mensagem = "Não foi possível ler a imagem enviada. Tente outro arquivo (JPG ou PNG)." });
+                return BadRequest(new { mensagem = "Não foi possível ler o arquivo enviado. Use JPG/PNG, MP4 ou PDF." });
         }
         else if (req.ComImagem)
         {
@@ -282,21 +286,26 @@ public class WhatsAppMensagemController(
             }
         }
 
+        // Formato do cabeçalho a partir do mime.
+        var headerFormat = mime.StartsWith("video") ? "VIDEO" : mime.Contains("pdf") ? "DOCUMENT" : "IMAGE";
+        var tipoMidia = headerFormat.ToLowerInvariant();          // image | video | document
+        var ext = mime.Contains("mp4") ? "mp4" : mime.Contains("pdf") ? "pdf" : mime.Contains("jpeg") ? "jpg" : "png";
+
         var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
             cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
-            nome, req.Corpo, (req.Exemplos ?? []).ToList(), imagem, categoria, ct);
+            nome, req.Corpo, (req.Exemplos ?? []).ToList(), imagem, categoria, ct, headerFormat, mime);
 
         if (!ok)
             return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
 
-        // Se tem imagem de cabeçalho, salva num caminho público para reutilizar no envio
-        // (a Meta exige a imagem em cada disparo; sem ela dá erro 132012).
+        // Salva a mídia num caminho público para reutilizar no envio (a Meta exige o arquivo
+        // do cabeçalho em cada disparo; sem ele dá erro 132012).
         string? headerUrl = null;
         if (imagem is { Length: > 0 })
         {
             var dir = Path.Combine("wwwroot", "uploads", "templates");
             Directory.CreateDirectory(dir);
-            var arquivo = $"{nome}.png";
+            var arquivo = $"{nome}.{ext}";
             await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, arquivo), imagem, ct);
             headerUrl = $"/uploads/templates/{arquivo}";
         }
@@ -308,18 +317,29 @@ public class WhatsAppMensagemController(
         {
             var novo = TemplateWhatsAppMensagem.Criar(
                 req.EmpresaId, nome, TipoDisparoWhatsApp.Personalizado, "pt_BR", null, req.Corpo);
-            if (headerUrl != null) novo.DefinirHeaderImagem(AbsolutizarUrl(headerUrl));
+            if (headerUrl != null) novo.DefinirHeaderMidia(AbsolutizarUrl(headerUrl), tipoMidia);
             db.TemplatesWhatsAppMensagem.Add(novo);
             await uow.SalvarAsync(ct);
         }
         else if (headerUrl != null)
         {
-            existente.DefinirHeaderImagem(AbsolutizarUrl(headerUrl));
+            existente.DefinirHeaderMidia(AbsolutizarUrl(headerUrl), tipoMidia);
             await uow.SalvarAsync(ct);
         }
 
-        return Ok(new { nome, status, comImagem = imagem != null });
+        return Ok(new { nome, status, comMidia = imagem != null, tipo = tipoMidia });
     }
+
+    // Fuso do Brasil (Linux usa IANA; fallback Windows e, por último, UTC-3 fixo).
+    private static readonly TimeZoneInfo _tzBrasil = ResolverTzBrasil();
+    private static TimeZoneInfo ResolverTzBrasil()
+    {
+        foreach (var id in new[] { "America/Sao_Paulo", "E. South America Standard Time" })
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); } catch { }
+        return TimeZoneInfo.CreateCustomTimeZone("BRT", TimeSpan.FromHours(-3), "BRT", "BRT");
+    }
+    private static DateTime ParaBrasil(DateTime utc)
+        => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), _tzBrasil);
 
     /// <summary>Transforma um caminho relativo (/uploads/...) em URL pública absoluta (a Meta exige).</summary>
     private string AbsolutizarUrl(string relativa)
@@ -538,7 +558,7 @@ public class WhatsAppMensagemController(
             query = query.Where(h => h.Status == st);
 
         var total = await query.CountAsync(ct);
-        var itens = await query
+        var raw = await query
             .OrderByDescending(h => h.EnviadoEm)
             .Skip((pagina - 1) * 50)
             .Take(50)
@@ -549,10 +569,19 @@ public class WhatsAppMensagemController(
                 h.TemplateName, h.WamId,
                 Status    = h.Status.ToString(),
                 h.ErroDetalhe,
-                EnviadoEm = h.EnviadoEm.ToString("dd/MM/yyyy HH:mm"),
-                h.EntregueEm, h.LidoEm,
+                h.EnviadoEm, h.EntregueEm, h.LidoEm,
             })
             .ToListAsync(ct);
+
+        // As datas são gravadas em UTC; converte para o horário de Brasília na exibição.
+        var itens = raw.Select(h => new
+        {
+            h.Id, h.Telefone, h.NomeDestinatario, h.TipoDisparo, h.TemplateName, h.WamId,
+            h.Status, h.ErroDetalhe,
+            EnviadoEm  = ParaBrasil(h.EnviadoEm).ToString("dd/MM/yyyy HH:mm"),
+            EntregueEm = h.EntregueEm.HasValue ? ParaBrasil(h.EntregueEm.Value) : (DateTime?)null,
+            LidoEm     = h.LidoEm.HasValue ? ParaBrasil(h.LidoEm.Value) : (DateTime?)null,
+        }).ToList();
 
         return Ok(new { total, pagina, itens });
     }

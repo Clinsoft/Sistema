@@ -83,20 +83,24 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
         string templateName,
         string idioma,
         IEnumerable<string> variaveis,
-        string? headerImageUrl = null)
+        string? headerImageUrl = null,
+        string? headerMediaType = null)
     {
         // Normaliza o telefone: apenas dígitos, com código do país
         var tel = NormalizarTelefone(telefone);
 
-        // Monta os componentes: cabeçalho de imagem (se o template exigir) + corpo.
+        // Monta os componentes: cabeçalho de mídia (imagem/vídeo/documento) + corpo.
         var componentes = new List<object>();
         if (!string.IsNullOrWhiteSpace(headerImageUrl))
         {
-            componentes.Add(new
+            var tipo = (headerMediaType ?? "image").ToLowerInvariant();
+            object headerParam = tipo switch
             {
-                type       = "header",
-                parameters = new object[] { new { type = "image", image = new { link = headerImageUrl } } }
-            });
+                "video"    => new { type = "video",    video    = new { link = headerImageUrl } },
+                "document" => new { type = "document", document = new { link = headerImageUrl } },
+                _          => new { type = "image",    image    = new { link = headerImageUrl } },
+            };
+            componentes.Add(new { type = "header", parameters = new object[] { headerParam } });
         }
         if (variaveis.Any())
         {
@@ -381,13 +385,14 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
     public async Task<(bool Ok, string? Status, string? Erro)> CriarTemplateAsync(
         string wabaId, string accessToken, string? appId,
         string nome, string corpo, IReadOnlyList<string> exemplos,
-        byte[]? imagemExemploPng, string categoria = "MARKETING", CancellationToken ct = default)
+        byte[]? imagemExemploPng, string categoria = "MARKETING", CancellationToken ct = default,
+        string headerFormat = "IMAGE", string mimeType = "image/png")
     {
         try
         {
             var componentes = new List<object>();
 
-            // Cabeçalho de imagem (opcional): precisa do handle da imagem de exemplo.
+            // Cabeçalho de mídia (opcional: imagem/vídeo/documento): precisa do handle do exemplo.
             if (imagemExemploPng is { Length: > 0 })
             {
                 // O App ID informado costuma vir errado (às vezes é o Phone Number ID);
@@ -396,13 +401,15 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
                 if (string.IsNullOrWhiteSpace(appIdReal))
                     return (false, null, "Não foi possível determinar o App ID a partir do token.");
 
-                var handle = await SubirImagemExemploAsync(appIdReal, accessToken, imagemExemploPng, ct);
+                var ext = mimeType.Contains("mp4") ? "mp4" : mimeType.Contains("pdf") ? "pdf"
+                        : mimeType.Contains("jpeg") ? "jpg" : "png";
+                var handle = await SubirImagemExemploAsync(appIdReal, accessToken, imagemExemploPng, mimeType, $"header.{ext}", ct);
                 if (handle is null)
-                    return (false, null, "Não foi possível subir a imagem de exemplo do cabeçalho na Meta.");
+                    return (false, null, "Não foi possível subir o arquivo de exemplo do cabeçalho na Meta.");
                 componentes.Add(new
                 {
                     type = "HEADER",
-                    format = "IMAGE",
+                    format = headerFormat.ToUpperInvariant(),
                     example = new { header_handle = new[] { handle } }
                 });
             }
@@ -467,11 +474,11 @@ public class WhatsAppCloudApiService(HttpClient http, ILogger<WhatsAppCloudApiSe
 
     /// <summary>Sobe a imagem de exemplo via Resumable Upload e devolve o handle usado no template.</summary>
     private async Task<string?> SubirImagemExemploAsync(
-        string appId, string accessToken, byte[] png, CancellationToken ct)
+        string appId, string accessToken, byte[] png, string mimeType, string fileName, CancellationToken ct)
     {
         // 1) Abre a sessão de upload.
-        var startUrl = $"{BaseUrl}/{appId}/uploads?file_name=header.png&file_length={png.Length}" +
-                       $"&file_type=image/png&access_token={Uri.EscapeDataString(accessToken)}";
+        var startUrl = $"{BaseUrl}/{appId}/uploads?file_name={Uri.EscapeDataString(fileName)}&file_length={png.Length}" +
+                       $"&file_type={Uri.EscapeDataString(mimeType)}&access_token={Uri.EscapeDataString(accessToken)}";
         using var startResp = await http.PostAsync(startUrl, null, ct);
         var startBody = await startResp.Content.ReadAsStringAsync(ct);
         if (!startResp.IsSuccessStatusCode) { logger.LogWarning("[WhatsApp] upload start falhou: {B}", startBody); return null; }

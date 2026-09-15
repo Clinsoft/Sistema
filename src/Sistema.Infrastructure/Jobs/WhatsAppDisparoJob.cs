@@ -469,7 +469,8 @@ public class WhatsAppDisparoJob(
         var (sucesso, wamId, erro) = await whatsApp.EnviarTemplate(
             cfg.PhoneNumberId!, cfg.AccessToken!,
             cliente.Telefone, template.NomeMeta, template.Idioma, variaveis,
-            string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl);
+            string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl,
+            template.HeaderMediaType);
 
         if (sucesso) historico.MarcarEnviada(wamId!);
         else         historico.MarcarFalha(erro ?? "Erro desconhecido");
@@ -503,7 +504,8 @@ public class WhatsAppDisparoJob(
 
             var (ok, wamId, erro) = await whatsApp.EnviarTemplate(
                 cfg.PhoneNumberId!, cfg.AccessToken!, a.Telefone!, template.NomeMeta, template.Idioma, variaveis,
-                string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl);
+                string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl,
+            template.HeaderMediaType);
             if (ok) hist.MarcarEnviada(wamId!); else hist.MarcarFalha(erro ?? "Erro desconhecido");
             await db.SaveChangesAsync();
         }

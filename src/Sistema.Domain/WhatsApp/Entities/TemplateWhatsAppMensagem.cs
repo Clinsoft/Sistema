@@ -27,10 +27,13 @@ public class TemplateWhatsAppMensagem : Entity
     /// <summary>Exemplo do texto gerado (para preview).</summary>
     public string? ExemploTexto  { get; private set; }
 
-    /// <summary>URL pública da imagem de cabeçalho (templates com HEADER de imagem). Enviada
-    /// como o parâmetro do cabeçalho a cada disparo; sem ela, a Meta recusa com erro 132012.</summary>
+    /// <summary>URL pública da mídia de cabeçalho (templates com HEADER de imagem/vídeo/documento).
+    /// Enviada como o parâmetro do cabeçalho a cada disparo; sem ela a Meta recusa com erro 132012.</summary>
     public string? HeaderImageUrl { get; private set; }
+    /// <summary>Tipo da mídia do cabeçalho: image | video | document. null = image (compatibilidade).</summary>
+    public string? HeaderMediaType { get; private set; }
     public void DefinirHeaderImagem(string? url) => HeaderImageUrl = url;
+    public void DefinirHeaderMidia(string? url, string? tipo) { HeaderImageUrl = url; HeaderMediaType = tipo; }
 
     public bool Ativo { get; private set; } = true;
 

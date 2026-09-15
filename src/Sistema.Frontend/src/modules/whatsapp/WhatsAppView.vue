@@ -730,10 +730,10 @@
             hint="Use {{1}}, {{2}}… para variáveis. Ex.: Olá {{1}}, aqui é a EcoGranel!" persistent-hint />
           <v-textarea v-model="custom.exemplos" label="Exemplos das variáveis (um por linha)" rows="2"
             class="mt-3" hint="Um valor por {{n}}, na ordem. Ex.: João" persistent-hint />
-          <v-file-input v-model="custom.arquivoImagem" accept="image/png,image/jpeg" density="compact"
-            class="mt-3" prepend-icon="mdi-image" clearable
-            label="Cabeçalho de imagem — escolher do computador (JPG ou PNG)"
-            hint="Opcional. Vira o cabeçalho do template." persistent-hint
+          <v-file-input v-model="custom.arquivoImagem" accept="image/png,image/jpeg,video/mp4,application/pdf"
+            density="compact" class="mt-3" prepend-icon="mdi-paperclip" clearable
+            label="Cabeçalho — escolher do computador (imagem JPG/PNG, vídeo MP4 ou PDF)"
+            hint="Opcional. Vira o cabeçalho do template. Vídeo até 16 MB; PDF/imagem até 5 MB." persistent-hint
             @update:model-value="onArquivoImagem" />
           <v-switch v-if="!custom.imagemBase64" v-model="custom.comImagem" color="success" density="compact" hide-details
             label="Ou usar a última arte gerada no sistema" class="mt-2" />
@@ -1401,7 +1401,9 @@ function abrirCustom() {
 async function onArquivoImagem(f: any) {
   const file = Array.isArray(f) ? f[0] : f
   if (!file) { custom.value.imagemBase64 = ''; return }
-  if (file.size > 5 * 1024 * 1024) { notif.erro('Imagem muito grande (máx. 5 MB).'); custom.value.arquivoImagem = null; return }
+  const ehVideo = (file.type || '').startsWith('video')
+  const limite = ehVideo ? 16 * 1024 * 1024 : 5 * 1024 * 1024
+  if (file.size > limite) { notif.erro(ehVideo ? 'Vídeo muito grande (máx. 16 MB).' : 'Arquivo muito grande (máx. 5 MB).'); custom.value.arquivoImagem = null; return }
   custom.value.imagemBase64 = await new Promise<string>((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(String(r.result))

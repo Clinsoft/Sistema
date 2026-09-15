@@ -27,6 +27,11 @@ public class TemplateWhatsAppMensagem : Entity
     /// <summary>Exemplo do texto gerado (para preview).</summary>
     public string? ExemploTexto  { get; private set; }
 
+    /// <summary>URL pública da imagem de cabeçalho (templates com HEADER de imagem). Enviada
+    /// como o parâmetro do cabeçalho a cada disparo; sem ela, a Meta recusa com erro 132012.</summary>
+    public string? HeaderImageUrl { get; private set; }
+    public void DefinirHeaderImagem(string? url) => HeaderImageUrl = url;
+
     public bool Ativo { get; private set; } = true;
 
     private TemplateWhatsAppMensagem() { }

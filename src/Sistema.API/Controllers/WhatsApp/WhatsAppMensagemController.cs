@@ -260,9 +260,17 @@ public class WhatsAppMensagemController(
         var nome = req.Nome.Trim().ToLowerInvariant().Replace(' ', '_');
         var categoria = string.IsNullOrWhiteSpace(req.Categoria) ? "UTILITY" : req.Categoria.ToUpperInvariant();
 
-        // Imagem de exemplo (opcional): usa uma arte já gerada, se pedido.
+        // Imagem de cabeçalho (opcional). Prioridade: arquivo enviado do computador
+        // (ImagemBase64) e, se não houver, uma arte já gerada no sistema (ComImagem).
         byte[]? imagem = null;
-        if (req.ComImagem)
+        if (!string.IsNullOrWhiteSpace(req.ImagemBase64))
+        {
+            var b64 = req.ImagemBase64.Contains(',') ? req.ImagemBase64[(req.ImagemBase64.IndexOf(',') + 1)..] : req.ImagemBase64;
+            try { imagem = Convert.FromBase64String(b64); } catch { imagem = null; }
+            if (imagem is null || imagem.Length == 0)
+                return BadRequest(new { mensagem = "Não foi possível ler a imagem enviada. Tente outro arquivo (JPG ou PNG)." });
+        }
+        else if (req.ComImagem)
         {
             var arte = await db.ArtesMarketing.AsNoTracking()
                 .Where(a => a.EmpresaId == req.EmpresaId && a.UrlExportada != null)
@@ -281,18 +289,43 @@ public class WhatsAppMensagemController(
         if (!ok)
             return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
 
-        // Cadastra localmente (aparece na aba Templates com o selo de status "Em análise").
-        var jaExiste = await db.TemplatesWhatsAppMensagem
-            .AnyAsync(t => t.EmpresaId == req.EmpresaId && t.NomeMeta == nome, ct);
-        if (!jaExiste)
+        // Se tem imagem de cabeçalho, salva num caminho público para reutilizar no envio
+        // (a Meta exige a imagem em cada disparo; sem ela dá erro 132012).
+        string? headerUrl = null;
+        if (imagem is { Length: > 0 })
         {
-            db.TemplatesWhatsAppMensagem.Add(TemplateWhatsAppMensagem.Criar(
-                req.EmpresaId, nome, TipoDisparoWhatsApp.Personalizado, "pt_BR", null, req.Corpo));
+            var dir = Path.Combine("wwwroot", "uploads", "templates");
+            Directory.CreateDirectory(dir);
+            var arquivo = $"{nome}.png";
+            await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, arquivo), imagem, ct);
+            headerUrl = $"/uploads/templates/{arquivo}";
+        }
+
+        // Cadastra localmente (aparece na aba Templates com o selo de status "Em análise").
+        var existente = await db.TemplatesWhatsAppMensagem
+            .FirstOrDefaultAsync(t => t.EmpresaId == req.EmpresaId && t.NomeMeta == nome, ct);
+        if (existente is null)
+        {
+            var novo = TemplateWhatsAppMensagem.Criar(
+                req.EmpresaId, nome, TipoDisparoWhatsApp.Personalizado, "pt_BR", null, req.Corpo);
+            if (headerUrl != null) novo.DefinirHeaderImagem(AbsolutizarUrl(headerUrl));
+            db.TemplatesWhatsAppMensagem.Add(novo);
+            await uow.SalvarAsync(ct);
+        }
+        else if (headerUrl != null)
+        {
+            existente.DefinirHeaderImagem(AbsolutizarUrl(headerUrl));
             await uow.SalvarAsync(ct);
         }
 
         return Ok(new { nome, status, comImagem = imagem != null });
     }
+
+    /// <summary>Transforma um caminho relativo (/uploads/...) em URL pública absoluta (a Meta exige).</summary>
+    private string AbsolutizarUrl(string relativa)
+        => relativa.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? relativa
+            : $"{Request.Scheme}://{Request.Host}{relativa}";
 
     /// <summary>
     /// Cria um template na Meta usando uma ARTE específica como imagem do cabeçalho
@@ -449,6 +482,37 @@ public class WhatsAppMensagemController(
                 j => j.DispararPromocaoManualAsync(empresaId, loja));
 
         return Ok(new { mensagem = "Disparo de promoção enfileirado para todas as lojas.", lojas = lojas.Count });
+    }
+
+    /// <summary>
+    /// Dispara um TEMPLATE aprovado (escolhido) para TODOS os clientes de TODAS as lojas ativas
+    /// da empresa, cada loja pelo seu próprio número. Colaboradores são excluídos.
+    /// </summary>
+    [HttpPost("disparar-template")]
+    [Authorize]
+    public async Task<IActionResult> DispararTemplate([FromQuery] Guid empresaId, [FromQuery] string nomeMeta, CancellationToken ct)
+    {
+        if (User.IsInRole("Atendente")) return Forbid();
+        if (string.IsNullOrWhiteSpace(nomeMeta))
+            return BadRequest(new { mensagem = "Informe o template a disparar." });
+
+        var lojas = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo
+                     && c.PhoneNumberId != null && c.AccessToken != null)
+            .Select(c => c.LocalEstoqueId)
+            .ToListAsync(ct);
+
+        if (lojas.Count == 0)
+            return BadRequest(new { mensagem = "Nenhuma loja com WhatsApp configurado." });
+
+        var primeiro = true;
+        foreach (var loja in lojas)
+        {
+            var incluirSemLoja = primeiro; primeiro = false;
+            Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
+                j => j.DispararTemplateManualAsync(empresaId, nomeMeta, loja, incluirSemLoja));
+        }
+        return Ok(new { mensagem = $"Disparo do template enfileirado para {lojas.Count} loja(s), cada uma pelo seu número.", lojas = lojas.Count });
     }
 
     // ─── Histórico ────────────────────────────────────────────────────────────
@@ -1068,7 +1132,8 @@ public record CriarTemplatePromocaoRequest(Guid EmpresaId, string? Nome = null);
 
 public record CriarTemplateCustomRequest(
     Guid EmpresaId, string Nome, string Corpo, string? Categoria = "UTILITY",
-    IEnumerable<string>? Exemplos = null, bool ComImagem = false);
+    IEnumerable<string>? Exemplos = null, bool ComImagem = false,
+    string? ImagemBase64 = null);
 
 public record CriarTemplateDeArteRequest(
     Guid EmpresaId, Guid ArteId, string TipoDisparo, string Nome, string Corpo,

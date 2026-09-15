@@ -304,6 +304,21 @@
                     Disparar Novidade
                   </v-btn>
                 </div>
+
+                <v-divider class="my-4" />
+                <div class="text-subtitle-2 mb-2">Enviar um template para TODA a base (todas as lojas)</div>
+                <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+                  Escolha um template <b>aprovado</b> e envie para <b>todos os clientes das duas lojas</b> — cada
+                  loja envia pelo <b>seu próprio número</b>. Colaboradores são excluídos automaticamente.
+                </v-alert>
+                <div class="d-flex gap-3 flex-wrap align-center">
+                  <v-select v-model="templateCampanha" :items="templates" item-title="nomeMeta" item-value="nomeMeta"
+                    label="Template aprovado" density="compact" variant="outlined" hide-details style="min-width:260px" />
+                  <v-btn color="success" prepend-icon="mdi-send" :loading="disparandoTemplate"
+                    :disabled="!templateCampanha" @click="dispararTemplate">
+                    Enviar para todas as lojas
+                  </v-btn>
+                </div>
               </v-card-text>
             </v-card>
 
@@ -715,8 +730,13 @@
             hint="Use {{1}}, {{2}}… para variáveis. Ex.: Olá {{1}}, aqui é a EcoGranel!" persistent-hint />
           <v-textarea v-model="custom.exemplos" label="Exemplos das variáveis (um por linha)" rows="2"
             class="mt-3" hint="Um valor por {{n}}, na ordem. Ex.: João" persistent-hint />
-          <v-switch v-model="custom.comImagem" color="success" density="compact" hide-details
-            label="Incluir cabeçalho de imagem (usa uma arte já gerada)" class="mt-2" />
+          <v-file-input v-model="custom.arquivoImagem" accept="image/png,image/jpeg" density="compact"
+            class="mt-3" prepend-icon="mdi-image" clearable
+            label="Cabeçalho de imagem — escolher do computador (JPG ou PNG)"
+            hint="Opcional. Vira o cabeçalho do template." persistent-hint
+            @update:model-value="onArquivoImagem" />
+          <v-switch v-if="!custom.imagemBase64" v-model="custom.comImagem" color="success" density="compact" hide-details
+            label="Ou usar a última arte gerada no sistema" class="mt-2" />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -1371,11 +1391,23 @@ async function criarTemplatePromocao() {
 // Criar template personalizado e enviar para análise.
 const dialogCustom = ref(false)
 const criandoCustom = ref(false)
-const custom = ref({ nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false })
+const custom = ref<any>({ nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false, arquivoImagem: null, imagemBase64: '' })
 
 function abrirCustom() {
-  custom.value = { nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false }
+  custom.value = { nome: '', categoria: 'UTILITY', corpo: '', exemplos: '', comImagem: false, arquivoImagem: null, imagemBase64: '' }
   dialogCustom.value = true
+}
+
+async function onArquivoImagem(f: any) {
+  const file = Array.isArray(f) ? f[0] : f
+  if (!file) { custom.value.imagemBase64 = ''; return }
+  if (file.size > 5 * 1024 * 1024) { notif.erro('Imagem muito grande (máx. 5 MB).'); custom.value.arquivoImagem = null; return }
+  custom.value.imagemBase64 = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
 }
 
 async function enviarCustom() {
@@ -1396,6 +1428,7 @@ async function enviarCustom() {
       categoria: custom.value.categoria,
       exemplos,
       comImagem: custom.value.comImagem,
+      imagemBase64: custom.value.imagemBase64 || null,
     })
     dialogCustom.value = false
     notif.ok(`Template "${data?.nome}" enviado para análise (${data?.status ?? 'PENDING'}). Acompanhe o status pelo selo no card.`)
@@ -1630,6 +1663,24 @@ async function dispararNovidade() {
     notif.erro('Erro ao disparar novidade. Verifique se o WhatsApp está configurado.')
   } finally {
     disparandoNovidade.value = false
+  }
+}
+
+const templateCampanha = ref<string | null>(null)
+const disparandoTemplate = ref(false)
+async function dispararTemplate() {
+  if (!templateCampanha.value) return
+  if (!confirm(`Enviar o template "${templateCampanha.value}" para TODOS os clientes das duas lojas (cada uma pelo seu número)?`)) return
+  disparandoTemplate.value = true
+  try {
+    const { data } = await api.post('/whatsapp/mensagem/disparar-template', null,
+      { params: { empresaId: auth.empresaId, nomeMeta: templateCampanha.value } })
+    notif.ok(data?.mensagem ?? 'Disparo enfileirado! As mensagens serão enviadas em instantes.')
+    setTimeout(carregarHistorico, 3000)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Erro ao disparar o template.')
+  } finally {
+    disparandoTemplate.value = false
   }
 }
 

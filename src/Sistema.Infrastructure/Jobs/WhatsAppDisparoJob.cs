@@ -352,6 +352,52 @@ public class WhatsAppDisparoJob(
         await DispararNovidadesManual(empresa.Id, empresa.NomeFantasia, cfg, localEstoqueId);
     }
 
+    /// <summary>
+    /// Dispara um TEMPLATE específico (já aprovado e cadastrado) para todos os clientes ativos
+    /// da loja informada, pelo número dela. Colaboradores são excluídos. Usado para "enviar uma
+    /// campanha escolhendo o template", em cada loja com seu próprio número.
+    /// </summary>
+    public async Task DispararTemplateManualAsync(Guid empresaId, string nomeMeta, Guid? localEstoqueId = null, bool incluirSemLoja = false)
+    {
+        var empresa = await db.Empresas.AsNoTracking()
+            .Where(e => e.Id == empresaId).Select(e => new { e.Id, e.NomeFantasia }).FirstOrDefaultAsync();
+        if (empresa is null) return;
+
+        var cfg = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.EmpresaId == empresaId && c.LocalEstoqueId == localEstoqueId);
+        if (cfg is null || !cfg.Ativo || string.IsNullOrEmpty(cfg.PhoneNumberId) || string.IsNullOrEmpty(cfg.AccessToken))
+        {
+            logger.LogWarning("[WhatsApp] {Empresa}: WhatsApp não configurado para o disparo de template.", empresa.NomeFantasia);
+            return;
+        }
+
+        var template = await db.TemplatesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.EmpresaId == empresaId && t.NomeMeta == nomeMeta);
+        if (template is null)
+        {
+            logger.LogWarning("[WhatsApp] {Empresa}: template {Nome} não cadastrado no sistema.", empresa.NomeFantasia, nomeMeta);
+            return;
+        }
+
+        var colaboradores = await TelefonesColaboradoresAsync(empresaId);
+        var clientes = await db.Clientes.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo && !string.IsNullOrEmpty(c.Telefone)
+                     && (c.LocalEstoqueId == localEstoqueId || (incluirSemLoja && c.LocalEstoqueId == null)))
+            .Select(c => new ClienteInfo(c.Id, c.Nome, c.Telefone!, c.DataNascimento))
+            .ToListAsync();
+        clientes = clientes.Where(c => !EhColaborador(colaboradores, c.Telefone)).ToList();
+
+        int enviados = 0, falhas = 0;
+        foreach (var c in clientes)
+        {
+            var ctx = VariaveisComuns(c, empresa.NomeFantasia);
+            var (ok, _, _) = await Enviar(empresaId, c, template.TipoDisparo, template, ctx, cfg, localEstoqueId);
+            if (ok) enviados++; else falhas++;
+        }
+        logger.LogInformation("[WhatsApp] Template {Nome} {Empresa}: {E} enviados, {F} falhas",
+            nomeMeta, empresa.NomeFantasia, enviados, falhas);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private async Task<TemplateWhatsAppMensagem?> ObterTemplate(Guid empresaId, TipoDisparoWhatsApp tipo)
@@ -402,7 +448,8 @@ public class WhatsAppDisparoJob(
 
         var (sucesso, wamId, erro) = await whatsApp.EnviarTemplate(
             cfg.PhoneNumberId!, cfg.AccessToken!,
-            cliente.Telefone, template.NomeMeta, template.Idioma, variaveis);
+            cliente.Telefone, template.NomeMeta, template.Idioma, variaveis,
+            string.IsNullOrWhiteSpace(template.HeaderImageUrl) ? null : template.HeaderImageUrl);
 
         if (sucesso) historico.MarcarEnviada(wamId!);
         else         historico.MarcarFalha(erro ?? "Erro desconhecido");

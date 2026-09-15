@@ -120,17 +120,21 @@
           <thead>
             <tr>
               <th>Colaborador</th>
-              <th>Loja</th>
               <th class="text-right">Pontos da semana</th>
               <th class="text-center">Status</th>
               <th></th>
             </tr>
           </thead>
-          <tbody>
-            <tr v-for="c in resumoSemana" :key="c.id"
+          <tbody v-for="g in resumoPorLoja" :key="g.loja">
+            <tr class="av-loja-head">
+              <td colspan="4" class="font-weight-bold text-uppercase text-caption py-1">
+                <v-icon size="small" class="mr-1">mdi-store</v-icon>{{ g.loja }}
+                <span class="text-medium-emphasis font-weight-regular text-none ml-2">{{ g.avaliados }}/{{ g.itens.length }} avaliados · média {{ g.media }}</span>
+              </td>
+            </tr>
+            <tr v-for="c in g.itens" :key="c.id"
                 :class="{ 'av-row-sel': c.id === avColab }" style="cursor:pointer" @click="selecionarColab(c.id)">
               <td class="font-weight-medium">{{ c.nome }}</td>
-              <td class="text-caption text-medium-emphasis">{{ c.loja }}</td>
               <td class="text-right">
                 <b v-if="c.avaliado" :class="c.pontos >= 70 ? 'text-success' : 'text-amber-darken-2'">{{ c.pontos }}</b>
                 <span v-else class="text-medium-emphasis">—</span>
@@ -144,7 +148,9 @@
                 <v-btn size="x-small" variant="text" icon="mdi-pencil" @click.stop="selecionarColab(c.id)" />
               </td>
             </tr>
-            <tr v-if="!resumoSemana.length"><td colspan="5" class="text-center text-medium-emphasis py-3">Nenhum colaborador ativo.</td></tr>
+          </tbody>
+          <tbody v-if="!resumoSemana.length">
+            <tr><td colspan="4" class="text-center text-medium-emphasis py-3">Nenhum colaborador ativo.</td></tr>
           </tbody>
         </v-table>
       </v-card>
@@ -416,6 +422,15 @@ async function carregarResumoSemana() {
   if (avColab.value) await carregarPenalidades()
 }
 function selecionarColab(id: string) { avColab.value = id; carregarAvaliacao() }
+const resumoPorLoja = computed(() => {
+  const map: Record<string, any[]> = {}
+  for (const c of resumoSemana.value) (map[c.loja] ??= []).push(c)
+  return Object.entries(map).map(([loja, itens]) => {
+    const avals = itens.filter(i => i.avaliado)
+    const media = avals.length ? Math.round(avals.reduce((s, i) => s + i.pontos, 0) / avals.length) : 0
+    return { loja, itens, avaliados: avals.length, media }
+  }).sort((a, b) => a.loja.localeCompare(b.loja))
+})
 
 async function carregarAvaliacao() {
   if (!avColab.value || !avSemana.value) return
@@ -554,5 +569,6 @@ onMounted(async () => {
 <style scoped>
 .av-item:not(:last-child){border-bottom:1px solid rgba(128,128,128,.15)}
 .av-row-sel{background:rgba(255,193,7,.12)}
+.av-loja-head{background:rgba(128,128,128,.10)}
 .ga-x-6{column-gap:24px}
 </style>

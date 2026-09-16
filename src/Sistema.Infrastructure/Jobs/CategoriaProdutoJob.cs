@@ -25,19 +25,19 @@ public class CategoriaProdutoJob(
     // Só aplica se a categoria existir no cadastro da empresa.
     private static readonly (string[] Chaves, string Categoria)[] Regras =
     {
-        (new[]{"whey","proteina","colageno","creatina","capsula","caps ","vitamina","suplement","hydro protein","psyllium","psillium"}, "Suplementos"),
-        (new[]{"fibra","farelo"}, "Fibra Alimentar"),
-        (new[]{"cha ","chá","infus","erva mate","hibisc","camomila","erva-mate"}, "Chás e infusões"),
+        (new[]{"whey","proteina","proteína","colageno","colágeno","creatina","capsula","cápsula","caps ","vitamina","suplement","hydro protein","psyllium","psillium","supercoffee","super coffee","caffeine","cafeina","cafeína","termogenic","bcaa","glutamina","aminoacido","aminoácido","melatonina","triptofano","magnesio","magnésio","zinco","omega","ômega","probiotic","cloreto de magnesio","spirulina","clorella","chlorella","maca peruana","propolis","própolis","verdpropolis"}, "Suplementos"),
+        (new[]{"fibra","farelo","goma acacia","goma-acacia"}, "Fibra Alimentar"),
+        (new[]{"cha ","chá","infus","erva mate","hibisc","camomila","erva-mate","erva doce","carqueja","boldo","capim cidreira","melissa","kombucha"}, "Chás e infusões"),
         (new[]{"chocolate","cacau","achocolat","brigadeiro","choco "}, "Chocolates"),
-        (new[]{"biscoito","cookie","rosquinha","bolacha","wafer","palito de tapioca","dadinho de tapioca","pao de queijo","pão de queijo"}, "Biscoitos"),
-        (new[]{"molho","ketchup","maionese","mostarda","shoyu","pate","patê","calda"}, "Molhos"),
+        (new[]{"biscoito","cookie","rosquinha","bolacha","wafer","palito de tapioca","dadinho de tapioca","pao de queijo","pão de queijo","pipoquinha de pao de queijo","cracker","torrada"}, "Biscoitos"),
+        (new[]{"molho","ketchup","maionese","mostarda","shoyu","pate","patê","calda","barbecue","buffalo","ranch"}, "Molhos"),
         (new[]{"oleo","óleo","azeite","ghee","gordura","manteiga"}, "Gorduras e óleos vegetais"),
-        (new[]{"mel ","melado","melaco","adocante","adoçante","xilitol","eritritol","stevia","agave","acucar","açúcar","doce de leite","goiabada"}, "Mel e adoçantes naturais"),
-        (new[]{"tempero","especiaria","pimenta","oregano","orégano","canela","curry","cominho","louro","paprica","páprica","chimichurri","sal marinho","farofa"}, "Ervas e especiarias"),
-        (new[]{"castanha","amendoa","amêndoa","noz","nozes","semente","amendoim","pistache","paçoca","pacoca","pasta de amendoim"}, "Oleaginosas e sementes"),
-        (new[]{"uva passa","uvas passas","damasco","cristalizad","fruta seca","tamara","tâmara","ameixa seca","banana passa"}, "Frutas secas e cristalizadas"),
+        (new[]{"mel ","melado","melaco","melaço","adocante","adoçante","xilitol","eritritol","stevia","agave","acucar","açúcar","doce de leite","goiabada","geleia","geléia","melagriao","melagrião"}, "Mel e adoçantes naturais"),
+        (new[]{"tempero","especiaria","pimenta","oregano","orégano","canela","curry","cominho","louro","paprica","páprica","chimichurri","sal marinho","sal rosa","farofa","curcuma","cúrcuma","acafrao","açafrão","gengibre em po","chimichurri","vinagre"}, "Ervas e especiarias"),
+        (new[]{"castanha","amendoa","amêndoa","noz","nozes","semente","amendoim","pistache","paçoca","pacoca","pasta de amendoim","chia","linhaca","linhaça","gergelim","girassol","tahine","tahini"}, "Oleaginosas e sementes"),
+        (new[]{"uva passa","uvas passas","damasco","cristalizad","fruta seca","tamara","tâmara","ameixa seca","banana passa","coco ralado","figo seco"}, "Frutas secas e cristalizadas"),
         (new[]{"chips","pipoca","snack","salgadinho"}, "Chips naturais"),
-        (new[]{"aveia","quinoa","arroz integral","cuscuz","granola","cereal","grao de bico","grão de bico","tapioca","farinha","flocos"}, "Grãos integrais"),
+        (new[]{"aveia","quinoa","arroz integral","cuscuz","granola","cereal","grao de bico","grão de bico","tapioca","farinha","flocos","fuba","fubá","fuba de milho","polvilho","amaranto","milho para cuscuz","nhoque"}, "Grãos integrais"),
     };
 
     private static string Norm(string? s)

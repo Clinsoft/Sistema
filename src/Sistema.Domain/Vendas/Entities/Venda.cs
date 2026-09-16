@@ -53,9 +53,9 @@ public class Venda : Entity
         };
 
     public void AdicionarItem(Guid produtoId, string descricao, decimal quantidade,
-        decimal precoUnitario, decimal desconto = 0)
+        decimal precoUnitario, decimal percentualDesconto = 0, decimal? descontoValor = null)
     {
-        var item = ItemVenda.Criar(Id, produtoId, descricao, quantidade, precoUnitario, desconto);
+        var item = ItemVenda.Criar(Id, produtoId, descricao, quantidade, precoUnitario, percentualDesconto, descontoValor);
         _itens.Add(item);
         RecalcularTotais();
     }

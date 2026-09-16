@@ -1902,14 +1902,14 @@ async function finalizar() {
     for (let i = 0; i < itens.value.length; i++) {
       const item = itens.value[i]
       // Desconto do item = desconto manual + (desconto da promoção "menor valor", se for este item).
-      const descRs = item.desconto + (i === promoItemIndex.value ? descontoPromo.value : 0)
+      // Enviado em REAIS (valor absoluto) para o backend aplicar exatamente esse valor —
+      // evita divergência de arredondamento (tela x backend) que gerava "pagamento insuficiente".
+      const descRs = Math.round((item.desconto + (i === promoItemIndex.value ? descontoPromo.value : 0)) * 100) / 100
       await api.post(`/vendas/${vendaId}/itens`, {
         produtoId: item.produtoId,
         quantidade: item.quantidade,
         precoUnitario: item.precoUnitario,
-        percentualDesconto: descRs > 0
-          ? (descRs / (item.precoUnitario * item.quantidade)) * 100
-          : 0,
+        descontoValor: descRs > 0 ? descRs : 0,
       })
     }
 

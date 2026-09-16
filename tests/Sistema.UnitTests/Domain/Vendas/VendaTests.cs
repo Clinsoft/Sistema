@@ -33,11 +33,32 @@ public class VendaTests
     }
 
     [Fact]
-    public void AdicionarItem_ComDesconto_DeveReduzirTotal()
+    public void AdicionarItem_ComDescontoPercentual_DeveReduzirTotal()
     {
         var v = CriarVenda();
-        v.AdicionarItem(ProdutoId, "Omega 3", 1, 100m, desconto: 10m);
+        v.AdicionarItem(ProdutoId, "Omega 3", 1, 100m, percentualDesconto: 10m);
         v.Total.Should().Be(90m);
+    }
+
+    [Fact]
+    public void AdicionarItem_ComDescontoEmReais_BateAoCentavo_ItemPorKg()
+    {
+        // Promoção "menor valor 30%" sobre item por kg: o desconto vai em REAIS (absoluto),
+        // então o Total do backend bate EXATAMENTE com o total exibido no PDV (sem
+        // divergência de arredondamento que causava "pagamento insuficiente").
+        var v = CriarVenda();
+        // Amendoim: 42,23/kg × 0,174 = 7,348 → item bruto R$ 7,35; promo 30% ≈ R$ 2,20.
+        v.AdicionarItem(ProdutoId, "Amendoim churrasco", 0.174m, 42.23m, descontoValor: 2.20m);
+        v.Itens[0].Total.Should().Be(5.15m);   // 7,35 − 2,20
+        v.Total.Should().Be(5.15m);
+    }
+
+    [Fact]
+    public void AdicionarItem_DescontoEmReais_NuncaDeixaTotalNegativo()
+    {
+        var v = CriarVenda();
+        v.AdicionarItem(ProdutoId, "Item barato", 1, 5m, descontoValor: 999m);
+        v.Total.Should().Be(0m);
     }
 
     [Fact]

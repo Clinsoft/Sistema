@@ -28,10 +28,21 @@ public class ItemVenda : Entity
         PercentualDesconto = bruto > 0 ? Math.Round(TotalDesconto / bruto * 100, 4) : 0;
     }
 
+    /// <summary>
+    /// Cria o item. O desconto pode vir como PORCENTAGEM (percentualDesconto) ou, de
+    /// preferência, como VALOR EM REAIS (descontoValor) — este último evita divergência
+    /// de arredondamento entre a tela (soma em ponto flutuante do JS) e o decimal do
+    /// backend: o valor bruto do item é arredondado a centavos e o desconto é subtraído
+    /// exatamente, de modo que o Total bate ao centavo com o que o cliente paga.
+    /// </summary>
     public static ItemVenda Criar(Guid vendaId, Guid produtoId, string descricao,
-        decimal quantidade, decimal precoUnitario, decimal percentualDesconto = 0)
+        decimal quantidade, decimal precoUnitario, decimal percentualDesconto = 0,
+        decimal? descontoValor = null)
     {
-        var totalDesconto = precoUnitario * quantidade * percentualDesconto / 100;
+        var bruto = Math.Round(precoUnitario * quantidade, 2);   // mesma base do que aparece na tela e na NFC-e
+        var totalDesconto = descontoValor is { } dv
+            ? Math.Round(Math.Clamp(dv, 0m, bruto), 2)            // desconto em reais (autoritativo)
+            : Math.Round(bruto * percentualDesconto / 100, 2);   // compat.: desconto em %
         return new ItemVenda
         {
             VendaId = vendaId,
@@ -39,9 +50,9 @@ public class ItemVenda : Entity
             Descricao = descricao,
             Quantidade = quantidade,
             PrecoUnitario = precoUnitario,
-            PercentualDesconto = percentualDesconto,
-            TotalDesconto = Math.Round(totalDesconto, 2),
-            Total = Math.Round(precoUnitario * quantidade - totalDesconto, 2)
+            PercentualDesconto = bruto > 0 ? Math.Round(totalDesconto / bruto * 100, 4) : 0,
+            TotalDesconto = totalDesconto,
+            Total = Math.Round(bruto - totalDesconto, 2)
         };
     }
 }

@@ -27,7 +27,7 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
     [HttpPost("{id:guid}/itens")]
     public async Task<IActionResult> AdicionarItem(Guid id, [FromBody] AdicionarItemRequest req, CancellationToken ct)
     {
-        await mediator.Send(new AdicionarItemVendaCommand(id, req.ProdutoId, req.Quantidade, req.PrecoUnitario, req.PercentualDesconto), ct);
+        await mediator.Send(new AdicionarItemVendaCommand(id, req.ProdutoId, req.Quantidade, req.PrecoUnitario, req.PercentualDesconto, req.DescontoValor), ct);
         return NoContent();
     }
 
@@ -160,6 +160,6 @@ public class VendasController(IMediator mediator, SistemaDbContext db) : Control
     };
 }
 
-public record AdicionarItemRequest(Guid ProdutoId, decimal Quantidade, decimal? PrecoUnitario = null, decimal PercentualDesconto = 0);
+public record AdicionarItemRequest(Guid ProdutoId, decimal Quantidade, decimal? PrecoUnitario = null, decimal PercentualDesconto = 0, decimal? DescontoValor = null);
 public record FinalizarVendaRequest(IList<PagamentoDto> Pagamentos, string? CpfCnpjConsumidor = null,
     decimal CashbackUsado = 0);

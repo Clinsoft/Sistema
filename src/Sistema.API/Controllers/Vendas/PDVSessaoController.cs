@@ -63,6 +63,20 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         var sessao = await repo.ObterSessaoAbertaAsync(empresaId, uid, ct);
         if (sessao is null) return Ok(null);
 
+        // Caixa deixado aberto de um dia anterior: NÃO retoma. Fecha automaticamente com o
+        // saldo esperado calculado pelo sistema e devolve "sem sessão" — o PDV então pede
+        // para abrir um caixa novo (evita carregar o caixa esquecido para o dia seguinte).
+        if (sessao.Abertura.Date < DateTime.Now.Date)
+        {
+            var bAnt = await BreakdownFormasAsync(sessao, ct);
+            var saldoEsperado = Math.Round(
+                sessao.SaldoAbertura + bAnt.Dinheiro + sessao.TotalSuprimentos - sessao.TotalSangrias, 2);
+            sessao.Fechar(saldoEsperado,
+                $"Fechamento automático — caixa deixado aberto desde {sessao.Abertura:dd/MM/yyyy HH:mm}.");
+            await db.SaveChangesAsync(ct);
+            return Ok(null);
+        }
+
         var numeros = await NumerosPorSessaoAsync(empresaId, ct);
         var operador = await db.Usuarios.AsNoTracking()
             .Where(u => u.Id == sessao.UsuarioId).Select(u => u.Nome).FirstOrDefaultAsync(ct);

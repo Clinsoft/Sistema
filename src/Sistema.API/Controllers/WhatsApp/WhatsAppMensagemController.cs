@@ -405,15 +405,22 @@ public class WhatsAppMensagemController(
             foreach (var s in irmaos.Where(s => s.NomeMeta != nome)) s.Desativar();
         }
 
+        // Cabeçalho de imagem = a arte. Persiste a URL para o disparo enviar a imagem
+        // (sem isso, a Meta recusa com erro 132012 "expected IMAGE, received UNKNOWN").
+        var headerArte = AbsolutizarUrl(arte!.UrlExportada!);
+
         if (jaExiste is null)
         {
-            db.TemplatesWhatsAppMensagem.Add(TemplateWhatsAppMensagem.Criar(
-                req.EmpresaId, nome, tipoDisparo, "pt_BR", req.VariaveisJson, req.Corpo));
+            var novo = TemplateWhatsAppMensagem.Criar(
+                req.EmpresaId, nome, tipoDisparo, "pt_BR", req.VariaveisJson, req.Corpo);
+            novo.DefinirHeaderMidia(headerArte, "IMAGE");
+            db.TemplatesWhatsAppMensagem.Add(novo);
         }
         else
         {
             jaExiste.Ativar();
             jaExiste.Atualizar(nome, "pt_BR", req.VariaveisJson, req.Corpo);
+            jaExiste.DefinirHeaderMidia(headerArte, "IMAGE");
         }
         await uow.SalvarAsync(ct);
 

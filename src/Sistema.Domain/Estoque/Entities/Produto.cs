@@ -91,6 +91,8 @@ public class Produto : Entity
     /// <summary>Quando o preenchimento automático de foto (por EAN) já tentou este produto.
     /// Evita gastar a cota diária da API repetindo quem não tem imagem na fonte.</summary>
     public DateTime? ImagemBuscadaEm { get; private set; }
+    /// <summary>Quando a categorização automática (por EAN, via Cosmos) já tentou este produto.</summary>
+    public DateTime? CategoriaBuscadaEm { get; private set; }
     public string? FichaTecnicaUrl { get; private set; }
     public string? Marcador { get; private set; }
     public string? Tags { get; private set; }
@@ -255,6 +257,21 @@ public class Produto : Entity
     {
         if (!string.IsNullOrEmpty(imagemUrl)) ImagemUrl = imagemUrl;
         ImagemBuscadaEm = quando;
+    }
+
+    /// <summary>Marca que a categorização automática (por EAN) tentou este produto. Se
+    /// conseguiu mapear para uma categoria da loja, atualiza a CategoriaId; senão só marca
+    /// a data (para não repetir e gastar cota).</summary>
+    public void RegistrarTentativaCategoria(Guid? categoriaId, string? cest, DateTime quando)
+    {
+        if (categoriaId is { } c) CategoriaId = c;
+        // CEST (campo fiscal): preenche só se ainda estiver vazio — não sobrescreve o manual.
+        if (string.IsNullOrWhiteSpace(Cest) && !string.IsNullOrWhiteSpace(cest))
+        {
+            var dig = new string(cest.Where(char.IsDigit).ToArray());
+            if (dig.Length >= 7) Cest = dig[..7];
+        }
+        CategoriaBuscadaEm = quando;
     }
 
     public void DefinirFichaTecnica(string? url) => FichaTecnicaUrl = url;

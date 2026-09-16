@@ -168,6 +168,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>
     "produto-imagens-diaria",
     job => job.ExecutarAsync(),
     "0 3 * * *", optsBR);   // 03:00 BRT — até 20 fotos/dia (limite grátis do Cosmos)
+
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.CategoriaProdutoJob>(
+    "produto-categoria-diaria",
+    job => job.ExecutarAsync(),
+    "0 4 * * *", optsBR);   // 04:00 BRT — categoriza (e preenche CEST) até 20/dia via Cosmos (cota compartilhada com fotos)
 // Roda uma vez ao subir para começar já o preenchimento do dia.
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>(
     job => job.ExecutarAsync());

@@ -34,6 +34,49 @@ public class ImagemProdutoService(HttpClient http, IConfiguration config)
         return await BuscarOpenFoodFactsAsync(ean, ct);
     }
 
+    /// <summary>
+    /// Classificação do produto pelo EAN via Cosmos: NCM, GPC e categoria de varejo (quando
+    /// houver), além da descrição. <c>Ok=false</c> indica falha de comunicação/cota (429) —
+    /// o chamador NÃO deve marcar como tentado, para reprocessar depois. <c>Ok=true</c> com
+    /// campos vazios = produto sem classificação na base (pode marcar como tentado).
+    /// </summary>
+    public async Task<ClassificacaoCosmos> ClassificarAsync(string codigoBarras, CancellationToken ct = default)
+    {
+        var ean = new string((codigoBarras ?? "").Where(char.IsDigit).ToArray());
+        if (ean.Length < 8 || !UsaCosmos) return new ClassificacaoCosmos(true, null, null, null, null);
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, string.Format(CosmosUrl, ean));
+            req.Headers.TryAddWithoutValidation("X-Cosmos-Token", _cosmosToken);
+            req.Headers.UserAgent.ParseAdd("EcoGranel/1.0 (+https://ecogranel.com.br)");
+            req.Headers.Accept.ParseAdd("application/json");
+
+            using var resp = await http.SendAsync(req, ct);
+            if ((int)resp.StatusCode == 429) return new ClassificacaoCosmos(false, null, null, null, null); // cota
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return new ClassificacaoCosmos(true, null, null, null, null); // não achou (marca tentado)
+            if (!resp.IsSuccessStatusCode) return new ClassificacaoCosmos(false, null, null, null, null);
+
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            static string? Sub(JsonElement e, string prop, string inner)
+                => e.TryGetProperty(prop, out var o) && o.ValueKind == JsonValueKind.Object
+                   && o.TryGetProperty(inner, out var v) ? v.GetString() : null;
+            var descricao = root.TryGetProperty("description", out var d) ? d.GetString() : null;
+            // CEST pode vir como objeto {code,description} ou string direta.
+            string? cest = Sub(root, "cest", "code");
+            if (string.IsNullOrWhiteSpace(cest) && root.TryGetProperty("cest", out var ce) && ce.ValueKind == JsonValueKind.String)
+                cest = ce.GetString();
+            return new ClassificacaoCosmos(true,
+                Sub(root, "ncm", "description"),
+                Sub(root, "gpc", "description"),
+                Sub(root, "category", "description"),
+                descricao, cest);
+        }
+        catch { return new ClassificacaoCosmos(false, null, null, null, null); }
+    }
+
     // ── Cosmos / Bluesoft (base BR, boa cobertura de imagem) ──────────────────
     private async Task<(byte[], string, string?)?> BuscarCosmosAsync(string ean, CancellationToken ct)
     {
@@ -105,3 +148,6 @@ public class ImagemProdutoService(HttpClient http, IConfiguration config)
         return (bytes, mime, nome);
     }
 }
+
+/// <summary>Classificação de um produto vinda do Cosmos (por EAN).</summary>
+public record ClassificacaoCosmos(bool Ok, string? Ncm, string? Gpc, string? Categoria, string? Descricao, string? Cest = null);

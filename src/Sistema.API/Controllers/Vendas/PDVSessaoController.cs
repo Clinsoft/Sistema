@@ -39,27 +39,9 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         if (vinculo?.LocalEstoqueId is Guid unidade && !supervisor && cmd.LocalEstoqueId != unidade)
             cmd = cmd with { LocalEstoqueId = unidade };
 
-        // Já existe caixa aberto NESTA LOJA por outra pessoa? Avisa (evita caixa "solto"
-        // esquecido aberto, como já ocorreu). O usuário pode confirmar e abrir mesmo assim.
-        if (!cmd.Forcar)
-        {
-            var naLoja = await db.PDVSessoes.AsNoTracking()
-                .Where(s => s.EmpresaId == cmd.EmpresaId && s.LocalEstoqueId == cmd.LocalEstoqueId
-                    && s.Status == StatusSessao.Aberta && s.UsuarioId != cmd.UsuarioId)
-                .OrderBy(s => s.Abertura).FirstOrDefaultAsync(ct);
-            if (naLoja is not null)
-            {
-                var nome = await db.Usuarios.Where(u => u.Id == naLoja.UsuarioId)
-                    .Select(u => u.Nome).FirstOrDefaultAsync(ct) ?? "outro operador";
-                return Conflict(new
-                {
-                    exigeConfirmacao = true,
-                    mensagem = $"Já há um caixa aberto nesta loja por {nome}, desde " +
-                               $"{naLoja.Abertura:dd/MM 'às' HH:mm}. Feche-o antes ou confirme para abrir outro."
-                });
-            }
-        }
-
+        // Vários operadores podem ter caixa aberto na mesma loja ao mesmo tempo — é permitido.
+        // Caixa esquecido aberto é tratado pelo fechamento automático (FechamentoCaixaJob),
+        // que fecha ao virar o dia sessões deixadas abertas.
         var id = await mediator.Send(cmd, ct);
         return Ok(new { id });
     }

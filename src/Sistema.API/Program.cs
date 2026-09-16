@@ -217,6 +217,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>(
     job => job.ExecutarAsync(),
     "15 * * * *", optsBR);  // toda hora (min 15) — penaliza conversas sem resposta em 6h úteis
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.FechamentoCaixaJob>(
+    "caixa-fechamento-automatico",
+    job => job.ExecutarAsync(),
+    "0 3 * * *", optsBR);   // 03:00 BRT — fecha caixas deixados abertos de dias anteriores
+
 app.MapControllers();
 
 app.Run();

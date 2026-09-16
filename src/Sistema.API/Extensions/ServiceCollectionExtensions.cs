@@ -143,6 +143,7 @@ public static class ServiceCollectionExtensions
             c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>();
+        services.AddScoped<Sistema.Infrastructure.Jobs.FechamentoCaixaJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.ResumoDiarioJob>();
         services.AddScoped<Sistema.Infrastructure.Services.WhatsAppIaAtendenteService>();
         services.AddScoped<Sistema.Infrastructure.Jobs.RecebivelCartaoBaixaJob>();

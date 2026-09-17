@@ -225,4 +225,115 @@ public class ConcorrentesController(
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    // ── Fase 2: preços (nosso × concorrente) ─────────────────────────────────
+
+    /// <summary>Preços coletados de um concorrente (com o nosso preço quando ligado a produto).</summary>
+    [HttpGet("concorrente/{concorrenteId:guid}/precos")]
+    public async Task<IActionResult> PrecosDoConcorrente(Guid concorrenteId, CancellationToken ct)
+    {
+        var precos = await db.PrecosConcorrente.AsNoTracking()
+            .Where(p => p.ConcorrenteId == concorrenteId)
+            .OrderByDescending(p => p.DataColeta)
+            .Select(p => new
+            {
+                p.Id, p.ProdutoId, p.Descricao, p.Ean, p.Preco, p.Unidade, p.DataColeta, p.Observacao,
+                nossoPreco = p.ProdutoId != null
+                    ? db.Produtos.Where(x => x.Id == p.ProdutoId).Select(x => (decimal?)x.PrecoVenda).FirstOrDefault()
+                    : null,
+            })
+            .ToListAsync(ct);
+        return Ok(precos);
+    }
+
+    public record PrecoRequest(Guid? ProdutoId, string Descricao, string? Ean,
+        decimal Preco, string Unidade, string? Observacao);
+
+    [HttpPost("concorrente/{concorrenteId:guid}/precos")]
+    public async Task<IActionResult> AdicionarPreco(Guid concorrenteId,
+        [FromBody] PrecoRequest req, CancellationToken ct)
+    {
+        var conc = await db.Concorrentes.FirstOrDefaultAsync(c => c.Id == concorrenteId, ct);
+        if (conc is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(req.Descricao))
+            return BadRequest(new { mensagem = "Informe o produto/descrição." });
+        if (req.Preco <= 0)
+            return BadRequest(new { mensagem = "Informe um preço válido." });
+
+        var p = PrecoConcorrente.Criar(conc.EmpresaId, concorrenteId, req.Descricao.Trim(),
+            req.Preco, req.Unidade, req.ProdutoId, req.Ean, null, req.Observacao);
+        db.PrecosConcorrente.Add(p);
+        await db.SaveChangesAsync(ct);
+
+        decimal? nosso = req.ProdutoId != null
+            ? await db.Produtos.Where(x => x.Id == req.ProdutoId).Select(x => (decimal?)x.PrecoVenda).FirstOrDefaultAsync(ct)
+            : null;
+        return Ok(new { p.Id, p.ProdutoId, p.Descricao, p.Ean, p.Preco, p.Unidade, p.DataColeta, p.Observacao, nossoPreco = nosso });
+    }
+
+    [HttpDelete("precos/{id:guid}")]
+    public async Task<IActionResult> RemoverPreco(Guid id, CancellationToken ct)
+    {
+        var p = await db.PrecosConcorrente.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p is null) return NotFound();
+        db.PrecosConcorrente.Remove(p);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>Comparativo nosso × concorrentes por produto (loja): mín/méd/máx dos concorrentes.</summary>
+    [HttpGet("comparativo/{localEstoqueId:guid}")]
+    public async Task<IActionResult> Comparativo(Guid localEstoqueId, CancellationToken ct)
+    {
+        // Concorrentes ativos da loja.
+        var concs = await db.Concorrentes.AsNoTracking()
+            .Where(c => c.LocalEstoqueId == localEstoqueId && c.Ativo)
+            .Select(c => new { c.Id, c.Nome })
+            .ToListAsync(ct);
+        var concIds = concs.Select(c => c.Id).ToList();
+        var nomeConc = concs.ToDictionary(c => c.Id, c => c.Nome);
+
+        // Preços coletados ligados a um produto nosso.
+        var precos = await db.PrecosConcorrente.AsNoTracking()
+            .Where(p => concIds.Contains(p.ConcorrenteId) && p.ProdutoId != null)
+            .Select(p => new { p.ConcorrenteId, p.ProdutoId, p.Descricao, p.Preco, p.Unidade })
+            .ToListAsync(ct);
+
+        var produtoIds = precos.Select(p => p.ProdutoId!.Value).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(x => produtoIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Descricao, x.PrecoVenda })
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        var itens = precos.GroupBy(p => p.ProdutoId!.Value).Select(g =>
+        {
+            var prod = produtos.TryGetValue(g.Key, out var pr) ? pr : null;
+            var precosConc = g.Select(x => new
+            {
+                concorrente = nomeConc.TryGetValue(x.ConcorrenteId, out var n) ? n : "?",
+                x.Preco, x.Unidade,
+            }).OrderBy(x => x.Preco).ToList();
+            var valores = precosConc.Select(x => x.Preco).ToList();
+            var nosso = prod?.PrecoVenda ?? 0m;
+            var min = valores.Min(); var max = valores.Max(); var med = Math.Round(valores.Average(), 2);
+            return new
+            {
+                produtoId = g.Key,
+                produto = prod?.Descricao ?? g.First().Descricao,
+                nossoPreco = nosso,
+                concorrentes = precosConc,
+                min, max, media = med,
+                // posição do nosso preço: abaixo do menor concorrente = mais barato.
+                situacao = nosso <= 0 ? "sem-preco"
+                    : nosso < min ? "mais-barato"
+                    : nosso > max ? "mais-caro"
+                    : "no-meio",
+                difMenor = nosso > 0 ? Math.Round(nosso - min, 2) : 0m,
+            };
+        })
+        .OrderByDescending(x => x.difMenor)   // onde estamos mais caros que o menor primeiro
+        .ToList();
+
+        return Ok(new { totalProdutos = itens.Count, itens });
+    }
 }

@@ -79,6 +79,8 @@
             <v-icon icon="mdi-store-search-outline" class="mr-2" color="deep-purple" />
             {{ concorrentes.length }} concorrente(s)
             <v-spacer />
+            <v-btn v-if="temCoord" size="small" variant="tonal" color="indigo" class="mr-1"
+              prepend-icon="mdi-scale-balance" @click="abrirComparativo">Comparar</v-btn>
             <v-btn v-if="temCoord" size="small" variant="tonal" color="teal"
               prepend-icon="mdi-map-marker-plus" @click="iniciarAdd">Adicionar</v-btn>
           </v-card-title>
@@ -99,6 +101,11 @@
                   {{ c.categoria || 'Estabelecimento' }}<span v-if="c.endereco"> · {{ c.endereco }}</span>
                 </v-list-item-subtitle>
                 <template #append>
+                  <v-btn icon="mdi-tag-text-outline" size="x-small" variant="text" color="teal"
+                    @click.stop="abrirPrecos(c)">
+                    <v-icon>mdi-tag-text-outline</v-icon>
+                    <v-tooltip activator="parent" location="top">Preços</v-tooltip>
+                  </v-btn>
                   <span class="text-caption text-medium-emphasis mr-1">{{ c.distanciaKm }} km</span>
                   <v-btn icon="mdi-close" size="x-small" variant="text" color="grey"
                     @click.stop="remover(c)" />
@@ -110,6 +117,123 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Diálogo: preços de um concorrente -->
+    <v-dialog v-model="dialogPrecos" max-width="640" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-tag-multiple-outline" color="teal" class="mr-2" />
+          Preços — {{ concAtual?.nome }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogPrecos = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12">
+              <v-autocomplete v-model="formPreco.produto" :items="prodItens" item-title="descricao"
+                item-value="id" return-object label="Produto do nosso catálogo" variant="outlined"
+                density="compact" hide-details :loading="buscandoProd" no-filter clearable
+                @update:search="buscarProdutos" placeholder="Digite 2+ letras para buscar" />
+              <div class="text-caption text-medium-emphasis mt-1">
+                <template v-if="formPreco.produto">Nosso preço: <b>R$ {{ fmtNum(formPreco.produto.precoVenda) }}</b></template>
+                <template v-else>Sem produto no catálogo? Use a descrição livre abaixo.</template>
+              </div>
+            </v-col>
+            <v-col cols="12" v-if="!formPreco.produto">
+              <v-text-field v-model="formPreco.descricaoLivre" label="Descrição livre"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6" sm="4">
+              <v-text-field v-model.number="formPreco.preco" label="Preço no concorrente" type="number"
+                prefix="R$" variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="6" sm="3">
+              <v-select v-model="formPreco.unidade" :items="unidades" label="Unid."
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="12" sm="5">
+              <v-text-field v-model="formPreco.observacao" label="Obs. (opcional)"
+                variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="12">
+              <v-btn color="teal" variant="flat" block :loading="salvandoPreco"
+                :disabled="(!formPreco.produto && !formPreco.descricaoLivre.trim()) || !formPreco.preco"
+                @click="adicionarPreco">Adicionar preço</v-btn>
+            </v-col>
+          </v-row>
+
+          <v-divider class="my-3" />
+          <div v-if="carregandoPrecos" class="text-center pa-4"><v-progress-circular indeterminate color="teal" /></div>
+          <div v-else-if="!precos.length" class="text-center text-medium-emphasis pa-4 text-body-2">
+            Nenhum preço coletado ainda neste concorrente.
+          </div>
+          <v-list v-else density="compact" class="pa-0">
+            <v-list-item v-for="p in precos" :key="p.id" class="px-1">
+              <v-list-item-title class="text-body-2">{{ p.descricao }}</v-list-item-title>
+              <v-list-item-subtitle class="text-caption">
+                <span :class="p.nossoPreco != null ? (p.preco < p.nossoPreco ? 'text-error font-weight-bold' : p.preco > p.nossoPreco ? 'text-success font-weight-bold' : '') : ''">
+                  Concorrente R$ {{ fmtNum(p.preco) }}/{{ p.unidade }}
+                </span>
+                <span v-if="p.nossoPreco != null"> · nosso R$ {{ fmtNum(p.nossoPreco) }}
+                  <span v-if="p.preco < p.nossoPreco" class="text-error">(eles mais baratos)</span>
+                  <span v-else-if="p.preco > p.nossoPreco" class="text-success">(somos mais baratos)</span>
+                </span>
+                <span v-if="p.observacao" class="text-medium-emphasis"> · {{ p.observacao }}</span>
+              </v-list-item-subtitle>
+              <template #append>
+                <v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="removerPreco(p.id)" />
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Diálogo: comparativo nosso × concorrentes -->
+    <v-dialog v-model="dialogComp" max-width="860" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-scale-balance" color="indigo" class="mr-2" />
+          Comparativo de preços
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogComp = false" />
+        </v-card-title>
+        <v-card-text>
+          <div v-if="carregandoComp" class="text-center pa-6"><v-progress-circular indeterminate color="indigo" /></div>
+          <div v-else-if="!comparativo.length" class="text-center text-medium-emphasis pa-6 text-body-2">
+            Ainda não há preços ligados a produtos do nosso catálogo.<br>
+            Colete preços (botão de etiqueta em cada concorrente) escolhendo o produto do catálogo — aí eles aparecem aqui.
+          </div>
+          <v-table v-else density="compact">
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th class="text-right">Nosso</th>
+                <th class="text-right">Menor conc.</th>
+                <th class="text-right">Médio</th>
+                <th class="text-right">Maior</th>
+                <th class="text-center">Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="it in comparativo" :key="it.produtoId">
+                <td>{{ it.produto }}</td>
+                <td class="text-right font-weight-bold">R$ {{ fmtNum(it.nossoPreco) }}</td>
+                <td class="text-right">R$ {{ fmtNum(it.min) }}</td>
+                <td class="text-right">R$ {{ fmtNum(it.media) }}</td>
+                <td class="text-right">R$ {{ fmtNum(it.max) }}</td>
+                <td class="text-center">
+                  <v-chip size="x-small" label
+                    :color="it.situacao === 'mais-caro' ? 'error' : it.situacao === 'mais-barato' ? 'success' : 'warning'">
+                    {{ it.situacao === 'mais-caro' ? 'Mais caro' : it.situacao === 'mais-barato' ? 'Mais barato' : 'No meio' }}
+                  </v-chip>
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
 
     <!-- Diálogo: novo concorrente manual -->
     <v-dialog v-model="dialogAdd" max-width="420">
@@ -159,6 +283,7 @@ const buscando = ref(false)
 const geocodificando = ref(false)
 
 const temCoord = computed(() => !!loja.value?.latitude && !!loja.value?.longitude)
+const fmtNum = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 let map: L.Map | null = null
 let camada: L.LayerGroup | null = null
@@ -266,6 +391,91 @@ async function salvarManual() {
   } catch (e: any) {
     alert(e?.response?.data?.mensagem || 'Não foi possível adicionar o concorrente.')
   } finally { salvandoManual.value = false }
+}
+
+// ── Fase 2: preços (nosso × concorrente) ─────────────────────────────────────
+interface PrecoItem {
+  id: string; produtoId: string | null; descricao: string; ean: string | null
+  preco: number; unidade: string; dataColeta: string; observacao: string | null; nossoPreco: number | null
+}
+const unidades = ['un', 'kg', '100g', 'g', 'L', 'ml', 'dz', 'pct']
+const dialogPrecos = ref(false)
+const concAtual = ref<Concorrente | null>(null)
+const precos = ref<PrecoItem[]>([])
+const carregandoPrecos = ref(false)
+const salvandoPreco = ref(false)
+const formPreco = ref<{ produto: any; descricaoLivre: string; preco: number | null; unidade: string; observacao: string }>(
+  { produto: null, descricaoLivre: '', preco: null, unidade: 'un', observacao: '' })
+const prodOpcoes = ref<any[]>([])
+const buscandoProd = ref(false)
+let _tProd: any
+// Mantém o produto selecionado sempre na lista (senão a v-autocomplete o perde
+// quando a busca substitui as opções).
+const prodItens = computed(() => {
+  const sel = formPreco.value.produto
+  if (sel && !prodOpcoes.value.some((x: any) => x.id === sel.id)) return [sel, ...prodOpcoes.value]
+  return prodOpcoes.value
+})
+
+async function abrirPrecos(c: Concorrente) {
+  concAtual.value = c
+  formPreco.value = { produto: null, descricaoLivre: '', preco: null, unidade: 'un', observacao: '' }
+  dialogPrecos.value = true
+  await carregarPrecos()
+}
+async function carregarPrecos() {
+  if (!concAtual.value) return
+  carregandoPrecos.value = true
+  try {
+    const res = await api.get<PrecoItem[]>(`/concorrentes/concorrente/${concAtual.value.id}/precos`)
+    precos.value = res.data ?? []
+  } finally { carregandoPrecos.value = false }
+}
+function buscarProdutos(q: string) {
+  clearTimeout(_tProd)
+  if (!q || q.trim().length < 2) { prodOpcoes.value = []; return }
+  _tProd = setTimeout(async () => {
+    buscandoProd.value = true
+    try {
+      const res = await api.get<any[]>('/produtos/buscar', { params: { empresaId: auth.empresaId, q } })
+      prodOpcoes.value = res.data ?? []
+    } catch { prodOpcoes.value = [] } finally { buscandoProd.value = false }
+  }, 300)
+}
+async function adicionarPreco() {
+  if (!concAtual.value) return
+  const prod = formPreco.value.produto
+  const descricao = prod ? prod.descricao : formPreco.value.descricaoLivre.trim()
+  if (!descricao || !formPreco.value.preco || formPreco.value.preco <= 0) return
+  salvandoPreco.value = true
+  try {
+    await api.post(`/concorrentes/concorrente/${concAtual.value.id}/precos`, {
+      produtoId: prod?.id ?? null, descricao, ean: prod?.codigoBarras ?? null,
+      preco: formPreco.value.preco, unidade: formPreco.value.unidade,
+      observacao: formPreco.value.observacao?.trim() || null,
+    })
+    formPreco.value = { produto: null, descricaoLivre: '', preco: null, unidade: formPreco.value.unidade, observacao: '' }
+    await carregarPrecos()
+  } catch (e: any) {
+    alert(e?.response?.data?.mensagem || 'Não foi possível salvar o preço.')
+  } finally { salvandoPreco.value = false }
+}
+async function removerPreco(id: string) {
+  try { await api.delete(`/concorrentes/precos/${id}`); precos.value = precos.value.filter(p => p.id !== id) } catch { /* ignora */ }
+}
+
+// Comparativo nosso × concorrentes (por produto)
+const dialogComp = ref(false)
+const carregandoComp = ref(false)
+const comparativo = ref<any[]>([])
+async function abrirComparativo() {
+  if (!lojaId.value) return
+  dialogComp.value = true
+  carregandoComp.value = true
+  try {
+    const res = await api.get<{ itens: any[] }>(`/concorrentes/comparativo/${lojaId.value}`)
+    comparativo.value = res.data.itens ?? []
+  } finally { carregandoComp.value = false }
 }
 
 async function carregarLojas() {

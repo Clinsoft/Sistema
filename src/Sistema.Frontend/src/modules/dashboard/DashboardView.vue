@@ -31,6 +31,11 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
             Ponto de Equilíbrio — {{ calMesLabel }}
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('Ponto de Equilíbrio', dadosPe)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
             <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
@@ -119,6 +124,11 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
             DRE — {{ calMesLabel }}
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('DRE do mês', dadosDre)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
             <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
@@ -187,6 +197,11 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
             <v-icon icon="mdi-speedometer" class="mr-1" color="deep-purple" />
             Metas do mês — no ritmo atual
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('Metas do mês por loja', dadosMetasLojas)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-chip v-if="projLojas.noRitmo" size="small" color="success" variant="tonal">
               {{ projLojas.noRitmo }} no ritmo
             </v-chip>
@@ -270,6 +285,12 @@
               <v-icon icon="mdi-cash-sync"
                 :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
               <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
+              <v-spacer />
+              <v-btn icon size="x-small" variant="text" color="deep-orange-darken-2"
+                @click="analisarCard('Metas diárias e capital de giro', dadosCaixa)">
+                <v-icon size="18">mdi-lightbulb-on-outline</v-icon>
+                <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+              </v-btn>
             </div>
             <div class="d-flex align-baseline flex-wrap" style="gap:6px 12px">
               <span class="text-h5 font-weight-bold"
@@ -313,6 +334,11 @@
                 {{ pe ? fmt(pe.margemContribuicao) + ' de contribuição' : 'sem vendas no mês' }}
               </div>
             </div>
+            <v-btn icon size="x-small" variant="text" color="deep-purple" class="mr-1"
+              @click.stop="analisarCard('Margem, CMV e Curva ABC', dadosMargemCmv)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-progress-circular v-if="pe" :model-value="Math.min(pe.percentualMargemContribuicao, 100)"
               :size="52" :width="6" color="deep-purple">
               <span class="text-caption font-weight-bold">{{ Math.round(pe.percentualMargemContribuicao) }}%</span>
@@ -592,6 +618,11 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
             Planejamento — {{ anoAtual }}
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('Planejamento anual', dadosPlanejamento)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-spacer />
             <v-btn size="x-small" variant="tonal" color="blue-darken-2" to="/relatorios/planejamento-anual">
               Ver
@@ -667,6 +698,11 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-account-group-outline" class="mr-2" color="teal" />
             Vendas por Colaborador — {{ calMesLabel }}
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('Vendas por Colaborador', dadosColaborador)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
             <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
@@ -732,6 +768,11 @@
           <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center flex-wrap">
             <v-icon icon="mdi-clock-time-four-outline" class="mr-2" color="teal" />
             Dias e horários de maior movimento
+            <v-btn icon size="x-small" variant="text" color="deep-purple"
+              @click="analisarCard('Dias e horários de maior movimento', dadosMovimento)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-spacer />
             <v-btn-toggle v-model="periodoMov" mandatory density="compact" rounded="lg" color="teal">
               <v-btn :value="7" size="small">7d</v-btn>
@@ -839,7 +880,7 @@
             <v-card rounded="xl">
               <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
                 <v-icon icon="mdi-lightbulb-on-outline" color="deep-purple" class="mr-2" />
-                Análise — Margem × Faturamento
+                Análise — {{ analiseTitulo }}
                 <v-spacer />
                 <v-btn icon="mdi-close" variant="text" size="small" @click="dialogAnalise = false" />
               </v-card-title>
@@ -854,7 +895,7 @@
               <v-card-actions v-if="!carregandoAnalise && analiseTexto" class="px-4 pb-3">
                 <span class="text-caption text-medium-emphasis">Gerado por IA{{ analiseModelo ? ' · ' + analiseModelo : '' }}</span>
                 <v-spacer />
-                <v-btn variant="tonal" color="deep-purple" size="small" @click="gerarAnalise">Refazer</v-btn>
+                <v-btn variant="tonal" color="deep-purple" size="small" @click="refazerAnalise">Refazer</v-btn>
               </v-card-actions>
             </v-card>
           </v-dialog>
@@ -1620,12 +1661,17 @@ function renderizarRentab() {
 }
 watch(rentabPrior, () => requestAnimationFrame(renderizarRentab))
 
-// Leitura analítica por IA (OpenAI) do comparativo, sob demanda (clique no ícone).
+// ── Leitura analítica por IA (OpenAI), sob demanda (clique no ícone 💡) ─────────
+// Diálogo compartilhado por todos os cards. A IA responde no papel de um
+// administrador sênior/pleno (persona definida no backend).
 const dialogAnalise = ref(false)
 const carregandoAnalise = ref(false)
 const analiseTexto = ref('')
 const analiseModelo = ref('')
+const analiseTitulo = ref('')
 const erroAnalise = ref('')
+const _refazer = ref<() => Promise<void>>(async () => {})
+function refazerAnalise() { _refazer.value() }
 const analiseHtml = computed(() => {
   const esc = (analiseTexto.value || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1636,9 +1682,11 @@ const analiseHtml = computed(() => {
     .replace(/<\/h4>\n/g, '</h4>')
     .replace(/\n/g, '<br>')
 })
-async function gerarAnalise() {
+
+// Comparativo Margem × Faturamento (endpoint dedicado, com quadrantes).
+async function _execRentab() {
   if (!auth.empresaId) return
-  carregandoAnalise.value = true; erroAnalise.value = ''
+  carregandoAnalise.value = true; erroAnalise.value = ''; analiseTexto.value = ''
   try {
     const inicio = new Date(anoAtual, new Date().getMonth(), 1).toISOString().slice(0, 10)
     const fim = new Date().toISOString().slice(0, 10)
@@ -1651,9 +1699,88 @@ async function gerarAnalise() {
     erroAnalise.value = e?.response?.data?.mensagem || 'Não foi possível gerar a análise agora.'
   } finally { carregandoAnalise.value = false }
 }
-async function abrirAnalise() {
+function abrirAnalise() {
+  analiseTitulo.value = 'Margem × Faturamento'
+  _refazer.value = _execRentab
   dialogAnalise.value = true
-  if (!analiseTexto.value && !carregandoAnalise.value) await gerarAnalise()
+  _execRentab()
+}
+
+// Análise genérica de qualquer card: envia título + resumo textual dos dados.
+async function _execCard(titulo: string, dados: string) {
+  carregandoAnalise.value = true; erroAnalise.value = ''; analiseTexto.value = ''
+  try {
+    const res = await api.post<{ analise: string; modelo?: string }>('/relatorios/analise-card', { titulo, dados })
+    analiseTexto.value = res.data.analise || ''
+    analiseModelo.value = res.data.modelo || ''
+  } catch (e: any) {
+    erroAnalise.value = e?.response?.data?.mensagem || 'Não foi possível gerar a análise agora.'
+  } finally { carregandoAnalise.value = false }
+}
+function analisarCard(titulo: string, dadosFn: () => string) {
+  const dados = (dadosFn() || '').trim()
+  analiseTitulo.value = titulo
+  _refazer.value = () => _execCard(titulo, dados)
+  dialogAnalise.value = true
+  _execCard(titulo, dados)
+}
+
+// Resumos textuais dos dados de cada card (o que já está na tela).
+function dadosPe() {
+  const p = pe.value; if (!p) return ''
+  return `Faturamento do mês R$ ${fmtNum(p.faturamentoMes)}; ponto de equilíbrio R$ ${fmtNum(p.pontoEquilibrio)} `
+    + `(${p.percentualAtingido}% atingido); contas a pagar do mês R$ ${fmtNum(p.totalCustosFixos)}; `
+    + `margem de contribuição ${p.percentualMargemContribuicao}%; `
+    + (p.peAtingido ? `lucro acima do PE R$ ${fmtNum(p.lucroAcimaPE)}.` : `falta R$ ${fmtNum(p.pontoEquilibrio - p.faturamentoMes)} para atingir o PE.`)
+}
+function dadosDre() {
+  const d = dre.value; if (!d) return ''
+  return `Receita líquida R$ ${fmtNum(d.receitaLiquida)}; CMV R$ ${fmtNum(d.cmv)}; lucro bruto R$ ${fmtNum(d.lucroBruto)} `
+    + `(margem bruta ${d.margemBruta}%); despesas operacionais R$ ${fmtNum(d.despesasOperacionais)}; `
+    + `resultado operacional R$ ${fmtNum(d.resultadoOperacional)} (margem operacional ${d.margemOperacional}%).`
+}
+function dadosMetasLojas() {
+  const pl = projLojas.value; if (!pl || !pl.lojas?.length) return ''
+  return `Faltam ${pl.diasRestantes} dia(s) para o fim do mês. ` + pl.lojas.map((l: any) =>
+    l.temMeta
+      ? `${l.loja}: realizado R$ ${fmtNum(l.realizado)} de meta R$ ${fmtNum(l.meta)} (${l.percentAtual}%), `
+        + `projeção R$ ${fmtNum(l.projecao)} (${l.percentProjecao}% da meta), ${l.vaiBater ? 'no ritmo de bater' : 'fora do ritmo'}`
+        + (l.falta > 0 ? `, falta R$ ${fmtNum(l.falta)} (R$ ${fmtNum(l.porDia)}/dia)` : '')
+      : `${l.loja}: realizado R$ ${fmtNum(l.realizado)} (sem meta definida)`
+  ).join('. ') + '.'
+}
+function dadosCaixa() {
+  const m = metas.value, c = capitalGiro.value
+  let s = ''
+  if (m) s += `Meta de venda/dia operacional R$ ${fmtNum(m.metaDiariaOperacional)} (cobrir despesas R$ ${fmtNum(m.despesasOperacionaisMes)}/mês); `
+    + `meta/dia financiamentos R$ ${fmtNum(m.metaDiariaFinanciamentos)} (cobrir R$ ${fmtNum(m.financiamentosMes)}/mês). `
+  if (c) s += `Necessidade de capital de giro R$ ${fmtNum(c.necessidadeCapitalGiro)} (R$ ${fmtNum(capitalGiroDia.value)}/dia); `
+    + `compra de estoque no mês R$ ${fmtNum(c.estoqueAPagarMes)}; CMV previsto R$ ${fmtNum(c.cmvPrevisto)}.`
+  return s
+}
+function dadosMargemCmv() {
+  const p = pe.value, d = dre.value
+  let s = ''
+  if (p) s += `Margem de contribuição ${p.percentualMargemContribuicao}% (R$ ${fmtNum(p.margemContribuicao)}). `
+  if (d && d.receitaLiquida > 0) s += `CMV R$ ${fmtNum(d.cmv)} (${Math.round(d.cmv / d.receitaLiquida * 100)}% da receita líquida). `
+  if (curvaAbc.value?.length) s += `Curva ABC: ${curvaAbc.value.length} produtos vendidos — A ${abcResumo.value.A}, B ${abcResumo.value.B}, C ${abcResumo.value.C}.`
+  return s
+}
+function dadosColaborador() {
+  const vs = vendasColaborador.value; if (!vs.length) return ''
+  return `Ticket médio geral R$ ${fmtNum(ticketMedioGeral.value)}. ` + vs.map((v: any) =>
+    `${v.nome}: R$ ${fmtNum(v.totalVendido)} em ${v.qtdVendas} venda(s)`).join('; ') + '.'
+}
+function dadosPlanejamento() {
+  const p = planejamento.value; if (!p) return ''
+  return `Planejamento ${anoAtual} — realizado no ano R$ ${fmtNum(p.totalRealizado)}. ` + p.meses.map(m =>
+    `${m.nomeMes}: realizado R$ ${fmtNum(m.realizado)} / meta R$ ${fmtNum(m.meta)}`).join('; ') + '.'
+}
+function dadosMovimento() {
+  const ls = lojasMovimento.value; if (!ls.length) return ''
+  return `Janela de ${periodoMov.value} dias. ` + ls.map((l: any) =>
+    `${l.nome}: ${l.totalVendas} vendas, R$ ${fmtNum(l.faturamento)}; dia de pico ${l.picoDia?.label} (${l.picoDia?.vendas} vendas)`
+    + (l.picoHora ? `, horário de pico ${l.picoHora.label} (${l.picoHora.vendas} vendas)` : '')).join('. ') + '.'
 }
 
 // ResizeObserver: redesenha cada gráfico assim que o canvas ganha tamanho no

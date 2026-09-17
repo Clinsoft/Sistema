@@ -467,7 +467,7 @@ public class RelatoriosEstoqueComplementoController(
                          $"margem {i.margemPct}% (R$ {i.margemValor:N2}) → {Quadrante(i)}"));
 
         var prompt =
-            "Você é um consultor de gestão de uma loja de produtos naturais a granel. " +
+            AnaliseIaController.PersonaAdmin + "\n\n" +
             "Analise o comparativo de MARGEM × FATURAMENTO por categoria do período " +
             $"({inicio:dd/MM/yyyy} a {fim:dd/MM/yyyy}). Faturamento total R$ {total:N2}, " +
             $"margem de contribuição média {margemMedia}%.\n\n" +

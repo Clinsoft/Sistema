@@ -402,6 +402,35 @@
             </div>
           </div>
         </v-card>
+
+        <!-- Margem de contribuição por categoria (abaixo do Planejamento) -->
+        <v-card rounded="xl" elevation="1" class="mt-4"
+          v-if="margemCats && margemCats.categorias.length">
+          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-tag-percent-outline" class="mr-2" color="teal" />
+            Margem por categoria
+            <v-spacer />
+            <v-chip size="small" color="teal" variant="tonal" label>Média {{ margemCats.margemMedia }}%</v-chip>
+          </v-card-title>
+          <v-card-text class="pt-1">
+            <div class="text-caption text-medium-emphasis mb-3">
+              Últimos {{ margemCats.dias }} dias · margem de contribuição (já tira o custo do produto)
+            </div>
+            <div v-for="c in margemCats.categorias" :key="c.categoria" class="mb-2">
+              <div class="d-flex align-center justify-space-between text-body-2">
+                <span class="text-truncate" style="max-width:52%">{{ c.categoria }}</span>
+                <span class="d-flex align-center" style="gap:8px">
+                  <span class="text-caption text-medium-emphasis">{{ c.pctFaturamento }}% do fat.</span>
+                  <strong :class="`text-${corMargem(c.margemPct)}`" style="min-width:48px;text-align:right">
+                    {{ c.margemPct }}%
+                  </strong>
+                </span>
+              </div>
+              <v-progress-linear :model-value="c.margemPct" :color="corMargem(c.margemPct)"
+                height="5" rounded class="mt-1" />
+            </div>
+          </v-card-text>
+        </v-card>
       </v-col>
 
       <!-- Ponto de Equilíbrio + DRE (empilhados, ao lado do Contas a Receber) -->
@@ -620,34 +649,6 @@
           </v-card-actions>
         </v-card>
 
-        <!-- Margem de contribuição por categoria (afina a meta de venda) -->
-        <v-card rounded="xl" elevation="1" class="mt-4"
-          v-if="margemCats && margemCats.categorias.length">
-          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-tag-percent-outline" class="mr-2" color="teal" />
-            Margem por categoria
-            <v-spacer />
-            <v-chip size="small" color="teal" variant="tonal" label>Média {{ margemCats.margemMedia }}%</v-chip>
-          </v-card-title>
-          <v-card-text class="pt-1">
-            <div class="text-caption text-medium-emphasis mb-3">
-              Últimos {{ margemCats.dias }} dias · margem de contribuição (já tira o custo do produto)
-            </div>
-            <div v-for="c in margemCats.categorias" :key="c.categoria" class="mb-2">
-              <div class="d-flex align-center justify-space-between text-body-2">
-                <span class="text-truncate" style="max-width:52%">{{ c.categoria }}</span>
-                <span class="d-flex align-center" style="gap:8px">
-                  <span class="text-caption text-medium-emphasis">{{ c.pctFaturamento }}% do fat.</span>
-                  <strong :class="`text-${corMargem(c.margemPct)}`" style="min-width:48px;text-align:right">
-                    {{ c.margemPct }}%
-                  </strong>
-                </span>
-              </div>
-              <v-progress-linear :model-value="c.margemPct" :color="corMargem(c.margemPct)"
-                height="5" rounded class="mt-1" />
-            </div>
-          </v-card-text>
-        </v-card>
       </v-col>
     </v-row>
 

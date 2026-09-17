@@ -149,9 +149,9 @@
       </v-col>
     </v-row>
 
-    <!-- Vendas + Contas a Pagar (agendas do mês, lado a lado) -->
+    <!-- FAIXA: Agendas do mês (Vendas · A Pagar · A Receber, mesma altura) -->
     <v-row class="mt-3">
-      <v-col cols="12" md="6">
+      <v-col cols="12" md="4">
         <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
@@ -216,7 +216,7 @@
       </v-col>
 
       <!-- Contas a Pagar — Agenda do mês -->
-      <v-col cols="12" md="6">
+      <v-col cols="12" md="4">
         <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="error" />
@@ -290,8 +290,8 @@
       </v-col>
 
       <!-- Contas a Receber — Agenda do mês -->
-      <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1">
+      <v-col cols="12" md="4">
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="success" />
             Contas a Receber — {{ calMesLabel }}
@@ -360,9 +360,13 @@
             </v-btn>
           </v-card-actions>
         </v-card>
+      </v-col>
+    </v-row>
 
-        <!-- Planejamento (abaixo do Contas a Receber) -->
-        <v-card rounded="xl" elevation="1" class="mt-4">
+    <!-- FAIXA: Planejamento anual + Margem por categoria -->
+    <v-row class="mt-1">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-calendar-month-outline" class="mr-2" color="blue-darken-2" />
             Planejamento — {{ anoAtual }}
@@ -402,9 +406,9 @@
             </div>
           </div>
         </v-card>
-
-        <!-- Margem de contribuição por categoria (abaixo do Planejamento) -->
-        <v-card rounded="xl" elevation="1" class="mt-4"
+      </v-col>
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%"
           v-if="margemCats && margemCats.categorias.length">
           <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-tag-percent-outline" class="mr-2" color="teal" />
@@ -432,14 +436,12 @@
           </v-card-text>
         </v-card>
       </v-col>
+    </v-row>
 
-      <!-- Ponto de Equilíbrio + DRE (empilhados, ao lado do Contas a Receber) -->
-      <v-col cols="12" md="6">
-        <!-- Metas de venda diária: cobrir despesas operacionais e financiamentos -->
-        <v-row v-if="metas && (metas.metaDiariaOperacional > 0 || metas.metaDiariaFinanciamentos > 0)"
-          dense class="mb-3">
-          <v-col cols="6">
-            <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
+    <!-- FAIXA: Metas de venda diária + capital de giro -->
+    <v-row class="mt-1" dense>
+      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaOperacional > 0">
+        <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
               <v-card-text class="pa-3">
                 <div class="d-flex align-center mb-1" style="gap:6px">
                   <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
@@ -451,9 +453,9 @@
                 </div>
               </v-card-text>
             </v-card>
-          </v-col>
-          <v-col cols="6">
-            <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
+      </v-col>
+      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaFinanciamentos > 0">
+        <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
               <v-card-text class="pa-3">
                 <div class="d-flex align-center mb-1" style="gap:6px">
                   <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
@@ -465,11 +467,11 @@
                 </div>
               </v-card-text>
             </v-card>
-          </v-col>
-        </v-row>
+      </v-col>
 
-        <!-- Necessidade de capital de giro do mês -->
-        <v-card v-if="capitalGiro" rounded="xl" elevation="1" class="mb-3"
+      <!-- Necessidade de capital de giro do mês -->
+      <v-col cols="12" md="4" v-if="capitalGiro">
+        <v-card rounded="xl" elevation="1" height="100%"
           :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-lighten-5' : 'green-lighten-5'">
           <v-card-text class="pa-3">
             <div class="d-flex align-center mb-1" style="gap:6px">
@@ -499,8 +501,13 @@
             </div>
           </v-card-text>
         </v-card>
+      </v-col>
+    </v-row>
 
-        <v-card rounded="xl" elevation="1">
+    <!-- FAIXA: Resultado do mês (Ponto de Equilíbrio · DRE) -->
+    <v-row class="mt-1">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
             Ponto de Equilíbrio — {{ calMesLabel }}
@@ -585,9 +592,10 @@
             <canvas ref="peCanvas" height="90" style="width:100%" />
           </v-card-text>
         </v-card>
-
-        <!-- DRE — abaixo do Ponto de Equilíbrio, mesmo tratamento visual -->
-        <v-card rounded="xl" elevation="1" class="mt-3">
+      </v-col>
+      <v-col cols="12" md="6">
+        <!-- DRE — mesmo tratamento visual do Ponto de Equilíbrio -->
+        <v-card rounded="xl" elevation="1" height="100%">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
             DRE — {{ calMesLabel }}

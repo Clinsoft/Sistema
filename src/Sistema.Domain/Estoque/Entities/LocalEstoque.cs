@@ -20,6 +20,12 @@ public class LocalEstoque : Entity
     public string? Cep { get; private set; }
     public string? Telefone { get; private set; }
 
+    // Geolocalização (para análise de concorrência num raio). Preenchida por
+    // geocodificação do endereço (OSM/Nominatim).
+    public double? Latitude { get; private set; }
+    public double? Longitude { get; private set; }
+    public DateTime? GeocodificadoEm { get; private set; }
+
     private LocalEstoque() { }
 
     public static LocalEstoque Criar(Guid empresaId, string nome, bool principal = false, string? descricao = null)
@@ -59,4 +65,18 @@ public class LocalEstoque : Entity
 
     /// <summary>Reassocia o local a outra filial (empresa) — ex.: cliente abriu nova filial.</summary>
     public void Reassociar(Guid empresaId) => EmpresaId = empresaId;
+
+    /// <summary>Componentes do endereço para geocodificação estruturada (sem complemento).</summary>
+    public (string? logradouro, string? numero, string? bairro, string? cidade, string? uf, string? cep) EnderecoComponentes()
+        => (Logradouro, Numero, Bairro, Cidade, Uf, Cep);
+
+    /// <summary>Tem endereço mínimo para tentar geocodificar (logradouro ou CEP).</summary>
+    public bool TemEnderecoParaGeo()
+        => !string.IsNullOrWhiteSpace(Logradouro) || !string.IsNullOrWhiteSpace(Cep);
+
+    /// <summary>Define a coordenada (lat/long) obtida por geocodificação do endereço.</summary>
+    public void DefinirCoordenadas(double latitude, double longitude)
+    {
+        Latitude = latitude; Longitude = longitude; GeocodificadoEm = DateTime.UtcNow;
+    }
 }

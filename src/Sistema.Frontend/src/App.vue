@@ -184,6 +184,8 @@
               to="/estoque/ativos" value="/estoque/ativos" color="indigo" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-currency-usd" title="Alterar Preços"
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
+            <v-list-item v-if="!ehAtendente" prepend-icon="mdi-map-marker-radius" title="Concorrência"
+              to="/concorrencia" value="/concorrencia" color="deep-purple" rounded="lg" class="pl-4" />
           </v-list-group>
 
           <v-list-group v-if="!ehAtendente && !ehContador" value="fiscal">

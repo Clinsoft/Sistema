@@ -31,6 +31,8 @@ const router = createRouter({
     // Relatórios de Estoque unificados em uma tela com abas
     { path: '/estoque/relatorios', component: () => import('@/modules/estoque/RelatoriosEstoqueHubView.vue'),
       meta: { titulo: 'Relatórios de Estoque' } },
+    { path: '/concorrencia', component: () => import('@/modules/concorrencia/ConcorrentesView.vue'),
+      meta: { titulo: 'Concorrência' } },
     // Rotas antigas → abas do hub (mantém links existentes)
     { path: '/estoque/movimentacoes', redirect: '/estoque/relatorios?aba=movimentacoes' },
     { path: '/estoque/posicao', redirect: '/estoque/relatorios?aba=posicao' },

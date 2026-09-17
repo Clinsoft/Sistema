@@ -141,6 +141,9 @@ public static class ServiceCollectionExtensions
         // Sincronização de produtos com o site público (ecogranel.com.br)
         services.AddHttpClient<Sistema.Infrastructure.Services.SiteSyncService>(c =>
             c.Timeout = TimeSpan.FromSeconds(60));
+        // Concorrência — geocodificação (Nominatim) + busca de concorrentes (Overpass/OSM)
+        services.AddHttpClient<Sistema.Infrastructure.Services.MapaConcorrenciaService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(40));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.FechamentoCaixaJob>();

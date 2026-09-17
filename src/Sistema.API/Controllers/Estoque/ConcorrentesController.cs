@@ -241,6 +241,9 @@ public class ConcorrentesController(
                 nossoPreco = p.ProdutoId != null
                     ? db.Produtos.Where(x => x.Id == p.ProdutoId).Select(x => (decimal?)x.PrecoVenda).FirstOrDefault()
                     : null,
+                porPeso = p.ProdutoId != null
+                    ? db.Produtos.Where(x => x.Id == p.ProdutoId).Select(x => (bool?)(x.ProdutoBalanca || x.VendidoFracionado)).FirstOrDefault()
+                    : null,
             })
             .ToListAsync(ct);
         return Ok(precos);
@@ -302,33 +305,55 @@ public class ConcorrentesController(
         var produtoIds = precos.Select(p => p.ProdutoId!.Value).Distinct().ToList();
         var produtos = await db.Produtos.AsNoTracking()
             .Where(x => produtoIds.Contains(x.Id))
-            .Select(x => new { x.Id, x.Descricao, x.PrecoVenda })
+            .Select(x => new { x.Id, x.Descricao, x.PrecoVenda, x.ProdutoBalanca, x.VendidoFracionado })
             .ToDictionaryAsync(x => x.Id, ct);
+
+        // Normaliza o preço do concorrente para a MESMA base do nosso: granel (por peso)
+        // = R$/kg (o nosso PrecoVenda de granel já é por kg); demais = por unidade.
+        // Unidade incompatível (ex.: "un" num produto por peso) não entra no cálculo.
+        static decimal? ParaBase(decimal preco, string? unid, bool porPeso)
+        {
+            var u = (unid ?? "").Trim().ToLowerInvariant();
+            if (porPeso)
+                return u switch { "kg" => preco, "100g" => preco * 10m, "g" => preco * 1000m, _ => (decimal?)null };
+            return u switch { "un" or "" => preco, "dz" => Math.Round(preco / 12m, 2), "pct" => preco, _ => (decimal?)null };
+        }
 
         var itens = precos.GroupBy(p => p.ProdutoId!.Value).Select(g =>
         {
             var prod = produtos.TryGetValue(g.Key, out var pr) ? pr : null;
+            var porPeso = prod is not null && (prod.ProdutoBalanca || prod.VendidoFracionado);
+            var baseUnidade = porPeso ? "kg" : "un";
+
             var precosConc = g.Select(x => new
             {
                 concorrente = nomeConc.TryGetValue(x.ConcorrenteId, out var n) ? n : "?",
-                x.Preco, x.Unidade,
-            }).OrderBy(x => x.Preco).ToList();
-            var valores = precosConc.Select(x => x.Preco).ToList();
+                precoBase = ParaBase(x.Preco, x.Unidade, porPeso),
+                precoOrig = x.Preco, x.Unidade,
+            }).ToList();
+            var validos = precosConc.Where(x => x.precoBase != null)
+                .Select(x => new { x.concorrente, preco = x.precoBase!.Value, x.precoOrig, x.Unidade })
+                .OrderBy(x => x.preco).ToList();
+            var incompativeis = precosConc.Count(x => x.precoBase == null);
+
             var nosso = prod?.PrecoVenda ?? 0m;
-            var min = valores.Min(); var max = valores.Max(); var med = Math.Round(valores.Average(), 2);
+            var valores = validos.Select(x => x.preco).ToList();
+            decimal min = valores.Count > 0 ? valores.Min() : 0m;
+            decimal max = valores.Count > 0 ? valores.Max() : 0m;
+            decimal med = valores.Count > 0 ? Math.Round(valores.Average(), 2) : 0m;
             return new
             {
                 produtoId = g.Key,
                 produto = prod?.Descricao ?? g.First().Descricao,
-                nossoPreco = nosso,
-                concorrentes = precosConc,
+                baseUnidade, nossoPreco = nosso,
+                concorrentes = validos, incompativeis, comparaveis = valores.Count,
                 min, max, media = med,
-                // posição do nosso preço: abaixo do menor concorrente = mais barato.
-                situacao = nosso <= 0 ? "sem-preco"
+                situacao = valores.Count == 0 ? "sem-comparavel"
+                    : nosso <= 0 ? "sem-preco"
                     : nosso < min ? "mais-barato"
                     : nosso > max ? "mais-caro"
                     : "no-meio",
-                difMenor = nosso > 0 ? Math.Round(nosso - min, 2) : 0m,
+                difMenor = nosso > 0 && valores.Count > 0 ? Math.Round(nosso - min, 2) : 0m,
             };
         })
         .OrderByDescending(x => x.difMenor)   // onde estamos mais caros que o menor primeiro

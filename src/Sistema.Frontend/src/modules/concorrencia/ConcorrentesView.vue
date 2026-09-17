@@ -171,13 +171,11 @@
             <v-list-item v-for="p in precos" :key="p.id" class="px-1">
               <v-list-item-title class="text-body-2">{{ p.descricao }}</v-list-item-title>
               <v-list-item-subtitle class="text-caption">
-                <span :class="p.nossoPreco != null ? (p.preco < p.nossoPreco ? 'text-error font-weight-bold' : p.preco > p.nossoPreco ? 'text-success font-weight-bold' : '') : ''">
-                  Concorrente R$ {{ fmtNum(p.preco) }}/{{ p.unidade }}
-                </span>
-                <span v-if="p.nossoPreco != null"> · nosso R$ {{ fmtNum(p.nossoPreco) }}
-                  <span v-if="p.preco < p.nossoPreco" class="text-error">(eles mais baratos)</span>
-                  <span v-else-if="p.preco > p.nossoPreco" class="text-success">(somos mais baratos)</span>
-                </span>
+                Concorrente R$ {{ fmtNum(p.preco) }}/{{ p.unidade }}
+                <template v-if="p.nossoPreco != null">
+                  · nosso R$ {{ fmtNum(p.nossoPreco) }}/{{ p.porPeso ? 'kg' : 'un' }}
+                  <span :class="inlineCmp(p).cls"> · {{ inlineCmp(p).texto }}</span>
+                </template>
                 <span v-if="p.observacao" class="text-medium-emphasis"> · {{ p.observacao }}</span>
               </v-list-item-subtitle>
               <template #append>
@@ -204,10 +202,16 @@
             Ainda não há preços ligados a produtos do nosso catálogo.<br>
             Colete preços (botão de etiqueta em cada concorrente) escolhendo o produto do catálogo — aí eles aparecem aqui.
           </div>
-          <v-table v-else density="compact">
+          <div v-else>
+          <div class="text-caption text-medium-emphasis mb-2">
+            Preços normalizados por unidade: granel em <b>R$/kg</b>, demais em <b>R$/un</b>
+            (100g×10, dúzia÷12). Unidade incompatível não entra no cálculo.
+          </div>
+          <v-table density="compact">
             <thead>
               <tr>
                 <th>Produto</th>
+                <th class="text-center">Base</th>
                 <th class="text-right">Nosso</th>
                 <th class="text-right">Menor conc.</th>
                 <th class="text-right">Médio</th>
@@ -217,20 +221,24 @@
             </thead>
             <tbody>
               <tr v-for="it in comparativo" :key="it.produtoId">
-                <td>{{ it.produto }}</td>
+                <td>
+                  {{ it.produto }}
+                  <span v-if="it.incompativeis" class="text-caption text-warning">
+                    ({{ it.incompativeis }} c/ unidade incompatível)
+                  </span>
+                </td>
+                <td class="text-center text-caption">/{{ it.baseUnidade }}</td>
                 <td class="text-right font-weight-bold">R$ {{ fmtNum(it.nossoPreco) }}</td>
-                <td class="text-right">R$ {{ fmtNum(it.min) }}</td>
-                <td class="text-right">R$ {{ fmtNum(it.media) }}</td>
-                <td class="text-right">R$ {{ fmtNum(it.max) }}</td>
+                <td class="text-right">{{ it.comparaveis ? 'R$ ' + fmtNum(it.min) : '—' }}</td>
+                <td class="text-right">{{ it.comparaveis ? 'R$ ' + fmtNum(it.media) : '—' }}</td>
+                <td class="text-right">{{ it.comparaveis ? 'R$ ' + fmtNum(it.max) : '—' }}</td>
                 <td class="text-center">
-                  <v-chip size="x-small" label
-                    :color="it.situacao === 'mais-caro' ? 'error' : it.situacao === 'mais-barato' ? 'success' : 'warning'">
-                    {{ it.situacao === 'mais-caro' ? 'Mais caro' : it.situacao === 'mais-barato' ? 'Mais barato' : 'No meio' }}
-                  </v-chip>
+                  <v-chip size="x-small" label :color="situacaoCor(it.situacao)">{{ situacaoLabel(it.situacao) }}</v-chip>
                 </td>
               </tr>
             </tbody>
           </v-table>
+          </div>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -396,9 +404,24 @@ async function salvarManual() {
 // ── Fase 2: preços (nosso × concorrente) ─────────────────────────────────────
 interface PrecoItem {
   id: string; produtoId: string | null; descricao: string; ean: string | null
-  preco: number; unidade: string; dataColeta: string; observacao: string | null; nossoPreco: number | null
+  preco: number; unidade: string; dataColeta: string; observacao: string | null
+  nossoPreco: number | null; porPeso: boolean | null
 }
 const unidades = ['un', 'kg', '100g', 'g', 'L', 'ml', 'dz', 'pct']
+// Normaliza o preço do concorrente para a base do produto (granel = R$/kg, senão R$/un).
+function normPreco(preco: number, unidade: string, porPeso: boolean | null): number | null {
+  const u = (unidade || '').trim().toLowerCase()
+  if (porPeso) return u === 'kg' ? preco : u === '100g' ? preco * 10 : u === 'g' ? preco * 1000 : null
+  return (u === 'un' || u === '') ? preco : u === 'dz' ? preco / 12 : u === 'pct' ? preco : null
+}
+function inlineCmp(p: PrecoItem): { texto: string; cls: string } {
+  if (p.nossoPreco == null) return { texto: '', cls: '' }
+  const cb = normPreco(p.preco, p.unidade, p.porPeso)
+  if (cb == null) return { texto: 'unidade não comparável', cls: 'text-warning' }
+  if (cb < p.nossoPreco) return { texto: 'eles mais baratos', cls: 'text-error font-weight-bold' }
+  if (cb > p.nossoPreco) return { texto: 'somos mais baratos', cls: 'text-success font-weight-bold' }
+  return { texto: 'empatados', cls: 'text-medium-emphasis' }
+}
 const dialogPrecos = ref(false)
 const concAtual = ref<Concorrente | null>(null)
 const precos = ref<PrecoItem[]>([])
@@ -468,6 +491,14 @@ async function removerPreco(id: string) {
 const dialogComp = ref(false)
 const carregandoComp = ref(false)
 const comparativo = ref<any[]>([])
+function situacaoLabel(s: string) {
+  return s === 'mais-caro' ? 'Mais caro' : s === 'mais-barato' ? 'Mais barato'
+    : s === 'no-meio' ? 'No meio' : s === 'sem-preco' ? 'Sem nosso preço' : 'Sem base comum'
+}
+function situacaoCor(s: string) {
+  return s === 'mais-caro' ? 'error' : s === 'mais-barato' ? 'success'
+    : s === 'no-meio' ? 'warning' : 'grey'
+}
 async function abrirComparativo() {
   if (!lojaId.value) return
   dialogComp.value = true

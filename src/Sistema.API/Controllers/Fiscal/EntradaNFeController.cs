@@ -1053,19 +1053,12 @@ public class EntradaNFeController(SistemaDbContext db,
                 $"{semVinculo} item(ns) sem {oQue} vinculado. Vincule todos antes de processar." });
         }
 
-        // Tudo-ou-nada: envolve o processamento numa transação. Como há SaveChanges por item
-        // (para obter o Id do lote), sem transação uma falha no meio deixava estado parcial
-        // (lotes/movimentações já gravados) e o reprocessamento duplicava. Com a transação,
-        // qualquer erro faz rollback total e o retry fica limpo.
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-
         // Ativo imobilizado: o bem já foi cadastrado com o valor de aquisição.
         // Não há estoque a movimentar — só o financeiro (contas a pagar).
         if (ehAtivo)
         {
             foreach (var item in entrada.Itens) item.MarcarEstoqueMovimentado();
             var rAtivo = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
-            await tx.CommitAsync(ct);
             return Ok(new { mensagem = "Entrada de ativo imobilizado processada.", itens = entrada.Itens.Count,
                 rascunhoNumero = rAtivo.RascunhoNumero, divergentes = rAtivo.Divergentes });
         }
@@ -1095,7 +1088,6 @@ public class EntradaNFeController(SistemaDbContext db,
                 item.MarcarEstoqueMovimentado();
             }
             var rMat = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
-            await tx.CommitAsync(ct);
             return Ok(new { mensagem = "Entrada de materiais processada.", itens = entrada.Itens.Count,
                 rascunhoNumero = rMat.RascunhoNumero, divergentes = rMat.Divergentes });
         }
@@ -1163,7 +1155,6 @@ public class EntradaNFeController(SistemaDbContext db,
         // 2. Lançar faturas em contas a pagar e concluir
         var r = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
 
-        await tx.CommitAsync(ct);
         return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id,
             rascunhoNumero = r.RascunhoNumero, divergentes = r.Divergentes });
     }

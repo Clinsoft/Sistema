@@ -855,25 +855,6 @@
         </v-card>
       </v-col>
     </v-row>
-
-    <!-- Alertas -->
-    <v-row v-if="alertas.length" class="mt-2">
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
-          <v-card-title class="pa-4 pb-0 text-body-1 font-weight-bold">Alertas</v-card-title>
-          <v-list density="compact" class="pa-2">
-            <v-list-item
-              v-for="(a, i) in alertas"
-              :key="i"
-              :prepend-icon="a.icon"
-              :title="a.texto"
-              :subtitle="a.detalhe"
-              :base-color="a.cor"
-            />
-          </v-list>
-        </v-card>
-      </v-col>
-    </v-row>
   </div>
 </template>
 
@@ -966,31 +947,8 @@ async function carregarResumo() {
   try {
     const res = await api.get<ResumoData>('/dashboard/resumo', { params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId } })
     resumo.value = res.data
-    montarAlertas()
   } catch { resumo.value = null }
 }
-
-function montarAlertas() {
-  const r = resumo.value
-  if (!r) { alertas.value = []; return }
-  const lista: { icon: string; texto: string; detalhe: string; cor: string }[] = []
-  if (r.produtosSemEstoque > 0)
-    lista.push({ icon: 'mdi-package-variant-remove', cor: 'error',
-      texto: `${r.produtosSemEstoque} produto(s) sem estoque`,
-      detalhe: 'Verifique reposição em Estoque → Produtos.' })
-  if (r.aReceberVencido > 0)
-    lista.push({ icon: 'mdi-calendar-alert', cor: 'warning',
-      texto: `${fmt(r.aReceberVencido)} a receber vencido`,
-      detalhe: 'Cobre os títulos em atraso em Financeiro → Contas a Receber.' })
-  if (r.pedidosAbertos > 0)
-    lista.push({ icon: 'mdi-truck-delivery-outline', cor: 'info',
-      texto: `${r.pedidosAbertos} pedido(s) de compra em aberto`,
-      detalhe: 'Aguardando recebimento em Compras.' })
-  alertas.value = lista
-}
-
-
-const alertas = ref<{ icon: string; texto: string; detalhe: string; cor: string }[]>([])
 
 // ── Ponto de Equilíbrio ───────────────────────────────────────────────────────
 interface PeData {

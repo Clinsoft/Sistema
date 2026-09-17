@@ -817,6 +817,56 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- FAIXA: Prioridade — Margem × Faturamento -->
+    <v-row class="mt-2">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
+            <v-icon icon="mdi-scatter-plot" class="mr-1" color="deep-purple" />
+            Prioridade — Margem × Faturamento
+            <v-spacer />
+            <span class="text-caption text-medium-emphasis">{{ mesAtual }} · venda − custo atual</span>
+          </v-card-title>
+          <v-card-text>
+            <div v-if="carregandoRentab" class="d-flex justify-center pa-8">
+              <v-progress-circular indeterminate color="deep-purple" />
+            </div>
+            <div v-else-if="!rentabPrior.length" class="text-center text-medium-emphasis pa-6">
+              Sem vendas no mês para comparar.
+            </div>
+            <template v-else>
+              <div class="d-flex flex-wrap ga-3 mb-2 text-caption text-medium-emphasis">
+                <span class="d-flex align-center ga-1"><span class="prio-dot" style="background:#ef5350" /> Corrigir margem — fatura muito, margem baixa</span>
+                <span class="d-flex align-center ga-1"><span class="prio-dot" style="background:#4caf50" /> Proteger — fatura muito, margem boa</span>
+                <span class="d-flex align-center ga-1"><span class="prio-dot" style="background:#42a5f5" /> Crescer — margem boa, fatura pouco</span>
+                <span class="d-flex align-center ga-1"><span class="prio-dot" style="background:#bdbdbd" /> Avaliar — fatura pouco, margem baixa</span>
+              </div>
+              <canvas ref="rentabCanvas" height="280" style="width:100%" />
+
+              <v-data-table :headers="rentabHeaders" :items="rentabPrior" density="compact" hover
+                :items-per-page="-1" hide-default-footer class="mt-3"
+                :sort-by="[{ key: 'prioRank', order: 'asc' }]">
+                <template #item.faturamento="{ item }">R$ {{ fmtNum(item.faturamento) }}</template>
+                <template #item.participacaoPct="{ item }">{{ item.participacaoPct.toFixed(1) }}%</template>
+                <template #item.margemValor="{ item }">
+                  <span class="font-weight-bold" :class="item.margemValor >= 0 ? 'text-success' : 'text-error'">R$ {{ fmtNum(item.margemValor) }}</span>
+                </template>
+                <template #item.margemPct="{ item }">
+                  <v-chip size="small" label variant="tonal"
+                    :color="item.margemPct >= 40 ? 'success' : item.margemPct >= 20 ? 'warning' : 'error'">
+                    {{ item.margemPct.toFixed(1) }}%
+                  </v-chip>
+                </template>
+                <template #item.prioridade="{ item }">
+                  <v-chip size="small" label :color="item.prioCor" variant="flat">{{ item.prioridade }}</v-chip>
+                </template>
+              </v-data-table>
+            </template>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
   </div>
 </template>
 
@@ -1419,6 +1469,111 @@ function renderizarCurvaAbc() {
   }
 }
 
+// ── Prioridade: Margem × Faturamento por categoria ───────────────────────────
+interface RentabItem {
+  categoria: string; faturamento: number; custo: number
+  margemValor: number; margemPct: number; participacaoPct: number; quantidade: number
+}
+const rentabCanvas = ref<HTMLCanvasElement>()
+const rentab = ref<RentabItem[]>([])
+const carregandoRentab = ref(true)
+const rentabHeaders = [
+  { title: 'Categoria', key: 'categoria' },
+  { title: 'Faturamento', key: 'faturamento', align: 'end' as const },
+  { title: 'Part.', key: 'participacaoPct', align: 'end' as const },
+  { title: 'Margem (R$)', key: 'margemValor', align: 'end' as const },
+  { title: 'Margem %', key: 'margemPct', width: 100, align: 'center' as const },
+  { title: 'Prioridade', key: 'prioridade', width: 150, align: 'center' as const },
+]
+
+async function carregarRentabilidade() {
+  if (!auth.empresaId) { carregandoRentab.value = false; return }
+  carregandoRentab.value = true
+  try {
+    const inicio = new Date(anoAtual, new Date().getMonth(), 1).toISOString().slice(0, 10)
+    const fim = new Date().toISOString().slice(0, 10)
+    const res = await api.get<{ itens: RentabItem[] }>('/relatorios/estoque/rentabilidade-categoria', {
+      params: { empresaId: auth.empresaId, inicio, fim },
+    })
+    rentab.value = res.data.itens ?? []
+  } catch { rentab.value = [] } finally { carregandoRentab.value = false }
+}
+
+// Classifica cada categoria em quadrantes pela mediana de faturamento e margem%.
+const rentabPrior = computed(() => {
+  const items = rentab.value.filter(i => i.faturamento > 0)
+  if (!items.length) return [] as (RentabItem & { prioridade: string; prioCor: string; prioRank: number })[]
+  const fats = items.map(i => i.faturamento).sort((a, b) => a - b)
+  const mgs = items.map(i => i.margemPct).sort((a, b) => a - b)
+  const medFat = fats[Math.floor(fats.length / 2)]
+  const medMg = mgs[Math.floor(mgs.length / 2)]
+  return items.map(i => {
+    const altoFat = i.faturamento >= medFat
+    const boaMg = i.margemPct >= medMg
+    let prioridade = 'Avaliar', prioCor = 'grey', prioRank = 3
+    if (altoFat && !boaMg) { prioridade = 'Corrigir margem'; prioCor = 'error'; prioRank = 0 }
+    else if (altoFat && boaMg) { prioridade = 'Proteger'; prioCor = 'success'; prioRank = 1 }
+    else if (!altoFat && boaMg) { prioridade = 'Crescer'; prioCor = 'info'; prioRank = 2 }
+    return { ...i, prioridade, prioCor, prioRank }
+  }).sort((a, b) => a.prioRank - b.prioRank || b.faturamento - a.faturamento)
+})
+
+let _rtTry = 0
+function renderizarRentab() {
+  const canvas = rentabCanvas.value
+  const items = rentabPrior.value
+  if (!canvas || !items.length) return
+  const ctx = canvas.getContext('2d'); if (!ctx) return
+  if (canvas.offsetWidth === 0) { if (_rtTry++ < 30) requestAnimationFrame(renderizarRentab); return }
+  _rtTry = 0
+  const ink = getComputedStyle(canvas).color || 'rgba(120,120,120,1)'
+  const W = canvas.offsetWidth, H = 280
+  canvas.width = W; canvas.height = H
+  const padL = 46, padR = 16, padT = 16, padB = 30
+  const plotW = W - padL - padR, plotH = H - padT - padB
+  ctx.clearRect(0, 0, W, H)
+  const maxFat = Math.max(...items.map(i => i.faturamento)) * 1.08
+  const maxMg = Math.max(20, Math.max(...items.map(i => i.margemPct)) * 1.12)
+  const xFat = (v: number) => padL + (v / maxFat) * plotW
+  const yMg = (v: number) => padT + plotH - (v / maxMg) * plotH
+  // eixos
+  ctx.strokeStyle = 'rgba(127,127,127,0.28)'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke()
+  // linhas de mediana (divisão dos quadrantes)
+  const fats = items.map(i => i.faturamento).sort((a, b) => a - b)
+  const mgs = items.map(i => i.margemPct).sort((a, b) => a - b)
+  const medFat = fats[Math.floor(fats.length / 2)], medMg = mgs[Math.floor(mgs.length / 2)]
+  ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(127,127,127,0.4)'
+  ctx.beginPath(); ctx.moveTo(xFat(medFat), padT); ctx.lineTo(xFat(medFat), padT + plotH); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(padL, yMg(medMg)); ctx.lineTo(padL + plotW, yMg(medMg)); ctx.stroke()
+  ctx.restore()
+  // marcas do eixo Y (margem %)
+  ctx.fillStyle = ink; ctx.globalAlpha = 0.6; ctx.font = '9px sans-serif'; ctx.textAlign = 'right'
+  for (let k = 0; k <= 4; k++) {
+    const g = maxMg * k / 4, yy = yMg(g)
+    ctx.fillText(Math.round(g) + '%', padL - 5, yy + 3)
+  }
+  // rótulos de eixo
+  ctx.globalAlpha = 0.75; ctx.textAlign = 'left'; ctx.fillText('Margem %', padL + 2, padT + 8)
+  ctx.textAlign = 'right'; ctx.fillText('Faturamento →', padL + plotW, padT + plotH + 20)
+  ctx.globalAlpha = 1
+  // bolhas: cor = prioridade, raio ~ margem R$
+  const cor: Record<string, string> = { error: '#ef5350', success: '#4caf50', info: '#42a5f5', grey: '#bdbdbd' }
+  const maxVal = Math.max(...items.map(i => Math.abs(i.margemValor)), 1)
+  for (const i of items) {
+    const r = 5 + 13 * Math.sqrt(Math.abs(i.margemValor) / maxVal)
+    const x = xFat(i.faturamento), y = yMg(i.margemPct)
+    ctx.beginPath(); ctx.fillStyle = (cor[i.prioCor] || '#bdbdbd') + 'cc'
+    ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.fillStyle = ink; ctx.globalAlpha = 0.9; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
+    const lbl = i.categoria.length > 13 ? i.categoria.slice(0, 12) + '…' : i.categoria
+    ctx.fillText(lbl, x, y - r - 2)
+    ctx.globalAlpha = 1
+  }
+}
+watch(rentabPrior, () => requestAnimationFrame(renderizarRentab))
+
 // ResizeObserver: redesenha cada gráfico assim que o canvas ganha tamanho no
 // DOM. É a forma robusta de resolver o "gráfico em branco no load inicial"
 // (quando o desenho roda antes do layout, com offsetWidth ainda 0).
@@ -1433,6 +1588,7 @@ if (typeof ResizeObserver !== 'undefined') {
   liga(() => peCanvas.value, renderizarGraficoPe)
   liga(() => dreCanvas.value, renderizarGraficoDre)
   liga(() => abcCanvas.value, renderizarCurvaAbc)
+  liga(() => rentabCanvas.value, renderizarRentab)
 }
 
 // ── Movimento (dia da semana × hora, por loja) ─────────────────────
@@ -1499,6 +1655,7 @@ onMounted(async () => {
     carregarMetas(),
     carregarMargemCats(),
     carregarCapitalGiro(),
+    carregarRentabilidade(),
   ])
   // Redesenha os gráficos DEPOIS que todos os cards assentaram no DOM. No load
   // inicial os vizinhos trocam de spinner→conteúdo e re-renderizam por cima do
@@ -1508,6 +1665,7 @@ onMounted(async () => {
     renderizarGraficoPe()
     renderizarGraficoDre()
     renderizarCurvaAbc()
+    renderizarRentab()
   })
 })
 </script>
@@ -1535,6 +1693,9 @@ onMounted(async () => {
 .heat-dia-peak { color: #ff5722 !important; }
 .leg-cel {
   display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle;
+}
+.prio-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle;
 }
 .barras { display: flex; align-items: flex-end; gap: 3px; height: 72px; }
 .barra-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; }

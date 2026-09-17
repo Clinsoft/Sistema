@@ -144,6 +144,9 @@ public static class ServiceCollectionExtensions
         // Concorrência — geocodificação (Nominatim) + busca de concorrentes (Overpass/OSM)
         services.AddHttpClient<Sistema.Infrastructure.Services.MapaConcorrenciaService>(c =>
             c.Timeout = TimeSpan.FromSeconds(40));
+        // Concorrência — busca via Google Places (New): tem as lojas de naturais
+        services.AddHttpClient<Sistema.Infrastructure.Services.GooglePlacesService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.FechamentoCaixaJob>();

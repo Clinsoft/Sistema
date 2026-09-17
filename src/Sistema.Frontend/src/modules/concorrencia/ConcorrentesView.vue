@@ -7,8 +7,8 @@
           Concorrência
         </h2>
         <div class="text-body-2 text-medium-emphasis">
-          Lojas de <b>produtos naturais</b> (e suplementos/ervanário) num raio em volta de cada loja —
-          fonte OpenStreetMap. Os preços entram nas próximas fases.
+          Lojas de <b>produtos naturais</b> (e suplementos) num raio em volta de cada loja —
+          busca automática (Google Places) + cadastro manual. Os preços entram nas próximas fases.
         </div>
       </v-col>
     </v-row>

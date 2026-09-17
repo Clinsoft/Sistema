@@ -14,7 +14,8 @@ namespace Sistema.API.Controllers.Estoque;
 [ApiController]
 [Route("api/concorrentes")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro")]
-public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService mapa) : ControllerBase
+public class ConcorrentesController(
+    SistemaDbContext db, MapaConcorrenciaService mapa, GooglePlacesService google) : ControllerBase
 {
     /// <summary>Lojas da empresa com status de geocodificação e nº de concorrentes já mapeados.</summary>
     [HttpGet("lojas")]
@@ -108,18 +109,23 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
         }
 
         var raioMetros = (int)Math.Clamp(raioKm, 0.5, 20) * 1000;
+
+        // Fonte: Google Places (tem as lojas de naturais) quando configurado; senão OSM.
+        var fonte = google.Configurado ? "Google" : "OSM";
         List<MapaConcorrenciaService.ConcorrenteOsm> achados;
         try
         {
-            achados = await mapa.BuscarConcorrentesAsync(loja.Latitude!.Value, loja.Longitude!.Value, raioMetros, ct);
+            achados = fonte == "Google"
+                ? await google.BuscarAsync(loja.Latitude!.Value, loja.Longitude!.Value, raioMetros, ct)
+                : await mapa.BuscarConcorrentesAsync(loja.Latitude!.Value, loja.Longitude!.Value, raioMetros, ct);
         }
         catch (Exception ex)
         {
-            return StatusCode(502, new { mensagem = "Falha ao consultar o mapa (OSM/Overpass): " + ex.Message });
+            return StatusCode(502, new { mensagem = $"Falha ao consultar a fonte ({fonte}): " + ex.Message });
         }
 
-        // Remove a PRÓPRIA loja (o OSM às vezes tem a EcoGranel cadastrada): pelo nome
-        // da empresa/loja ou por estar praticamente no mesmo ponto (<40 m).
+        // Remove a PRÓPRIA loja (a base às vezes tem a EcoGranel): pelo nome ou por estar
+        // praticamente no mesmo ponto (<40 m).
         var nomeLoja = (loja.Nome ?? "").Trim();
         achados = achados.Where(a =>
             a.DistanciaKm > 0.04m
@@ -127,10 +133,10 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
             && (nomeLoja.Length < 4 || a.Nome.IndexOf(nomeLoja, StringComparison.OrdinalIgnoreCase) < 0))
             .ToList();
 
-        // Upsert por (LocalEstoqueId, OsmRef): mantém os que continuam, atualiza dados,
-        // insere novos. Não remove os que sumiram (evita perder anotações futuras).
+        // Upsert por (LocalEstoqueId, ref, fonte). Autoritativo para a MESMA fonte
+        // (desativa os que sumiram); NÃO toca nos manuais nem na outra fonte.
         var existentes = await db.Concorrentes
-            .Where(c => c.LocalEstoqueId == localEstoqueId && c.Fonte == "OSM")
+            .Where(c => c.LocalEstoqueId == localEstoqueId && c.Fonte == fonte)
             .ToListAsync(ct);
         var porRef = existentes.Where(c => c.OsmRef != null).ToDictionary(c => c.OsmRef!, c => c);
         var achadosRefs = achados.Select(a => a.OsmRef).ToHashSet();
@@ -146,13 +152,11 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
             }
             else
             {
-                db.Concorrentes.Add(Concorrente.CriarDoOsm(loja.EmpresaId, localEstoqueId, a.Nome,
+                db.Concorrentes.Add(Concorrente.CriarExterno(loja.EmpresaId, localEstoqueId, fonte, a.Nome,
                     a.Categoria, a.Lat, a.Lng, a.DistanciaKm, a.Endereco, a.Telefone, a.Website, a.OsmRef));
                 novos++;
             }
         }
-        // Autoritativo p/ fonte OSM: desativa os que não vieram mais nesta varredura
-        // (ex.: após restringir o filtro para só lojas de produtos naturais).
         foreach (var ex in existentes)
             if (ex.Ativo && ex.OsmRef != null && !achadosRefs.Contains(ex.OsmRef))
             {
@@ -164,7 +168,7 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
         return Ok(new
         {
             loja = new { loja.Id, loja.Nome, loja.Latitude, loja.Longitude },
-            raioKm, encontrados = achados.Count, novos, atualizados, removidos,
+            raioKm, fonte, encontrados = achados.Count, novos, atualizados, removidos,
         });
     }
 

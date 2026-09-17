@@ -35,12 +35,19 @@ public class Concorrente : Entity
     public static Concorrente CriarDoOsm(Guid empresaId, Guid localEstoqueId, string nome,
         string? categoria, double latitude, double longitude, decimal distanciaKm,
         string? endereco, string? telefone, string? website, string osmRef)
+        => CriarExterno(empresaId, localEstoqueId, "OSM", nome, categoria, latitude, longitude,
+            distanciaKm, endereco, telefone, website, osmRef);
+
+    /// <summary>Cria a partir de uma fonte externa (OSM ou Google). `refExterna` = id p/ dedupe.</summary>
+    public static Concorrente CriarExterno(Guid empresaId, Guid localEstoqueId, string fonte, string nome,
+        string? categoria, double latitude, double longitude, decimal distanciaKm,
+        string? endereco, string? telefone, string? website, string refExterna)
         => new()
         {
             EmpresaId = empresaId, LocalEstoqueId = localEstoqueId, Nome = nome,
             Categoria = categoria, Latitude = latitude, Longitude = longitude,
             DistanciaKm = distanciaKm, Endereco = endereco, Telefone = telefone,
-            Website = website, Fonte = "OSM", OsmRef = osmRef,
+            Website = website, Fonte = fonte, OsmRef = refExterna,
         };
 
     public static Concorrente CriarManual(Guid empresaId, Guid localEstoqueId, string nome,

@@ -168,6 +168,33 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
         });
     }
 
+    public record ConcorrenteManualRequest(string Nome, string? Categoria, double Latitude, double Longitude, string? Endereco);
+
+    /// <summary>Adiciona um concorrente MANUALMENTE (o OSM não cobre as lojas de naturais).</summary>
+    [HttpPost("loja/{localEstoqueId:guid}/manual")]
+    public async Task<IActionResult> AdicionarManual(Guid localEstoqueId,
+        [FromBody] ConcorrenteManualRequest req, CancellationToken ct)
+    {
+        var loja = await db.LocaisEstoque.FirstOrDefaultAsync(l => l.Id == localEstoqueId, ct);
+        if (loja is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { mensagem = "Informe o nome do concorrente." });
+        if (req.Latitude is < -90 or > 90 || req.Longitude is < -180 or > 180)
+            return BadRequest(new { mensagem = "Coordenada inválida." });
+
+        decimal dist = 0m;
+        if (loja.Latitude is not null && loja.Longitude is not null)
+            dist = (decimal)Math.Round(
+                MapaConcorrenciaService.DistanciaKm(loja.Latitude.Value, loja.Longitude.Value, req.Latitude, req.Longitude), 2);
+
+        var categoria = string.IsNullOrWhiteSpace(req.Categoria) ? "Produtos naturais" : req.Categoria!.Trim();
+        var c = Concorrente.CriarManual(loja.EmpresaId, localEstoqueId, req.Nome.Trim(),
+            categoria, req.Latitude, req.Longitude, dist, req.Endereco);
+        db.Concorrentes.Add(c);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { c.Id, c.Nome, c.Categoria, c.Latitude, c.Longitude, c.DistanciaKm, c.Endereco, c.Telefone, c.Website, c.Fonte });
+    }
+
     public record CoordRequest(double Latitude, double Longitude);
 
     /// <summary>Define manualmente a coordenada da loja (correção no mapa, arrastando o marcador).</summary>

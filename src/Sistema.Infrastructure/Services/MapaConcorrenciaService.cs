@@ -182,6 +182,10 @@ public class MapaConcorrenciaService(HttpClient http)
         return string.IsNullOrWhiteSpace(full) ? null : full;
     }
 
+    /// <summary>Distância em km entre dois pontos (Haversine) — usada também no cadastro manual.</summary>
+    public static double DistanciaKm(double lat1, double lon1, double lat2, double lon2)
+        => HaversineKm(lat1, lon1, lat2, lon2);
+
     private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
     {
         const double R = 6371.0;

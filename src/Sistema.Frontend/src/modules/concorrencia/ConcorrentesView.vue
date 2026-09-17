@@ -55,7 +55,13 @@
     <v-row>
       <v-col cols="12" md="7">
         <v-card rounded="xl" elevation="1">
-          <div ref="mapEl" class="mapa" />
+          <v-alert v-if="adicionando" type="info" density="compact" variant="tonal" class="ma-2 mb-0">
+            Clique no mapa no ponto onde fica o concorrente.
+            <template #append>
+              <v-btn size="x-small" variant="text" @click="cancelarAdd">Cancelar</v-btn>
+            </template>
+          </v-alert>
+          <div ref="mapEl" class="mapa" :class="{ 'modo-add': adicionando }" />
           <div v-if="temCoord" class="text-caption text-medium-emphasis pa-2 d-flex align-center">
             <v-icon icon="mdi-cursor-move" size="16" class="mr-1" />
             Local errado? Arraste o marcador <b class="mx-1" style="color:#43a047">verde</b> para o ponto exato da loja e clique em “Buscar concorrentes” de novo.
@@ -73,7 +79,8 @@
             <v-icon icon="mdi-store-search-outline" class="mr-2" color="deep-purple" />
             {{ concorrentes.length }} concorrente(s)
             <v-spacer />
-            <span v-if="temCoord" class="text-caption text-medium-emphasis">raio {{ raioKm }} km</span>
+            <v-btn v-if="temCoord" size="small" variant="tonal" color="teal"
+              prepend-icon="mdi-map-marker-plus" @click="iniciarAdd">Adicionar</v-btn>
           </v-card-title>
           <v-divider />
           <div v-if="concorrentes.length === 0" class="pa-6 text-center text-medium-emphasis text-body-2">
@@ -103,6 +110,30 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Diálogo: novo concorrente manual -->
+    <v-dialog v-model="dialogAdd" max-width="420">
+      <v-card rounded="xl">
+        <v-card-title class="text-body-1 font-weight-bold d-flex align-center">
+          <v-icon icon="mdi-map-marker-plus" color="teal" class="mr-2" />Novo concorrente
+        </v-card-title>
+        <v-card-text>
+          <v-text-field v-model="novoConc.nome" label="Nome da loja" variant="outlined"
+            density="compact" autofocus class="mb-2" @keyup.enter="salvarManual" />
+          <v-text-field v-model="novoConc.categoria" label="Categoria" variant="outlined"
+            density="compact" hide-details />
+          <div class="text-caption text-medium-emphasis mt-2">
+            Ponto no mapa: {{ novoConc.lat.toFixed(5) }}, {{ novoConc.lng.toFixed(5) }}
+          </div>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-3">
+          <v-spacer />
+          <v-btn variant="text" @click="dialogAdd = false">Cancelar</v-btn>
+          <v-btn color="teal" variant="flat" :loading="salvandoManual"
+            :disabled="!novoConc.nome.trim()" @click="salvarManual">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -141,6 +172,11 @@ function garantirMapa() {
     maxZoom: 19, attribution: '© OpenStreetMap',
   }).addTo(map)
   camada = L.layerGroup().addTo(map)
+  map.on('click', (e: any) => {
+    if (!adicionando.value) return
+    novoConc.value = { nome: '', categoria: 'Produtos naturais', lat: e.latlng.lat, lng: e.latlng.lng }
+    dialogAdd.value = true
+  })
 }
 
 function desenhar(ajustarZoom = true) {
@@ -163,8 +199,10 @@ function desenhar(ajustarZoom = true) {
 
   // Concorrentes (roxo)
   for (const c of concorrentes.value) {
+    const manual = c.fonte === 'Manual'
     const m = L.circleMarker([c.latitude, c.longitude], {
-      radius: 6, color: '#5e35b1', fillColor: '#7e57c2', fillOpacity: 0.9, weight: 1.5,
+      radius: 6, weight: 1.5, fillOpacity: 0.9,
+      color: manual ? '#00695c' : '#5e35b1', fillColor: manual ? '#26a69a' : '#7e57c2',
     })
     const linhas = [
       `<b>${c.nome}</b>`,
@@ -201,6 +239,33 @@ function focar(c: Concorrente) {
   if (!map) return
   map.setView([c.latitude, c.longitude], 16)
   marcadores.get(c.id)?.openPopup()
+}
+
+// Cadastro MANUAL de concorrente (o OSM não tem as lojas de produtos naturais;
+// no Google elas existem — o usuário clica no mapa onde ficam e dá o nome).
+const adicionando = ref(false)
+const dialogAdd = ref(false)
+const salvandoManual = ref(false)
+const novoConc = ref<{ nome: string; categoria: string; lat: number; lng: number }>(
+  { nome: '', categoria: 'Produtos naturais', lat: 0, lng: 0 })
+function iniciarAdd() { adicionando.value = true }
+function cancelarAdd() { dialogAdd.value = false; adicionando.value = false }
+async function salvarManual() {
+  if (!lojaId.value || !novoConc.value.nome.trim()) return
+  salvandoManual.value = true
+  try {
+    const res = await api.post<Concorrente>(`/concorrentes/loja/${lojaId.value}/manual`, {
+      nome: novoConc.value.nome.trim(),
+      categoria: novoConc.value.categoria?.trim() || null,
+      latitude: novoConc.value.lat, longitude: novoConc.value.lng, endereco: null,
+    })
+    concorrentes.value = [...concorrentes.value, res.data].sort((a, b) => a.distanciaKm - b.distanciaKm)
+    dialogAdd.value = false
+    adicionando.value = false
+    desenhar(false)
+  } catch (e: any) {
+    alert(e?.response?.data?.mensagem || 'Não foi possível adicionar o concorrente.')
+  } finally { salvandoManual.value = false }
 }
 
 async function carregarLojas() {
@@ -259,5 +324,6 @@ onBeforeUnmount(() => { map?.remove(); map = null })
 
 <style scoped>
 .mapa { height: 520px; width: 100%; border-radius: 16px; z-index: 0; }
+.mapa.modo-add { cursor: crosshair; }
 .lista-conc { max-height: 520px; overflow-y: auto; }
 </style>

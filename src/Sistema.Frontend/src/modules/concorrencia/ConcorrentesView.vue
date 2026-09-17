@@ -7,7 +7,8 @@
           Concorrência
         </h2>
         <div class="text-body-2 text-medium-emphasis">
-          Concorrentes num raio em volta de cada loja (fonte: OpenStreetMap). Os preços entram nas próximas fases.
+          Lojas de <b>produtos naturais</b> (e suplementos/ervanário) num raio em volta de cada loja —
+          fonte OpenStreetMap. Os preços entram nas próximas fases.
         </div>
       </v-col>
     </v-row>
@@ -55,6 +56,10 @@
       <v-col cols="12" md="7">
         <v-card rounded="xl" elevation="1">
           <div ref="mapEl" class="mapa" />
+          <div v-if="temCoord" class="text-caption text-medium-emphasis pa-2 d-flex align-center">
+            <v-icon icon="mdi-cursor-move" size="16" class="mr-1" />
+            Local errado? Arraste o marcador <b class="mx-1" style="color:#43a047">verde</b> para o ponto exato da loja e clique em “Buscar concorrentes” de novo.
+          </div>
           <div v-if="!temCoord" class="pa-6 text-center text-medium-emphasis">
             <v-icon icon="mdi-map-search-outline" size="40" class="mb-2" />
             <div class="text-body-2">Selecione uma loja e clique em “Buscar concorrentes”.</div>
@@ -138,7 +143,7 @@ function garantirMapa() {
   camada = L.layerGroup().addTo(map)
 }
 
-function desenhar() {
+function desenhar(ajustarZoom = true) {
   if (!temCoord.value) return
   garantirMapa()
   if (!map || !camada) return
@@ -146,9 +151,14 @@ function desenhar() {
   marcadores.clear()
 
   const lat = loja.value!.latitude!, lng = loja.value!.longitude!
-  // Loja (verde) + raio
-  L.circleMarker([lat, lng], { radius: 9, color: '#2e7d32', fillColor: '#43a047', fillOpacity: 0.95, weight: 2 })
-    .bindPopup(`<b>${loja.value!.nome}</b><br>Sua loja`).addTo(camada)
+  // Loja: marcador ARRASTÁVEL (verde) para corrigir o local + círculo do raio.
+  const pin = L.divIcon({ className: '', iconSize: [18, 18], iconAnchor: [9, 9],
+    html: '<div style="width:16px;height:16px;border-radius:50%;background:#43a047;border:2px solid #1b5e20;box-shadow:0 0 0 4px rgba(67,160,71,.35)"></div>' })
+  const mLoja = L.marker([lat, lng], { draggable: true, icon: pin, zIndexOffset: 1000,
+    title: 'Arraste para corrigir o local da loja' })
+    .bindPopup(`<b>${loja.value!.nome}</b><br>Sua loja — arraste para ajustar o local`)
+  mLoja.on('dragend', (e: any) => { const p = e.target.getLatLng(); salvarCoordenada(p.lat, p.lng) })
+  mLoja.addTo(camada)
   L.circle([lat, lng], { radius: raioKm.value * 1000, color: '#7e57c2', weight: 1, fillColor: '#7e57c2', fillOpacity: 0.06 }).addTo(camada)
 
   // Concorrentes (roxo)
@@ -169,9 +179,22 @@ function desenhar() {
     marcadores.set(c.id, m)
   }
 
-  const grupo = L.featureGroup([...camada.getLayers()] as L.Layer[])
-  try { map.fitBounds(grupo.getBounds().pad(0.1)) } catch { map.setView([lat, lng], 14) }
+  if (ajustarZoom) {
+    const grupo = L.featureGroup([...camada.getLayers()] as L.Layer[])
+    try { map.fitBounds(grupo.getBounds().pad(0.1)) } catch { map.setView([lat, lng], 14) }
+  }
   nextTick(() => map?.invalidateSize())
+}
+
+// Correção manual do local da loja (arrastar o marcador). Salva e mantém o zoom.
+async function salvarCoordenada(lat: number, lng: number) {
+  if (!lojaId.value || !loja.value) return
+  loja.value.latitude = lat
+  loja.value.longitude = lng
+  desenhar(false)
+  try {
+    await api.post(`/concorrentes/loja/${lojaId.value}/coordenada`, { latitude: lat, longitude: lng })
+  } catch { /* mantém o ponto na tela mesmo se a gravação falhar */ }
 }
 
 function focar(c: Concorrente) {

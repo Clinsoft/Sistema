@@ -14,22 +14,14 @@ public class MapaConcorrenciaService(HttpClient http)
     private const string NominatimUrl = "https://nominatim.openstreetmap.org/search";
     private const string OverpassUrl = "https://overpass-api.de/api/interpreter";
 
-    // shop OSM → rótulo amigável. A ordem/valores definem também o filtro da busca.
+    // shop OSM → rótulo amigável. SÓ o segmento de produtos naturais (concorrentes diretos):
+    // loja de produtos naturais, suplementos e ervanário/fitoterápicos. Supermercados,
+    // padarias, mercearias etc. NÃO entram (não são concorrência direta).
     private static readonly Dictionary<string, string> ShopLabels = new()
     {
         ["health_food"] = "Produtos naturais",
         ["nutrition_supplements"] = "Suplementos",
-        ["greengrocer"] = "Hortifruti",
-        ["farm"] = "Produtos da fazenda",
-        ["supermarket"] = "Supermercado",
-        ["convenience"] = "Mercearia/Conveniência",
-        ["deli"] = "Empório",
-        ["spices"] = "Temperos e especiarias",
-        ["coffee"] = "Café",
-        ["tea"] = "Chás",
-        ["bakery"] = "Padaria",
-        ["confectionery"] = "Doces e confeitaria",
-        ["chemist"] = "Farmácia/Drogaria",
+        ["herbalist"] = "Ervanário/Fitoterápicos",
     };
 
     public record ConcorrenteOsm(string OsmRef, string Nome, string? Categoria,
@@ -55,16 +47,17 @@ public class MapaConcorrenciaService(HttpClient http)
         var cepLimpo = new string((cep ?? "").Where(char.IsDigit).ToArray());
         var street = string.Join(" ", new[] { numero, logradouro }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
 
-        // Tentativa 1: estruturado completo.
-        var p = await ConsultarEstruturadoAsync(street, bairro, cidade, uf, cepLimpo, ct);
+        // Tentativa 1: rua + cidade + UF (SEM CEP) — normalmente o mais preciso quando o
+        // número existe no OSM (o CEP às vezes puxa o centroide da área, errando o ponto).
+        var p = await ConsultarEstruturadoAsync(street, bairro, cidade, uf, null, ct);
         if (p is not null) return p;
 
-        // Tentativa 2: estruturado sem CEP (CEP às vezes não bate no dataset do OSM).
+        // Tentativa 2: rua + cidade + UF + CEP.
         await Task.Delay(1100, ct);
-        p = await ConsultarEstruturadoAsync(street, bairro, cidade, uf, null, ct);
+        p = await ConsultarEstruturadoAsync(street, bairro, cidade, uf, cepLimpo, ct);
         if (p is not null) return p;
 
-        // Tentativa 3: só CEP + cidade (centroide do CEP).
+        // Tentativa 3: só CEP + cidade (centroide do CEP — menos preciso, último recurso).
         if (cepLimpo.Length == 8)
         {
             await Task.Delay(1100, ct);
@@ -106,10 +99,17 @@ public class MapaConcorrenciaService(HttpClient http)
         int raioMetros, CancellationToken ct = default)
     {
         var shops = string.Join("|", ShopLabels.Keys);
+        // Também casa lojas do segmento pelo NOME (o OSM raramente marca "health_food"
+        // no Brasil; muitas lojas de naturais estão como shop genérico). Exige ter shop.
+        const string nomeNatural = "produtos naturais|natural|granel|suplement|mundo verde|casa natural|vida natural";
+        var latS = lat.ToString(CultureInfo.InvariantCulture);
+        var lngS = lng.ToString(CultureInfo.InvariantCulture);
         var ql =
             "[out:json][timeout:25];(" +
-            $"node[\"shop\"~\"^({shops})$\"](around:{raioMetros},{lat.ToString(CultureInfo.InvariantCulture)},{lng.ToString(CultureInfo.InvariantCulture)});" +
-            $"way[\"shop\"~\"^({shops})$\"](around:{raioMetros},{lat.ToString(CultureInfo.InvariantCulture)},{lng.ToString(CultureInfo.InvariantCulture)});" +
+            $"node[\"shop\"~\"^({shops})$\"](around:{raioMetros},{latS},{lngS});" +
+            $"way[\"shop\"~\"^({shops})$\"](around:{raioMetros},{latS},{lngS});" +
+            $"node[\"shop\"][\"name\"~\"{nomeNatural}\",i](around:{raioMetros},{latS},{lngS});" +
+            $"way[\"shop\"][\"name\"~\"{nomeNatural}\",i](around:{raioMetros},{latS},{lngS});" +
             ");out center tags;";
 
         using var req = new HttpRequestMessage(HttpMethod.Post, OverpassUrl)

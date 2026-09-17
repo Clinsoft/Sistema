@@ -108,14 +108,24 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
             return StatusCode(502, new { mensagem = "Falha ao consultar o mapa (OSM/Overpass): " + ex.Message });
         }
 
+        // Remove a PRÓPRIA loja (o OSM às vezes tem a EcoGranel cadastrada): pelo nome
+        // da empresa/loja ou por estar praticamente no mesmo ponto (<40 m).
+        var nomeLoja = (loja.Nome ?? "").Trim();
+        achados = achados.Where(a =>
+            a.DistanciaKm > 0.04m
+            && a.Nome.IndexOf("ecogranel", StringComparison.OrdinalIgnoreCase) < 0
+            && (nomeLoja.Length < 4 || a.Nome.IndexOf(nomeLoja, StringComparison.OrdinalIgnoreCase) < 0))
+            .ToList();
+
         // Upsert por (LocalEstoqueId, OsmRef): mantém os que continuam, atualiza dados,
         // insere novos. Não remove os que sumiram (evita perder anotações futuras).
         var existentes = await db.Concorrentes
             .Where(c => c.LocalEstoqueId == localEstoqueId && c.Fonte == "OSM")
             .ToListAsync(ct);
         var porRef = existentes.Where(c => c.OsmRef != null).ToDictionary(c => c.OsmRef!, c => c);
+        var achadosRefs = achados.Select(a => a.OsmRef).ToHashSet();
 
-        int novos = 0, atualizados = 0;
+        int novos = 0, atualizados = 0, removidos = 0;
         foreach (var a in achados)
         {
             if (porRef.TryGetValue(a.OsmRef, out var ex))
@@ -131,13 +141,37 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
                 novos++;
             }
         }
+        // Autoritativo p/ fonte OSM: desativa os que não vieram mais nesta varredura
+        // (ex.: após restringir o filtro para só lojas de produtos naturais).
+        foreach (var ex in existentes)
+            if (ex.Ativo && ex.OsmRef != null && !achadosRefs.Contains(ex.OsmRef))
+            {
+                ex.Desativar();
+                removidos++;
+            }
         await db.SaveChangesAsync(ct);
 
         return Ok(new
         {
             loja = new { loja.Id, loja.Nome, loja.Latitude, loja.Longitude },
-            raioKm, encontrados = achados.Count, novos, atualizados,
+            raioKm, encontrados = achados.Count, novos, atualizados, removidos,
         });
+    }
+
+    public record CoordRequest(double Latitude, double Longitude);
+
+    /// <summary>Define manualmente a coordenada da loja (correção no mapa, arrastando o marcador).</summary>
+    [HttpPost("loja/{localEstoqueId:guid}/coordenada")]
+    public async Task<IActionResult> DefinirCoordenada(Guid localEstoqueId,
+        [FromBody] CoordRequest req, CancellationToken ct)
+    {
+        var loja = await db.LocaisEstoque.FirstOrDefaultAsync(l => l.Id == localEstoqueId, ct);
+        if (loja is null) return NotFound();
+        if (req.Latitude is < -90 or > 90 || req.Longitude is < -180 or > 180)
+            return BadRequest(new { mensagem = "Coordenada inválida." });
+        loja.DefinirCoordenadas(req.Latitude, req.Longitude);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { loja.Latitude, loja.Longitude });
     }
 
     /// <summary>Remove (desativa) um concorrente da lista.</summary>

@@ -606,11 +606,25 @@ public class EntradaNFeController(SistemaDbContext db,
         Guid? loteId = null;
         if (!string.IsNullOrWhiteSpace(item.NumeroLote))
         {
-            var novoLote = Lote.Criar(entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
-                item.NumeroLote!, qtd, custo, dataValidade: item.Validade);
-            db.Lotes.Add(novoLote);
-            await db.SaveChangesAsync(ct);
-            loteId = novoLote.Id;
+            // Reaproveita lote existente do produto de destino (evita violar o índice único).
+            var loteExistente = await db.Lotes.FirstOrDefaultAsync(l =>
+                l.EmpresaId == entrada.EmpresaId && l.ProdutoId == novo.Id
+                && l.LocalEstoqueId == entrada.LocalEstoqueId && l.NumeroLote == item.NumeroLote, ct);
+            if (loteExistente is not null)
+            {
+                loteExistente.AtualizarQuantidade(loteExistente.Quantidade + qtd);
+                if (item.Validade is { } v && loteExistente.DataValidade is null)
+                    loteExistente.AtualizarValidade(v);
+                loteId = loteExistente.Id;
+            }
+            else
+            {
+                var novoLote = Lote.Criar(entrada.EmpresaId, novo.Id, entrada.LocalEstoqueId,
+                    item.NumeroLote!, qtd, custo, dataValidade: item.Validade);
+                db.Lotes.Add(novoLote);
+                await db.SaveChangesAsync(ct);
+                loteId = novoLote.Id;
+            }
             item.DefinirLote(item.NumeroLote!, item.Validade, loteId);
         }
 
@@ -1039,12 +1053,19 @@ public class EntradaNFeController(SistemaDbContext db,
                 $"{semVinculo} item(ns) sem {oQue} vinculado. Vincule todos antes de processar." });
         }
 
+        // Tudo-ou-nada: envolve o processamento numa transação. Como há SaveChanges por item
+        // (para obter o Id do lote), sem transação uma falha no meio deixava estado parcial
+        // (lotes/movimentações já gravados) e o reprocessamento duplicava. Com a transação,
+        // qualquer erro faz rollback total e o retry fica limpo.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         // Ativo imobilizado: o bem já foi cadastrado com o valor de aquisição.
         // Não há estoque a movimentar — só o financeiro (contas a pagar).
         if (ehAtivo)
         {
             foreach (var item in entrada.Itens) item.MarcarEstoqueMovimentado();
             var rAtivo = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            await tx.CommitAsync(ct);
             return Ok(new { mensagem = "Entrada de ativo imobilizado processada.", itens = entrada.Itens.Count,
                 rascunhoNumero = rAtivo.RascunhoNumero, divergentes = rAtivo.Divergentes });
         }
@@ -1074,6 +1095,7 @@ public class EntradaNFeController(SistemaDbContext db,
                 item.MarcarEstoqueMovimentado();
             }
             var rMat = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
+            await tx.CommitAsync(ct);
             return Ok(new { mensagem = "Entrada de materiais processada.", itens = entrada.Itens.Count,
                 rascunhoNumero = rMat.RascunhoNumero, divergentes = rMat.Divergentes });
         }
@@ -1081,17 +1103,38 @@ public class EntradaNFeController(SistemaDbContext db,
         // 1. Movimentar estoque
         foreach (var item in entrada.Itens)
         {
-            // Criar lote se necessário
+            // Idempotência: se este item já teve o estoque movimentado (ex.: reprocessamento
+            // após uma falha parcial no meio do loop, quando não há transação envolvendo tudo),
+            // não move de novo — evita duplicar estoque/lote.
+            if (item.EstoqueMovimentado) continue;
+
+            // Criar lote se necessário — REAPROVEITA um lote já existente (mesmo produto/loja/
+            // número). Sem isso, o índice único (ProdutoId, LocalEstoqueId, NumeroLote) dava
+            // erro 500 quando o lote já existia: nota com o mesmo produto/lote repetido em dois
+            // itens, ou um lote de mesmo número vindo de entrada anterior.
             Guid? loteId = item.LoteId;
             if (loteId is null && item.NumeroLote is not null)
             {
-                var lote = Lote.Criar(
-                    entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
-                    item.NumeroLote, item.QuantidadeEstoque, item.CustoUnitarioFinal,
-                    dataValidade: item.Validade);
-                db.Lotes.Add(lote);
-                await db.SaveChangesAsync(ct);
-                loteId = lote.Id;
+                var loteExistente = await db.Lotes.FirstOrDefaultAsync(l =>
+                    l.EmpresaId == entrada.EmpresaId && l.ProdutoId == item.ProdutoId!.Value
+                    && l.LocalEstoqueId == entrada.LocalEstoqueId && l.NumeroLote == item.NumeroLote, ct);
+                if (loteExistente is not null)
+                {
+                    loteExistente.AtualizarQuantidade(loteExistente.Quantidade + item.QuantidadeEstoque);
+                    if (item.Validade is { } v && loteExistente.DataValidade is null)
+                        loteExistente.AtualizarValidade(v);
+                    loteId = loteExistente.Id;
+                }
+                else
+                {
+                    var lote = Lote.Criar(
+                        entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
+                        item.NumeroLote, item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                        dataValidade: item.Validade);
+                    db.Lotes.Add(lote);
+                    await db.SaveChangesAsync(ct);
+                    loteId = lote.Id;
+                }
                 item.DefinirLote(item.NumeroLote, item.Validade, loteId);
             }
 
@@ -1120,6 +1163,7 @@ public class EntradaNFeController(SistemaDbContext db,
         // 2. Lançar faturas em contas a pagar e concluir
         var r = await LancarFinanceiroEProcessarAsync(entrada, req, ct);
 
+        await tx.CommitAsync(ct);
         return Ok(new { mensagem = "Entrada processada com sucesso.", id = entrada.Id,
             rascunhoNumero = r.RascunhoNumero, divergentes = r.Divergentes });
     }

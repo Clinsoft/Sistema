@@ -274,6 +274,9 @@ public class Produto : Entity
         CategoriaBuscadaEm = quando;
     }
 
+    /// <summary>Define a categoria (usado pela categorização local por similaridade/marca).</summary>
+    public void DefinirCategoria(Guid categoriaId) => CategoriaId = categoriaId;
+
     public void DefinirFichaTecnica(string? url) => FichaTecnicaUrl = url;
 
     /// <summary>Define só a descrição complementar (ex.: texto gerado por IA em lote).</summary>

@@ -172,7 +172,7 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.CategoriaProdutoJob>(
     "produto-categoria-diaria",
     job => job.ExecutarAsync(),
-    "0 4 * * *", optsBR);   // 04:00 BRT — categoriza (e preenche CEST) até 20/dia via Cosmos (cota compartilhada com fotos)
+    "0 4 * * *", optsBR);   // 04:00 BRT — categoriza local (regra+marca, grátis) + até 20/dia via Cosmos p/ o resto e CEST
 // Roda uma vez ao subir para começar já o preenchimento do dia.
 BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.PreencherImagensProdutoJob>(
     job => job.ExecutarAsync());

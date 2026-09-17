@@ -65,7 +65,52 @@ public class CategoriaProdutoJob(
         var diversosId = categorias.FirstOrDefault(c => Norm(c.Nome) == "diversos")?.Id;
         if (diversosId is null) return new ResultadoCategorias(0, 0, 0, false);
 
-        // Só produtos em "Diversos", com EAN válido e ainda não tentados.
+        // Marcas "genéricas" que NÃO servem de sinal de categoria (não têm categoria própria).
+        var marcasGenericas = categorias.Count == 0 ? new HashSet<Guid>() :
+            (await db.Marcas.Where(m => m.EmpresaId == empresaId
+                    && (m.Nome == "Sem marca" || m.Nome == "Geral"))
+                .Select(m => m.Id).ToListAsync()).ToHashSet();
+
+        // Categoria DOMINANTE por marca, a partir dos produtos JÁ categorizados (nossa "base").
+        // Só considera marca com >=2 produtos categorizados e >=60% numa mesma categoria.
+        var porMarca = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.CategoriaId != diversosId)
+            .GroupBy(p => new { p.MarcaId, p.CategoriaId })
+            .Select(g => new { g.Key.MarcaId, g.Key.CategoriaId, Qtd = g.Count() })
+            .ToListAsync();
+        var marcaCategoria = porMarca
+            .Where(x => !marcasGenericas.Contains(x.MarcaId))
+            .GroupBy(x => x.MarcaId)
+            .Select(g => { var total = g.Sum(x => x.Qtd); var top = g.OrderByDescending(x => x.Qtd).First();
+                           return new { Marca = g.Key, top.CategoriaId, Ok = total >= 2 && top.Qtd * 1.0 / total >= 0.6 }; })
+            .Where(x => x.Ok)
+            .ToDictionary(x => x.Marca, x => x.CategoriaId);
+
+        Guid? PorRegra(string texto)
+        {
+            foreach (var (chaves, nomeCat) in Regras)
+                if (chaves.Any(k => texto.Contains(Norm(k))) && mapaCat.TryGetValue(Norm(nomeCat), out var cid))
+                    return cid;
+            return null;
+        }
+
+        // ===== PASSO 1: categorização LOCAL (grátis, sem limite, sem Cosmos) =====
+        // Regra por palavra-chave na descrição + categoria dominante da marca. Roda sobre TODO
+        // o backlog de "Diversos" — economiza consultas ao Cosmos.
+        var diversos = await db.Produtos
+            .Where(p => p.Ativo && p.CategoriaId == diversosId)
+            .ToListAsync();
+        int locais = 0;
+        foreach (var p in diversos)
+        {
+            var destino = PorRegra(Norm(p.Descricao));
+            if (destino is null && marcaCategoria.TryGetValue(p.MarcaId, out var bcat))
+                destino = bcat;
+            if (destino is { } d && d != diversosId) { p.DefinirCategoria(d); locais++; }
+        }
+        if (locais > 0) await db.SaveChangesAsync();
+
+        // ===== PASSO 2: Cosmos (≤20/dia) — só para os que sobraram, com EAN, e p/ CEST =====
         var query = db.Produtos
             .Where(p => p.Ativo && p.CategoriaId == diversosId && p.CategoriaBuscadaEm == null
                      && p.CodigoBarras != null && p.CodigoBarras != ""
@@ -75,41 +120,34 @@ public class CategoriaProdutoJob(
             .OrderBy(p => p.Codigo);
 
         var restantes = await query.CountAsync();
-
         var hojeUtc = DateTime.UtcNow.Date;
         var usadosHoje = await db.Produtos.CountAsync(p => p.CategoriaBuscadaEm != null && p.CategoriaBuscadaEm >= hojeUtc);
         var restanteHoje = MaxPorDia - usadosHoje;
         if (restanteHoje <= 0)
-            return new ResultadoCategorias(0, 0, restantes, LimiteDiarioAtingido: true);
+        {
+            logger.LogInformation("[CATEGORIA-PRODUTO] {L} por regra/marca (local). Cota Cosmos do dia já usada.", locais);
+            return new ResultadoCategorias(locais, 0, restantes, LimiteDiarioAtingido: true);
+        }
 
         var candidatos = await query.Take(restanteHoje).ToListAsync();
-        if (candidatos.Count == 0) return new ResultadoCategorias(0, 0, 0, false);
-
         var agora = DateTime.UtcNow;
-        int categorizados = 0, tentados = 0;
+        int viaCosmos = 0, tentados = 0;
         foreach (var p in candidatos)
         {
             var cls = await cosmos.ClassificarAsync(p.CodigoBarras!);
-            if (!cls.Ok) break; // cota/erro de comunicação — retoma amanhã, sem marcar
+            if (!cls.Ok) break; // cota/erro — retoma no próximo dia, sem marcar
 
-            // Texto combinado: categoria/GPC do Cosmos + descrição do Cosmos + a própria descrição.
             var texto = Norm($"{cls.Categoria} {cls.Gpc} {cls.Descricao} {p.Descricao}");
-            Guid? destino = null;
-            foreach (var (chaves, nomeCat) in Regras)
-            {
-                if (chaves.Any(k => texto.Contains(Norm(k))) && mapaCat.TryGetValue(Norm(nomeCat), out var cid))
-                { destino = cid; break; }
-            }
-
+            var destino = PorRegra(texto);
             p.RegistrarTentativaCategoria(destino, cls.Cest, agora);
-            if (destino is not null) categorizados++;
+            if (destino is not null) viaCosmos++;
             tentados++;
-            await Task.Delay(500); // ritmo gentil com a API
+            await Task.Delay(500);
         }
+        if (tentados > 0) await db.SaveChangesAsync();
 
-        await db.SaveChangesAsync();
-        logger.LogInformation("[CATEGORIA-PRODUTO] {C} categorizado(s) de {T} tentativa(s). Restam {R} em Diversos.",
-            categorizados, tentados, restantes - tentados);
-        return new ResultadoCategorias(categorizados, tentados, restantes - tentados, false);
+        logger.LogInformation("[CATEGORIA-PRODUTO] {L} por regra/marca (local) + {C} via Cosmos de {T}. Restam {R} em Diversos.",
+            locais, viaCosmos, tentados, restantes - tentados);
+        return new ResultadoCategorias(locais + viaCosmos, tentados, restantes - tentados, false);
     }
 }

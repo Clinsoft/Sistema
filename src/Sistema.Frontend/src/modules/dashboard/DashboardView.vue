@@ -1532,9 +1532,14 @@ function renderizarRentab() {
   const padL = 46, padR = 16, padT = 16, padB = 30
   const plotW = W - padL - padR, plotH = H - padT - padB
   ctx.clearRect(0, 0, W, H)
-  const maxFat = Math.max(...items.map(i => i.faturamento)) * 1.08
+  // Eixo X em escala logarítmica (faturamento é muito concentrado: sem log, as
+  // categorias menores ficam todas amontoadas à esquerda).
+  const fatVals = items.map(i => i.faturamento)
+  const minFat = Math.max(1, Math.min(...fatVals))
+  const lMin = Math.log10(minFat), lMax = Math.log10(Math.max(...fatVals) * 1.15)
+  const spanX = (lMax - lMin) || 1
   const maxMg = Math.max(20, Math.max(...items.map(i => i.margemPct)) * 1.12)
-  const xFat = (v: number) => padL + (v / maxFat) * plotW
+  const xFat = (v: number) => padL + ((Math.log10(Math.max(v, minFat)) - lMin) / spanX) * plotW
   const yMg = (v: number) => padT + plotH - (v / maxMg) * plotH
   // eixos
   ctx.strokeStyle = 'rgba(127,127,127,0.28)'; ctx.lineWidth = 1
@@ -1547,6 +1552,17 @@ function renderizarRentab() {
   ctx.beginPath(); ctx.moveTo(xFat(medFat), padT); ctx.lineTo(xFat(medFat), padT + plotH); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(padL, yMg(medMg)); ctx.lineTo(padL + plotW, yMg(medMg)); ctx.stroke()
   ctx.restore()
+  // marcas do eixo X (faturamento, escala log: potências de 10)
+  const fmtFat = (v: number) => v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: v >= 10000 ? 0 : 1 }) + 'k' : String(Math.round(v))
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+  for (let e = Math.ceil(lMin); e <= Math.floor(lMax); e++) {
+    const val = Math.pow(10, e), gx = xFat(val)
+    ctx.strokeStyle = 'rgba(127,127,127,0.15)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(gx, padT); ctx.lineTo(gx, padT + plotH); ctx.stroke()
+    ctx.fillStyle = ink; ctx.globalAlpha = 0.55
+    ctx.fillText('R$ ' + fmtFat(val), gx, padT + plotH + 12)
+    ctx.globalAlpha = 1
+  }
   // marcas do eixo Y (margem %)
   ctx.fillStyle = ink; ctx.globalAlpha = 0.6; ctx.font = '9px sans-serif'; ctx.textAlign = 'right'
   for (let k = 0; k <= 4; k++) {
@@ -1555,7 +1571,7 @@ function renderizarRentab() {
   }
   // rótulos de eixo
   ctx.globalAlpha = 0.75; ctx.textAlign = 'left'; ctx.fillText('Margem %', padL + 2, padT + 8)
-  ctx.textAlign = 'right'; ctx.fillText('Faturamento →', padL + plotW, padT + plotH + 20)
+  ctx.textAlign = 'right'; ctx.fillText('Faturamento (log) →', padL + plotW, padT + 8)
   ctx.globalAlpha = 1
   // bolhas: cor = prioridade, raio ~ margem R$
   const cor: Record<string, string> = { error: '#ef5350', success: '#4caf50', info: '#42a5f5', grey: '#bdbdbd' }

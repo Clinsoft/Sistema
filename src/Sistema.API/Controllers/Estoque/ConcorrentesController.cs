@@ -20,17 +20,27 @@ public class ConcorrentesController(SistemaDbContext db, MapaConcorrenciaService
     [HttpGet("lojas")]
     public async Task<IActionResult> Lojas([FromQuery] Guid empresaId, CancellationToken ct)
     {
-        var lojas = await db.LocaisEstoque.AsNoTracking()
+        // Contagem de concorrentes ATIVOS por loja (query própria — evita quirk de
+        // subconsulta correlacionada que ignorava o filtro Ativo).
+        var contagem = (await db.Concorrentes.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId && c.Ativo)
+            .GroupBy(c => c.LocalEstoqueId)
+            .Select(g => new { LocalEstoqueId = g.Key, Total = g.Count() })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.LocalEstoqueId, x => x.Total);
+
+        var locais = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId && l.Ativo)
             .OrderByDescending(l => l.Principal).ThenBy(l => l.Nome)
-            .Select(l => new
-            {
-                l.Id, l.Nome, l.Latitude, l.Longitude,
-                endereco = l.EnderecoFormatado(),
-                geocodificada = l.Latitude != null && l.Longitude != null,
-                concorrentes = db.Concorrentes.Count(c => c.LocalEstoqueId == l.Id && c.Ativo)
-            })
             .ToListAsync(ct);
+
+        var lojas = locais.Select(l => new
+        {
+            l.Id, l.Nome, l.Latitude, l.Longitude,
+            endereco = l.EnderecoFormatado(),
+            geocodificada = l.Latitude != null && l.Longitude != null,
+            concorrentes = contagem.TryGetValue(l.Id, out var n) ? n : 0
+        });
         return Ok(lojas);
     }
 

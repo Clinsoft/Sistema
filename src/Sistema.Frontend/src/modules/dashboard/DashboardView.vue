@@ -335,7 +335,7 @@
               </div>
             </div>
             <v-btn icon size="x-small" variant="text" color="deep-purple" class="mr-1"
-              @click.stop="analisarCard('Margem, CMV e Curva ABC', dadosMargemCmv)">
+              @click.stop="analisarCard('Margem de Contribuição', dadosMargem)">
               <v-icon>mdi-lightbulb-on-outline</v-icon>
               <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
             </v-btn>
@@ -364,6 +364,11 @@
                   : 'sem receita no mês' }}
               </div>
             </div>
+            <v-btn icon size="x-small" variant="text" color="orange-darken-2" class="mr-1"
+              @click.stop="analisarCard('CMV do mês', dadosCmv)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-progress-circular v-if="dre && dre.receitaLiquida > 0"
               :model-value="Math.min(dre.cmv / dre.receitaLiquida * 100, 100)"
               :size="52" :width="6" color="orange-darken-2">
@@ -391,6 +396,11 @@
                 <v-chip size="x-small" color="error" variant="tonal" label>C: {{ abcResumo.C }}</v-chip>
               </div>
             </div>
+            <v-btn icon size="x-small" variant="text" color="deep-orange" class="mr-1"
+              @click.stop.prevent="analisarCard('Curva ABC de Produtos', dadosCurvaAbc)">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
+            </v-btn>
             <v-icon icon="mdi-chevron-right" color="grey" />
           </v-card-text>
         </v-card>
@@ -1758,13 +1768,25 @@ function dadosCaixa() {
     + `compra de estoque no mês R$ ${fmtNum(c.estoqueAPagarMes)}; CMV previsto R$ ${fmtNum(c.cmvPrevisto)}.`
   return s
 }
-function dadosMargemCmv() {
-  const p = pe.value, d = dre.value
-  let s = ''
-  if (p) s += `Margem de contribuição ${p.percentualMargemContribuicao}% (R$ ${fmtNum(p.margemContribuicao)}). `
-  if (d && d.receitaLiquida > 0) s += `CMV R$ ${fmtNum(d.cmv)} (${Math.round(d.cmv / d.receitaLiquida * 100)}% da receita líquida). `
-  if (curvaAbc.value?.length) s += `Curva ABC: ${curvaAbc.value.length} produtos vendidos — A ${abcResumo.value.A}, B ${abcResumo.value.B}, C ${abcResumo.value.C}.`
-  return s
+function dadosMargem() {
+  const p = pe.value; if (!p) return ''
+  return `Índice de margem de contribuição ${p.percentualMargemContribuicao}% `
+    + `(R$ ${fmtNum(p.margemContribuicao)} de contribuição no mês), sobre faturamento de R$ ${fmtNum(p.faturamentoMes)}.`
+}
+function dadosCmv() {
+  const d = dre.value; if (!d) return ''
+  const pct = d.receitaLiquida > 0 ? Math.round(d.cmv / d.receitaLiquida * 100) : 0
+  return `Custo da Mercadoria Vendida (CMV) do mês R$ ${fmtNum(d.cmv)} `
+    + `(${pct}% da receita líquida de R$ ${fmtNum(d.receitaLiquida)}). `
+    + `Lucro bruto R$ ${fmtNum(d.lucroBruto)} (margem bruta ${d.margemBruta}%).`
+}
+function dadosCurvaAbc() {
+  const abc = curvaAbc.value; if (!abc?.length) return ''
+  const r = abcResumo.value
+  const top = abc.slice(0, 8).map(x =>
+    `${x.descricao} (curva ${x.curva}, R$ ${fmtNum(x.totalVendido)}, ${x.participacao}% do fat.)`).join('; ')
+  return `Curva ABC de ${abc.length} produtos vendidos — A: ${r.A}, B: ${r.B}, C: ${r.C}. `
+    + `Regra de Pareto: os produtos "A" concentram a maior parte do faturamento. Top itens: ${top}.`
 }
 function dadosColaborador() {
   const vs = vendasColaborador.value; if (!vs.length) return ''

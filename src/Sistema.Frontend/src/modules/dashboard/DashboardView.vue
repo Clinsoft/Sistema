@@ -24,6 +24,278 @@
       </v-col>
     </v-row>
 
+    <!-- FAIXA: Resultado do mês (Ponto de Equilíbrio · DRE) -->
+    <v-row class="mt-1">
+      <v-col cols="12" md="6">
+        <v-card rounded="xl" elevation="1" height="100%">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
+            Ponto de Equilíbrio — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
+            <v-spacer />
+            <v-chip v-if="pe" :color="pe.peAtingido ? 'success' : 'warning'" size="small" label>
+              {{ pe.peAtingido ? 'Atingido ✓' : pe.percentualAtingido + '% do PE' }}
+            </v-chip>
+          </v-card-title>
+
+          <v-card-text v-if="carregandoPe" class="d-flex justify-center pa-8">
+            <v-progress-circular indeterminate color="deep-purple" />
+          </v-card-text>
+
+          <v-card-text v-else-if="!pe || pe.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-information-outline" class="mb-2" size="32" />
+            <div v-if="!pe || pe.totalCustosFixos === 0" class="text-body-2">
+              Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.
+            </div>
+            <div v-else class="text-body-2">
+              Sem <strong>vendas</strong> para calcular a margem de contribuição. Registre vendas
+              (ou tenha histórico dos últimos 90 dias) para projetar o ponto de equilíbrio.
+            </div>
+            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple"
+              :to="!pe || pe.totalCustosFixos === 0 ? '/financeiro/contas-pagar' : '/pdv'">
+              {{ !pe || pe.totalCustosFixos === 0 ? 'Ver contas a pagar' : 'Ir para o PDV' }}
+            </v-btn>
+          </v-card-text>
+
+          <v-card-text v-else class="pb-2">
+            <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
+              <span>Faturamento acumulado</span>
+              <span class="font-weight-bold">{{ fmt(pe.faturamentoMes) }} / {{ fmt(pe.pontoEquilibrio) }}</span>
+            </div>
+            <v-progress-linear
+              :model-value="Math.min(pe.percentualAtingido, 100)"
+              :color="pe.peAtingido ? 'success' : pe.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
+              height="22" rounded class="mb-4"
+            >
+              <template #default>
+                <span class="text-caption font-weight-bold" style="color:white">{{ pe.percentualAtingido }}%</span>
+              </template>
+            </v-progress-linear>
+
+            <!-- Indicadores em grade 2x2 -->
+            <v-row dense class="mb-3">
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Contas a pagar (mês)</div>
+                  <div class="pe-stat-val text-error">{{ fmt(pe.totalCustosFixos) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">
+                    Margem de contribuição
+                    <span v-if="pe.margemEstimada" class="text-warning" title="Estimada pelos últimos 90 dias (mês sem vendas)">*</span>
+                  </div>
+                  <div class="pe-stat-val text-deep-purple">{{ pe.percentualMargemContribuicao }}%</div>
+                  <div v-if="pe.margemEstimada" class="text-caption text-warning" style="font-size:.6rem;line-height:1">
+                    estimada (90 dias)
+                  </div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">PE calculado</div>
+                  <div class="pe-stat-val">{{ fmt(pe.pontoEquilibrio) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat" :class="pe.peAtingido ? 'pe-stat--ok' : 'pe-stat--warn'">
+                  <div class="pe-stat-lbl">{{ pe.peAtingido ? 'Lucro acima do PE' : 'Falta atingir' }}</div>
+                  <div class="pe-stat-val" :class="pe.peAtingido ? 'text-success' : 'text-warning'">
+                    {{ pe.peAtingido ? '+' + fmt(pe.lucroAcimaPE) : fmt(pe.pontoEquilibrio - pe.faturamentoMes) }}
+                  </div>
+                </div>
+              </v-col>
+            </v-row>
+
+            <canvas ref="peCanvas" height="90" style="width:100%" />
+          </v-card-text>
+        </v-card>
+      </v-col>
+      <v-col cols="12" md="6">
+        <!-- DRE — mesmo tratamento visual do Ponto de Equilíbrio -->
+        <v-card rounded="xl" elevation="1" height="100%">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
+            <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
+            DRE — {{ calMesLabel }}
+            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
+            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
+            <v-spacer />
+            <v-chip v-if="dre" :color="dre.resultadoOperacional >= 0 ? 'success' : 'error'" size="small" label>
+              {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+            </v-chip>
+          </v-card-title>
+
+          <v-card-text v-if="carregandoDre" class="d-flex justify-center pa-8">
+            <v-progress-circular indeterminate color="indigo" />
+          </v-card-text>
+
+          <v-card-text v-else-if="!dre" class="text-center text-medium-emphasis pa-6">
+            <v-icon icon="mdi-chart-line-variant" size="36" class="mb-2" />
+            <div class="text-body-2">Sem dados para o período.</div>
+          </v-card-text>
+
+          <v-card-text v-else class="pb-2">
+            <!-- Indicadores em grade 2x2 -->
+            <v-row dense class="mb-3">
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Receita líquida</div>
+                  <div class="pe-stat-val text-indigo">{{ fmt(dre.receitaLiquida) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">CMV</div>
+                  <div class="pe-stat-val text-warning">{{ fmt(dre.cmv) }}</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat">
+                  <div class="pe-stat-lbl">Margem bruta</div>
+                  <div class="pe-stat-val text-deep-purple">{{ dre.margemBruta }}%</div>
+                </div>
+              </v-col>
+              <v-col cols="6">
+                <div class="pe-stat" :class="dre.resultadoOperacional >= 0 ? 'pe-stat--ok' : 'pe-stat--warn'">
+                  <div class="pe-stat-lbl">Resultado operacional</div>
+                  <div class="pe-stat-val" :class="dre.resultadoOperacional >= 0 ? 'text-success' : 'text-error'">
+                    {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+                  </div>
+                </div>
+              </v-col>
+            </v-row>
+
+            <canvas ref="dreCanvas" height="80" style="width:100%" />
+          </v-card-text>
+
+          <v-card-actions class="pa-2 pt-0">
+            <v-btn variant="text" size="small" color="indigo" to="/financeiro/dre" append-icon="mdi-arrow-right">
+              Ver DRE completo
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+
+      </v-col>
+    </v-row>
+
+    <!-- Metas do mês por loja: no ritmo atual, bate a meta? -->
+    <v-row v-if="projLojas && projLojas.lojas.length" class="mt-3">
+      <v-col cols="12">
+        <v-card rounded="xl" elevation="1">
+          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
+            <v-icon icon="mdi-speedometer" class="mr-1" color="deep-purple" />
+            Metas do mês — no ritmo atual
+            <v-chip v-if="projLojas.noRitmo" size="small" color="success" variant="tonal">
+              {{ projLojas.noRitmo }} no ritmo
+            </v-chip>
+            <v-chip v-if="projLojas.foraRitmo" size="small" color="error" variant="tonal">
+              {{ projLojas.foraRitmo }} fora do ritmo
+            </v-chip>
+            <v-spacer />
+            <span class="text-caption text-medium-emphasis">faltam {{ projLojas.diasRestantes }} dia(s)</span>
+          </v-card-title>
+          <v-card-text>
+            <v-row dense>
+              <v-col v-for="l in projLojas.lojas" :key="l.lojaId" cols="12" md="6">
+                <v-card variant="tonal" :color="!l.temMeta ? 'grey' : l.vaiBater ? 'success' : 'error'" rounded="lg" class="pa-3">
+                  <div class="d-flex align-center mb-1">
+                    <v-icon :icon="!l.temMeta ? 'mdi-store-outline' : l.vaiBater ? 'mdi-check-bold' : 'mdi-alert'" class="mr-1" size="18" />
+                    <span class="text-body-1 font-weight-bold">{{ l.loja }}</span>
+                    <v-spacer />
+                    <v-chip v-if="l.temMeta" size="small" :color="l.vaiBater ? 'success' : 'error'" variant="flat">
+                      {{ l.vaiBater ? 'bate a meta' : 'NÃO bate' }}
+                    </v-chip>
+                    <v-chip v-else size="small" variant="tonal">sem meta definida</v-chip>
+                  </div>
+                  <div class="text-body-2">
+                    Realizado <b>R$ {{ fmtNum(l.realizado) }}</b>
+                    <template v-if="l.temMeta">
+                      de R$ {{ fmtNum(l.meta) }} <span class="text-medium-emphasis">({{ l.percentAtual }}%)</span>
+                    </template>
+                  </div>
+                  <div v-if="l.temMeta" class="text-body-2">
+                    Projeção do mês: <b>R$ {{ fmtNum(l.projecao) }}</b>
+                    <span class="text-medium-emphasis">({{ l.percentProjecao }}% da meta)</span>
+                  </div>
+                  <div v-if="l.temMeta && l.falta > 0" class="text-caption mt-1">
+                    Falta R$ {{ fmtNum(l.falta) }} — vender <b>R$ {{ fmtNum(l.porDia) }}/dia</b> nos dias restantes.
+                  </div>
+                </v-card>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- FAIXA: Metas de venda diária + capital de giro -->
+    <v-row class="mt-1" dense>
+      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaOperacional > 0">
+        <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Operacional</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-teal-darken-3">{{ fmt(metas.metaDiariaOperacional) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.despesasOperacionaisMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+      </v-col>
+      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaFinanciamentos > 0">
+        <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-1" style="gap:6px">
+                  <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
+                  <span class="text-caption font-weight-medium">Meta/dia · Financiamentos</span>
+                </div>
+                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">{{ fmt(metas.metaDiariaFinanciamentos) }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  p/ cobrir R$ {{ fmtMil(metas.financiamentosMes) }}/mês
+                </div>
+              </v-card-text>
+            </v-card>
+      </v-col>
+
+      <!-- Necessidade de capital de giro do mês -->
+      <v-col cols="12" md="4" v-if="capitalGiro">
+        <v-card rounded="xl" elevation="1" height="100%"
+          :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-lighten-5' : 'green-lighten-5'">
+          <v-card-text class="pa-3">
+            <div class="d-flex align-center mb-1" style="gap:6px">
+              <v-icon icon="mdi-cash-sync"
+                :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
+              <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
+            </div>
+            <div class="d-flex align-baseline flex-wrap" style="gap:6px 12px">
+              <span class="text-h5 font-weight-bold"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
+                {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
+              </span>
+              <span class="text-subtitle-1 font-weight-medium"
+                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+                {{ fmt(capitalGiroDia) }}/dia
+              </span>
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Compra de estoque R$ {{ fmtMil(capitalGiro.estoqueAPagarMes) }}
+              − custo das vendas previstas R$ {{ fmtMil(capitalGiro.cmvPrevisto) }}
+            </div>
+            <div class="text-caption mt-1"
+              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
+              {{ capitalGiro.necessidadeCapitalGiro > 0
+                ? 'Comprando mais estoque do que vende — a diferença vem de capital de giro.'
+                : 'Vendas cobrem a reposição de estoque do mês.' }}
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <!-- Indicadores: Margem de Contribuição + CMV + Curva ABC -->
     <v-row class="mt-3">
       <v-col cols="12" md="4">
@@ -94,56 +366,6 @@
               </div>
             </div>
             <v-icon icon="mdi-chevron-right" color="grey" />
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- Metas do mês por loja: no ritmo atual, bate a meta? -->
-    <v-row v-if="projLojas && projLojas.lojas.length" class="mt-3">
-      <v-col cols="12">
-        <v-card rounded="xl" elevation="1">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
-            <v-icon icon="mdi-speedometer" class="mr-1" color="deep-purple" />
-            Metas do mês — no ritmo atual
-            <v-chip v-if="projLojas.noRitmo" size="small" color="success" variant="tonal">
-              {{ projLojas.noRitmo }} no ritmo
-            </v-chip>
-            <v-chip v-if="projLojas.foraRitmo" size="small" color="error" variant="tonal">
-              {{ projLojas.foraRitmo }} fora do ritmo
-            </v-chip>
-            <v-spacer />
-            <span class="text-caption text-medium-emphasis">faltam {{ projLojas.diasRestantes }} dia(s)</span>
-          </v-card-title>
-          <v-card-text>
-            <v-row dense>
-              <v-col v-for="l in projLojas.lojas" :key="l.lojaId" cols="12" md="6">
-                <v-card variant="tonal" :color="!l.temMeta ? 'grey' : l.vaiBater ? 'success' : 'error'" rounded="lg" class="pa-3">
-                  <div class="d-flex align-center mb-1">
-                    <v-icon :icon="!l.temMeta ? 'mdi-store-outline' : l.vaiBater ? 'mdi-check-bold' : 'mdi-alert'" class="mr-1" size="18" />
-                    <span class="text-body-1 font-weight-bold">{{ l.loja }}</span>
-                    <v-spacer />
-                    <v-chip v-if="l.temMeta" size="small" :color="l.vaiBater ? 'success' : 'error'" variant="flat">
-                      {{ l.vaiBater ? 'bate a meta' : 'NÃO bate' }}
-                    </v-chip>
-                    <v-chip v-else size="small" variant="tonal">sem meta definida</v-chip>
-                  </div>
-                  <div class="text-body-2">
-                    Realizado <b>R$ {{ fmtNum(l.realizado) }}</b>
-                    <template v-if="l.temMeta">
-                      de R$ {{ fmtNum(l.meta) }} <span class="text-medium-emphasis">({{ l.percentAtual }}%)</span>
-                    </template>
-                  </div>
-                  <div v-if="l.temMeta" class="text-body-2">
-                    Projeção do mês: <b>R$ {{ fmtNum(l.projecao) }}</b>
-                    <span class="text-medium-emphasis">({{ l.percentProjecao }}% da meta)</span>
-                  </div>
-                  <div v-if="l.temMeta && l.falta > 0" class="text-caption mt-1">
-                    Falta R$ {{ fmtNum(l.falta) }} — vender <b>R$ {{ fmtNum(l.porDia) }}/dia</b> nos dias restantes.
-                  </div>
-                </v-card>
-              </v-col>
-            </v-row>
           </v-card-text>
         </v-card>
       </v-col>
@@ -438,228 +660,6 @@
       </v-col>
     </v-row>
 
-    <!-- FAIXA: Metas de venda diária + capital de giro -->
-    <v-row class="mt-1" dense>
-      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaOperacional > 0">
-        <v-card rounded="xl" elevation="1" color="teal-lighten-5" height="100%">
-              <v-card-text class="pa-3">
-                <div class="d-flex align-center mb-1" style="gap:6px">
-                  <v-icon icon="mdi-store-outline" color="teal-darken-2" size="18" />
-                  <span class="text-caption font-weight-medium">Meta/dia · Operacional</span>
-                </div>
-                <div class="text-h6 font-weight-bold text-teal-darken-3">{{ fmt(metas.metaDiariaOperacional) }}</div>
-                <div class="text-caption text-medium-emphasis">
-                  p/ cobrir R$ {{ fmtMil(metas.despesasOperacionaisMes) }}/mês
-                </div>
-              </v-card-text>
-            </v-card>
-      </v-col>
-      <v-col cols="12" md="4" v-if="metas && metas.metaDiariaFinanciamentos > 0">
-        <v-card rounded="xl" elevation="1" color="deep-orange-lighten-5" height="100%">
-              <v-card-text class="pa-3">
-                <div class="d-flex align-center mb-1" style="gap:6px">
-                  <v-icon icon="mdi-bank-outline" color="deep-orange-darken-2" size="18" />
-                  <span class="text-caption font-weight-medium">Meta/dia · Financiamentos</span>
-                </div>
-                <div class="text-h6 font-weight-bold text-deep-orange-darken-3">{{ fmt(metas.metaDiariaFinanciamentos) }}</div>
-                <div class="text-caption text-medium-emphasis">
-                  p/ cobrir R$ {{ fmtMil(metas.financiamentosMes) }}/mês
-                </div>
-              </v-card-text>
-            </v-card>
-      </v-col>
-
-      <!-- Necessidade de capital de giro do mês -->
-      <v-col cols="12" md="4" v-if="capitalGiro">
-        <v-card rounded="xl" elevation="1" height="100%"
-          :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-lighten-5' : 'green-lighten-5'">
-          <v-card-text class="pa-3">
-            <div class="d-flex align-center mb-1" style="gap:6px">
-              <v-icon icon="mdi-cash-sync"
-                :color="capitalGiro.necessidadeCapitalGiro > 0 ? 'amber-darken-3' : 'green-darken-2'" size="18" />
-              <span class="text-caption font-weight-medium">Necessidade de capital de giro · {{ calMesLabel }}</span>
-            </div>
-            <div class="d-flex align-baseline flex-wrap" style="gap:6px 12px">
-              <span class="text-h5 font-weight-bold"
-                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-4' : 'text-green-darken-3'">
-                {{ fmt(capitalGiro.necessidadeCapitalGiro) }}
-              </span>
-              <span class="text-subtitle-1 font-weight-medium"
-                :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
-                {{ fmt(capitalGiroDia) }}/dia
-              </span>
-            </div>
-            <div class="text-caption text-medium-emphasis mt-1">
-              Compra de estoque R$ {{ fmtMil(capitalGiro.estoqueAPagarMes) }}
-              − custo das vendas previstas R$ {{ fmtMil(capitalGiro.cmvPrevisto) }}
-            </div>
-            <div class="text-caption mt-1"
-              :class="capitalGiro.necessidadeCapitalGiro > 0 ? 'text-amber-darken-3' : 'text-green-darken-2'">
-              {{ capitalGiro.necessidadeCapitalGiro > 0
-                ? 'Comprando mais estoque do que vende — a diferença vem de capital de giro.'
-                : 'Vendas cobrem a reposição de estoque do mês.' }}
-            </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- FAIXA: Resultado do mês (Ponto de Equilíbrio · DRE) -->
-    <v-row class="mt-1">
-      <v-col cols="12" md="6">
-        <v-card rounded="xl" elevation="1" height="100%">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
-            Ponto de Equilíbrio — {{ calMesLabel }}
-            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
-            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
-            <v-spacer />
-            <v-chip v-if="pe" :color="pe.peAtingido ? 'success' : 'warning'" size="small" label>
-              {{ pe.peAtingido ? 'Atingido ✓' : pe.percentualAtingido + '% do PE' }}
-            </v-chip>
-          </v-card-title>
-
-          <v-card-text v-if="carregandoPe" class="d-flex justify-center pa-8">
-            <v-progress-circular indeterminate color="deep-purple" />
-          </v-card-text>
-
-          <v-card-text v-else-if="!pe || pe.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
-            <v-icon icon="mdi-information-outline" class="mb-2" size="32" />
-            <div v-if="!pe || pe.totalCustosFixos === 0" class="text-body-2">
-              Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.
-            </div>
-            <div v-else class="text-body-2">
-              Sem <strong>vendas</strong> para calcular a margem de contribuição. Registre vendas
-              (ou tenha histórico dos últimos 90 dias) para projetar o ponto de equilíbrio.
-            </div>
-            <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple"
-              :to="!pe || pe.totalCustosFixos === 0 ? '/financeiro/contas-pagar' : '/pdv'">
-              {{ !pe || pe.totalCustosFixos === 0 ? 'Ver contas a pagar' : 'Ir para o PDV' }}
-            </v-btn>
-          </v-card-text>
-
-          <v-card-text v-else class="pb-2">
-            <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
-              <span>Faturamento acumulado</span>
-              <span class="font-weight-bold">{{ fmt(pe.faturamentoMes) }} / {{ fmt(pe.pontoEquilibrio) }}</span>
-            </div>
-            <v-progress-linear
-              :model-value="Math.min(pe.percentualAtingido, 100)"
-              :color="pe.peAtingido ? 'success' : pe.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
-              height="22" rounded class="mb-4"
-            >
-              <template #default>
-                <span class="text-caption font-weight-bold" style="color:white">{{ pe.percentualAtingido }}%</span>
-              </template>
-            </v-progress-linear>
-
-            <!-- Indicadores em grade 2x2 -->
-            <v-row dense class="mb-3">
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">Contas a pagar (mês)</div>
-                  <div class="pe-stat-val text-error">{{ fmt(pe.totalCustosFixos) }}</div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">
-                    Margem de contribuição
-                    <span v-if="pe.margemEstimada" class="text-warning" title="Estimada pelos últimos 90 dias (mês sem vendas)">*</span>
-                  </div>
-                  <div class="pe-stat-val text-deep-purple">{{ pe.percentualMargemContribuicao }}%</div>
-                  <div v-if="pe.margemEstimada" class="text-caption text-warning" style="font-size:.6rem;line-height:1">
-                    estimada (90 dias)
-                  </div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">PE calculado</div>
-                  <div class="pe-stat-val">{{ fmt(pe.pontoEquilibrio) }}</div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat" :class="pe.peAtingido ? 'pe-stat--ok' : 'pe-stat--warn'">
-                  <div class="pe-stat-lbl">{{ pe.peAtingido ? 'Lucro acima do PE' : 'Falta atingir' }}</div>
-                  <div class="pe-stat-val" :class="pe.peAtingido ? 'text-success' : 'text-warning'">
-                    {{ pe.peAtingido ? '+' + fmt(pe.lucroAcimaPE) : fmt(pe.pontoEquilibrio - pe.faturamentoMes) }}
-                  </div>
-                </div>
-              </v-col>
-            </v-row>
-
-            <canvas ref="peCanvas" height="90" style="width:100%" />
-          </v-card-text>
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="6">
-        <!-- DRE — mesmo tratamento visual do Ponto de Equilíbrio -->
-        <v-card rounded="xl" elevation="1" height="100%">
-          <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
-            <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
-            DRE — {{ calMesLabel }}
-            <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
-            <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
-            <v-spacer />
-            <v-chip v-if="dre" :color="dre.resultadoOperacional >= 0 ? 'success' : 'error'" size="small" label>
-              {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
-            </v-chip>
-          </v-card-title>
-
-          <v-card-text v-if="carregandoDre" class="d-flex justify-center pa-8">
-            <v-progress-circular indeterminate color="indigo" />
-          </v-card-text>
-
-          <v-card-text v-else-if="!dre" class="text-center text-medium-emphasis pa-6">
-            <v-icon icon="mdi-chart-line-variant" size="36" class="mb-2" />
-            <div class="text-body-2">Sem dados para o período.</div>
-          </v-card-text>
-
-          <v-card-text v-else class="pb-2">
-            <!-- Indicadores em grade 2x2 -->
-            <v-row dense class="mb-3">
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">Receita líquida</div>
-                  <div class="pe-stat-val text-indigo">{{ fmt(dre.receitaLiquida) }}</div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">CMV</div>
-                  <div class="pe-stat-val text-warning">{{ fmt(dre.cmv) }}</div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat">
-                  <div class="pe-stat-lbl">Margem bruta</div>
-                  <div class="pe-stat-val text-deep-purple">{{ dre.margemBruta }}%</div>
-                </div>
-              </v-col>
-              <v-col cols="6">
-                <div class="pe-stat" :class="dre.resultadoOperacional >= 0 ? 'pe-stat--ok' : 'pe-stat--warn'">
-                  <div class="pe-stat-lbl">Resultado operacional</div>
-                  <div class="pe-stat-val" :class="dre.resultadoOperacional >= 0 ? 'text-success' : 'text-error'">
-                    {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
-                  </div>
-                </div>
-              </v-col>
-            </v-row>
-
-            <canvas ref="dreCanvas" height="80" style="width:100%" />
-          </v-card-text>
-
-          <v-card-actions class="pa-2 pt-0">
-            <v-btn variant="text" size="small" color="indigo" to="/financeiro/dre" append-icon="mdi-arrow-right">
-              Ver DRE completo
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-
-      </v-col>
-    </v-row>
-
     <!-- Vendas por Colaborador -->
     <v-row class="mt-2">
       <v-col cols="12">
@@ -727,7 +727,7 @@
 
     <!-- Vendas por Loja -->
     <v-row class="mt-2">
-      <v-col cols="12" md="6">
+      <v-col cols="12">
         <v-card rounded="xl" elevation="1">
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-store-outline" class="mr-2" color="deep-orange" />

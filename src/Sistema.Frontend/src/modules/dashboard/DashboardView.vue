@@ -846,7 +846,7 @@
 
               <v-data-table :headers="rentabHeaders" :items="rentabPrior" density="compact" hover
                 :items-per-page="-1" hide-default-footer class="mt-3"
-                :sort-by="[{ key: 'prioRank', order: 'asc' }]">
+                :sort-by="[{ key: 'prioRank', order: 'asc' }, { key: 'faturamento', order: 'desc' }]">
                 <template #item.faturamento="{ item }">R$ {{ fmtNum(item.faturamento) }}</template>
                 <template #item.participacaoPct="{ item }">{{ item.participacaoPct.toFixed(1) }}%</template>
                 <template #item.margemValor="{ item }">

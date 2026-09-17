@@ -8,8 +8,70 @@ namespace Sistema.API.Controllers.Relatorios;
 [ApiController]
 [Route("api/relatorios/estoque")]
 [Authorize]
-public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : ControllerBase
+public class RelatoriosEstoqueComplementoController(
+    SistemaDbContext db, Sistema.Infrastructure.Services.OpenAiTextService ia) : ControllerBase
 {
+    public record CatRentab(string categoria, decimal faturamento, decimal custo,
+        decimal margemValor, decimal margemPct, decimal participacaoPct, decimal quantidade);
+
+    // Agrega faturamento/custo/margem por categoria no período. Reusado pelo relatório
+    // e pela análise por IA.
+    private async Task<(decimal totalReceita, List<CatRentab> itens)> AgregarRentabilidadeAsync(
+        Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct)
+    {
+        var ini = inicio.Date; var fimEx = fim.Date.AddDays(1);
+
+        var porProduto = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId
+                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && x.v.DataHora >= ini && x.v.DataHora < fimEx)
+            .GroupBy(x => x.i.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Receita = g.Sum(x => x.i.Total), Qtd = g.Sum(x => x.i.Quantidade) })
+            .ToListAsync(ct);
+
+        var prods = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId)
+            .Select(p => new { p.Id, p.CategoriaId, p.CustoUnitario })
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var cats = await db.Categorias.AsNoTracking()
+            .Where(c => c.EmpresaId == empresaId)
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+
+        var acc = new Dictionary<string, (decimal receita, decimal custo, decimal qtd)>();
+        foreach (var pp in porProduto)
+        {
+            string cat = "Sem categoria"; decimal custoUnit = 0m;
+            if (prods.TryGetValue(pp.ProdutoId, out var p))
+            {
+                custoUnit = p.CustoUnitario;
+                cat = cats.TryGetValue(p.CategoriaId, out var cn) ? cn : "Sem categoria";
+            }
+            var cur = acc.TryGetValue(cat, out var a) ? a : (receita: 0m, custo: 0m, qtd: 0m);
+            acc[cat] = (cur.receita + pp.Receita, cur.custo + custoUnit * pp.Qtd, cur.qtd + pp.Qtd);
+        }
+
+        var totalReceita = acc.Values.Sum(x => x.receita);
+        var itens = acc.Select(kv =>
+        {
+            var (receita, custo, qtd) = kv.Value;
+            var margem = receita - custo;
+            return new CatRentab(
+                kv.Key,
+                Math.Round(receita, 2),
+                Math.Round(custo, 2),
+                Math.Round(margem, 2),
+                receita > 0 ? Math.Round(margem / receita * 100, 1) : 0m,
+                totalReceita > 0 ? Math.Round(receita / totalReceita * 100, 1) : 0m,
+                qtd);
+        })
+        .OrderByDescending(x => x.margemValor)
+        .ToList();
+
+        return (Math.Round(totalReceita, 2), itens);
+    }
+
     /// <summary>Tributação dos produtos — NCM, CEST, CST, CSOSN.</summary>
     [HttpGet("tributacao")]
     public async Task<IActionResult> Tributacao([FromQuery] Guid empresaId,
@@ -367,59 +429,68 @@ public class RelatoriosEstoqueComplementoController(SistemaDbContext db) : Contr
     public async Task<IActionResult> RentabilidadeCategoria([FromQuery] Guid empresaId,
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
     {
-        var ini = inicio.Date; var fimEx = fim.Date.AddDays(1);
+        var (totalFaturamento, itens) = await AgregarRentabilidadeAsync(empresaId, inicio, fim, ct);
+        return Ok(new { totalFaturamento, itens });
+    }
 
-        var porProduto = await db.ItensVenda.AsNoTracking()
-            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
-            .Where(x => x.v.EmpresaId == empresaId
-                && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
-                && x.v.DataHora >= ini && x.v.DataHora < fimEx)
-            .GroupBy(x => x.i.ProdutoId)
-            .Select(g => new { ProdutoId = g.Key, Receita = g.Sum(x => x.i.Total), Qtd = g.Sum(x => x.i.Quantidade) })
-            .ToListAsync(ct);
+    /// <summary>Leitura analítica (IA) do comparativo Margem × Faturamento por categoria,
+    /// com sugestão de condução. Usa o mesmo recorte de dados do gráfico do Dashboard.</summary>
+    [HttpGet("analise-rentabilidade")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> AnaliseRentabilidade([FromQuery] Guid empresaId,
+        [FromQuery] DateTime inicio, [FromQuery] DateTime fim, CancellationToken ct)
+    {
+        if (!ia.Configurado)
+            return BadRequest(new { mensagem = "IA não configurada (OpenAI:ApiKey) no servidor." });
 
-        var prods = await db.Produtos.AsNoTracking()
-            .Where(p => p.EmpresaId == empresaId)
-            .Select(p => new { p.Id, p.CategoriaId, p.CustoUnitario })
-            .ToDictionaryAsync(p => p.Id, ct);
+        var (total, itens) = await AgregarRentabilidadeAsync(empresaId, inicio, fim, ct);
+        var comVenda = itens.Where(i => i.faturamento > 0).ToList();
+        if (comVenda.Count == 0)
+            return Ok(new { analise = "Sem vendas no período para analisar." });
 
-        var cats = await db.Categorias.AsNoTracking()
-            .Where(c => c.EmpresaId == empresaId)
-            .ToDictionaryAsync(c => c.Id, c => c.Nome, ct);
+        // Classifica em quadrantes pela mediana (mesma lógica do gráfico) só para dar
+        // contexto ao modelo — sem inventar números.
+        var fatsOrd = comVenda.Select(i => i.faturamento).OrderBy(x => x).ToList();
+        var mgsOrd = comVenda.Select(i => i.margemPct).OrderBy(x => x).ToList();
+        var medFat = fatsOrd[fatsOrd.Count / 2];
+        var medMg = mgsOrd[mgsOrd.Count / 2];
+        string Quadrante(CatRentab i) =>
+            i.faturamento >= medFat && i.margemPct < medMg ? "Corrigir margem"
+            : i.faturamento >= medFat && i.margemPct >= medMg ? "Proteger"
+            : i.faturamento < medFat && i.margemPct >= medMg ? "Crescer"
+            : "Avaliar";
 
-        // Agrega por categoria (produto sem cadastro cai em "Sem categoria")
-        var acc = new Dictionary<string, (decimal receita, decimal custo, decimal qtd)>();
-        foreach (var pp in porProduto)
+        var margemMedia = total > 0 ? Math.Round(comVenda.Sum(i => i.margemValor) / total * 100, 1) : 0m;
+        var linhas = string.Join("\n", comVenda
+            .OrderByDescending(i => i.faturamento)
+            .Select(i => $"- {i.categoria}: faturamento R$ {i.faturamento:N2} ({i.participacaoPct}% do total), " +
+                         $"margem {i.margemPct}% (R$ {i.margemValor:N2}) → {Quadrante(i)}"));
+
+        var prompt =
+            "Você é um consultor de gestão de uma loja de produtos naturais a granel. " +
+            "Analise o comparativo de MARGEM × FATURAMENTO por categoria do período " +
+            $"({inicio:dd/MM/yyyy} a {fim:dd/MM/yyyy}). Faturamento total R$ {total:N2}, " +
+            $"margem de contribuição média {margemMedia}%.\n\n" +
+            "Cada categoria já vem classificada em um quadrante de prioridade:\n" +
+            "- \"Corrigir margem\": fatura bem mas a margem está abaixo da mediana (agir primeiro).\n" +
+            "- \"Proteger\": fatura bem e boa margem (sustentar).\n" +
+            "- \"Crescer\": boa margem mas fatura pouco (potencial de volume).\n" +
+            "- \"Avaliar\": fatura pouco e margem baixa (revisar mix/preço).\n\n" +
+            "Dados:\n" + linhas + "\n\n" +
+            "Responda em português do Brasil, em Markdown, de forma objetiva e prática, com estas seções:\n" +
+            "**Leitura dos números** (2 a 4 frases sobre onde está o lucro e o que chama atenção).\n" +
+            "**Prioridades** (bullets citando categorias específicas por quadrante).\n" +
+            "**Como conduzir** (3 a 5 ações concretas: preço, negociação de custo, mix, exposição, combos). " +
+            "Não invente números além dos fornecidos e seja direto.";
+
+        try
         {
-            string cat = "Sem categoria"; decimal custoUnit = 0m;
-            if (prods.TryGetValue(pp.ProdutoId, out var p))
-            {
-                custoUnit = p.CustoUnitario;
-                cat = cats.TryGetValue(p.CategoriaId, out var cn) ? cn : "Sem categoria";
-            }
-            var cur = acc.TryGetValue(cat, out var a) ? a : (receita: 0m, custo: 0m, qtd: 0m);
-            acc[cat] = (cur.receita + pp.Receita, cur.custo + custoUnit * pp.Qtd, cur.qtd + pp.Qtd);
+            var analise = await ia.GerarTextoAsync(prompt, ct, maxTokens: 700);
+            return Ok(new { analise, geradoEm = DateTime.UtcNow, modelo = ia.ModeloAtual });
         }
-
-        var totalReceita = acc.Values.Sum(x => x.receita);
-        var itens = acc.Select(kv =>
+        catch (Exception ex)
         {
-            var (receita, custo, qtd) = kv.Value;
-            var margem = receita - custo;
-            return new
-            {
-                categoria = kv.Key,
-                faturamento = Math.Round(receita, 2),
-                custo = Math.Round(custo, 2),
-                margemValor = Math.Round(margem, 2),
-                margemPct = receita > 0 ? Math.Round(margem / receita * 100, 1) : 0m,
-                participacaoPct = totalReceita > 0 ? Math.Round(receita / totalReceita * 100, 1) : 0m,
-                quantidade = qtd
-            };
-        })
-        .OrderByDescending(x => x.margemValor)
-        .ToList();
-
-        return Ok(new { totalFaturamento = Math.Round(totalReceita, 2), itens });
+            return StatusCode(502, new { mensagem = "Falha ao gerar a análise: " + ex.Message });
+        }
     }
 }

@@ -18,7 +18,7 @@ public class OpenAiTextService(HttpClient http, IConfiguration config)
     public string ModeloAtual => config["OpenAI:Model"] ?? "gpt-4o-mini";
 
     /// <summary>Gera texto a partir de um prompt do usuário. Retorna o texto puro.</summary>
-    public async Task<string> GerarTextoAsync(string prompt, CancellationToken ct = default)
+    public async Task<string> GerarTextoAsync(string prompt, CancellationToken ct = default, int maxTokens = 400)
     {
         var apiKey = config["OpenAI:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -35,7 +35,7 @@ public class OpenAiTextService(HttpClient http, IConfiguration config)
                 new { role = "user", content = prompt }
             },
             temperature = 0.7,
-            max_tokens = 400
+            max_tokens = maxTokens
         };
 
         using var req = new HttpRequestMessage(HttpMethod.Post, Url)

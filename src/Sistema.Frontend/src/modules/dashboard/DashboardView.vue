@@ -825,9 +825,39 @@
           <v-card-title class="pa-4 pb-1 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
             <v-icon icon="mdi-scatter-plot" class="mr-1" color="deep-purple" />
             Prioridade — Margem × Faturamento
+            <v-btn icon size="x-small" variant="text" color="deep-purple" class="ml-1"
+              :loading="carregandoAnalise" @click="abrirAnalise">
+              <v-icon>mdi-lightbulb-on-outline</v-icon>
+              <v-tooltip activator="parent" location="top">Análise inteligente + sugestão</v-tooltip>
+            </v-btn>
             <v-spacer />
             <span class="text-caption text-medium-emphasis">{{ mesAtual }} · venda − custo atual</span>
           </v-card-title>
+
+          <!-- Diálogo: leitura analítica por IA -->
+          <v-dialog v-model="dialogAnalise" max-width="640" scrollable>
+            <v-card rounded="xl">
+              <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
+                <v-icon icon="mdi-lightbulb-on-outline" color="deep-purple" class="mr-2" />
+                Análise — Margem × Faturamento
+                <v-spacer />
+                <v-btn icon="mdi-close" variant="text" size="small" @click="dialogAnalise = false" />
+              </v-card-title>
+              <v-card-text>
+                <div v-if="carregandoAnalise" class="d-flex flex-column align-center pa-6 ga-3">
+                  <v-progress-circular indeterminate color="deep-purple" />
+                  <span class="text-caption text-medium-emphasis">Analisando os dados do período…</span>
+                </div>
+                <div v-else-if="erroAnalise" class="text-error text-body-2">{{ erroAnalise }}</div>
+                <div v-else class="analise-md text-body-2" v-html="analiseHtml" />
+              </v-card-text>
+              <v-card-actions v-if="!carregandoAnalise && analiseTexto" class="px-4 pb-3">
+                <span class="text-caption text-medium-emphasis">Gerado por IA{{ analiseModelo ? ' · ' + analiseModelo : '' }}</span>
+                <v-spacer />
+                <v-btn variant="tonal" color="deep-purple" size="small" @click="gerarAnalise">Refazer</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
           <v-card-text>
             <div v-if="carregandoRentab" class="d-flex justify-center pa-8">
               <v-progress-circular indeterminate color="deep-purple" />
@@ -1590,6 +1620,42 @@ function renderizarRentab() {
 }
 watch(rentabPrior, () => requestAnimationFrame(renderizarRentab))
 
+// Leitura analítica por IA (OpenAI) do comparativo, sob demanda (clique no ícone).
+const dialogAnalise = ref(false)
+const carregandoAnalise = ref(false)
+const analiseTexto = ref('')
+const analiseModelo = ref('')
+const erroAnalise = ref('')
+const analiseHtml = computed(() => {
+  const esc = (analiseTexto.value || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return esc
+    .replace(/^\s*#{1,6}\s*(.+?)\s*$/gm, '<h4 class="analise-h">$1</h4>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\s*[-*]\s+/gm, '• ')
+    .replace(/<\/h4>\n/g, '</h4>')
+    .replace(/\n/g, '<br>')
+})
+async function gerarAnalise() {
+  if (!auth.empresaId) return
+  carregandoAnalise.value = true; erroAnalise.value = ''
+  try {
+    const inicio = new Date(anoAtual, new Date().getMonth(), 1).toISOString().slice(0, 10)
+    const fim = new Date().toISOString().slice(0, 10)
+    const res = await api.get<{ analise: string; modelo?: string }>('/relatorios/estoque/analise-rentabilidade', {
+      params: { empresaId: auth.empresaId, inicio, fim },
+    })
+    analiseTexto.value = res.data.analise || ''
+    analiseModelo.value = res.data.modelo || ''
+  } catch (e: any) {
+    erroAnalise.value = e?.response?.data?.mensagem || 'Não foi possível gerar a análise agora.'
+  } finally { carregandoAnalise.value = false }
+}
+async function abrirAnalise() {
+  dialogAnalise.value = true
+  if (!analiseTexto.value && !carregandoAnalise.value) await gerarAnalise()
+}
+
 // ResizeObserver: redesenha cada gráfico assim que o canvas ganha tamanho no
 // DOM. É a forma robusta de resolver o "gráfico em branco no load inicial"
 // (quando o desenho roda antes do layout, com offsetWidth ainda 0).
@@ -1713,6 +1779,13 @@ onMounted(async () => {
 .prio-dot {
   display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle;
 }
+.analise-md { line-height: 1.55; }
+.analise-md strong { color: rgb(var(--v-theme-primary)); }
+.analise-md .analise-h {
+  font-size: 0.95rem; font-weight: 700; margin: 0.7rem 0 0.25rem;
+  color: rgb(var(--v-theme-primary));
+}
+.analise-md .analise-h:first-child { margin-top: 0; }
 .barras { display: flex; align-items: flex-end; gap: 3px; height: 72px; }
 .barra-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; }
 .barra-bar {

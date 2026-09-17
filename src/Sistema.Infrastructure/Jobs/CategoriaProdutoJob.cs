@@ -28,6 +28,9 @@ public class CategoriaProdutoJob(
         // Vinagre tem prioridade sobre "propolis" (há vinagre de maçã c/ própolis, que deve
         // cair em Ervas/condimentos, não em Suplementos).
         (new[]{"vinagre"}, "Ervas e especiarias"),
+        // Gelatina ANTES de tudo: as gelatinas de sabor têm "chá/hibisco/chia/linhaça" no
+        // nome e seriam roubadas por Chás/Oleaginosas; "gelatina" define a categoria.
+        (new[]{"gelatina"}, "Gelatinas"),
         (new[]{"whey","proteina","proteína","colageno","colágeno","creatina","capsula","cápsula","caps ","vitamina","suplement","hydro protein","psyllium","psillium","supercoffee","super coffee","caffeine","cafeina","cafeína","termogenic","bcaa","glutamina","aminoacido","aminoácido","melatonina","triptofano","magnesio","magnésio","zinco","omega","ômega","probiotic","cloreto de magnesio","spirulina","clorella","chlorella","maca peruana","propolis","própolis","verdpropolis"}, "Suplementos"),
         (new[]{"fibra","farelo","goma acacia","goma-acacia"}, "Fibra Alimentar"),
         (new[]{"cha ","chá","infus","erva mate","hibisc","camomila","erva-mate","erva doce","carqueja","boldo","capim cidreira","melissa","kombucha"}, "Chás e infusões"),

@@ -231,7 +231,8 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
             : null;
         return Ok(new
         {
-            pedido.Id, pedido.Numero, pedido.FornecedorId, pedido.Status,
+            pedido.Id, pedido.Numero, pedido.FornecedorId,
+            Status = pedido.Status.ToString(),   // string p/ o front comparar ('Rascunho'/'Enviado'...)
             pedido.LocalEstoqueId, lojaNome,
             pedido.DataPedido, pedido.DataPrevisaoEntrega, pedido.DataRecebimento,
             pedido.NotaFiscalRecebimento, pedido.Total, pedido.AnexoUrl,

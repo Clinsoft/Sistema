@@ -254,14 +254,15 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
         // Notas de jul/2026 e anteriores são backlog antigo — fora do controle (decisão do gestor).
         var inicioControle = new DateTime(2026, 8, 1);
         if (corte < inicioControle) corte = inicioControle;
+        // Prazo conta da EMISSÃO da NF-e (inclui o tempo de entrega da transportadora).
         var entradas = await db.EntradasNFe.AsNoTracking()
             .Include(e => e.Itens)
             .Where(e => e.EmpresaId == empresaId
                      && e.Status == Sistema.Domain.Fiscal.Entities.StatusEntradaNFe.Processada
                      && !e.ValidadePendenteIgnorada
-                     && e.DataEntrada >= corte
+                     && e.DataEmissao >= corte
                      && (localEstoqueId == null || e.LocalEstoqueId == localEstoqueId))
-            .OrderByDescending(e => e.DataEntrada)
+            .OrderByDescending(e => e.DataEmissao)
             .ToListAsync(ct);
 
         var produtoIds = entradas.SelectMany(e => e.Itens)
@@ -278,7 +279,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
             var pend = e.Itens.Count(i => i.ProdutoId.HasValue && controla.Contains(i.ProdutoId.Value) && i.LoteId == null);
             if (pend == 0) continue;
             var totalCtrl = e.Itens.Count(i => i.ProdutoId.HasValue && controla.Contains(i.ProdutoId.Value));
-            var dataRef = e.DataProcessamento ?? e.DataEntrada;
+            var dataRef = e.DataEmissao;
             long numero = e.ChaveAcesso.Length == 44 && long.TryParse(e.ChaveAcesso.Substring(25, 9), out var n) ? n : 0;
             lista.Add(new PendenciaValidade(
                 e.Id, numero,
@@ -291,7 +292,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     }
 
     private record PendenciaValidade(Guid EntradaId, long NumeroNota, string Loja, Guid LocalEstoqueId,
-        string Fornecedor, DateTime DataEntrada, int DiasPendente, int Pendentes, int TotalControlados);
+        string Fornecedor, DateTime DataEmissao, int DiasPendente, int Pendentes, int TotalControlados);
 
     /// <summary>Dispensa (ignora) a pendência de validade/lote de uma nota — sai do sininho e do painel.
     /// Não apaga a nota nem o estoque; só marca que o gestor decidiu não cobrar o lançamento. Só gestor.</summary>

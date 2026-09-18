@@ -492,7 +492,8 @@
     <div v-if="aba === 'pendentes'">
       <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
         Notas <b>já recebidas</b> com produtos que controlam validade e ainda <b>sem lote/validade lançados</b>.
-        Clique em <b>Lançar</b> para abrir a nota e registrar. Ordenado pelas mais antigas (maior atraso).
+        Clique em <b>Lançar</b> para registrar. <b class="text-info">Até 7 dias (azul)</b> é tolerância de entrega;
+        <b class="text-error">passou de 7 dias</b> = <b>−10 pontos no desempenho</b> da loja. Ordenado pelo maior atraso.
       </v-alert>
 
       <div class="d-flex align-center flex-wrap gap-2 mb-3">
@@ -507,10 +508,12 @@
       <v-card rounded="xl" elevation="1">
         <v-data-table :headers="headersPend" :items="pendencias" :loading="carregandoPend"
           density="compact" no-data-text="Nenhuma pendência — tudo lançado. 🎉">
-          <template #item.dataEntrada="{ item }">{{ new Date(item.dataEntrada).toLocaleDateString('pt-BR') }}</template>
+          <template #item.dataEmissao="{ item }">{{ new Date(item.dataEmissao).toLocaleDateString('pt-BR') }}</template>
           <template #item.diasPendente="{ item }">
-            <v-chip size="small" :color="item.diasPendente >= 3 ? 'error' : (item.diasPendente >= 1 ? 'warning' : 'success')" variant="tonal">
+            <v-chip size="small" :color="item.diasPendente > 7 ? 'error' : 'info'" variant="tonal"
+              :title="item.diasPendente > 7 ? 'Passou de 7 dias: -10 pontos no desempenho' : 'Dentro do prazo de 7 dias (tolerância de entrega)'">
               {{ item.diasPendente === 0 ? 'hoje' : item.diasPendente + ' dia(s)' }}
+              <v-icon v-if="item.diasPendente > 7" end size="14">mdi-minus-circle-outline</v-icon>
             </v-chip>
           </template>
           <template #item.pendentes="{ item }">
@@ -861,7 +864,7 @@ const headersPend = [
   { title: 'Loja', key: 'loja' },
   { title: 'NF nº', key: 'numeroNota' },
   { title: 'Fornecedor', key: 'fornecedor' },
-  { title: 'Recebida em', key: 'dataEntrada' },
+  { title: 'NF-e emitida em', key: 'dataEmissao' },
   { title: 'Pendente há', key: 'diasPendente' },
   { title: 'Itens pend.', key: 'pendentes', align: 'center' as const },
   { title: '', key: 'acoes', sortable: false, align: 'end' as const },

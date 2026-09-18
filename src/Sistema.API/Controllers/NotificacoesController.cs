@@ -58,7 +58,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var validadePendente = await db.EntradasNFe.CountAsync(e =>
             e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
             && !e.ValidadePendenteIgnorada
-            && e.DataEntrada >= corteValidade
+            && e.DataEmissao >= corteValidade
             && (lojaAtendente == null || e.LocalEstoqueId == lojaAtendente.Value)
             && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
                 && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)), ct);

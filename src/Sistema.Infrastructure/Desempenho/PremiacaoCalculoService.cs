@@ -114,6 +114,21 @@ public class PremiacaoCalculoService(SistemaDbContext db)
                 && l.DataValidade != null && l.DataValidade < hoje)
             .Select(l => l.LocalEstoqueId).Distinct().ToListAsync(ct));
 
+        // Lojas com validade/lote NÃO lançado há mais de 7 dias da EMISSÃO da NF-e (inclui prazo
+        // de entrega da transportadora). Penaliza -10 no desempenho da loja. Notas jul/2026 e
+        // anteriores, ou dispensadas (ValidadePendenteIgnorada), não contam.
+        var inicioControleValidade = new DateTime(2026, 8, 1);
+        var limiteAtrasoValidade = hoje.AddDays(-7);
+        var lojasValidadeAtrasada = new HashSet<Guid>(await db.EntradasNFe.AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId
+                && e.Status == Sistema.Domain.Fiscal.Entities.StatusEntradaNFe.Processada
+                && !e.ValidadePendenteIgnorada
+                && e.DataEmissao >= inicioControleValidade
+                && e.DataEmissao <= limiteAtrasoValidade
+                && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
+                    && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)))
+            .Select(e => e.LocalEstoqueId).Distinct().ToListAsync(ct));
+
         var idsAtividade = new HashSet<Guid>(vendaVendedor.Keys);
         idsAtividade.UnionWith(avaliacoes.Keys);
         idsAtividade.UnionWith(apuracoes.Keys);
@@ -155,8 +170,16 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             var descWhats = penalidadesWhats.TryGetValue(u.Id, out var dw) ? dw : 0m;
             if (descWhats > 0) perf = Math.Max(0, perf - descWhats);
 
+            // Desconto por validade/lote não lançado em 7 dias (por loja da nota).
+            decimal descValidadeLanc = 0;
+            if (lojasValidadeAtrasada.Contains(loja) && perf > 0)
+            {
+                descValidadeLanc = Math.Min(perf, 10m);
+                perf = Math.Max(0, perf - 10m);
+            }
+
             var res = CalculoPremiacao.Calcular(u.Id, u.Nome, loja, fat, metaLoja, vendaInd, metaInd,
-                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade, descWhats);
+                perf, avalsU.Count, cfg, valorBaseLoja, apu, descValidade, descWhats, descValidadeLanc);
             var pctLoja = metaLoja > 0 ? Math.Round(fat / metaLoja * 100, 1) : 0;
             lista.Add(new PremiacaoLinha(res, lojas.TryGetValue(loja, out var ln) ? ln : "—", loja, fat, metaLoja, pctLoja, avalsU));
         }

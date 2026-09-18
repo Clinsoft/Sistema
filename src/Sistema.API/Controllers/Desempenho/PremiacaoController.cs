@@ -138,6 +138,7 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         {
             descontoValidade = r?.DescontoValidade ?? 0,
             descontoWhatsapp = r?.DescontoAtendimentoWhatsApp ?? 0,
+            descontoValidadeLancamento = r?.DescontoValidadeLancamento ?? 0,
             whatsapp = whats
         });
     }
@@ -562,6 +563,7 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
             elegivel = r.Elegivel, temCorte = r.TemCorte, motivo = r.Motivo, premio = r.Premio,
             descontoValidade = r.DescontoValidade,
             descontoAtendimentoWhatsapp = r.DescontoAtendimentoWhatsApp,
+            descontoValidadeLancamento = r.DescontoValidadeLancamento,
             projecao,
             avaliacoes = incluirSemanas && avaliacoes != null
                 ? avaliacoes.OrderBy(a => a.InicioSemana).Select(a => new { inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"), pontos = a.Pontos }).ToList<object>()

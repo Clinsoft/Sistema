@@ -77,6 +77,9 @@
                     <v-tooltip v-if="c.descontoAtendimentoWhatsapp > 0" text="Conversas do WhatsApp não respondidas em 6h de funcionamento: 10 pts por conversa, descontados de todos os atendentes da loja"><template #activator="{ props }">
                       <v-chip v-bind="props" size="x-small" color="error" variant="tonal" class="ml-1">−{{ c.descontoAtendimentoWhatsapp }} atend.</v-chip>
                     </template></v-tooltip>
+                    <v-tooltip v-if="c.descontoValidadeLancamento > 0" text="Validade/lote não lançado em 7 dias da emissão da NF-e: -10 pts, descontados de toda a equipe da loja"><template #activator="{ props }">
+                      <v-chip v-bind="props" size="x-small" color="error" variant="tonal" class="ml-1">−{{ c.descontoValidadeLancamento }} lançam.</v-chip>
+                    </template></v-tooltip>
                   </td>
                   <td class="text-center">
                     <v-chip v-if="c.premio > 0" size="x-small" color="success" variant="tonal">Elegível</v-chip>
@@ -181,7 +184,7 @@
             <v-icon color="error" class="mr-2">mdi-alert-decagram</v-icon>
             <div class="text-subtitle-1 font-weight-bold">Penalidades de {{ meses.find(m => m.value === mes)?.label }} / {{ ano }}</div>
             <v-spacer />
-            <v-chip color="error" variant="flat" size="small">−{{ (penal?.descontoValidade ?? 0) + (penal?.descontoWhatsapp ?? 0) }} pts na performance</v-chip>
+            <v-chip color="error" variant="flat" size="small">−{{ (penal?.descontoValidade ?? 0) + (penal?.descontoWhatsapp ?? 0) + (penal?.descontoValidadeLancamento ?? 0) }} pts na performance</v-chip>
           </div>
           <v-divider />
 
@@ -193,6 +196,18 @@
               <div class="text-caption text-medium-emphasis">Desconto de validade aplicado à equipe da loja quando há lote vencido em estoque</div>
             </div>
             <v-chip v-if="(penal?.descontoValidade ?? 0) > 0" color="error" variant="tonal" size="small">−{{ penal.descontoValidade }} pts</v-chip>
+            <v-chip v-else color="success" variant="tonal" size="small">Sem desconto</v-chip>
+          </div>
+          <v-divider />
+
+          <!-- Validade/lote não lançado em 7 dias -->
+          <div class="pa-3 d-flex align-center av-item">
+            <v-icon color="deep-orange" class="mr-2">mdi-clipboard-alert-outline</v-icon>
+            <div class="flex-grow-1">
+              <div class="font-weight-medium">Validade/lote não lançado em 7 dias</div>
+              <div class="text-caption text-medium-emphasis">−10 pts à equipe da loja quando uma NF-e passa de 7 dias da emissão sem lançar validade/lote (fora as dispensadas)</div>
+            </div>
+            <v-chip v-if="(penal?.descontoValidadeLancamento ?? 0) > 0" color="error" variant="tonal" size="small">−{{ penal.descontoValidadeLancamento }} pts</v-chip>
             <v-chip v-else color="success" variant="tonal" size="small">Sem desconto</v-chip>
           </div>
           <v-divider />

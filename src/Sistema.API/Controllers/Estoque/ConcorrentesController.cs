@@ -318,11 +318,16 @@ public class ConcorrentesController(
         var concIds = concs.Select(c => c.Id).ToList();
         var nomeConc = concs.ToDictionary(c => c.Id, c => c.Nome);
 
-        // Preços coletados ligados a um produto nosso.
-        var precos = await db.PrecosConcorrente.AsNoTracking()
+        // Preços coletados ligados a um produto nosso — só a ÚLTIMA coleta por
+        // (produto, concorrente), para refletir o preço ATUAL (não a média histórica).
+        var precosRaw = await db.PrecosConcorrente.AsNoTracking()
             .Where(p => concIds.Contains(p.ConcorrenteId) && p.ProdutoId != null)
-            .Select(p => new { p.ConcorrenteId, p.ProdutoId, p.Descricao, p.Preco, p.Unidade })
+            .Select(p => new { p.ConcorrenteId, p.ProdutoId, p.Descricao, p.Preco, p.Unidade, p.DataColeta })
             .ToListAsync(ct);
+        var precos = precosRaw
+            .GroupBy(p => new { p.ProdutoId, p.ConcorrenteId })
+            .Select(g => g.OrderByDescending(x => x.DataColeta).First())
+            .ToList();
 
         var produtoIds = precos.Select(p => p.ProdutoId!.Value).Distinct().ToList();
         var produtos = await db.Produtos.AsNoTracking()
@@ -407,9 +412,15 @@ public class ConcorrentesController(
             .Join(db.Concorrentes, x => x.ConcorrenteId, c => c.Id, (x, c) => new { x, c })
             .Where(z => z.c.EmpresaId == empresaId && z.c.Ativo);
         foreach (var t in termos) { var tt = t; precoQ = precoQ.Where(z => z.x.Descricao.Contains(tt)); }
-        var concs = await precoQ.OrderBy(z => z.x.Preco).Take(100)
-            .Select(z => new { concorrente = z.c.Nome, z.x.Descricao, z.x.Preco, z.x.Unidade })
+        // Só a ÚLTIMA coleta por (concorrente, descrição) — preço atual, sem repetir o histórico.
+        var concsRaw = await precoQ
+            .Select(z => new { concId = z.c.Id, concorrente = z.c.Nome, z.x.Descricao, z.x.Preco, z.x.Unidade, z.x.DataColeta })
             .ToListAsync(ct);
+        var concs = concsRaw
+            .GroupBy(z => new { z.concId, z.Descricao })
+            .Select(g => g.OrderByDescending(x => x.DataColeta).First())
+            .OrderBy(x => x.Preco)
+            .ToList();
 
         static (string unidadeBase, decimal precoBase) Normalizar(decimal preco, string? unidade, bool? porPesoProduto)
         {

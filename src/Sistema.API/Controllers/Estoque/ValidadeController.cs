@@ -294,6 +294,76 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     private record PendenciaValidade(Guid EntradaId, long NumeroNota, string Loja, Guid LocalEstoqueId,
         string Fornecedor, DateTime DataEmissao, int DiasPendente, int Pendentes, int TotalControlados);
 
+    /// <summary>
+    /// Relatório de atraso por pessoa: quem lançou validade/lote e com quanto atraso (emissão da
+    /// NF-e → data do lançamento do lote). Base: trilha de auditoria (quem/quando criou o Lote).
+    /// Agrupa por colaborador no mês do lançamento. Só gestor.
+    /// </summary>
+    [HttpGet("atraso-por-pessoa")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> AtrasoPorPessoa([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
+    {
+        if (ano == 0) ano = DateTime.Today.Year;
+        if (mes == 0) mes = DateTime.Today.Month;
+        var inicioMes = new DateTime(ano, mes, 1);
+        var fimMes = inicioMes.AddMonths(1);
+        var inicioControle = new DateTime(2026, 8, 1);
+
+        // Lotes de NF-e lançados no mês (1 lote = 1 lançamento), com a emissão da nota de origem.
+        var dados = await (
+            from i in db.ItensEntradaNFe.AsNoTracking()
+            join e in db.EntradasNFe.AsNoTracking() on i.EntradaNFeId equals e.Id
+            join l in db.Lotes.AsNoTracking() on i.LoteId equals l.Id
+            where i.LoteId != null && e.EmpresaId == empresaId
+                && e.DataEmissao >= inicioControle
+                && (localEstoqueId == null || e.LocalEstoqueId == localEstoqueId)
+                && l.CriadoEm >= inicioMes && l.CriadoEm < fimMes
+            select new { LoteId = l.Id, l.CriadoEm, e.DataEmissao, e.LocalEstoqueId }
+        ).ToListAsync(ct);
+
+        var porLote = dados.GroupBy(x => x.LoteId).Select(g => g.First()).ToList();
+        if (porLote.Count == 0) return Ok(new { total = 0, itens = Array.Empty<object>() });
+
+        var loteIds = porLote.Select(x => x.LoteId.ToString()).ToList();
+        var autores = await db.AuditLogs.AsNoTracking()
+            .Where(a => a.Entidade == "Lote" && a.Acao == "Inserir" && a.EntidadeId != null && loteIds.Contains(a.EntidadeId))
+            .Select(a => new { a.EntidadeId, a.UsuarioId, a.UsuarioNome, a.DataHora })
+            .ToListAsync(ct);
+        var autorPorLote = autores.GroupBy(a => a.EntidadeId!)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.DataHora).First());
+
+        var lojas = await db.LocaisEstoque.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        var grupos = porLote
+            .Select(x =>
+            {
+                var au = autorPorLote.TryGetValue(x.LoteId.ToString(), out var a) ? a : null;
+                var atraso = (int)(x.CriadoEm.Date - x.DataEmissao.Date).TotalDays;
+                return new
+                {
+                    Pessoa = au?.UsuarioNome ?? "— (sem trilha)",
+                    Loja = lojas.TryGetValue(x.LocalEstoqueId, out var ln) ? ln : "—",
+                    Atraso = atraso < 0 ? 0 : atraso,
+                };
+            })
+            .GroupBy(x => new { x.Pessoa, x.Loja })
+            .Select(g => new
+            {
+                pessoa = g.Key.Pessoa,
+                loja = g.Key.Loja,
+                lancamentos = g.Count(),
+                noPrazo = g.Count(x => x.Atraso <= 7),
+                atrasados = g.Count(x => x.Atraso > 7),
+                atrasoMedio = Math.Round(g.Average(x => (double)x.Atraso), 1),
+                atrasoMax = g.Max(x => x.Atraso),
+            })
+            .OrderByDescending(x => x.atrasados).ThenByDescending(x => x.atrasoMedio)
+            .ToList();
+
+        return Ok(new { total = grupos.Count, ano, mes, itens = grupos });
+    }
+
     /// <summary>Dispensa (ignora) a pendência de validade/lote de uma nota — sai do sininho e do painel.
     /// Não apaga a nota nem o estoque; só marca que o gestor decidiu não cobrar o lançamento. Só gestor.</summary>
     [HttpPost("pendencias/{entradaId:guid}/ignorar")]

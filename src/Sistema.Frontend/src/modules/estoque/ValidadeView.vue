@@ -42,6 +42,9 @@
         <v-badge v-if="pendencias.length > 0" :content="pendencias.length"
           color="deep-orange" inline class="ml-1" />
       </v-tab>
+      <v-tab value="atraso">
+        <v-icon start>mdi-account-clock-outline</v-icon>Atraso por pessoa
+      </v-tab>
     </v-tabs>
 
     <!-- ═══════════════════ ABA: MONITORAMENTO ═══════════════════ -->
@@ -530,6 +533,43 @@
       </v-card>
     </div>
 
+    <!-- ═══════════════════ ABA: ATRASO POR PESSOA ═══════════════════ -->
+    <div v-if="aba === 'atraso'">
+      <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
+        Quem lançou validade/lote e com <b>quanto atraso</b> (da <b>emissão da NF-e</b> até o lançamento).
+        <b class="text-info">Até 7 dias</b> = no prazo; <b class="text-error">acima de 7</b> = atrasado. Baseado na trilha de auditoria.
+      </v-alert>
+
+      <div class="d-flex align-center flex-wrap gap-2 mb-3">
+        <v-select v-model="atrasoMes" :items="mesesOpc" item-title="label" item-value="value"
+          label="Mês" variant="outlined" density="compact" hide-details style="max-width:170px"
+          @update:model-value="carregarAtraso" />
+        <v-select v-model="atrasoAno" :items="anosOpc" label="Ano" variant="outlined" density="compact"
+          hide-details style="max-width:120px" @update:model-value="carregarAtraso" />
+        <v-select v-model="atrasoLoja" :items="[{ id: '', nome: 'Todas as lojas' }, ...locais]"
+          item-title="nome" item-value="id" label="Loja" variant="outlined" density="compact"
+          hide-details style="max-width:240px" @update:model-value="carregarAtraso" />
+        <v-spacer />
+        <v-btn variant="tonal" color="primary" :loading="carregandoAtraso" prepend-icon="mdi-refresh"
+          @click="carregarAtraso">Atualizar</v-btn>
+      </div>
+
+      <v-card rounded="xl" elevation="1">
+        <v-data-table :headers="headersAtraso" :items="atrasoPessoas" :loading="carregandoAtraso"
+          density="compact" no-data-text="Nenhum lançamento no período.">
+          <template #item.atrasoMedio="{ item }">
+            <v-chip size="small" :color="item.atrasoMedio > 7 ? 'error' : 'info'" variant="tonal">
+              {{ item.atrasoMedio }} dia(s)
+            </v-chip>
+          </template>
+          <template #item.atrasados="{ item }">
+            <span :class="item.atrasados > 0 ? 'text-error font-weight-bold' : 'text-medium-emphasis'">{{ item.atrasados }}</span>
+          </template>
+          <template #item.atrasoMax="{ item }">{{ item.atrasoMax }} dia(s)</template>
+        </v-data-table>
+      </v-card>
+    </div>
+
     <!-- ═══════════════════ ABA: LOTES ═══════════════════ -->
     <div v-if="aba === 'lotes'">
       <v-row align="center" class="mb-3">
@@ -884,6 +924,38 @@ function abrirNotaPendente(p: any) {
   soPendentes.value = true
   numeroNota.value = String(p.numeroNota)
   buscarNota()
+}
+
+// ─── Atraso por pessoa (quem lançou e com quanto atraso) ───────────────────────
+const atrasoPessoas = ref<any[]>([])
+const carregandoAtraso = ref(false)
+const atrasoAno = ref(new Date().getFullYear())
+const atrasoMes = ref(new Date().getMonth() + 1)
+const atrasoLoja = ref('')
+const mesesOpc = [
+  { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
+  { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
+  { value: 7, label: 'Julho' }, { value: 8, label: 'Agosto' }, { value: 9, label: 'Setembro' },
+  { value: 10, label: 'Outubro' }, { value: 11, label: 'Novembro' }, { value: 12, label: 'Dezembro' },
+]
+const anosOpc = [2026, 2027, 2028]
+const headersAtraso = [
+  { title: 'Pessoa', key: 'pessoa' },
+  { title: 'Loja', key: 'loja' },
+  { title: 'Lançamentos', key: 'lancamentos', align: 'center' as const },
+  { title: 'No prazo (≤7)', key: 'noPrazo', align: 'center' as const },
+  { title: 'Atrasados (>7)', key: 'atrasados', align: 'center' as const },
+  { title: 'Atraso médio', key: 'atrasoMedio', align: 'center' as const },
+  { title: 'Pior atraso', key: 'atrasoMax', align: 'center' as const },
+]
+async function carregarAtraso() {
+  carregandoAtraso.value = true
+  try {
+    const r = await api.get<{ itens: any[] }>('/validade/atraso-por-pessoa', {
+      params: { empresaId: auth.empresaId, ano: atrasoAno.value, mes: atrasoMes.value, localEstoqueId: atrasoLoja.value || undefined },
+    })
+    atrasoPessoas.value = r.data.itens ?? []
+  } catch { atrasoPessoas.value = [] } finally { carregandoAtraso.value = false }
 }
 const ignorandoId = ref<string | null>(null)
 async function ignorarPendencia(p: any) {
@@ -1629,6 +1701,12 @@ onMounted(async () => {
   await listarVencimentos()
   await carregarPendencias()
   if (route.query.pendentes) aba.value = 'pendentes'
+})
+
+// Carrega o relatório de atraso na primeira vez que a aba é aberta.
+let atrasoCarregado = false
+watch(aba, (v) => {
+  if (v === 'atraso' && !atrasoCarregado) { atrasoCarregado = true; carregarAtraso() }
 })
 </script>
 

@@ -202,8 +202,9 @@
             label="Comparar por nome (ex.: aveia em flocos, castanha do pará, quinoa)" />
 
           <div v-if="mlStatus" class="d-flex align-center text-caption mb-2">
-            <v-icon size="16" class="mr-1" :color="mlStatus.conectado ? 'success' : 'grey'">mdi-shopping-outline</v-icon>
-            <span v-if="mlStatus.conectado" class="text-success">Preços online do Mercado Livre incluídos na busca por nome</span>
+            <v-icon size="16" class="mr-1" :color="mlStatus.conectado && mlStatus.buscaOk ? 'success' : mlStatus.conectado ? 'warning' : 'grey'">mdi-shopping-outline</v-icon>
+            <span v-if="mlStatus.conectado && mlStatus.buscaOk" class="text-success">Preços online do Mercado Livre incluídos na busca por nome</span>
+            <span v-else-if="mlStatus.conectado" class="text-warning">Mercado Livre conectado, mas a busca de preços está bloqueada pelo próprio ML (403) — indisponível.</span>
             <template v-else-if="mlStatus.configurado">
               <span class="text-medium-emphasis mr-2">Mercado Livre não conectado</span>
               <v-btn size="x-small" variant="tonal" color="warning" @click="conectarMl">Conectar Mercado Livre</v-btn>
@@ -539,9 +540,9 @@ function situacaoCor(s: string) {
   return s === 'mais-caro' ? 'error' : s === 'mais-barato' ? 'success'
     : s === 'no-meio' ? 'warning' : 'grey'
 }
-const mlStatus = ref<{ configurado: boolean; conectado: boolean } | null>(null)
+const mlStatus = ref<{ configurado: boolean; conectado: boolean; buscaOk: boolean } | null>(null)
 async function carregarMlStatus() {
-  try { const r = await api.get<{ configurado: boolean; conectado: boolean }>('/mercadolivre/status'); mlStatus.value = r.data }
+  try { const r = await api.get<{ configurado: boolean; conectado: boolean; buscaOk: boolean }>('/mercadolivre/status'); mlStatus.value = r.data }
   catch { mlStatus.value = null }
 }
 async function conectarMl() {

@@ -112,6 +112,18 @@ public class MercadoLivreService(HttpClient http, IConfiguration config, Sistema
         return access;
     }
 
+    /// <summary>Diagnóstico: status HTTP + trecho da resposta crua do ML (para depurar).</summary>
+    public async Task<(int status, string corpo)> TestarBuscaAsync(string termo, CancellationToken ct = default)
+    {
+        var access = await ObterAccessTokenAsync(ct);
+        if (string.IsNullOrWhiteSpace(access)) return (0, "sem token");
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{SearchUrl}?q={Uri.EscapeDataString(termo)}&limit=1");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", access);
+        using var resp = await http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        return ((int)resp.StatusCode, body.Length > 500 ? body[..500] : body);
+    }
+
     /// <summary>Busca no Mercado Livre por termo (nome/EAN). Retorna preços de anúncios.</summary>
     public async Task<List<ItemMl>> BuscarAsync(string termo, int limite = 6, CancellationToken ct = default)
     {

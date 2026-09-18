@@ -16,9 +16,17 @@ public class MercadoLivreController(MercadoLivreService ml) : ControllerBase
     [HttpGet("status")]
     [Authorize(Roles = "Administrador,Gerente,Financeiro")]
     public async Task<IActionResult> Status(CancellationToken ct)
-        => Ok(new MercadoLivreService.ConfiguracaoInfo(
-            ml.Configurado, ml.Configurado && await ml.ConectadoAsync(ct),
-            "https://sistema.ecogranel.com.br/api/mercadolivre/callback"));
+    {
+        var conectado = ml.Configurado && await ml.ConectadoAsync(ct);
+        // Testa a busca: o ML bloqueia (403) a busca de catálogo p/ terceiros mesmo autenticado.
+        bool buscaOk = false;
+        if (conectado)
+        {
+            try { var (s, _) = await ml.TestarBuscaAsync("aveia", ct); buscaOk = s == 200; }
+            catch { buscaOk = false; }
+        }
+        return Ok(new { configurado = ml.Configurado, conectado, buscaOk });
+    }
 
     /// <summary>Devolve a URL de autorização do ML (o frontend abre numa nova aba).</summary>
     [HttpGet("autorizar")]
@@ -28,6 +36,14 @@ public class MercadoLivreController(MercadoLivreService ml) : ControllerBase
         if (!ml.Configurado)
             return BadRequest(new { mensagem = "Mercado Livre não configurado (ClientId/ClientSecret) no servidor." });
         return Ok(new { url = ml.UrlAutorizacao() });
+    }
+
+    [HttpGet("testar")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> Testar([FromQuery] string q = "aveia", CancellationToken ct = default)
+    {
+        var (status, corpo) = await ml.TestarBuscaAsync(q, ct);
+        return Ok(new { status, corpo });
     }
 
     /// <summary>Callback do ML (browser é redirecionado aqui com ?code=). Público.</summary>

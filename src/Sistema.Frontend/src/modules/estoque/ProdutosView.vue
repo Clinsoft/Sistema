@@ -508,6 +508,12 @@
                             prepend-inner-icon="mdi-barcode" />
                         </v-col>
                       </v-row>
+                      <v-btn size="small" variant="tonal" color="amber-darken-2"
+                        prepend-icon="mdi-magnify" :loading="mlBuscando" @click="abrirRefML"
+                        :disabled="!form.descricao && !form.codigoBarras"
+                        title="Buscar referência no catálogo do Mercado Livre (nome/marca/foto por EAN ou nome). Não é preço.">
+                        Referência (Mercado Livre)
+                      </v-btn>
                     </div>
                   </div>
 
@@ -1001,6 +1007,61 @@
             {{ editando ? 'Salvar Alterações' : 'Criar Produto' }}
           </v-btn>
         </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Referência de catálogo do Mercado Livre (nome/marca/foto por EAN ou nome). NÃO é preço. -->
+    <v-dialog v-model="mlDialog" max-width="680" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-tag-search-outline" color="amber-darken-2" />
+          Referência — Mercado Livre
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="mlDialog = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-3">
+          <v-text-field v-model="mlTermo" label="Buscar por nome ou EAN" density="compact" variant="outlined"
+            prepend-inner-icon="mdi-magnify" hide-details class="mb-2"
+            @keyup.enter="buscarRefML(false)">
+            <template #append>
+              <v-btn size="small" color="amber-darken-2" variant="tonal" :loading="mlBuscando" @click="buscarRefML(false)">Buscar</v-btn>
+            </template>
+          </v-text-field>
+          <div class="text-caption text-medium-emphasis mb-2">
+            <v-icon size="14" icon="mdi-information-outline" /> Catálogo do ML: nome padronizado, marca, EAN e foto — <b>não é preço</b> (o ML não libera preço para terceiros).
+          </div>
+
+          <div v-if="mlBuscando" class="text-center pa-4"><v-progress-circular indeterminate color="amber-darken-2" /></div>
+          <div v-else-if="!mlConectado" class="pa-4 text-center text-medium-emphasis text-body-2">
+            Mercado Livre não conectado. Conecte na tela de Concorrência para usar o catálogo.
+          </div>
+          <div v-else-if="!mlItens.length" class="pa-4 text-center text-medium-emphasis text-body-2">
+            Nenhum resultado. Ajuste o nome ou o EAN.
+          </div>
+          <v-list v-else lines="two" density="compact">
+            <v-list-item v-for="it in mlItens" :key="it.id" class="px-2">
+              <template #prepend>
+                <v-avatar rounded="lg" size="56" class="bg-grey-lighten-3 mr-2">
+                  <v-img v-if="it.imagem" :src="it.imagem" cover />
+                  <v-icon v-else icon="mdi-image-off-outline" color="grey" />
+                </v-avatar>
+              </template>
+              <v-list-item-title class="text-body-2 font-weight-medium">{{ it.nome }}</v-list-item-title>
+              <v-list-item-subtitle>
+                <span v-if="it.marca">🏷️ {{ it.marca }}</span>
+                <span v-if="it.gtin" class="ml-2">EAN {{ it.gtin }}</span>
+              </v-list-item-subtitle>
+              <template #append>
+                <div class="d-flex flex-column gap-1">
+                  <v-btn size="x-small" variant="tonal" color="primary" @click="aplicarRefNome(it)">Usar nome</v-btn>
+                  <v-btn v-if="it.gtin && !form.codigoBarras" size="x-small" variant="tonal" color="teal" @click="aplicarRefEan(it)">Usar EAN</v-btn>
+                  <v-btn v-if="it.imagem" size="x-small" variant="tonal" color="amber-darken-2" @click="aplicarRefFoto(it)">Usar foto</v-btn>
+                </div>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
       </v-card>
     </v-dialog>
 
@@ -1657,6 +1718,53 @@ async function buscarImagemPorCodigoBarras() {
     notif.erro(e?.response?.data?.mensagem || 'Nenhuma foto encontrada para este código de barras.')
   } finally {
     buscandoImagem.value = false
+  }
+}
+
+// ─── Referência de catálogo do Mercado Livre (nome/marca/foto por EAN ou nome) ───
+interface RefMl { id: string; nome: string; marca: string | null; gtin: string | null; imagem: string | null }
+const mlDialog = ref(false)
+const mlTermo = ref('')
+const mlBuscando = ref(false)
+const mlConectado = ref(true)
+const mlItens = ref<RefMl[]>([])
+
+function ehEan(s: string) { const t = s.replace(/\D/g, ''); return t.length >= 8 && t === s.trim() }
+
+async function abrirRefML() {
+  const ean = (form.value.codigoBarras || '').trim()
+  mlTermo.value = ean || (form.value.descricao || '').trim()
+  mlItens.value = []
+  mlDialog.value = true
+  await buscarRefML(true)
+}
+
+async function buscarRefML(_auto = false) {
+  const q = (mlTermo.value || '').trim()
+  if (!q) return
+  mlBuscando.value = true
+  try {
+    const { data } = await api.get<{ conectado: boolean; itens: RefMl[] }>('/mercadolivre/catalogo', {
+      params: { q, ean: ehEan(q) },
+    })
+    mlConectado.value = data.conectado
+    mlItens.value = data.itens ?? []
+  } catch {
+    mlConectado.value = false; mlItens.value = []
+  } finally { mlBuscando.value = false }
+}
+
+function aplicarRefNome(it: RefMl) { form.value.descricao = it.nome; notif.ok('Nome aplicado do catálogo do ML.') }
+function aplicarRefEan(it: RefMl) { if (it.gtin) { form.value.codigoBarras = it.gtin; notif.ok('EAN aplicado.') } }
+async function aplicarRefFoto(it: RefMl) {
+  if (!it.imagem) return
+  if (!produtoEditandoId.value) { notif.aviso('Salve o produto primeiro para associar a foto.'); return }
+  try {
+    const { data } = await api.post(`/produtos/${produtoEditandoId.value}/imagem-de-url`, { url: it.imagem })
+    if (data?.url) { form.value.imagemUrl = data.url + '?t=' + Date.now(); notif.ok('Foto associada do catálogo do ML!') }
+    else notif.aviso('Não consegui baixar essa foto. Tente outra.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem || 'Não consegui baixar essa foto.')
   }
 }
 

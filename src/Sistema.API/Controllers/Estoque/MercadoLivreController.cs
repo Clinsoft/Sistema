@@ -46,6 +46,31 @@ public class MercadoLivreController(MercadoLivreService ml) : ControllerBase
         return Ok(new { status, corpo });
     }
 
+    /// <summary>Diagnóstico: testa vários endpoints de busca/catálogo e mostra o status de cada um.</summary>
+    [HttpGet("diagnostico")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+    public async Task<IActionResult> Diagnostico([FromQuery] string q = "aveia", CancellationToken ct = default)
+    {
+        var r = await ml.DiagnosticoAsync(q, ct);
+        return Ok(r.Select(x => new { endpoint = x.nome, status = x.status, corpo = x.corpo }));
+    }
+
+    /// <summary>
+    /// Referência de catálogo do ML por nome ou EAN (nome canônico + marca + GTIN + foto).
+    /// NÃO é preço — o ML bloqueia preço p/ terceiros. Serve p/ enriquecer o cadastro.
+    /// </summary>
+    [HttpGet("catalogo")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Estoquista")]
+    public async Task<IActionResult> Catalogo([FromQuery] string q, [FromQuery] bool ean = false, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+            return Ok(new { conectado = false, itens = Array.Empty<object>() });
+        if (!ml.Configurado || !await ml.ConectadoAsync(ct))
+            return Ok(new { conectado = false, itens = Array.Empty<object>() });
+        var itens = await ml.BuscarCatalogoAsync(q.Trim(), ean, 6, ct);
+        return Ok(new { conectado = true, itens });
+    }
+
     /// <summary>Callback do ML (browser é redirecionado aqui com ?code=). Público.</summary>
     [HttpGet("callback")]
     [AllowAnonymous]

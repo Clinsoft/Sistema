@@ -124,6 +124,99 @@ public class MercadoLivreService(HttpClient http, IConfiguration config, Sistema
         return ((int)resp.StatusCode, body.Length > 500 ? body[..500] : body);
     }
 
+    private static readonly (string nome, string url)[] Endpoints = new[]
+    {
+        ("items_search",     "https://api.mercadolibre.com/sites/MLB/search?q={q}&limit=3"),
+        ("products_search",  "https://api.mercadolibre.com/products/search?status=active&site_id=MLB&q={q}&limit=3"),
+        ("highlights",       "https://api.mercadolibre.com/highlights/MLB/category/MLB1403?limit=3"),
+    };
+
+    /// <summary>Diagnóstico amplo: testa os vários endpoints de busca/catálogo e devolve o status de cada um.</summary>
+    public async Task<List<(string nome, int status, string corpo)>> DiagnosticoAsync(string termo, CancellationToken ct = default)
+    {
+        var access = await ObterAccessTokenAsync(ct);
+        var res = new List<(string, int, string)>();
+        if (string.IsNullOrWhiteSpace(access)) { res.Add(("token", 0, "sem token")); return res; }
+        foreach (var (nome, tpl) in Endpoints)
+        {
+            var url = tpl.Replace("{q}", Uri.EscapeDataString(termo));
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", access);
+                using var resp = await http.SendAsync(req, ct);
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                res.Add((nome, (int)resp.StatusCode, body.Length > 400 ? body[..400] : body));
+            }
+            catch (Exception ex) { res.Add((nome, -1, ex.Message)); }
+        }
+        return res;
+    }
+
+    public record CatalogoMl(string Id, string Nome, string? Marca, string? Gtin, string? Imagem, string? DomainId);
+
+    /// <summary>
+    /// Referência de CATÁLOGO do ML (não é preço — o ML bloqueia preço p/ terceiros).
+    /// Busca por nome (q) ou por EAN/GTIN (product_identifier) e devolve nome canônico,
+    /// marca, GTIN e foto de cada produto do catálogo. Usado como referência no cadastro.
+    /// </summary>
+    public async Task<List<CatalogoMl>> BuscarCatalogoAsync(string termo, bool porEan = false, int limite = 6, CancellationToken ct = default)
+    {
+        var access = await ObterAccessTokenAsync(ct);
+        if (string.IsNullOrWhiteSpace(access)) return new();
+
+        var q = porEan
+            ? $"https://api.mercadolibre.com/products/search?status=active&site_id=MLB&product_identifier={Uri.EscapeDataString(termo)}"
+            : $"https://api.mercadolibre.com/products/search?status=active&site_id=MLB&q={Uri.EscapeDataString(termo)}&limit={limite}";
+
+        var ids = new List<string>();
+        using (var req = new HttpRequestMessage(HttpMethod.Get, q))
+        {
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", access);
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return new();
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            if (doc.RootElement.TryGetProperty("results", out var results))
+                foreach (var r in results.EnumerateArray())
+                    if (r.TryGetProperty("id", out var idp) && idp.GetString() is { } idv)
+                    { ids.Add(idv); if (ids.Count >= limite) break; }
+        }
+
+        // Detalhe de cada produto (nome/marca/gtin/foto) em paralelo.
+        var tarefas = ids.Select(id => DetalheCatalogoAsync(id, access!, ct));
+        return (await Task.WhenAll(tarefas)).Where(x => x is not null).Select(x => x!).ToList();
+    }
+
+    private async Task<CatalogoMl?> DetalheCatalogoAsync(string id, string access, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.mercadolibre.com/products/{id}");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", access);
+            using var resp = await http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement;
+            var nome = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+            if (string.IsNullOrWhiteSpace(nome)) return null;
+            string? imagem = null;
+            if (root.TryGetProperty("pictures", out var pics) && pics.ValueKind == JsonValueKind.Array && pics.GetArrayLength() > 0)
+                imagem = pics[0].TryGetProperty("url", out var u) ? u.GetString() : null;
+            string? marca = null, gtin = null;
+            if (root.TryGetProperty("attributes", out var attrs) && attrs.ValueKind == JsonValueKind.Array)
+                foreach (var a in attrs.EnumerateArray())
+                {
+                    var aid = a.TryGetProperty("id", out var ai) ? ai.GetString() : null;
+                    var val = a.TryGetProperty("value_name", out var av) ? av.GetString() : null;
+                    if (aid == "BRAND") marca = val;
+                    else if (aid == "GTIN") gtin = val;
+                }
+            var domain = root.TryGetProperty("domain_id", out var d) ? d.GetString() : null;
+            return new CatalogoMl(id, nome!, marca, gtin, imagem, domain);
+        }
+        catch { return null; }
+    }
+
     /// <summary>Busca no Mercado Livre por termo (nome/EAN). Retorna preços de anúncios.</summary>
     public async Task<List<ItemMl>> BuscarAsync(string termo, int limite = 6, CancellationToken ct = default)
     {

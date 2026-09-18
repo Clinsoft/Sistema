@@ -15,6 +15,9 @@ namespace Sistema.API.Controllers;
 [Authorize]
 public class NotificacoesController(SistemaDbContext db) : ControllerBase
 {
+    // Validade pendente só a partir daqui (jul/2026 e anterior = backlog ignorado).
+    private static readonly DateTime InicioControleValidade = new(2026, 8, 1);
+
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId, CancellationToken ct)
     {
@@ -48,7 +51,10 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         // Validade/lote pendente de lançamento: nota JÁ recebida (Processada) com item que
         // controla validade e ainda SEM lote. O atendente vê a da SUA loja (precisa lançar);
         // o gestor vê de todas. Cobra o lançamento assim que o produto chega.
+        // Início do controle de validade pendente: notas de jul/2026 e anteriores são
+        // backlog antigo e ficam de fora (decisão do gestor).
         var corteValidade = hoje.AddDays(-90);
+        if (corteValidade < InicioControleValidade) corteValidade = InicioControleValidade;
         var validadePendente = await db.EntradasNFe.CountAsync(e =>
             e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
             && e.DataEntrada >= corteValidade

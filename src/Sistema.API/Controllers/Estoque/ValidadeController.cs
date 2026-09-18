@@ -251,6 +251,9 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
         [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
         var corte = DateTime.Today.AddDays(-Math.Abs(dias == 0 ? 90 : dias));
+        // Notas de jul/2026 e anteriores são backlog antigo — fora do controle (decisão do gestor).
+        var inicioControle = new DateTime(2026, 8, 1);
+        if (corte < inicioControle) corte = inicioControle;
         var entradas = await db.EntradasNFe.AsNoTracking()
             .Include(e => e.Itens)
             .Where(e => e.EmpresaId == empresaId

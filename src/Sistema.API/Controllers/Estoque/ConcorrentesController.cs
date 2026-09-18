@@ -451,4 +451,58 @@ public class ConcorrentesController(
 
     private record ItemNome(string Fonte, bool EhNosso, string Descricao, decimal Preco,
         string Unidade, string UnidadeBase, decimal PrecoBase);
+
+    // Normaliza um preço para a base (granel R$/kg, senão R$/un). porPesoProduto=null => decide pela unidade.
+    private static (string unidadeBase, decimal precoBase) NormalizarPreco(decimal preco, string? unidade, bool? porPesoProduto)
+    {
+        var u = (unidade ?? "").Trim().ToLowerInvariant();
+        var peso = porPesoProduto ?? (u is "kg" or "100g" or "g");
+        if (peso)
+            return ("kg", u switch { "kg" => preco, "100g" => preco * 10m, "g" => preco * 1000m, _ => preco });
+        return ("un", u == "dz" ? Math.Round(preco / 12m, 2) : preco);
+    }
+
+    /// <summary>
+    /// Histórico de preços coletados de um item (por nome): cada coleta é um ponto no tempo.
+    /// Mostra a tendência por concorrente. Também devolve nosso preço de referência.
+    /// </summary>
+    [HttpGet("historico-nome")]
+    public async Task<IActionResult> HistoricoNome([FromQuery] Guid empresaId,
+        [FromQuery] string q, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+            return Ok(new { nossos = Array.Empty<object>(), historico = Array.Empty<object>() });
+        var termos = q.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        var prodQ = db.Produtos.AsNoTracking().Where(p => p.EmpresaId == empresaId && p.Ativo);
+        foreach (var t in termos) { var tt = t; prodQ = prodQ.Where(p => p.Descricao.Contains(tt)); }
+        var nossos = (await prodQ.OrderBy(p => p.Descricao).Take(20)
+            .Select(p => new { p.Descricao, p.PrecoVenda, porPeso = p.ProdutoBalanca || p.VendidoFracionado })
+            .ToListAsync(ct))
+            .Select(n => { var (b, pb) = NormalizarPreco(n.PrecoVenda, n.porPeso ? "kg" : "un", n.porPeso);
+                          return new { n.Descricao, n.PrecoVenda, unidadeBase = b, precoBase = pb }; })
+            .ToList();
+
+        var precoQ = db.PrecosConcorrente.AsNoTracking()
+            .Join(db.Concorrentes, x => x.ConcorrenteId, c => c.Id, (x, c) => new { x, c })
+            .Where(z => z.c.EmpresaId == empresaId);
+        foreach (var t in termos) { var tt = t; precoQ = precoQ.Where(z => z.x.Descricao.Contains(tt)); }
+        var rows = await precoQ.OrderBy(z => z.x.DataColeta)
+            .Select(z => new { concorrente = z.c.Nome, z.x.Descricao, z.x.Preco, z.x.Unidade, z.x.DataColeta, z.x.ProdutoId })
+            .ToListAsync(ct);
+
+        var prodIds = rows.Where(r => r.ProdutoId != null).Select(r => r.ProdutoId!.Value).Distinct().ToList();
+        var porPesoDic = await db.Produtos.AsNoTracking().Where(p => prodIds.Contains(p.Id))
+            .Select(p => new { p.Id, peso = p.ProdutoBalanca || p.VendidoFracionado })
+            .ToDictionaryAsync(p => p.Id, p => p.peso, ct);
+
+        var historico = rows.Select(r =>
+        {
+            bool? peso = r.ProdutoId != null && porPesoDic.TryGetValue(r.ProdutoId.Value, out var pp) ? pp : null;
+            var (b, pb) = NormalizarPreco(r.Preco, r.Unidade, peso);
+            return new { r.concorrente, r.Descricao, r.Preco, r.Unidade, r.DataColeta, unidadeBase = b, precoBase = pb };
+        }).ToList();
+
+        return Ok(new { nossos, historico });
+    }
 }

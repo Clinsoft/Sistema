@@ -81,6 +81,8 @@
             <v-spacer />
             <v-btn v-if="temCoord" size="small" variant="tonal" color="indigo" class="mr-1"
               prepend-icon="mdi-scale-balance" @click="abrirComparativo">Comparar</v-btn>
+            <v-btn v-if="temCoord" size="small" variant="tonal" color="blue-grey" class="mr-1"
+              prepend-icon="mdi-chart-line" @click="abrirHistorico">Histórico</v-btn>
             <v-btn v-if="temCoord && concorrentes.length" size="small" variant="tonal" color="deep-purple" class="mr-1"
               prepend-icon="mdi-format-list-numbered" @click="abrirMassa">Massa</v-btn>
             <v-btn v-if="temCoord" size="small" variant="tonal" color="teal"
@@ -364,6 +366,52 @@
       </v-card>
     </v-dialog>
 
+    <!-- Diálogo: histórico de preços -->
+    <v-dialog v-model="dialogHist" max-width="760" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-chart-line" color="blue-grey" class="mr-2" />
+          Histórico de preços
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogHist = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-text-field v-model="histQ" clearable variant="outlined" density="compact" hide-details
+            prepend-inner-icon="mdi-magnify" class="mb-3"
+            label="Produto (ex.: aveia em flocos, castanha do pará)" />
+          <template v-if="histQ && histQ.trim().length >= 2">
+            <div v-if="carregandoHist" class="text-center pa-6"><v-progress-circular indeterminate color="blue-grey" /></div>
+            <div v-else-if="!historico.length" class="text-center text-medium-emphasis pa-6 text-body-2">
+              Nenhuma coleta com “{{ histQ }}” ainda. Colete preços ao longo do tempo (mesmo produto, em datas diferentes) para ver a tendência.
+            </div>
+            <template v-else>
+              <div class="text-caption text-medium-emphasis mb-1">
+                Linha tracejada = nosso preço. Cada linha colorida = um concorrente ao longo do tempo (normalizado).
+              </div>
+              <canvas ref="histCanvas" height="240" style="width:100%" />
+              <v-table density="compact" class="mt-2">
+                <thead>
+                  <tr><th>Data</th><th>Concorrente</th><th>Descrição</th><th class="text-right">Preço</th><th class="text-right">Norm.</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(r, i) in historicoDesc" :key="i">
+                    <td class="text-caption">{{ fmtData(r.dataColeta) }}</td>
+                    <td class="text-caption">{{ r.concorrente }}</td>
+                    <td class="text-caption">{{ r.descricao }}</td>
+                    <td class="text-right text-caption">R$ {{ fmtNum(r.preco) }}/{{ r.unidade }}</td>
+                    <td class="text-right text-caption">R$ {{ fmtNum(r.precoBase) }}/{{ r.unidadeBase }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </template>
+          </template>
+          <div v-else class="text-center text-medium-emphasis pa-6 text-body-2">
+            Digite o nome de um produto para ver como o preço dos concorrentes variou ao longo do tempo.
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar" :timeout="3000" color="teal">{{ snackbarMsg }}</v-snackbar>
   </div>
 </template>
@@ -394,6 +442,7 @@ const geocodificando = ref(false)
 
 const temCoord = computed(() => !!loja.value?.latitude && !!loja.value?.longitude)
 const fmtNum = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtData = (v: string) => v ? new Date(v).toLocaleDateString('pt-BR') : '—'
 
 let map: L.Map | null = null
 let camada: L.LayerGroup | null = null
@@ -613,6 +662,76 @@ function addLinhaMassa(prod: any) {
   nextTick(() => { massaProd.value = null; prodOpcoes.value = [] })
 }
 function removerLinhaMassa(i: number) { massaRows.value.splice(i, 1) }
+// ── Histórico de preços (tendência ao longo do tempo) ─────────────────────────
+const dialogHist = ref(false)
+const histQ = ref('')
+const histNossos = ref<any[]>([])
+const historico = ref<any[]>([])
+const carregandoHist = ref(false)
+const histCanvas = ref<HTMLCanvasElement>()
+let _tHist: any
+const paletaHist = ['#5e35b1', '#00897b', '#e53935', '#fb8c00', '#1e88e5', '#8e24aa', '#43a047', '#6d4c41']
+const historicoDesc = computed(() => [...historico.value].reverse())
+
+function abrirHistorico() { histQ.value = ''; histNossos.value = []; historico.value = []; dialogHist.value = true }
+watch(histQ, (v) => {
+  clearTimeout(_tHist)
+  if (!v || v.trim().length < 2) { historico.value = []; histNossos.value = []; return }
+  _tHist = setTimeout(async () => {
+    carregandoHist.value = true
+    try {
+      const r = await api.get<{ nossos: any[]; historico: any[] }>('/concorrentes/historico-nome',
+        { params: { empresaId: auth.empresaId, q: v.trim() } })
+      histNossos.value = r.data.nossos ?? []
+      historico.value = r.data.historico ?? []
+      await nextTick(); requestAnimationFrame(renderHist)
+    } finally { carregandoHist.value = false }
+  }, 350)
+})
+
+function renderHist() {
+  const cv = histCanvas.value; if (!cv) return
+  const ctx = cv.getContext('2d'); if (!ctx) return
+  if (cv.offsetWidth === 0) { requestAnimationFrame(renderHist); return }
+  const W = cv.offsetWidth, H = 240; cv.width = W; cv.height = H
+  const ink = getComputedStyle(cv).color || '#555'
+  ctx.clearRect(0, 0, W, H)
+  if (!historico.value.length) return
+  const padL = 48, padR = 12, padT = 22, padB = 26
+  const plotW = W - padL - padR, plotH = H - padT - padB
+  const pts = historico.value.map((r: any) => ({ t: new Date(r.dataColeta).getTime(), y: r.precoBase, c: r.concorrente }))
+  const refs = histNossos.value.map((n: any) => n.precoBase)
+  let tMin = Math.min(...pts.map(p => p.t)), tMax = Math.max(...pts.map(p => p.t))
+  if (tMin === tMax) { tMin -= 86400000; tMax += 86400000 }
+  const yMax = Math.max(...pts.map(p => p.y), ...refs, 1) * 1.1
+  const X = (t: number) => padL + ((t - tMin) / (tMax - tMin)) * plotW
+  const Y = (y: number) => padT + plotH - (y / yMax) * plotH
+  ctx.strokeStyle = 'rgba(127,127,127,0.25)'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke()
+  ctx.fillStyle = ink; ctx.globalAlpha = 0.6; ctx.font = '9px sans-serif'; ctx.textAlign = 'right'
+  for (let k = 0; k <= 4; k++) { const yv = yMax * k / 4; ctx.fillText('R$ ' + yv.toFixed(0), padL - 4, Y(yv) + 3) }
+  const fmtD = (t: number) => { const d = new Date(t); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') }
+  ctx.textAlign = 'center'; ctx.fillText(fmtD(tMin), padL, padT + plotH + 15); ctx.fillText(fmtD(tMax), padL + plotW, padT + plotH + 15)
+  ctx.globalAlpha = 1
+  ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = '#00897b'
+  for (const yv of refs) { const yy = Y(yv); ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + plotW, yy); ctx.stroke() }
+  ctx.restore()
+  const grupos: Record<string, { t: number, y: number }[]> = {}
+  for (const p of pts) { (grupos[p.c] ||= []).push({ t: p.t, y: p.y }) }
+  let ci = 0; const legenda: { nome: string, cor: string }[] = []
+  for (const nome of Object.keys(grupos)) {
+    const serie = grupos[nome].sort((a, b) => a.t - b.t)
+    const cor = paletaHist[ci % paletaHist.length]; ci++; legenda.push({ nome, cor })
+    ctx.strokeStyle = cor; ctx.fillStyle = cor; ctx.lineWidth = 2; ctx.beginPath()
+    serie.forEach((p, i) => { const x = X(p.t), y = Y(p.y); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y) }); ctx.stroke()
+    for (const p of serie) { ctx.beginPath(); ctx.arc(X(p.t), Y(p.y), 3, 0, Math.PI * 2); ctx.fill() }
+  }
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'left'
+  let lx = padL, ly = padT - 10
+  ctx.fillStyle = '#00897b'; ctx.fillText('— nosso', lx, ly); lx += 50
+  for (const l of legenda) { ctx.fillStyle = l.cor; const nm = l.nome.length > 12 ? l.nome.slice(0, 11) + '…' : l.nome; ctx.fillText('■ ' + nm, lx, ly); lx += nm.length * 6 + 20; if (lx > W - 70) { lx = padL; ly -= 0 } }
+}
+
 async function salvarMassa() {
   if (!massaConcId.value) return
   const itens = massaRows.value.filter(r => r.preco && r.preco > 0).map(r => ({

@@ -1092,6 +1092,7 @@
                 <th>NF-e</th><th>Fornecedor</th>
                 <th>Emitida em</th><th>Entrada em</th>
                 <th class="text-right">Qtd</th><th class="text-right">Custo un.</th>
+                <th>Pedido / Requisição</th>
                 <th>Lote/Validade</th>
               </tr>
             </thead>
@@ -1103,6 +1104,15 @@
                 <td>{{ new Date(c.dataEntrada).toLocaleDateString('pt-BR') }}</td>
                 <td class="text-right">{{ c.quantidade }} {{ c.unidade }}</td>
                 <td class="text-right">R$ {{ (c.custoUnitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }}</td>
+                <td>
+                  <template v-if="c.pedidos && c.pedidos.length">
+                    <div v-for="(p, pi) in c.pedidos" :key="pi" class="text-caption">
+                      <v-icon size="12" icon="mdi-cart-outline" /> Pedido {{ p.numero }} · {{ new Date(p.dataPedido).toLocaleDateString('pt-BR') }}
+                      <span v-if="p.requisicaoEm" class="text-medium-emphasis"> · req. {{ new Date(p.requisicaoEm).toLocaleDateString('pt-BR') }}</span>
+                    </div>
+                  </template>
+                  <span v-else class="text-caption text-medium-emphasis">—</span>
+                </td>
                 <td>
                   <template v-if="c.lancado">
                     <v-chip size="x-small" color="success" variant="tonal">

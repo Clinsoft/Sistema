@@ -1181,24 +1181,62 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             orderby e.DataEmissao descending
             select new
             {
-                e.ChaveAcesso, e.EmitenteNome, e.DataEmissao, e.DataEntrada, e.Status,
+                e.Id, e.PedidoCompraId, e.ChaveAcesso, e.EmitenteNome, e.DataEmissao, e.DataEntrada, e.Status,
                 i.QuantidadeEstoque, i.UnidadeEstoque, i.UnidadeXml, i.CustoUnitarioFinal,
                 i.NumeroLote, i.Validade, i.LoteId
             }).ToListAsync(ct);
 
-        var itens = linhas.Select(x => new
+        // Pedidos de compra que originaram cada entrada: link direto (PedidoCompraId) + ponte N:N.
+        var entradaIds = linhas.Select(x => x.Id).Distinct().ToList();
+        var pontes = await db.EntradasNFePedidos.AsNoTracking()
+            .Where(p => entradaIds.Contains(p.EntradaNFeId))
+            .Select(p => new { p.EntradaNFeId, p.PedidoCompraId })
+            .ToListAsync(ct);
+        var pedidosPorEntrada = pontes.GroupBy(p => p.EntradaNFeId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.PedidoCompraId).ToList());
+
+        var pedidoIds = pontes.Select(p => p.PedidoCompraId)
+            .Concat(linhas.Where(l => l.PedidoCompraId != null).Select(l => l.PedidoCompraId!.Value))
+            .Distinct().ToList();
+        var pedidos = await db.PedidosCompra.AsNoTracking()
+            .Where(p => pedidoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Numero, p.DataPedido, p.RequisicaoCompraId })
+            .ToDictionaryAsync(p => p.Id, ct);
+        var reqIds = pedidos.Values.Where(p => p.RequisicaoCompraId != null).Select(p => p.RequisicaoCompraId!.Value).Distinct().ToList();
+        var requisicoes = await db.RequisicoesCompra.AsNoTracking()
+            .Where(r => reqIds.Contains(r.Id))
+            .Select(r => new { r.Id, r.CriadoEm })
+            .ToDictionaryAsync(r => r.Id, ct);
+
+        var itens = linhas.Select(x =>
         {
-            numeroNota = x.ChaveAcesso.Length == 44 && long.TryParse(x.ChaveAcesso.Substring(25, 9), out var n) ? n : 0,
-            fornecedor = x.EmitenteNome,
-            dataEmissao = x.DataEmissao,
-            dataEntrada = x.DataEntrada,
-            status = x.Status.ToString(),
-            quantidade = x.QuantidadeEstoque,
-            unidade = x.UnidadeEstoque ?? x.UnidadeXml,
-            custoUnitario = x.CustoUnitarioFinal,
-            numeroLote = x.NumeroLote,
-            validade = x.Validade,
-            lancado = x.LoteId != null,
+            var pids = new List<Guid>();
+            if (x.PedidoCompraId != null) pids.Add(x.PedidoCompraId.Value);
+            if (pedidosPorEntrada.TryGetValue(x.Id, out var extra)) pids.AddRange(extra);
+            var pedidosEntrada = pids.Distinct()
+                .Where(pid => pedidos.ContainsKey(pid))
+                .Select(pid =>
+                {
+                    var p = pedidos[pid];
+                    DateTime? reqEm = p.RequisicaoCompraId != null && requisicoes.TryGetValue(p.RequisicaoCompraId.Value, out var r) ? r.CriadoEm : null;
+                    return new { numero = p.Numero, dataPedido = p.DataPedido, requisicaoEm = reqEm };
+                })
+                .OrderBy(p => p.dataPedido).ToList();
+            return new
+            {
+                numeroNota = x.ChaveAcesso.Length == 44 && long.TryParse(x.ChaveAcesso.Substring(25, 9), out var n) ? n : 0,
+                fornecedor = x.EmitenteNome,
+                dataEmissao = x.DataEmissao,
+                dataEntrada = x.DataEntrada,
+                status = x.Status.ToString(),
+                quantidade = x.QuantidadeEstoque,
+                unidade = x.UnidadeEstoque ?? x.UnidadeXml,
+                custoUnitario = x.CustoUnitarioFinal,
+                numeroLote = x.NumeroLote,
+                validade = x.Validade,
+                lancado = x.LoteId != null,
+                pedidos = pedidosEntrada,
+            };
         }).ToList();
 
         return Ok(new { total = itens.Count, itens });

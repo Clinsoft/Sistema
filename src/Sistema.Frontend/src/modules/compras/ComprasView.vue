@@ -347,7 +347,13 @@
               <tr v-for="(i, idx) in (det.itens ?? [])" :key="idx"
                 :class="faltantes[i.id] ? 'bg-red-lighten-5' : ''">
                 <td class="text-center"><v-checkbox-btn v-model="faltantes[i.id]" density="compact" color="error" /></td>
-                <td class="text-body-2" :class="faltantes[i.id] ? 'text-decoration-line-through text-medium-emphasis' : ''">{{ i.descricao }}</td>
+                <td class="text-body-2" :class="faltantes[i.id] ? 'text-decoration-line-through text-medium-emphasis' : ''">
+                  {{ i.descricao }}
+                  <v-btn v-if="podeVerValor && (det.status==='Rascunho' || det.status==='Enviado') && i.id"
+                    icon="mdi-delete-outline" size="x-small" variant="text" color="error" class="ml-1"
+                    :loading="removendoItemId === i.id" @click="removerItemPedido(i)"
+                    title="Excluir este item do pedido" />
+                </td>
                 <td class="text-center">{{ i.quantidade }}</td>
                 <td v-if="podeVerValor" class="text-right">{{ fmt(i.precoUnitario) }}</td>
                 <td v-if="podeVerValor" class="text-right">{{ fmt(i.total ?? i.quantidade * i.precoUnitario) }}</td>
@@ -563,6 +569,22 @@ async function salvar() {
   finally { salvando.value = false }
 }
 const enviandoId = ref<string | null>(null)
+
+// Exclui um item do pedido (só Rascunho/Enviado). Reusa /remover-itens.
+const removendoItemId = ref<string | null>(null)
+async function removerItemPedido(i: any) {
+  if (!i.id || !det.value?.id) return
+  if (!confirm(`Excluir "${i.descricao}" deste pedido?`)) return
+  removendoItemId.value = i.id
+  try {
+    await api.post(`/pedidos-compra/${det.value.id}/remover-itens`, { itemIds: [i.id] })
+    det.value.itens = (det.value.itens ?? []).filter((x: any) => x.id !== i.id)
+    delete faltantes.value[i.id]
+    notif.ok('Item removido do pedido.')
+    await carregar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao remover o item.') }
+  finally { removendoItemId.value = null }
+}
 
 async function verPedido(item: any) {
   try {

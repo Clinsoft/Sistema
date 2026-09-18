@@ -147,6 +147,9 @@ public static class ServiceCollectionExtensions
         // Concorrência — busca via Google Places (New): tem as lojas de naturais
         services.AddHttpClient<Sistema.Infrastructure.Services.GooglePlacesService>(c =>
             c.Timeout = TimeSpan.FromSeconds(30));
+        // Concorrência — Mercado Livre (preço de mercado online por nome/EAN) via OAuth
+        services.AddHttpClient<Sistema.Infrastructure.Services.MercadoLivreService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(25));
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.WhatsAppSlaJob>();
         services.AddScoped<Sistema.Infrastructure.Jobs.FechamentoCaixaJob>();

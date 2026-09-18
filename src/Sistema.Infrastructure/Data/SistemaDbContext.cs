@@ -37,6 +37,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<Produto> Produtos => Set<Produto>();
     public DbSet<Concorrente> Concorrentes => Set<Concorrente>();
     public DbSet<PrecoConcorrente> PrecosConcorrente => Set<PrecoConcorrente>();
+    public DbSet<TokenIntegracao> TokensIntegracao => Set<TokenIntegracao>();
     public DbSet<LogExclusaoProduto> LogsExclusaoProduto => Set<LogExclusaoProduto>();
     public DbSet<ProdutoEmbalagem> ProdutosEmbalagem => Set<ProdutoEmbalagem>();
     public DbSet<AlimentoTaco> AlimentosTaco => Set<AlimentoTaco>();

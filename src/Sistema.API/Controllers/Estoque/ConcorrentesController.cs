@@ -15,7 +15,8 @@ namespace Sistema.API.Controllers.Estoque;
 [Route("api/concorrentes")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro")]
 public class ConcorrentesController(
-    SistemaDbContext db, MapaConcorrenciaService mapa, GooglePlacesService google) : ControllerBase
+    SistemaDbContext db, MapaConcorrenciaService mapa, GooglePlacesService google,
+    MercadoLivreService ml) : ControllerBase
 {
     /// <summary>Lojas da empresa com status de geocodificação e nº de concorrentes já mapeados.</summary>
     [HttpGet("lojas")]
@@ -412,6 +413,16 @@ public class ConcorrentesController(
         {
             var (b, pb) = Normalizar(c.Preco, c.Unidade, null);
             itens.Add(new ItemNome(c.concorrente, false, c.Descricao, c.Preco, c.Unidade ?? "un", b, pb));
+        }
+        // Preço de mercado online (Mercado Livre), quando conectado.
+        if (ml.Configurado && await ml.ConectadoAsync(ct))
+        {
+            try
+            {
+                foreach (var m in await ml.BuscarAsync(q, 6, ct))
+                    itens.Add(new ItemNome("Mercado Livre", false, m.Titulo, m.Preco, "un", "un", m.Preco));
+            }
+            catch { /* ML indisponível: segue sem ele */ }
         }
         var ordenado = itens.OrderBy(x => x.UnidadeBase).ThenBy(x => x.PrecoBase).ToList();
         return Ok(new { itens = ordenado });

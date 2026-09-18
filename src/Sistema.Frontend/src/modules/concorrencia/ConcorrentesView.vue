@@ -201,6 +201,16 @@
             prepend-inner-icon="mdi-magnify" class="mb-3"
             label="Comparar por nome (ex.: aveia em flocos, castanha do pará, quinoa)" />
 
+          <div v-if="mlStatus" class="d-flex align-center text-caption mb-2">
+            <v-icon size="16" class="mr-1" :color="mlStatus.conectado ? 'success' : 'grey'">mdi-shopping-outline</v-icon>
+            <span v-if="mlStatus.conectado" class="text-success">Preços online do Mercado Livre incluídos na busca por nome</span>
+            <template v-else-if="mlStatus.configurado">
+              <span class="text-medium-emphasis mr-2">Mercado Livre não conectado</span>
+              <v-btn size="x-small" variant="tonal" color="warning" @click="conectarMl">Conectar Mercado Livre</v-btn>
+            </template>
+            <span v-else class="text-medium-emphasis">Preço online do Mercado Livre ainda não configurado no servidor</span>
+          </div>
+
           <template v-if="compNomeQ && compNomeQ.trim().length >= 2">
             <div v-if="carregandoNome" class="text-center pa-6"><v-progress-circular indeterminate color="indigo" /></div>
             <div v-else-if="!compNomeItens.length" class="text-center text-medium-emphasis pa-6 text-body-2">
@@ -529,10 +539,23 @@ function situacaoCor(s: string) {
   return s === 'mais-caro' ? 'error' : s === 'mais-barato' ? 'success'
     : s === 'no-meio' ? 'warning' : 'grey'
 }
+const mlStatus = ref<{ configurado: boolean; conectado: boolean } | null>(null)
+async function carregarMlStatus() {
+  try { const r = await api.get<{ configurado: boolean; conectado: boolean }>('/mercadolivre/status'); mlStatus.value = r.data }
+  catch { mlStatus.value = null }
+}
+async function conectarMl() {
+  try {
+    const r = await api.get<{ url: string }>('/mercadolivre/autorizar')
+    if (r.data?.url) window.open(r.data.url, '_blank', 'noopener')
+  } catch (e: any) { alert(e?.response?.data?.mensagem || 'Mercado Livre não configurado no servidor.') }
+}
+
 async function abrirComparativo() {
   if (!lojaId.value) return
   compNomeQ.value = ''
   compNomeItens.value = []
+  carregarMlStatus()
   dialogComp.value = true
   carregandoComp.value = true
   try {

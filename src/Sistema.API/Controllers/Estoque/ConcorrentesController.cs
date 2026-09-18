@@ -361,4 +361,62 @@ public class ConcorrentesController(
 
         return Ok(new { totalProdutos = itens.Count, itens });
     }
+
+    /// <summary>
+    /// Comparativo por NOME (genérico): busca "aveia em flocos", "castanha do pará", "quinoa"
+    /// e junta o nosso preço com os preços coletados de concorrentes cujo nome bate — tudo
+    /// normalizado (peso em R$/kg, senão R$/un). Não exige casar o SKU exato.
+    /// </summary>
+    [HttpGet("comparativo-nome")]
+    public async Task<IActionResult> ComparativoNome([FromQuery] Guid empresaId,
+        [FromQuery] string q, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+            return Ok(new { itens = Array.Empty<object>() });
+        var termos = q.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        var prodQ = db.Produtos.AsNoTracking().Where(p => p.EmpresaId == empresaId && p.Ativo);
+        foreach (var t in termos) { var tt = t; prodQ = prodQ.Where(p => p.Descricao.Contains(tt)); }
+        var nossos = await prodQ.OrderBy(p => p.Descricao).Take(40)
+            .Select(p => new { p.Descricao, p.PrecoVenda, porPeso = p.ProdutoBalanca || p.VendidoFracionado })
+            .ToListAsync(ct);
+
+        var precoQ = db.PrecosConcorrente.AsNoTracking()
+            .Join(db.Concorrentes, x => x.ConcorrenteId, c => c.Id, (x, c) => new { x, c })
+            .Where(z => z.c.EmpresaId == empresaId && z.c.Ativo);
+        foreach (var t in termos) { var tt = t; precoQ = precoQ.Where(z => z.x.Descricao.Contains(tt)); }
+        var concs = await precoQ.OrderBy(z => z.x.Preco).Take(100)
+            .Select(z => new { concorrente = z.c.Nome, z.x.Descricao, z.x.Preco, z.x.Unidade })
+            .ToListAsync(ct);
+
+        static (string unidadeBase, decimal precoBase) Normalizar(decimal preco, string? unidade, bool? porPesoProduto)
+        {
+            var u = (unidade ?? "").Trim().ToLowerInvariant();
+            var peso = porPesoProduto ?? (u is "kg" or "100g" or "g");
+            if (peso)
+            {
+                var pb = u switch { "kg" => preco, "100g" => preco * 10m, "g" => preco * 1000m, _ => preco };
+                return ("kg", pb);
+            }
+            var pun = u == "dz" ? Math.Round(preco / 12m, 2) : preco;
+            return ("un", pun);
+        }
+
+        var itens = new List<ItemNome>();
+        foreach (var n in nossos)
+        {
+            var (b, pb) = Normalizar(n.PrecoVenda, n.porPeso ? "kg" : "un", n.porPeso);
+            itens.Add(new ItemNome("Nós", true, n.Descricao, n.PrecoVenda, n.porPeso ? "kg" : "un", b, pb));
+        }
+        foreach (var c in concs)
+        {
+            var (b, pb) = Normalizar(c.Preco, c.Unidade, null);
+            itens.Add(new ItemNome(c.concorrente, false, c.Descricao, c.Preco, c.Unidade ?? "un", b, pb));
+        }
+        var ordenado = itens.OrderBy(x => x.UnidadeBase).ThenBy(x => x.PrecoBase).ToList();
+        return Ok(new { itens = ordenado });
+    }
+
+    private record ItemNome(string Fonte, bool EhNosso, string Descricao, decimal Preco,
+        string Unidade, string UnidadeBase, decimal PrecoBase);
 }

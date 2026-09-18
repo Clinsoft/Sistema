@@ -197,6 +197,35 @@
           <v-btn icon="mdi-close" variant="text" size="small" @click="dialogComp = false" />
         </v-card-title>
         <v-card-text>
+          <v-text-field v-model="compNomeQ" clearable variant="outlined" density="compact" hide-details
+            prepend-inner-icon="mdi-magnify" class="mb-3"
+            label="Comparar por nome (ex.: aveia em flocos, castanha do pará, quinoa)" />
+
+          <template v-if="compNomeQ && compNomeQ.trim().length >= 2">
+            <div v-if="carregandoNome" class="text-center pa-6"><v-progress-circular indeterminate color="indigo" /></div>
+            <div v-else-if="!compNomeItens.length" class="text-center text-medium-emphasis pa-6 text-body-2">
+              Nenhum preço (nosso ou de concorrente) com “{{ compNomeQ }}”.
+            </div>
+            <v-table v-else density="compact">
+              <thead>
+                <tr>
+                  <th>Fonte</th><th>Descrição</th>
+                  <th class="text-right">Preço</th><th class="text-center">Base</th><th class="text-right">Normalizado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(it, i) in compNomeItens" :key="i" :class="it.ehNosso ? 'bg-teal-lighten-5' : ''">
+                  <td :class="it.ehNosso ? 'font-weight-bold text-teal-darken-3' : ''">{{ it.ehNosso ? 'Nós' : it.fonte }}</td>
+                  <td>{{ it.descricao }}</td>
+                  <td class="text-right">R$ {{ fmtNum(it.preco) }}/{{ it.unidade }}</td>
+                  <td class="text-center text-caption">/{{ it.unidadeBase }}</td>
+                  <td class="text-right font-weight-bold">R$ {{ fmtNum(it.precoBase) }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </template>
+
+          <template v-else>
           <div v-if="carregandoComp" class="text-center pa-6"><v-progress-circular indeterminate color="indigo" /></div>
           <div v-else-if="!comparativo.length" class="text-center text-medium-emphasis pa-6 text-body-2">
             Ainda não há preços ligados a produtos do nosso catálogo.<br>
@@ -239,6 +268,7 @@
             </tbody>
           </v-table>
           </div>
+          </template>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -501,6 +531,8 @@ function situacaoCor(s: string) {
 }
 async function abrirComparativo() {
   if (!lojaId.value) return
+  compNomeQ.value = ''
+  compNomeItens.value = []
   dialogComp.value = true
   carregandoComp.value = true
   try {
@@ -508,6 +540,24 @@ async function abrirComparativo() {
     comparativo.value = res.data.itens ?? []
   } finally { carregandoComp.value = false }
 }
+
+// Comparativo por NOME (aveia em flocos, castanha do pará, quinoa…): nosso × concorrentes
+const compNomeQ = ref('')
+const compNomeItens = ref<any[]>([])
+const carregandoNome = ref(false)
+let _tNome: any
+watch(compNomeQ, (v) => {
+  clearTimeout(_tNome)
+  if (!v || v.trim().length < 2) { compNomeItens.value = []; return }
+  _tNome = setTimeout(async () => {
+    carregandoNome.value = true
+    try {
+      const res = await api.get<{ itens: any[] }>('/concorrentes/comparativo-nome',
+        { params: { empresaId: auth.empresaId, q: v.trim() } })
+      compNomeItens.value = res.data.itens ?? []
+    } catch { compNomeItens.value = [] } finally { carregandoNome.value = false }
+  }, 350)
+})
 
 async function carregarLojas() {
   if (!auth.empresaId) { carregandoLojas.value = false; return }

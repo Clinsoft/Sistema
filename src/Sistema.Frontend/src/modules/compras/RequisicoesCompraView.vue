@@ -3,7 +3,7 @@
     <div class="d-flex align-center mb-4 gap-2">
       <div class="text-h6 font-weight-bold flex-grow-1">Requisições de Compra</div>
       <v-btn v-if="ehGestor" color="secondary" variant="tonal" prepend-icon="mdi-merge" rounded="lg"
-        class="mr-2" @click="abrirConsolidar">Consolidar pendências</v-btn>
+        class="mr-2" @click="abrirConsolidar">Unir requisições abertas</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNova">Nova Requisição</v-btn>
     </div>
 
@@ -179,6 +179,10 @@
                     <v-btn v-if="ehGestor && det.status !== 'Cancelada'" icon="mdi-account-switch"
                       size="x-small" variant="text" color="primary" class="ml-1"
                       @click="abrirMover(i)" title="Mover para outro fornecedor" />
+                    <v-btn v-if="ehGestor && det.status === 'Aberta' && i.itemId" icon="mdi-delete-outline"
+                      size="x-small" variant="text" color="error"
+                      :loading="removendoItem === i.itemId"
+                      @click="removerItem(i)" title="Remover item (não vou mais comprar)" />
                   </td>
                   <td class="text-center">{{ fmtQtd(i.quantidade) }}</td>
                   <td v-if="ehGestor" class="text-right">R$ {{ fmt(i.custoUnitario) }}</td>
@@ -229,7 +233,7 @@
     <v-dialog v-model="dialogConsol" max-width="720" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-4 d-flex align-center">
-          <v-icon icon="mdi-merge" class="mr-2" />Consolidar pendências por loja
+          <v-icon icon="mdi-merge" class="mr-2" />Unir requisições abertas por loja
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" @click="dialogConsol = false" />
         </v-card-title>
@@ -279,7 +283,7 @@
           <v-btn color="secondary" rounded="lg" prepend-icon="mdi-merge"
             :loading="consolidando" :disabled="!consol?.temPendencias"
             @click="confirmarConsolidar">
-            Consolidar em 1 requisição por loja
+            Unir em 1 requisição por loja
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -432,6 +436,20 @@ function abrirMover(i: ItemDet) {
   fornMoverId.value = i.movido ? (i.fornecedorId ?? null) : null
   dialogMover.value = true
 }
+// ── Remover item da requisição (produto que não vai mais comprar) ──
+const removendoItem = ref<string | null>(null)
+async function removerItem(i: ItemDet) {
+  if (!i.itemId || !det.value?.id) return
+  if (!confirm(`Remover "${i.descricao}" desta requisição?`)) return
+  removendoItem.value = i.itemId
+  try {
+    await api.delete(`/requisicoes-compra/${det.value.id}/itens/${i.itemId}`)
+    notif.ok('Item removido.')
+    await recarregarDetalhe()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao remover o item.') }
+  finally { removendoItem.value = null }
+}
+
 async function confirmarMover() {
   if (!itemMover.value?.itemId) return
   movendo.value = true

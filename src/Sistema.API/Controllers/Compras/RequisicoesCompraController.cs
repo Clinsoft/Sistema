@@ -348,6 +348,22 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         return NoContent();
     }
 
+    /// <summary>Remove um item de uma requisição ABERTA (produto que não vai mais comprar). Só gestor.</summary>
+    [HttpDelete("{id:guid}/itens/{itemId:guid}")]
+    [Authorize(Roles = "Administrador,Gerente")]
+    public async Task<IActionResult> RemoverItem(Guid id, Guid itemId, CancellationToken ct)
+    {
+        var req = await db.RequisicoesCompra.Include(r => r.Itens).FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (req is null) return NotFound();
+        if (req.Status != StatusRequisicaoCompra.Aberta)
+            return BadRequest(new { mensagem = "Só é possível remover itens de requisições abertas." });
+        var item = req.Itens.FirstOrDefault(i => i.Id == itemId);
+        if (item is null) return NotFound();
+        db.ItensRequisicaoCompra.Remove(item);
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
+
     [HttpPatch("{id:guid}/processar")]
     [Authorize(Roles = "Administrador,Gerente")]
     public async Task<IActionResult> Processar(Guid id, CancellationToken ct)

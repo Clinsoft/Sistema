@@ -4,7 +4,7 @@ using Sistema.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(o => o.Filters.Add<Sistema.API.Auth.IsolamentoEmpresaFilter>());
 
 // Auditoria: usuário atual (via HttpContext) para o log de auditoria
 builder.Services.AddHttpContextAccessor();

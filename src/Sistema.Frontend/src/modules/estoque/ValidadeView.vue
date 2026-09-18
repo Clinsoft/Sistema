@@ -240,7 +240,8 @@
                   <v-row dense align="center">
                     <v-col cols="6" sm="3">
                       <v-text-field v-model="it._validade" type="date" label="Validade"
-                        variant="outlined" density="compact" hide-details />
+                        variant="outlined" density="compact" hide-details
+                        @blur="it._validade = corrigirAnoData(it._validade)" />
                     </v-col>
                     <v-col cols="6" sm="3">
                       <v-text-field v-model="it._lote" label="Lote"
@@ -372,7 +373,9 @@
                 </v-col>
                 <v-col cols="8">
                   <v-text-field v-model="form.dataValidade" label="Data de validade *"
-                    type="date" variant="outlined" density="compact" hide-details />
+                    type="date" variant="outlined" density="compact"
+                    @blur="form.dataValidade = corrigirAnoData(form.dataValidade)"
+                    :error-messages="validadeVencida(form.dataValidade) ? 'Data já vencida — confira o ano.' : ''" />
                 </v-col>
                 <v-col cols="4">
                   <v-text-field v-model.number="form.quantidade" label="Qtd"
@@ -795,6 +798,7 @@ import BarcodeScanner from '@/components/BarcodeScanner.vue'
 import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
 import { lerDataValidadeDaImagem } from '@/utils/ocrValidade'
 import api from '@/composables/useApi'
+import { corrigirAnoData, validadeVencida } from '@/utils/dataValidade'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 

@@ -28,15 +28,22 @@ public class Lote : Entity
             NumeroLote = numeroLote,
             Quantidade = quantidade,
             CustoUnitario = custoUnitario,
-            DataFabricacao = dataFabricacao,
-            DataValidade = dataValidade
+            DataFabricacao = NormalizarAno(dataFabricacao),
+            DataValidade = NormalizarAno(dataValidade)
         };
+
+    // Ano de 2 dígitos (0027) vira 20xx (2027) — evita validade "vencida" por erro de digitação.
+    private static DateTime? NormalizarAno(DateTime? d)
+    {
+        if (d is null || d.Value.Year >= 100) return d;
+        return d.Value.AddYears(2000);
+    }
 
     public bool EstaVencido() => DataValidade.HasValue && DataValidade.Value.Date < DateTime.Today;
     public bool VenceEm(int dias) => DataValidade.HasValue && DataValidade.Value.Date <= DateTime.Today.AddDays(dias);
     public void Baixar(decimal quantidade) => Quantidade = Math.Max(0, Quantidade - quantidade);
     public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
-    public void AtualizarValidade(DateTime dataValidade) => DataValidade = dataValidade;
+    public void AtualizarValidade(DateTime dataValidade) => DataValidade = NormalizarAno(dataValidade);
     public void DefinirImagem(string url) => ImagemUrl = url;
 
     public void Editar(string numeroLote, decimal quantidade, decimal custoUnitario,
@@ -45,7 +52,7 @@ public class Lote : Entity
         NumeroLote = numeroLote;
         Quantidade = Math.Max(0, quantidade);
         CustoUnitario = custoUnitario;
-        DataFabricacao = dataFabricacao;
-        DataValidade = dataValidade;
+        DataFabricacao = NormalizarAno(dataFabricacao);
+        DataValidade = NormalizarAno(dataValidade);
     }
 }

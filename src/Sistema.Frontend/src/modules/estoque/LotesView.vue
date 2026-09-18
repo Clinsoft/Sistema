@@ -126,7 +126,9 @@
               </v-col>
               <v-col cols="12" md="4">
                 <v-text-field v-model="form.dataValidade" label="Validade" type="date"
-                  variant="outlined" density="compact" />
+                  variant="outlined" density="compact"
+                  @blur="form.dataValidade = corrigirAnoData(form.dataValidade)"
+                  :error-messages="validadeVencida(form.dataValidade) ? 'Data já vencida — confira o ano.' : ''" />
               </v-col>
               <v-col cols="12" md="6">
                 <v-text-field v-model="form.dataFabricacao" label="Fabricação" type="date"
@@ -178,6 +180,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/composables/useApi'
+import { corrigirAnoData, validadeVencida } from '@/utils/dataValidade'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 

@@ -614,7 +614,8 @@
               <v-text-field v-model="item._validade" label="Validade" type="date"
                 variant="outlined" density="compact" hide-details
                 :disabled="entrada?.status === 'Processada'"
-                @update:model-value="item._alterado = true" />
+                @update:model-value="item._alterado = true"
+                @blur="item._validade = corrigirAnoData(item._validade)" />
             </v-col>
 
           </v-row>
@@ -1116,6 +1117,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import { corrigirAnoData } from '@/utils/dataValidade'
 import { formatarCnpj } from '@/utils/documento'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 

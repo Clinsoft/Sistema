@@ -1089,7 +1089,9 @@
             </v-col>
             <v-col cols="6">
               <v-text-field v-model="loteForm.dataValidade" label="Validade" type="date"
-                variant="outlined" density="compact" />
+                variant="outlined" density="compact"
+                @blur="loteForm.dataValidade = corrigirAnoData(loteForm.dataValidade)"
+                :error-messages="validadeVencida(loteForm.dataValidade) ? 'Data já vencida — confira o ano.' : ''" />
             </v-col>
             <v-col cols="6">
               <v-text-field v-model.number="loteForm.quantidade" label="Quantidade" type="number"
@@ -1190,6 +1192,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
+import { corrigirAnoData, validadeVencida } from '@/utils/dataValidade'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'

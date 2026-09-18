@@ -514,6 +514,11 @@
                         title="Buscar referência no catálogo do Mercado Livre (nome/marca/foto por EAN ou nome). Não é preço.">
                         Referência (Mercado Livre)
                       </v-btn>
+                      <v-btn v-if="editando" size="small" variant="tonal" color="indigo" class="ml-2"
+                        prepend-icon="mdi-history" :loading="carregandoCompras" @click="abrirCompras"
+                        title="Ver em quais notas fiscais este produto foi comprado e quando">
+                        Histórico de compras
+                      </v-btn>
                     </div>
                   </div>
 
@@ -1061,6 +1066,54 @@
               </template>
             </v-list-item>
           </v-list>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Histórico de compras do produto (em quais NF-e ele está e quando) -->
+    <v-dialog v-model="dialogCompras" max-width="820" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-history" color="indigo" />
+          Histórico de compras
+          <span class="text-body-2 text-medium-emphasis">— {{ form.descricao }}</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogCompras = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0">
+          <div v-if="carregandoCompras" class="text-center pa-6"><v-progress-circular indeterminate color="indigo" /></div>
+          <div v-else-if="!compras.length" class="pa-6 text-center text-medium-emphasis text-body-2">
+            Este produto ainda não aparece em nenhuma entrada de NF-e.
+          </div>
+          <v-table v-else density="compact">
+            <thead>
+              <tr>
+                <th>NF-e</th><th>Fornecedor</th>
+                <th>Emitida em</th><th>Entrada em</th>
+                <th class="text-right">Qtd</th><th class="text-right">Custo un.</th>
+                <th>Lote/Validade</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(c, idx) in compras" :key="idx">
+                <td>{{ c.numeroNota }}</td>
+                <td>{{ c.fornecedor }}</td>
+                <td>{{ new Date(c.dataEmissao).toLocaleDateString('pt-BR') }}</td>
+                <td>{{ new Date(c.dataEntrada).toLocaleDateString('pt-BR') }}</td>
+                <td class="text-right">{{ c.quantidade }} {{ c.unidade }}</td>
+                <td class="text-right">R$ {{ (c.custoUnitario ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }}</td>
+                <td>
+                  <template v-if="c.lancado">
+                    <v-chip size="x-small" color="success" variant="tonal">
+                      {{ c.numeroLote || 'lote' }}<span v-if="c.validade"> · {{ new Date(c.validade).toLocaleDateString('pt-BR') }}</span>
+                    </v-chip>
+                  </template>
+                  <v-chip v-else size="x-small" color="warning" variant="tonal">não lançado</v-chip>
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -1769,6 +1822,22 @@ async function aplicarRefFoto(it: RefMl) {
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem || 'Não consegui baixar essa foto.')
   }
+}
+
+// ─── Histórico de compras do produto (em quais NF-e ele está e quando) ───
+const dialogCompras = ref(false)
+const carregandoCompras = ref(false)
+const compras = ref<any[]>([])
+async function abrirCompras() {
+  if (!produtoEditandoId.value) { notif.aviso('Salve o produto primeiro.'); return }
+  dialogCompras.value = true
+  carregandoCompras.value = true
+  compras.value = []
+  try {
+    const { data } = await api.get<{ itens: any[] }>(`/produtos/${produtoEditandoId.value}/compras`)
+    compras.value = data.itens ?? []
+  } catch { notif.erro('Não foi possível carregar o histórico de compras.') }
+  finally { carregandoCompras.value = false }
 }
 
 function previewImagemLocal() {

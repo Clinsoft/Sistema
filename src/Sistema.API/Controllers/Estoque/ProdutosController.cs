@@ -1167,6 +1167,43 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return File(bytes, MediaTypeNames.Application.Pdf, nomeDownload);
     }
 
+    /// <summary>
+    /// Histórico de compras do produto: em quais NF-e de entrada ele aparece, quando (emissão/
+    /// entrada), fornecedor, quantidade, custo e se a validade/lote já foi lançada.
+    /// </summary>
+    [HttpGet("{id:guid}/compras")]
+    public async Task<IActionResult> Compras(Guid id, CancellationToken ct)
+    {
+        var linhas = await (
+            from i in db.ItensEntradaNFe.AsNoTracking()
+            join e in db.EntradasNFe.AsNoTracking() on i.EntradaNFeId equals e.Id
+            where i.ProdutoId == id
+            orderby e.DataEmissao descending
+            select new
+            {
+                e.ChaveAcesso, e.EmitenteNome, e.DataEmissao, e.DataEntrada, e.Status,
+                i.QuantidadeEstoque, i.UnidadeEstoque, i.UnidadeXml, i.CustoUnitarioFinal,
+                i.NumeroLote, i.Validade, i.LoteId
+            }).ToListAsync(ct);
+
+        var itens = linhas.Select(x => new
+        {
+            numeroNota = x.ChaveAcesso.Length == 44 && long.TryParse(x.ChaveAcesso.Substring(25, 9), out var n) ? n : 0,
+            fornecedor = x.EmitenteNome,
+            dataEmissao = x.DataEmissao,
+            dataEntrada = x.DataEntrada,
+            status = x.Status.ToString(),
+            quantidade = x.QuantidadeEstoque,
+            unidade = x.UnidadeEstoque ?? x.UnidadeXml,
+            custoUnitario = x.CustoUnitarioFinal,
+            numeroLote = x.NumeroLote,
+            validade = x.Validade,
+            lancado = x.LoteId != null,
+        }).ToList();
+
+        return Ok(new { total = itens.Count, itens });
+    }
+
     [HttpGet("estoque-minimo")]
     public async Task<IActionResult> EstoqueAbaixoMinimo([FromQuery] Guid empresaId, CancellationToken ct)
     {

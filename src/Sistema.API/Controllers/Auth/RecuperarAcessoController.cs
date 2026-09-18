@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
@@ -9,6 +10,7 @@ namespace Sistema.API.Controllers.Auth;
 [ApiController]
 [Route("api/auth/recuperar-acesso")]
 [AllowAnonymous]
+[EnableRateLimiting("reset")]
 public class RecuperarAcessoController(SistemaDbContext db, IEmailService email, IUnitOfWork uow) : ControllerBase
 {
     [HttpPost]
@@ -93,17 +95,18 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
         const string maiusculas = "ABCDEFGHJKMNPQRSTUVWXYZ";
         const string numeros = "23456789";
         const string especiais = "@#!$";
-        var rng = Random.Shared;
+        // CSPRNG (não Random.Shared) — senha imprevisível.
+        static int N(int max) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(max);
 
         var senha = new char[10];
-        senha[0] = maiusculas[rng.Next(maiusculas.Length)];
-        senha[1] = especiais[rng.Next(especiais.Length)];
-        senha[2] = numeros[rng.Next(numeros.Length)];
-        senha[3] = numeros[rng.Next(numeros.Length)];
+        senha[0] = maiusculas[N(maiusculas.Length)];
+        senha[1] = especiais[N(especiais.Length)];
+        senha[2] = numeros[N(numeros.Length)];
+        senha[3] = numeros[N(numeros.Length)];
         for (int i = 4; i < 10; i++)
-            senha[i] = letras[rng.Next(letras.Length)];
+            senha[i] = letras[N(letras.Length)];
 
-        return new string(senha.OrderBy(_ => rng.Next()).ToArray());
+        return new string(senha.OrderBy(_ => N(1000)).ToArray());
     }
 
     private static string FormatarCnpj(string cnpj) =>

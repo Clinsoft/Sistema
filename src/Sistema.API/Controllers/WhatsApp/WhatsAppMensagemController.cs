@@ -15,7 +15,8 @@ public class WhatsAppMensagemController(
     SistemaDbContext db,
     IUnitOfWork uow,
     WhatsAppCloudApiService whatsAppService,
-    WhatsAppIaAtendenteService iaAtendente) : ControllerBase
+    WhatsAppIaAtendenteService iaAtendente,
+    IConfiguration config) : ControllerBase
 {
     // ─── Configuração ─────────────────────────────────────────────────────────
 
@@ -945,6 +946,22 @@ public class WhatsAppMensagemController(
         string body;
         using (var sr = new System.IO.StreamReader(Request.Body))
             body = await sr.ReadToEndAsync(ct);
+
+        // Verifica a assinatura HMAC da Meta (X-Hub-Signature-256) contra o App Secret.
+        // Só bloqueia quando o segredo está configurado (senão, não quebra o webhook em produção
+        // até o segredo ser cadastrado nos drop-ins systemd). Config: WhatsApp:AppSecret.
+        var appSecret = config["WhatsApp:AppSecret"];
+        if (!string.IsNullOrWhiteSpace(appSecret))
+        {
+            var assinatura = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+            var esperado = "sha256=" + Convert.ToHexString(
+                System.Security.Cryptography.HMACSHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(appSecret),
+                    System.Text.Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
+            var ok = assinatura is not null && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(assinatura), System.Text.Encoding.UTF8.GetBytes(esperado));
+            if (!ok) return Unauthorized();
+        }
 
         // Mensagens de texto recebidas que devem acionar o atendimento por IA (após salvar).
         var atendimentosIa = new List<(ConfiguracaoWhatsAppMensagem cfg, string de, string? nome, string texto)>();

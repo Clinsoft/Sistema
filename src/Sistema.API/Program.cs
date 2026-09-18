@@ -6,6 +6,27 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(o => o.Filters.Add<Sistema.API.Auth.IsolamentoEmpresaFilter>());
 
+// Rate limiting (anti força-bruta) por IP do cliente (X-Forwarded-For atrás do nginx).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Atrás do nginx o IP real vem em X-Real-IP (o nginx não envia X-Forwarded-For aqui).
+    static string Ip(HttpContext c)
+    {
+        var real = c.Request.Headers["X-Real-IP"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(real)) return real.Trim();
+        var fwd = c.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(fwd)) return fwd.Split(',')[0].Trim();
+        return c.Connection.RemoteIpAddress?.ToString() ?? "desconhecido";
+    }
+    options.AddPolicy("login", c => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        Ip(c), _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+        { Window = TimeSpan.FromMinutes(1), PermitLimit = 15, QueueLimit = 0 }));
+    options.AddPolicy("reset", c => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        Ip(c), _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+        { Window = TimeSpan.FromMinutes(15), PermitLimit = 5, QueueLimit = 0 }));
+});
+
 // Auditoria: usuário atual (via HttpContext) para o log de auditoria
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Sistema.Domain.Shared.Interfaces.ICurrentUser, Sistema.API.Auth.CurrentUser>();
@@ -74,6 +95,7 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseStaticFiles();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -116,7 +138,10 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseHangfireDashboard("/jobs");
+app.UseHangfireDashboard("/jobs", new DashboardOptions
+{
+    Authorization = new[] { new Sistema.API.Auth.HangfireLocalDashboardFilter() }
+});
 
 // Registrar jobs recorrentes — TODOS no fuso de Brasília (o Hangfire usa UTC por padrão,
 // o que rodava 3h adiantado; na taxa isso ainda processava um dia a menos).

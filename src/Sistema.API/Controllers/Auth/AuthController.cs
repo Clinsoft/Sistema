@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Sistema.Application.Auth.Commands;
 
 namespace Sistema.API.Controllers.Auth;
@@ -12,6 +13,7 @@ public class AuthController(IMediator mediator) : ControllerBase
     /// <summary>Autentica o usuário e retorna um token JWT.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("login")]
     public async Task<IActionResult> Login([FromBody] LoginCommand cmd, CancellationToken ct)
     {
         try

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.API.Extensions;
+using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Infrastructure.Data;
 
@@ -43,6 +44,14 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             && (lojaAtendente == null || l.LocalEstoqueId == lojaAtendente.Value)
             && l.DataValidade != null && l.DataValidade >= hoje && l.DataValidade <= limiteValidade, ct);
 
+        // Requisições de compra abertas → o gestor precisa gerar os pedidos.
+        var ehAdminGerente = User.IsInRole("Administrador") || User.IsInRole("Gerente");
+        var requisicoesAbertas = ehAdminGerente ? await db.RequisicoesCompra.CountAsync(r =>
+            r.EmpresaId == empresaId && r.Status == StatusRequisicaoCompra.Aberta, ct) : 0;
+
+        // Concorrente mais barato que nós (gestão): produtos em que o menor preço de concorrente ganha.
+        var concorrenteMaisBarato = ehAtendente ? 0 : await ContarConcorrenteMaisBaratoAsync(empresaId, ct);
+
         var itens = new List<object>();
         if (etiquetas > 0) itens.Add(new
         {
@@ -73,6 +82,63 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             rota = "/financeiro/contas-pagar?vencidas=1"
         });
 
+        if (requisicoesAbertas > 0) itens.Add(new
+        {
+            tipo = "requisicao", quantidade = requisicoesAbertas, cor = "indigo", icone = "mdi-clipboard-list-outline",
+            titulo = "Requisições de compra abertas",
+            texto = $"{requisicoesAbertas} requisição(ões) aguardando você gerar o pedido de compra.",
+            rota = "/compras/requisicoes"
+        });
+        if (concorrenteMaisBarato > 0) itens.Add(new
+        {
+            tipo = "concorrencia", quantidade = concorrenteMaisBarato, cor = "deep-purple", icone = "mdi-tag-arrow-down",
+            titulo = "Concorrente mais barato que nós",
+            texto = $"{concorrenteMaisBarato} produto(s) com concorrente abaixo do nosso preço.",
+            rota = "/concorrencia"
+        });
+
         return Ok(new { total = itens.Count, itens });
+    }
+
+    /// <summary>Conta produtos em que o menor preço (última coleta) de um concorrente ativo fica
+    /// abaixo do nosso, normalizando por base (granel R$/kg, senão R$/un).</summary>
+    private async Task<int> ContarConcorrenteMaisBaratoAsync(Guid empresaId, CancellationToken ct)
+    {
+        var raw = await db.PrecosConcorrente.AsNoTracking()
+            .Join(db.Concorrentes, x => x.ConcorrenteId, c => c.Id, (x, c) => new { x, c })
+            .Where(z => z.c.EmpresaId == empresaId && z.c.Ativo && z.x.ProdutoId != null)
+            .Select(z => new { z.x.ProdutoId, z.x.ConcorrenteId, z.x.Preco, z.x.Unidade, z.x.DataColeta })
+            .ToListAsync(ct);
+        if (raw.Count == 0) return 0;
+
+        var ultimos = raw
+            .GroupBy(p => new { p.ProdutoId, p.ConcorrenteId })
+            .Select(g => g.OrderByDescending(x => x.DataColeta).First())
+            .ToList();
+
+        var produtoIds = ultimos.Select(p => p.ProdutoId!.Value).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(x => produtoIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.PrecoVenda, porPeso = x.ProdutoBalanca || x.VendidoFracionado })
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        var total = 0;
+        foreach (var g in ultimos.GroupBy(p => p.ProdutoId!.Value))
+        {
+            if (!produtos.TryGetValue(g.Key, out var prod) || prod.PrecoVenda <= 0) continue;
+            var (_, nosso) = NormalizarPreco(prod.PrecoVenda, prod.porPeso ? "kg" : "un", prod.porPeso);
+            var menor = g.Select(x => NormalizarPreco(x.Preco, x.Unidade, prod.porPeso).precoBase).Min();
+            if (menor < nosso) total++;
+        }
+        return total;
+    }
+
+    // Normaliza um preço para a base (granel R$/kg, senão R$/un).
+    private static (string unidadeBase, decimal precoBase) NormalizarPreco(decimal preco, string? unidade, bool porPeso)
+    {
+        var u = (unidade ?? "").Trim().ToLowerInvariant();
+        if (porPeso)
+            return ("kg", u switch { "kg" => preco, "100g" => preco * 10m, "g" => preco * 1000m, _ => preco });
+        return ("un", u == "dz" ? Math.Round(preco / 12m, 2) : preco);
     }
 }

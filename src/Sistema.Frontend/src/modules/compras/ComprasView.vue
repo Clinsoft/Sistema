@@ -406,10 +406,14 @@ const selecionados = ref<Record<string, boolean>>({})
 const filtros = ref({ status:'Todos', inicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10), fim: new Date().toISOString().slice(0,10) })
 const filtroLoja = ref<string>('todas')
 const pedidosFiltrados = computed(() => {
+  let base = pedidos.value
+  // Com "Todos", esconde os finalizados (Recebido/Cancelado) — pra ver, escolha o status no filtro.
+  if (filtros.value.status === 'Todos')
+    base = base.filter((p: any) => p.status !== 'Cancelado' && p.status !== 'Recebido')
   const f = filtroLoja.value
-  if (!f || f === 'todas') return pedidos.value
-  if (f === 'sem') return pedidos.value.filter((p: any) => !p.localEstoqueId)
-  return pedidos.value.filter((p: any) => p.localEstoqueId === f)
+  if (!f || f === 'todas') return base
+  if (f === 'sem') return base.filter((p: any) => !p.localEstoqueId)
+  return base.filter((p: any) => p.localEstoqueId === f)
 })
 
 // Totais por unidade no período/status carregado (ignora cancelados)

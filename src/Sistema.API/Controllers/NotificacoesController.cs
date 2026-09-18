@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Sistema.API.Extensions;
 using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Financeiro.Entities;
+using Sistema.Domain.Fiscal.Entities;
 using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers;
@@ -44,6 +45,17 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             && (lojaAtendente == null || l.LocalEstoqueId == lojaAtendente.Value)
             && l.DataValidade != null && l.DataValidade >= hoje && l.DataValidade <= limiteValidade, ct);
 
+        // Validade/lote pendente de lançamento: nota JÁ recebida (Processada) com item que
+        // controla validade e ainda SEM lote. O atendente vê a da SUA loja (precisa lançar);
+        // o gestor vê de todas. Cobra o lançamento assim que o produto chega.
+        var corteValidade = hoje.AddDays(-90);
+        var validadePendente = await db.EntradasNFe.CountAsync(e =>
+            e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
+            && e.DataEntrada >= corteValidade
+            && (lojaAtendente == null || e.LocalEstoqueId == lojaAtendente.Value)
+            && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
+                && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)), ct);
+
         // Requisições de compra abertas → o gestor precisa gerar os pedidos.
         var ehAdminGerente = User.IsInRole("Administrador") || User.IsInRole("Gerente");
         var requisicoesAbertas = ehAdminGerente ? await db.RequisicoesCompra.CountAsync(r =>
@@ -82,6 +94,13 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             rota = "/financeiro/contas-pagar?vencidas=1"
         });
 
+        if (validadePendente > 0) itens.Add(new
+        {
+            tipo = "validade-pendente", quantidade = validadePendente, cor = "deep-orange", icone = "mdi-clipboard-alert-outline",
+            titulo = "Validade/lote pendente",
+            texto = $"{validadePendente} nota(s) recebida(s) sem validade/lote lançado.",
+            rota = "/estoque/validade?pendentes=1"
+        });
         if (requisicoesAbertas > 0) itens.Add(new
         {
             tipo = "requisicao", quantidade = requisicoesAbertas, cor = "indigo", icone = "mdi-clipboard-list-outline",

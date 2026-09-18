@@ -241,6 +241,54 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
         });
     }
 
+    /// <summary>
+    /// Pendências de lançamento de validade/lote por loja: entradas de NF-e JÁ PROCESSADAS
+    /// (produto chegou) que ainda têm itens que controlam validade SEM lote vinculado.
+    /// Mostra há quantos dias está pendente — para o gestor cobrar à distância.
+    /// </summary>
+    [HttpGet("pendencias")]
+    public async Task<IActionResult> Pendencias([FromQuery] Guid empresaId, [FromQuery] int dias = 90,
+        [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
+    {
+        var corte = DateTime.Today.AddDays(-Math.Abs(dias == 0 ? 90 : dias));
+        var entradas = await db.EntradasNFe.AsNoTracking()
+            .Include(e => e.Itens)
+            .Where(e => e.EmpresaId == empresaId
+                     && e.Status == Sistema.Domain.Fiscal.Entities.StatusEntradaNFe.Processada
+                     && e.DataEntrada >= corte
+                     && (localEstoqueId == null || e.LocalEstoqueId == localEstoqueId))
+            .OrderByDescending(e => e.DataEntrada)
+            .ToListAsync(ct);
+
+        var produtoIds = entradas.SelectMany(e => e.Itens)
+            .Where(i => i.ProdutoId.HasValue).Select(i => i.ProdutoId!.Value).Distinct().ToList();
+        var controla = (await db.Produtos.AsNoTracking()
+            .Where(p => produtoIds.Contains(p.Id) && p.ControlarValidade)
+            .Select(p => p.Id).ToListAsync(ct)).ToHashSet();
+
+        var lojas = await db.LocaisEstoque.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+        var hoje = DateTime.Today;
+        var lista = new List<PendenciaValidade>();
+        foreach (var e in entradas)
+        {
+            var pend = e.Itens.Count(i => i.ProdutoId.HasValue && controla.Contains(i.ProdutoId.Value) && i.LoteId == null);
+            if (pend == 0) continue;
+            var totalCtrl = e.Itens.Count(i => i.ProdutoId.HasValue && controla.Contains(i.ProdutoId.Value));
+            var dataRef = e.DataProcessamento ?? e.DataEntrada;
+            long numero = e.ChaveAcesso.Length == 44 && long.TryParse(e.ChaveAcesso.Substring(25, 9), out var n) ? n : 0;
+            lista.Add(new PendenciaValidade(
+                e.Id, numero,
+                e.LocalEstoqueId != Guid.Empty && lojas.TryGetValue(e.LocalEstoqueId, out var ln) ? ln : "—",
+                e.LocalEstoqueId, e.EmitenteNome, dataRef,
+                (int)(hoje - dataRef.Date).TotalDays, pend, totalCtrl));
+        }
+        var ordenado = lista.OrderByDescending(x => x.DiasPendente).ToList();
+        return Ok(new { total = ordenado.Count, itens = ordenado });
+    }
+
+    private record PendenciaValidade(Guid EntradaId, long NumeroNota, string Loja, Guid LocalEstoqueId,
+        string Fornecedor, DateTime DataEntrada, int DiasPendente, int Pendentes, int TotalControlados);
+
     // ─── Preencher validades a partir do XML já guardado da nota ────────────
 
     /// <summary>

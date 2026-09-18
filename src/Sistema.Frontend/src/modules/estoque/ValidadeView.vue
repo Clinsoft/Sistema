@@ -37,6 +37,11 @@
         <v-badge v-if="vencidos + proximos > 0" :content="vencidos + proximos"
           color="error" inline class="ml-1" />
       </v-tab>
+      <v-tab value="pendentes">
+        <v-icon start>mdi-clipboard-alert-outline</v-icon>Pendentes
+        <v-badge v-if="pendencias.length > 0" :content="pendencias.length"
+          color="deep-orange" inline class="ml-1" />
+      </v-tab>
     </v-tabs>
 
     <!-- ═══════════════════ ABA: MONITORAMENTO ═══════════════════ -->
@@ -483,6 +488,42 @@
       </v-card>
     </v-dialog>
 
+    <!-- ═══════════════════ ABA: PENDENTES (validade/lote não lançados) ═══════════════════ -->
+    <div v-if="aba === 'pendentes'">
+      <v-alert type="info" variant="tonal" density="comfortable" class="mb-3">
+        Notas <b>já recebidas</b> com produtos que controlam validade e ainda <b>sem lote/validade lançados</b>.
+        Clique em <b>Lançar</b> para abrir a nota e registrar. Ordenado pelas mais antigas (maior atraso).
+      </v-alert>
+
+      <div class="d-flex align-center flex-wrap gap-2 mb-3">
+        <v-select v-model="pendLoja" :items="[{ id: '', nome: 'Todas as lojas' }, ...locais]"
+          item-title="nome" item-value="id" label="Loja" variant="outlined" density="compact"
+          hide-details style="max-width:260px" @update:model-value="carregarPendencias" />
+        <v-spacer />
+        <v-btn variant="tonal" color="primary" :loading="carregandoPend" prepend-icon="mdi-refresh"
+          @click="carregarPendencias">Atualizar</v-btn>
+      </div>
+
+      <v-card rounded="xl" elevation="1">
+        <v-data-table :headers="headersPend" :items="pendencias" :loading="carregandoPend"
+          density="compact" no-data-text="Nenhuma pendência — tudo lançado. 🎉">
+          <template #item.dataEntrada="{ item }">{{ new Date(item.dataEntrada).toLocaleDateString('pt-BR') }}</template>
+          <template #item.diasPendente="{ item }">
+            <v-chip size="small" :color="item.diasPendente >= 3 ? 'error' : (item.diasPendente >= 1 ? 'warning' : 'success')" variant="tonal">
+              {{ item.diasPendente === 0 ? 'hoje' : item.diasPendente + ' dia(s)' }}
+            </v-chip>
+          </template>
+          <template #item.pendentes="{ item }">
+            <b>{{ item.pendentes }}</b><span class="text-medium-emphasis"> / {{ item.totalControlados }}</span>
+          </template>
+          <template #item.acoes="{ item }">
+            <v-btn size="small" color="deep-orange" variant="tonal" rounded="lg"
+              prepend-icon="mdi-pencil-plus" @click="abrirNotaPendente(item)">Lançar</v-btn>
+          </template>
+        </v-data-table>
+      </v-card>
+    </div>
+
     <!-- ═══════════════════ ABA: LOTES ═══════════════════ -->
     <div v-if="aba === 'lotes'">
       <v-row align="center" class="mb-3">
@@ -801,11 +842,43 @@ import api from '@/composables/useApi'
 import { corrigirAnoData, validadeVencida } from '@/utils/dataValidade'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import { useRoute } from 'vue-router'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
+const route = useRoute()
 
 const aba = ref('painel')
+
+// ─── Pendentes de lançamento (validade/lote não lançados) ──────────────────────
+const pendencias = ref<any[]>([])
+const carregandoPend = ref(false)
+const pendLoja = ref('')
+const headersPend = [
+  { title: 'Loja', key: 'loja' },
+  { title: 'NF nº', key: 'numeroNota' },
+  { title: 'Fornecedor', key: 'fornecedor' },
+  { title: 'Recebida em', key: 'dataEntrada' },
+  { title: 'Pendente há', key: 'diasPendente' },
+  { title: 'Itens pend.', key: 'pendentes', align: 'center' as const },
+  { title: '', key: 'acoes', sortable: false, align: 'end' as const },
+]
+async function carregarPendencias() {
+  carregandoPend.value = true
+  try {
+    const r = await api.get<{ itens: any[] }>('/validade/pendencias', {
+      params: { empresaId: auth.empresaId, dias: 90, localEstoqueId: pendLoja.value || undefined },
+    })
+    pendencias.value = r.data.itens ?? []
+  } catch { pendencias.value = [] } finally { carregandoPend.value = false }
+}
+function abrirNotaPendente(p: any) {
+  aba.value = 'registrar'
+  modoRegistro.value = 'nota'
+  soPendentes.value = true
+  numeroNota.value = String(p.numeroNota)
+  buscarNota()
+}
 
 // ─── Painel + filtros ────────────────────────────────────────────────────────
 const carregando = ref(false)
@@ -1537,6 +1610,8 @@ onMounted(async () => {
   ])
   locais.value = loc.data
   await listarVencimentos()
+  await carregarPendencias()
+  if (route.query.pendentes) aba.value = 'pendentes'
 })
 </script>
 

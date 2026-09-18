@@ -51,6 +51,11 @@ public class EntradaNFe : Entity
     public DateTime? DataEstorno { get; private set; }
     public string? MotivoEstorno { get; private set; }
 
+    /// <summary>Dispensa a cobrança de validade/lote pendente desta nota (gestor decidiu não lançar).</summary>
+    public bool ValidadePendenteIgnorada { get; private set; }
+    public void IgnorarValidadePendente() { ValidadePendenteIgnorada = true; AtualizadoEm = DateTime.UtcNow; }
+    public void ReativarValidadePendente() { ValidadePendenteIgnorada = false; AtualizadoEm = DateTime.UtcNow; }
+
     // Método de rateio do frete. Hoje sempre ValorProporcional; computado (sem setter)
     // para o EF não criar coluna. Estruturado para virar campo configurável no futuro
     // (por peso, quantidade, volume).

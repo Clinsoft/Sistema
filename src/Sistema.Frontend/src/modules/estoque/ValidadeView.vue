@@ -517,8 +517,11 @@
             <b>{{ item.pendentes }}</b><span class="text-medium-emphasis"> / {{ item.totalControlados }}</span>
           </template>
           <template #item.acoes="{ item }">
-            <v-btn size="small" color="deep-orange" variant="tonal" rounded="lg"
+            <v-btn size="small" color="deep-orange" variant="tonal" rounded="lg" class="mr-1"
               prepend-icon="mdi-pencil-plus" @click="abrirNotaPendente(item)">Lançar</v-btn>
+            <v-btn size="small" variant="text" color="grey-darken-1" rounded="lg"
+              prepend-icon="mdi-bell-off-outline" :loading="ignorandoId === item.entradaId"
+              @click="ignorarPendencia(item)" title="Dispensar: não cobrar o lançamento desta nota">Ignorar</v-btn>
           </template>
         </v-data-table>
       </v-card>
@@ -878,6 +881,17 @@ function abrirNotaPendente(p: any) {
   soPendentes.value = true
   numeroNota.value = String(p.numeroNota)
   buscarNota()
+}
+const ignorandoId = ref<string | null>(null)
+async function ignorarPendencia(p: any) {
+  if (!confirm(`Ignorar a pendência da NF nº ${p.numeroNota} (${p.loja})? Ela sai do painel e do sininho. A nota e o estoque não são afetados.`)) return
+  ignorandoId.value = p.entradaId
+  try {
+    await api.post(`/validade/pendencias/${p.entradaId}/ignorar`)
+    pendencias.value = pendencias.value.filter((x: any) => x.entradaId !== p.entradaId)
+    notif.ok(`Pendência da NF ${p.numeroNota} dispensada.`)
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao ignorar a pendência.') }
+  finally { ignorandoId.value = null }
 }
 
 // ─── Painel + filtros ────────────────────────────────────────────────────────

@@ -258,6 +258,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
             .Include(e => e.Itens)
             .Where(e => e.EmpresaId == empresaId
                      && e.Status == Sistema.Domain.Fiscal.Entities.StatusEntradaNFe.Processada
+                     && !e.ValidadePendenteIgnorada
                      && e.DataEntrada >= corte
                      && (localEstoqueId == null || e.LocalEstoqueId == localEstoqueId))
             .OrderByDescending(e => e.DataEntrada)
@@ -291,6 +292,20 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
 
     private record PendenciaValidade(Guid EntradaId, long NumeroNota, string Loja, Guid LocalEstoqueId,
         string Fornecedor, DateTime DataEntrada, int DiasPendente, int Pendentes, int TotalControlados);
+
+    /// <summary>Dispensa (ignora) a pendência de validade/lote de uma nota — sai do sininho e do painel.
+    /// Não apaga a nota nem o estoque; só marca que o gestor decidiu não cobrar o lançamento. Só gestor.</summary>
+    [HttpPost("pendencias/{entradaId:guid}/ignorar")]
+    [Authorize(Roles = "Administrador,Gerente")]
+    public async Task<IActionResult> IgnorarPendencia(Guid entradaId, [FromQuery] bool reativar = false, CancellationToken ct = default)
+    {
+        var entrada = await db.EntradasNFe.FirstOrDefaultAsync(e => e.Id == entradaId, ct);
+        if (entrada is null) return NotFound();
+        if (reativar) entrada.ReativarValidadePendente();
+        else entrada.IgnorarValidadePendente();
+        await uow.SalvarAsync(ct);
+        return NoContent();
+    }
 
     // ─── Preencher validades a partir do XML já guardado da nota ────────────
 

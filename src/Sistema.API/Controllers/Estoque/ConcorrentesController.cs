@@ -275,6 +275,27 @@ public class ConcorrentesController(
         return Ok(new { p.Id, p.ProdutoId, p.Descricao, p.Ean, p.Preco, p.Unidade, p.DataColeta, p.Observacao, nossoPreco = nosso });
     }
 
+    public record PrecoLoteItem(Guid? ProdutoId, string Descricao, string? Ean, decimal Preco, string Unidade, string? Observacao);
+
+    /// <summary>Coleta em massa: grava vários preços de um concorrente de uma vez.</summary>
+    [HttpPost("concorrente/{concorrenteId:guid}/precos-lote")]
+    public async Task<IActionResult> AdicionarPrecosLote(Guid concorrenteId,
+        [FromBody] List<PrecoLoteItem> itens, CancellationToken ct)
+    {
+        var conc = await db.Concorrentes.FirstOrDefaultAsync(c => c.Id == concorrenteId, ct);
+        if (conc is null) return NotFound();
+        int add = 0;
+        foreach (var i in itens ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(i.Descricao) || i.Preco <= 0) continue;
+            db.PrecosConcorrente.Add(PrecoConcorrente.Criar(conc.EmpresaId, concorrenteId,
+                i.Descricao.Trim(), i.Preco, i.Unidade, i.ProdutoId, i.Ean, null, i.Observacao));
+            add++;
+        }
+        if (add > 0) await db.SaveChangesAsync(ct);
+        return Ok(new { adicionados = add });
+    }
+
     [HttpDelete("precos/{id:guid}")]
     public async Task<IActionResult> RemoverPreco(Guid id, CancellationToken ct)
     {

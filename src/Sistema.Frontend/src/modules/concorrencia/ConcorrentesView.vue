@@ -81,6 +81,8 @@
             <v-spacer />
             <v-btn v-if="temCoord" size="small" variant="tonal" color="indigo" class="mr-1"
               prepend-icon="mdi-scale-balance" @click="abrirComparativo">Comparar</v-btn>
+            <v-btn v-if="temCoord && concorrentes.length" size="small" variant="tonal" color="deep-purple" class="mr-1"
+              prepend-icon="mdi-format-list-numbered" @click="abrirMassa">Massa</v-btn>
             <v-btn v-if="temCoord" size="small" variant="tonal" color="teal"
               prepend-icon="mdi-map-marker-plus" @click="iniciarAdd">Adicionar</v-btn>
           </v-card-title>
@@ -284,6 +286,60 @@
       </v-card>
     </v-dialog>
 
+    <!-- Diálogo: coleta em massa -->
+    <v-dialog v-model="dialogMassa" max-width="740" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4 pb-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-format-list-numbered" color="deep-purple" class="mr-2" />
+          Coleta em massa de preços
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogMassa = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-select v-model="massaConcId" :items="concorrentes" item-title="nome" item-value="id"
+                label="Concorrente" variant="outlined" density="compact" hide-details />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-autocomplete v-model="massaProd" :items="prodOpcoes" item-title="descricao" item-value="id"
+                return-object label="Adicionar produto do catálogo" variant="outlined" density="compact"
+                hide-details :loading="buscandoProd" no-filter @update:search="buscarProdutos"
+                @update:model-value="addLinhaMassa" placeholder="Digite 2+ letras e clique no produto" />
+            </v-col>
+          </v-row>
+
+          <div v-if="!massaRows.length" class="text-center text-medium-emphasis pa-6 text-body-2">
+            Escolha o concorrente e vá adicionando produtos. Preencha o preço de cada um e clique em Salvar.
+          </div>
+          <v-table v-else density="compact" class="mt-2">
+            <thead>
+              <tr>
+                <th>Produto</th><th class="text-right">Nosso</th>
+                <th style="width:120px">Preço conc.</th><th style="width:96px">Un.</th><th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in massaRows" :key="i">
+                <td class="text-caption">{{ r.descricao }}</td>
+                <td class="text-right text-caption">{{ r.nossoPreco != null ? 'R$ ' + fmtNum(r.nossoPreco) : '—' }}</td>
+                <td><v-text-field v-model.number="r.preco" type="number" prefix="R$" density="compact" variant="outlined" hide-details /></td>
+                <td><v-select v-model="r.unidade" :items="unidades" density="compact" variant="outlined" hide-details /></td>
+                <td><v-btn icon="mdi-close" size="x-small" variant="text" color="grey" @click="removerLinhaMassa(i)" /></td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="px-4 pb-3">
+          <span class="text-caption text-medium-emphasis">{{ massaValidas }} com preço preenchido</span>
+          <v-spacer />
+          <v-btn variant="text" @click="dialogMassa = false">Cancelar</v-btn>
+          <v-btn color="deep-purple" variant="flat" :loading="salvandoMassa"
+            :disabled="!massaConcId || !massaValidas" @click="salvarMassa">Salvar {{ massaValidas }} preço(s)</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Diálogo: novo concorrente manual -->
     <v-dialog v-model="dialogAdd" max-width="420">
       <v-card rounded="xl">
@@ -307,6 +363,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :timeout="3000" color="teal">{{ snackbarMsg }}</v-snackbar>
   </div>
 </template>
 
@@ -318,6 +376,9 @@ import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const snackbar = ref(false)
+const snackbarMsg = ref('')
+function notificar(m: string) { snackbarMsg.value = m; snackbar.value = true }
 
 interface Loja { id: string; nome: string; latitude: number | null; longitude: number | null; endereco: string | null; geocodificada: boolean; concorrentes: number }
 interface Concorrente { id: string; nome: string; categoria: string | null; latitude: number; longitude: number; distanciaKm: number; endereco: string | null; telefone: string | null; website: string | null; fonte: string }
@@ -526,6 +587,46 @@ async function adicionarPreco() {
 }
 async function removerPreco(id: string) {
   try { await api.delete(`/concorrentes/precos/${id}`); precos.value = precos.value.filter(p => p.id !== id) } catch { /* ignora */ }
+}
+
+// ── Coleta em massa: vários produtos de um concorrente de uma vez ──────────────
+const dialogMassa = ref(false)
+const massaConcId = ref<string | null>(null)
+const salvandoMassa = ref(false)
+const massaProd = ref<any>(null)
+interface MassaRow { produtoId: string | null; descricao: string; nossoPreco: number | null; preco: number | null; unidade: string }
+const massaRows = ref<MassaRow[]>([])
+const massaValidas = computed(() => massaRows.value.filter(r => r.preco && r.preco > 0).length)
+
+function abrirMassa() {
+  massaRows.value = []
+  massaProd.value = null
+  massaConcId.value = concorrentes.value[0]?.id ?? null
+  dialogMassa.value = true
+}
+function addLinhaMassa(prod: any) {
+  if (!prod || !prod.id) return
+  if (!massaRows.value.some(r => r.produtoId === prod.id)) {
+    const peso = !!(prod.produtoBalanca || prod.vendidoFracionado)
+    massaRows.value.push({ produtoId: prod.id, descricao: prod.descricao, nossoPreco: prod.precoVenda ?? null, preco: null, unidade: peso ? 'kg' : 'un' })
+  }
+  nextTick(() => { massaProd.value = null; prodOpcoes.value = [] })
+}
+function removerLinhaMassa(i: number) { massaRows.value.splice(i, 1) }
+async function salvarMassa() {
+  if (!massaConcId.value) return
+  const itens = massaRows.value.filter(r => r.preco && r.preco > 0).map(r => ({
+    produtoId: r.produtoId, descricao: r.descricao, ean: null, preco: r.preco, unidade: r.unidade, observacao: null,
+  }))
+  if (!itens.length) return
+  salvandoMassa.value = true
+  try {
+    const res = await api.post<{ adicionados: number }>(`/concorrentes/concorrente/${massaConcId.value}/precos-lote`, itens)
+    dialogMassa.value = false
+    notificar(`${res.data.adicionados} preço(s) salvo(s).`)
+  } catch (e: any) {
+    alert(e?.response?.data?.mensagem || 'Não foi possível salvar em massa.')
+  } finally { salvandoMassa.value = false }
 }
 
 // Comparativo nosso × concorrentes (por produto)

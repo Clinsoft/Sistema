@@ -812,6 +812,10 @@
                 <span class="leg-cel heat-peak" style="background:rgba(0,150,136,0.7)" />
                 <span>Dia e horário de maior movimento</span>
               </div>
+              <div class="d-flex align-center gap-1">
+                <span class="rank-badge rank-1">1º</span>
+                <span>Ranking dos dias por movimento (1º = mais movimentado)</span>
+              </div>
             </div>
 
             <v-row>
@@ -851,7 +855,12 @@
                     </thead>
                     <tbody>
                       <tr v-for="linha in loja.linhas" :key="linha.d">
-                        <td class="heat-dia" :class="{ 'heat-dia-peak': linha.isPeak }">{{ linha.label }}</td>
+                        <td class="heat-dia" :class="{ 'heat-dia-peak': linha.isPeak }">
+                          <span v-if="linha.rank" class="rank-badge"
+                            :class="{ 'rank-1': linha.rank === 1 }"
+                            :title="`${linha.rank}º dia de maior movimento — ${linha.total} venda(s)`">{{ linha.rank }}º</span>
+                          {{ linha.label }}
+                        </td>
                         <td v-for="c in linha.cells" :key="c.h"
                           class="heat-cell" :class="{ 'heat-peak': c.peak }"
                           :style="{ background: c.v ? `rgba(0,150,136,${c.a})` : 'rgba(127,127,127,0.06)', color: c.a > 0.55 ? '#fff' : '' }"
@@ -1851,14 +1860,18 @@ const lojasMovimento = computed(() => (movimento.value?.lojas ?? []).map((loja: 
     map[`${c.dia}-${c.hora}`] = c.vendas
     if (c.vendas > mx) { mx = c.vendas; maxDia = c.dia; maxHora = c.hora }
   }
-  const linhas = []
+  const linhas: any[] = []
   for (let d = 0; d < 7; d++) {
     const cells = horas.map(({ h }) => {
       const v = map[`${d}-${h}`] || 0
       return { h, v, a: v ? 0.15 + 0.85 * v / (mx || 1) : 0, peak: d === maxDia && h === maxHora }
     })
-    linhas.push({ d, label: diasCurto[d], isPeak: d === loja.picoDia.dia, cells })
+    const total = cells.reduce((s, c) => s + c.v, 0)
+    linhas.push({ d, label: diasCurto[d], isPeak: d === loja.picoDia.dia, cells, total })
   }
+  // Ranking dos dias por movimento (1º = mais vendas). Dias sem venda ficam sem número.
+  linhas.filter(l => l.total > 0).sort((a, b) => b.total - a.total)
+    .forEach((l, i) => { l.rank = i + 1 })
   // Barras: vendas por horário (usa o mesmo range de horas do heatmap)
   const porHoraMap: Record<number, number> = {}
   let maxBar = 0
@@ -1922,6 +1935,12 @@ onMounted(async () => {
 .heat-peak { outline: 2px solid #ff5722; outline-offset: -1px; font-weight: 700; }
 .heat-col-peak { color: #ff5722 !important; font-weight: 700; }
 .heat-dia-peak { color: #ff5722 !important; }
+.rank-badge {
+  display: inline-block; min-width: 18px; padding: 0 3px; margin-right: 3px;
+  font-size: 0.62rem; font-weight: 700; line-height: 15px; text-align: center;
+  border-radius: 4px; background: rgba(0, 150, 136, 0.15); color: #00897b;
+}
+.rank-1 { background: #ff5722; color: #fff; }
 .leg-cel {
   display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle;
 }

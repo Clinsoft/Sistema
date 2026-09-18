@@ -312,7 +312,13 @@ const headers = [
   { title: 'Solicitante', key: 'solicitante' }, { title: 'Itens', key: 'qtdItens', align: 'center' as const },
   { title: 'Status', key: 'status' }, { title: '', key: 'acoes', sortable: false, width: 240 },
 ]
-const listaFiltrada = computed(() => lista.value)
+const listaFiltrada = computed(() => {
+  // Filtro de status no cliente (instantâneo): "Todas" esconde as finalizadas
+  // (Processada/Cancelada); qualquer outro mostra só aquele status.
+  const s = filtroStatus.value
+  if (s === 'Todas') return lista.value.filter((r: any) => r.status !== 'Processada' && r.status !== 'Cancelada')
+  return lista.value.filter((r: any) => r.status === s)
+})
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQtd = (v: number) => (v ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })
@@ -321,9 +327,8 @@ const corStatus = (s: string) => ({ Aberta: 'warning', Processada: 'success', Ca
 async function carregar() {
   carregando.value = true
   try {
-    const r = await api.get('/requisicoes-compra', {
-      params: { empresaId: auth.empresaId, status: filtroStatus.value === 'Todas' ? undefined : filtroStatus.value },
-    })
+    // Carrega TODAS as requisições; o filtro de status é aplicado no cliente (listaFiltrada).
+    const r = await api.get('/requisicoes-compra', { params: { empresaId: auth.empresaId } })
     lista.value = r.data ?? []
   } catch { lista.value = [] } finally { carregando.value = false }
 }

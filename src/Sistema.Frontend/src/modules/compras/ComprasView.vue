@@ -407,9 +407,12 @@ const filtros = ref({ status:'Todos', inicio: new Date(new Date().getFullYear(),
 const filtroLoja = ref<string>('todas')
 const pedidosFiltrados = computed(() => {
   let base = pedidos.value
-  // Com "Todos", esconde os finalizados (Recebido/Cancelado) — pra ver, escolha o status no filtro.
+  // Filtro de status (cliente): "Todos" esconde os finalizados (Recebido/Cancelado);
+  // qualquer outro mostra só aquele status.
   if (filtros.value.status === 'Todos')
     base = base.filter((p: any) => p.status !== 'Cancelado' && p.status !== 'Recebido')
+  else
+    base = base.filter((p: any) => p.status === filtros.value.status)
   const f = filtroLoja.value
   if (!f || f === 'todas') return base
   if (f === 'sem') return base.filter((p: any) => !p.localEstoqueId)
@@ -449,7 +452,9 @@ const uniTitle = (u: any) => u?.descricao ? `${u.sigla} — ${u.descricao}` : (u
 const fmt = (v: number) => (v??0).toLocaleString('pt-BR', { minimumFractionDigits:2 })
 async function carregar() {
   carregando.value=true
-  try { const r = await api.get('/pedidos-compra', { params:{ empresaId:auth.empresaId, ...filtros.value } }); pedidos.value=r.data }
+  // Carrega TODOS os status do período; o filtro de status é aplicado no cliente
+  // (instantâneo, sem depender do botão Buscar) em pedidosFiltrados.
+  try { const r = await api.get('/pedidos-compra', { params:{ empresaId:auth.empresaId, inicio:filtros.value.inicio, fim:filtros.value.fim } }); pedidos.value=r.data }
   finally { carregando.value=false }
 }
 // Carrega, uma vez, os cadastros usados no dialog (fornecedores, produtos, unidades).

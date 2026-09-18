@@ -580,6 +580,21 @@ async function removerItemPedido(i: any) {
     await api.post(`/pedidos-compra/${det.value.id}/remover-itens`, { itemIds: [i.id] })
     det.value.itens = (det.value.itens ?? []).filter((x: any) => x.id !== i.id)
     delete faltantes.value[i.id]
+    // Se era o último item, o pedido fica vazio (rascunho sem produto) → oferecer excluir.
+    if (!(det.value.itens ?? []).length) {
+      const pedidoId = det.value.id
+      const numero = det.value.numero
+      dialogDet.value = false
+      await carregar()
+      if (confirm(`O pedido ${numero} ficou sem nenhum item. Excluir o pedido vazio?`)) {
+        await api.delete(`/pedidos-compra/${pedidoId}`, { params: { empresaId: auth.empresaId } })
+        notif.ok(`Item removido e pedido ${numero} (vazio) excluído.`)
+        await carregar()
+      } else {
+        notif.ok('Item removido. O pedido ficou vazio.')
+      }
+      return
+    }
     notif.ok('Item removido do pedido.')
     await carregar()
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao remover o item.') }

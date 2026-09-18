@@ -3,7 +3,7 @@
     <div class="d-flex align-center mb-4 gap-2">
       <div class="text-h6 font-weight-bold flex-grow-1">Requisições de Compra</div>
       <v-btn v-if="ehGestor" color="secondary" variant="tonal" prepend-icon="mdi-merge" rounded="lg"
-        class="mr-2" @click="abrirConsolidar">Unir requisições abertas</v-btn>
+        class="mr-2" @click="abrirUnir">Unir requisições abertas</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" rounded="lg" @click="abrirNova">Nova Requisição</v-btn>
     </div>
 
@@ -229,13 +229,13 @@
       </v-card>
     </v-dialog>
 
-    <!-- Dialog: consolidar pendências por loja -->
-    <v-dialog v-model="dialogConsol" max-width="720" persistent scrollable>
+    <!-- Dialog: unir requisições abertas por loja -->
+    <v-dialog v-model="dialogUnir" max-width="720" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-4 d-flex align-center">
           <v-icon icon="mdi-merge" class="mr-2" />Unir requisições abertas por loja
           <v-spacer />
-          <v-btn icon="mdi-close" variant="text" @click="dialogConsol = false" />
+          <v-btn icon="mdi-close" variant="text" @click="dialogUnir = false" />
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
@@ -245,20 +245,20 @@
             As origens são <b>canceladas</b> para não duplicar. Pedidos já enviados/recebidos não são tocados.
           </v-alert>
 
-          <div v-if="carregandoConsol" class="text-center py-6"><v-progress-circular indeterminate color="primary" /></div>
+          <div v-if="carregandoUnir" class="text-center py-6"><v-progress-circular indeterminate color="primary" /></div>
 
-          <template v-else-if="consol">
+          <template v-else-if="dadosUnir">
             <div class="d-flex ga-2 mb-3">
-              <v-chip color="warning" variant="tonal" size="small">Requisições abertas: {{ consol.requisicoesAbertas }}</v-chip>
-              <v-chip color="orange" variant="tonal" size="small">Pedidos em rascunho: {{ consol.pedidosRascunho }}</v-chip>
+              <v-chip color="warning" variant="tonal" size="small">Requisições abertas: {{ dadosUnir.requisicoesAbertas }}</v-chip>
+              <v-chip color="orange" variant="tonal" size="small">Pedidos em rascunho: {{ dadosUnir.pedidosRascunho }}</v-chip>
             </div>
 
-            <v-alert v-if="!consol.temPendencias" type="success" variant="tonal" density="comfortable">
-              Nada a consolidar — não há requisições abertas nem pedidos em rascunho.
+            <v-alert v-if="!dadosUnir.temPendencias" type="success" variant="tonal" density="comfortable">
+              Nada a unir — não há requisições abertas nem pedidos em rascunho.
             </v-alert>
 
             <v-expansion-panels v-else multiple>
-              <v-expansion-panel v-for="lj in consol.porLoja" :key="lj.localEstoqueId">
+              <v-expansion-panel v-for="lj in dadosUnir.porLoja" :key="lj.localEstoqueId">
                 <v-expansion-panel-title>
                   <b>{{ lj.loja }}</b>&nbsp;— {{ lj.itens.length }} produto(s)
                 </v-expansion-panel-title>
@@ -279,10 +279,10 @@
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
-          <v-btn variant="text" @click="dialogConsol = false">Cancelar</v-btn>
+          <v-btn variant="text" @click="dialogUnir = false">Cancelar</v-btn>
           <v-btn color="secondary" rounded="lg" prepend-icon="mdi-merge"
-            :loading="consolidando" :disabled="!consol?.temPendencias"
-            @click="confirmarConsolidar">
+            :loading="unindo" :disabled="!dadosUnir?.temPendencias"
+            @click="confirmarUnir">
             Unir em 1 requisição por loja
           </v-btn>
         </v-card-actions>
@@ -518,37 +518,38 @@ async function excluir(item: any) {
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao excluir.') }
 }
 
-// ── Consolidar pendências por loja ──
-const dialogConsol = ref(false)
-const carregandoConsol = ref(false)
-const consolidando = ref(false)
-const consol = ref<any>(null)
+// ── Unir requisições abertas por loja (junta abertas + pedidos em rascunho) ──
+// Endpoint backend continua /pendencias (leitura) e /consolidar (ação).
+const dialogUnir = ref(false)
+const carregandoUnir = ref(false)
+const unindo = ref(false)
+const dadosUnir = ref<any>(null)
 
-async function abrirConsolidar() {
-  dialogConsol.value = true
-  carregandoConsol.value = true
-  consol.value = null
+async function abrirUnir() {
+  dialogUnir.value = true
+  carregandoUnir.value = true
+  dadosUnir.value = null
   try {
     const r = await api.get('/requisicoes-compra/pendencias', { params: { empresaId: auth.empresaId } })
-    consol.value = r.data
+    dadosUnir.value = r.data
   } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao carregar pendências.') }
-  finally { carregandoConsol.value = false }
+  finally { carregandoUnir.value = false }
 }
 
-async function confirmarConsolidar() {
-  if (!consol.value?.temPendencias) return
-  if (!confirm('Consolidar todas as pendências em uma requisição por loja? As requisições abertas e os pedidos em rascunho atuais serão cancelados.')) return
-  consolidando.value = true
+async function confirmarUnir() {
+  if (!dadosUnir.value?.temPendencias) return
+  if (!confirm('Unir todas as requisições abertas em uma por loja? As requisições abertas e os pedidos em rascunho atuais serão cancelados.')) return
+  unindo.value = true
   try {
     const r = await api.post('/requisicoes-compra/consolidar', {
       empresaId: auth.empresaId,
       usuarioId: auth.usuario?.id,
     })
-    notif.ok(r.data?.mensagem ?? 'Pendências consolidadas!')
-    dialogConsol.value = false
+    notif.ok(r.data?.mensagem ?? 'Requisições unidas!')
+    dialogUnir.value = false
     await carregar()
-  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao consolidar.') }
-  finally { consolidando.value = false }
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao unir.') }
+  finally { unindo.value = false }
 }
 
 onMounted(() => { carregar(); if (ehGestor.value) carregarFornecedores() })

@@ -390,6 +390,58 @@ public class ConcorrentesController(
     }
 
     /// <summary>
+    /// Alertas: produtos em que um concorrente está ATUALMENTE mais barato que nós
+    /// (última coleta de cada concorrente, normalizado). Ordenado pela maior diferença.
+    /// </summary>
+    [HttpGet("alertas/{localEstoqueId:guid}")]
+    public async Task<IActionResult> Alertas(Guid localEstoqueId, CancellationToken ct)
+    {
+        var concs = await db.Concorrentes.AsNoTracking()
+            .Where(c => c.LocalEstoqueId == localEstoqueId && c.Ativo)
+            .Select(c => new { c.Id, c.Nome })
+            .ToListAsync(ct);
+        var concIds = concs.Select(c => c.Id).ToList();
+        var nomeConc = concs.ToDictionary(c => c.Id, c => c.Nome);
+
+        var precosRaw = await db.PrecosConcorrente.AsNoTracking()
+            .Where(p => concIds.Contains(p.ConcorrenteId) && p.ProdutoId != null)
+            .Select(p => new { p.ConcorrenteId, p.ProdutoId, p.Preco, p.Unidade, p.DataColeta })
+            .ToListAsync(ct);
+        var ultimos = precosRaw
+            .GroupBy(p => new { p.ProdutoId, p.ConcorrenteId })
+            .Select(g => g.OrderByDescending(x => x.DataColeta).First())
+            .ToList();
+
+        var produtoIds = ultimos.Select(p => p.ProdutoId!.Value).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(x => produtoIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Descricao, x.PrecoVenda, porPeso = x.ProdutoBalanca || x.VendidoFracionado })
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        var itens = new List<AlertaItem>();
+        foreach (var g in ultimos.GroupBy(p => p.ProdutoId!.Value))
+        {
+            if (!produtos.TryGetValue(g.Key, out var prod) || prod.PrecoVenda <= 0) continue;
+            var (_, nosso) = NormalizarPreco(prod.PrecoVenda, prod.porPeso ? "kg" : "un", prod.porPeso);
+
+            var normalizados = g.Select(x => new { x.ConcorrenteId, pb = NormalizarPreco(x.Preco, x.Unidade, prod.porPeso).precoBase })
+                .OrderBy(x => x.pb).ToList();
+            var maisBarato = normalizados.FirstOrDefault();
+            if (maisBarato is null || maisBarato.pb >= nosso) continue;   // ninguém abaixo de nós
+
+            itens.Add(new AlertaItem(g.Key, prod.Descricao, prod.porPeso ? "kg" : "un", nosso,
+                nomeConc.TryGetValue(maisBarato.ConcorrenteId, out var n) ? n : "?",
+                maisBarato.pb, normalizados.Count(x => x.pb < nosso),
+                Math.Round(nosso - maisBarato.pb, 2), Math.Round((nosso - maisBarato.pb) / nosso * 100, 1)));
+        }
+        var ordenado = itens.OrderByDescending(x => x.Pct).ToList();
+        return Ok(new { total = ordenado.Count, itens = ordenado });
+    }
+
+    private record AlertaItem(Guid ProdutoId, string Produto, string UnidadeBase, decimal NossoPreco,
+        string Concorrente, decimal PrecoConcorrente, int QuantosAbaixo, decimal Diferenca, decimal Pct);
+
+    /// <summary>
     /// Comparativo por NOME (genérico): busca "aveia em flocos", "castanha do pará", "quinoa"
     /// e junta o nosso preço com os preços coletados de concorrentes cujo nome bate — tudo
     /// normalizado (peso em R$/kg, senão R$/un). Não exige casar o SKU exato.

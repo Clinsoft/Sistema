@@ -78,6 +78,10 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-store-search-outline" class="mr-2" color="deep-purple" />
             {{ concorrentes.length }} concorrente(s)
+            <v-chip v-if="alertas.length" color="error" size="small" variant="flat" class="ml-2"
+              @click="dialogAlertas = true" style="cursor:pointer">
+              <v-icon start size="16">mdi-alert</v-icon>{{ alertas.length }} + barato
+            </v-chip>
             <v-spacer />
             <v-btn v-if="temCoord" size="small" variant="tonal" color="indigo" class="mr-1"
               prepend-icon="mdi-scale-balance" @click="abrirComparativo">Comparar</v-btn>
@@ -412,6 +416,51 @@
       </v-card>
     </v-dialog>
 
+    <!-- Alertas: concorrente mais barato que nós -->
+    <v-dialog v-model="dialogAlertas" max-width="760" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center text-body-1 font-weight-bold">
+          <v-icon icon="mdi-alert" color="error" class="mr-2" />
+          Concorrente mais barato que nós
+          <v-chip v-if="alertas.length" color="error" size="small" variant="tonal" class="ml-2">{{ alertas.length }}</v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogAlertas = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0">
+          <div v-if="!alertas.length" class="pa-6 text-center text-medium-emphasis text-body-2">
+            Nenhum item em que um concorrente esteja mais barato. 🎉
+          </div>
+          <v-table v-else density="compact">
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th class="text-right">Nosso</th>
+                <th>Mais barato</th>
+                <th class="text-right">Concorrente</th>
+                <th class="text-right">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="it in alertas" :key="it.produtoId">
+                <td>{{ it.produto }}</td>
+                <td class="text-right">R$ {{ fmtNum(it.nossoPreco) }}<span class="text-caption text-medium-emphasis">/{{ it.unidadeBase }}</span></td>
+                <td>
+                  {{ it.concorrente }}
+                  <span v-if="it.quantosAbaixo > 1" class="text-caption text-medium-emphasis"> (+{{ it.quantosAbaixo - 1 }})</span>
+                </td>
+                <td class="text-right text-error font-weight-bold">R$ {{ fmtNum(it.precoConcorrente) }}</td>
+                <td class="text-right text-error">
+                  −{{ it.pct }}%
+                  <div class="text-caption">R$ {{ fmtNum(it.diferenca) }}</div>
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar" :timeout="3000" color="teal">{{ snackbarMsg }}</v-snackbar>
   </div>
 </template>
@@ -630,6 +679,7 @@ async function adicionarPreco() {
     })
     formPreco.value = { produto: null, descricaoLivre: '', preco: null, unidade: formPreco.value.unidade, observacao: '' }
     await carregarPrecos()
+    await carregarAlertas()
   } catch (e: any) {
     alert(e?.response?.data?.mensagem || 'Não foi possível salvar o preço.')
   } finally { salvandoPreco.value = false }
@@ -743,6 +793,7 @@ async function salvarMassa() {
     const res = await api.post<{ adicionados: number }>(`/concorrentes/concorrente/${massaConcId.value}/precos-lote`, itens)
     dialogMassa.value = false
     notificar(`${res.data.adicionados} preço(s) salvo(s).`)
+    await carregarAlertas()
   } catch (e: any) {
     alert(e?.response?.data?.mensagem || 'Não foi possível salvar em massa.')
   } finally { salvandoMassa.value = false }
@@ -760,6 +811,15 @@ function situacaoCor(s: string) {
   return s === 'mais-caro' ? 'error' : s === 'mais-barato' ? 'success'
     : s === 'no-meio' ? 'warning' : 'grey'
 }
+// Alertas: itens em que um concorrente está mais barato que nós.
+const alertas = ref<any[]>([])
+const dialogAlertas = ref(false)
+async function carregarAlertas() {
+  if (!lojaId.value) { alertas.value = []; return }
+  try { const r = await api.get<{ itens: any[] }>(`/concorrentes/alertas/${lojaId.value}`); alertas.value = r.data.itens ?? [] }
+  catch { alertas.value = [] }
+}
+
 const mlStatus = ref<{ configurado: boolean; conectado: boolean; buscaOk: boolean } | null>(null)
 async function carregarMlStatus() {
   try { const r = await api.get<{ configurado: boolean; conectado: boolean; buscaOk: boolean }>('/mercadolivre/status'); mlStatus.value = r.data }
@@ -819,6 +879,7 @@ async function selecionarLoja(id: string | null) {
   const res = await api.get<{ loja: any; concorrentes: Concorrente[] }>(`/concorrentes/loja/${id}`)
   loja.value = res.data.loja
   concorrentes.value = res.data.concorrentes ?? []
+  await carregarAlertas()
   await nextTick()
   desenhar()
 }

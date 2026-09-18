@@ -33,13 +33,14 @@ public class MercadoLivreController(MercadoLivreService ml) : ControllerBase
     /// <summary>Callback do ML (browser é redirecionado aqui com ?code=). Público.</summary>
     [HttpGet("callback")]
     [AllowAnonymous]
-    public async Task<IActionResult> Callback([FromQuery] string? code, [FromQuery] string? error, CancellationToken ct)
+    public async Task<IActionResult> Callback([FromQuery] string? code, [FromQuery] string? state,
+        [FromQuery] string? error, CancellationToken ct)
     {
         if (!string.IsNullOrEmpty(error) || string.IsNullOrWhiteSpace(code))
             return Content(Pagina("Autorização não concluída. Você pode fechar esta aba e tentar de novo."), "text/html");
         try
         {
-            await ml.TrocarCodigoAsync(code, ct);
+            await ml.TrocarCodigoAsync(code, state, ct);
             return Content(Pagina("✅ Mercado Livre conectado! Pode fechar esta aba e voltar ao sistema."), "text/html");
         }
         catch (Exception ex)

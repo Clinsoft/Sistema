@@ -29,16 +29,32 @@ public class MercadoLivreService(HttpClient http, IConfiguration config, Sistema
     public async Task<bool> ConectadoAsync(CancellationToken ct = default)
         => await db.TokensIntegracao.AnyAsync(t => t.Provedor == Provedor, ct);
 
+    // PKCE: o ML exige code_challenge na autorização e code_verifier na troca do code.
+    // Guarda o verifier por state (em memória; /autorizar e /callback caem na mesma instância ativa).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string verifier, DateTime criado)> _pkce = new();
+
     public string UrlAutorizacao()
-        => $"{AuthBase}?response_type=code&client_id={Uri.EscapeDataString(ClientId!)}" +
-           $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}";
+    {
+        var verifier = Base64Url(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+        var challenge = Base64Url(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier)));
+        var state = Guid.NewGuid().ToString("N");
+        var limite = DateTime.UtcNow.AddMinutes(-15);
+        foreach (var kv in _pkce) if (kv.Value.criado < limite) _pkce.TryRemove(kv.Key, out _);
+        _pkce[state] = (verifier, DateTime.UtcNow);
+        return $"{AuthBase}?response_type=code&client_id={Uri.EscapeDataString(ClientId!)}" +
+               $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}" +
+               $"&code_challenge={challenge}&code_challenge_method=S256&state={state}";
+    }
+
+    private static string Base64Url(byte[] b)
+        => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     public record ConfiguracaoInfo(bool Configurado, bool Conectado, string RedirectUri);
 
     public record ItemMl(string Titulo, decimal Preco, string? Permalink);
 
-    /// <summary>Troca o code (do callback) por access/refresh token e salva.</summary>
-    public async Task TrocarCodigoAsync(string code, CancellationToken ct = default)
+    /// <summary>Troca o code (do callback) por access/refresh token e salva. Usa o code_verifier (PKCE).</summary>
+    public async Task TrocarCodigoAsync(string code, string? state, CancellationToken ct = default)
     {
         var form = new Dictionary<string, string>
         {
@@ -48,6 +64,8 @@ public class MercadoLivreService(HttpClient http, IConfiguration config, Sistema
             ["code"] = code,
             ["redirect_uri"] = RedirectUri,
         };
+        if (!string.IsNullOrEmpty(state) && _pkce.TryRemove(state, out var v))
+            form["code_verifier"] = v.verifier;
         await SalvarTokenAsync(form, ct);
     }
 

@@ -15,6 +15,8 @@
       <template v-else>
         Peça o que está faltando: busque o produto e informe a quantidade. Não precisa escolher
         fornecedor nem preço — o gestor cuida disso.
+        <b>Confira abaixo o que você já pediu antes de pedir de novo:</b> requisições
+        <b>"Processada"</b> já viraram pedido de compra (estão a caminho).
       </template>
     </v-alert>
 
@@ -313,10 +315,16 @@ const headers = [
   { title: 'Status', key: 'status' }, { title: '', key: 'acoes', sortable: false, width: 240 },
 ]
 const listaFiltrada = computed(() => {
-  // Filtro de status no cliente (instantâneo): "Todas" esconde as finalizadas
-  // (Processada/Cancelada); qualquer outro mostra só aquele status.
+  // Filtro de status no cliente (instantâneo). No "Todas":
+  //  • Gestor esconde as finalizadas (Processada + Cancelada) — foco no que falta processar.
+  //  • Atendente esconde só Cancelada e MANTÉM as Processadas visíveis, para enxergar o que já
+  //    pediu (que virou pedido / está a caminho) e não fazer requisição duplicada.
   const s = filtroStatus.value
-  if (s === 'Todas') return lista.value.filter((r: any) => r.status !== 'Processada' && r.status !== 'Cancelada')
+  if (s === 'Todas') {
+    return lista.value.filter((r: any) => ehGestor.value
+      ? (r.status !== 'Processada' && r.status !== 'Cancelada')
+      : (r.status !== 'Cancelada'))
+  }
   return lista.value.filter((r: any) => r.status === s)
 })
 

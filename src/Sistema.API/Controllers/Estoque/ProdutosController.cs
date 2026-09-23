@@ -580,6 +580,40 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return CreatedAtAction(nameof(ObterPorId), new { id }, new { id, codigo = novo?.Codigo });
     }
 
+    /// <summary>
+    /// Cadastro RÁPIDO: cria um produto só com descrição + unidade (categoria "Diversos" e marca
+    /// "Sem marca" resolvidas no servidor). Para incluir no pedido de compra um item que ainda não
+    /// existe no cadastro, sem abrir o cadastro completo.
+    /// </summary>
+    [HttpPost("rapido")]
+    public async Task<IActionResult> CriarRapido([FromBody] CriarProdutoRapidoRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Descricao)) return BadRequest(new { mensagem = "Informe a descrição do produto." });
+        if (req.UnidadeMedidaId == Guid.Empty) return BadRequest(new { mensagem = "Informe a unidade de medida." });
+
+        var categoriaId = await db.Categorias.Where(c => c.EmpresaId == req.EmpresaId && c.Nome == "Diversos")
+            .Select(c => c.Id).FirstOrDefaultAsync(ct);
+        if (categoriaId == Guid.Empty)
+        {
+            var c = Sistema.Domain.Estoque.Entities.Categoria.Criar(req.EmpresaId, "Diversos");
+            db.Categorias.Add(c); await uow.SalvarAsync(ct); categoriaId = c.Id;
+        }
+        var marcaId = await db.Marcas.Where(m => m.EmpresaId == req.EmpresaId && m.Nome == "Sem marca")
+            .Select(m => m.Id).FirstOrDefaultAsync(ct);
+        if (marcaId == Guid.Empty)
+        {
+            var m = Sistema.Domain.Estoque.Entities.Marca.Criar(req.EmpresaId, "Sem marca");
+            db.Marcas.Add(m); await uow.SalvarAsync(ct); marcaId = m.Id;
+        }
+
+        var custo = req.CustoUnitario is > 0 ? req.CustoUnitario!.Value : 0m;
+        var preco = custo > 0 ? Math.Round(custo * 1.5m, 2) : 0.01m;
+        var id = await mediator.Send(new Sistema.Application.Estoque.Commands.CriarProdutoCommand(
+            req.EmpresaId, null, req.Descricao.Trim(), categoriaId, marcaId, req.UnidadeMedidaId, custo, preco), ct);
+        var novo = await db.Produtos.AsNoTracking().Where(p => p.Id == id).Select(p => new { p.Codigo }).FirstOrDefaultAsync(ct);
+        return Ok(new { id, descricao = req.Descricao.Trim(), codigo = novo?.Codigo, custoUnitario = custo });
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Editar(Guid id, [FromBody] EditarProdutoCompletoRequest req,
         CancellationToken ct)
@@ -1309,6 +1343,7 @@ public record AlterarPrecoItemRequest(
 public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
+public record CriarProdutoRapidoRequest(Guid EmpresaId, string Descricao, Guid UnidadeMedidaId, decimal? CustoUnitario = null);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);

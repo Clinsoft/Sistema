@@ -216,6 +216,10 @@
               variant="outlined" density="compact" style="width:100px" />
             <v-btn icon="mdi-plus" color="primary" variant="tonal" @click="addItem" />
           </div>
+          <div class="mb-3">
+            <v-btn size="small" variant="text" color="teal" prepend-icon="mdi-plus-box-outline"
+              @click="abrirNovoProdRapido">Não achou? Cadastrar produto novo</v-btn>
+          </div>
           <v-table density="compact">
             <thead><tr><th>Produto</th><th>Qtd</th><th>R$ Un.</th><th>Total</th><th></th></tr></thead>
             <tbody>
@@ -241,6 +245,37 @@
           <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :loading="salvando"
             :disabled="!np.fornecedorId || !np.itens.length" @click="salvar">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: cadastro rápido de produto (para incluir no pedido algo que não existe) -->
+    <v-dialog v-model="dlgProdRapido" max-width="460" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-plus-box-outline" color="teal" /> Cadastrar produto novo
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dlgProdRapido = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="text-caption text-medium-emphasis mb-3">
+            Cria um produto simples (categoria "Diversos", marca "Sem marca") já para incluir no pedido.
+            Você completa o cadastro depois em Cadastros → Produtos.
+          </div>
+          <v-text-field v-model="prodRapido.descricao" label="Descrição do produto *"
+            variant="outlined" density="compact" class="mb-2" autofocus />
+          <v-select v-model="prodRapido.unidadeMedidaId" :items="unidades" :item-title="uniTitle" item-value="id"
+            label="Unidade *" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model.number="prodRapido.custoUnitario" label="Custo unit. (R$) — opcional"
+            type="number" variant="outlined" density="compact" hide-details />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dlgProdRapido = false">Cancelar</v-btn>
+          <v-btn color="teal" rounded="lg" :loading="salvandoProdRapido"
+            :disabled="!prodRapido.descricao || !prodRapido.unidadeMedidaId"
+            @click="salvarProdRapido">Cadastrar e adicionar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -478,6 +513,35 @@ async function carregarCatalogo() {
 }
 function selecionarProd(id: string) { const p=prods.value.find((x: any)=>x.id===id); if (p) { it.value.descricao=p.descricao; it.value.precoUnitario=p.custoUnitario??0 } }
 function addItem() { if (!it.value.produtoId) return; np.value.itens.push({...it.value}); it.value={produtoId:'', descricao:'', quantidade:1, precoUnitario:0} }
+
+// Cadastro rápido de produto (para incluir no pedido algo que não existe no cadastro).
+const dlgProdRapido = ref(false)
+const salvandoProdRapido = ref(false)
+const prodRapido = ref<{ descricao: string; unidadeMedidaId: string | null; custoUnitario: number | null }>({ descricao: '', unidadeMedidaId: null, custoUnitario: null })
+function abrirNovoProdRapido() {
+  prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null, custoUnitario: null }
+  dlgProdRapido.value = true
+}
+async function salvarProdRapido() {
+  const pr = prodRapido.value
+  if (!pr.descricao || !pr.unidadeMedidaId) return
+  salvandoProdRapido.value = true
+  try {
+    const { data } = await api.post('/produtos/rapido', {
+      empresaId: auth.empresaId,
+      descricao: pr.descricao.trim(),
+      unidadeMedidaId: pr.unidadeMedidaId,
+      custoUnitario: pr.custoUnitario ?? null,
+    })
+    // Coloca na lista local e já adiciona ao pedido.
+    prods.value = [...prods.value, { id: data.id, descricao: data.descricao, custoUnitario: data.custoUnitario ?? 0 }]
+    np.value.itens.push({ produtoId: data.id, descricao: data.descricao, quantidade: it.value.quantidade || 1, precoUnitario: data.custoUnitario ?? 0 })
+    dlgProdRapido.value = false
+    notif.ok(`Produto "${data.descricao}" criado e adicionado ao pedido.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível cadastrar o produto.')
+  } finally { salvandoProdRapido.value = false }
+}
 async function abrirNovo() {
   np.value = { fornecedorId: null, previsaoEntrega: '', itens: [], observacoes: '' }
   origemFaltantes.value = null

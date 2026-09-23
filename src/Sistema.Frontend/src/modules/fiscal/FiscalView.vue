@@ -1103,7 +1103,7 @@
 import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -1800,5 +1800,12 @@ onMounted(async () => {
   if (route.query.aba === 'entradas') aba.value = 'entradas'
   if (route.query.semOc) { soSemOc.value = true; aba.value = 'entradas' }
   await Promise.all([carregarEmitidas(), carregarLocaisEstoque()])
+})
+
+// Ao voltar para a tela (ex.: depois de vincular a OC numa entrada), recarrega a
+// aba ativa para refletir o que mudou (a nota vinculada sai do "sem OC").
+onActivated(() => {
+  if (aba.value === 'entradas') carregarEntradas()
+  else if (aba.value === 'recebidas') carregarRecebidas()
 })
 </script>

@@ -63,6 +63,14 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
                 && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)), ct);
 
+        // Entradas de NF-e processadas SEM Ordem de Compra vinculada (esqueceram de vincular na
+        // escrituração). Não é atendente; ignora as dispensadas e as notas antigas (jul/2026).
+        var entradaSemOc = ehAtendente ? 0 : await db.EntradasNFe.CountAsync(e =>
+            e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
+            && !e.VinculoOcIgnorado && e.DataEmissao >= corteValidade
+            && e.PedidoCompraId == null
+            && !db.EntradasNFePedidos.Any(v => v.EntradaNFeId == e.Id), ct);
+
         // Requisições de compra abertas → o gestor precisa gerar os pedidos.
         var ehAdminGerente = User.IsInRole("Administrador") || User.IsInRole("Gerente");
         var requisicoesAbertas = ehAdminGerente ? await db.RequisicoesCompra.CountAsync(r =>
@@ -107,6 +115,13 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             titulo = "Validade/lote pendente",
             texto = $"{validadePendente} nota(s) recebida(s) sem validade/lote lançado.",
             rota = "/estoque/validade?pendentes=1"
+        });
+        if (entradaSemOc > 0) itens.Add(new
+        {
+            tipo = "entrada-sem-oc", quantidade = entradaSemOc, cor = "brown", icone = "mdi-file-link-outline",
+            titulo = "Entrada sem Ordem de Compra",
+            texto = $"{entradaSemOc} nota(s) escriturada(s) sem OC vinculada — vincule ou dispense.",
+            rota = "/fiscal?aba=entradas&semOc=1"
         });
         if (requisicoesAbertas > 0) itens.Add(new
         {

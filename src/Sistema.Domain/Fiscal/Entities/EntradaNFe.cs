@@ -56,6 +56,11 @@ public class EntradaNFe : Entity
     public void IgnorarValidadePendente() { ValidadePendenteIgnorada = true; AtualizadoEm = DateTime.UtcNow; }
     public void ReativarValidadePendente() { ValidadePendenteIgnorada = false; AtualizadoEm = DateTime.UtcNow; }
 
+    /// <summary>Dispensa a cobrança de vincular Ordem de Compra (esta nota não tem OC — ex.: compra sem pedido prévio).</summary>
+    public bool VinculoOcIgnorado { get; private set; }
+    public void IgnorarVinculoOc() { VinculoOcIgnorado = true; AtualizadoEm = DateTime.UtcNow; }
+    public void ReativarVinculoOc() { VinculoOcIgnorado = false; AtualizadoEm = DateTime.UtcNow; }
+
     // Método de rateio do frete. Hoje sempre ValorProporcional; computado (sem setter)
     // para o EF não criar coluna. Estruturado para virar campo configurável no futuro
     // (por peso, quantidade, volume).

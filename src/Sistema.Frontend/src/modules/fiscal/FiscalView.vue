@@ -415,10 +415,14 @@
             <v-text-field v-model="filtrosEnt.dataFim" label="Até" type="date"
               variant="outlined" density="compact" hide-details />
           </v-col>
-          <v-col cols="12" sm="3">
+          <v-col cols="12" sm="2">
             <v-select v-model="filtrosEnt.status" label="Status" clearable
               :items="[{title:'Em Edição',value:'EmEdicao'},{title:'Processada',value:'Processada'},{title:'Estornada',value:'Estornada'}]"
               variant="outlined" density="compact" hide-details />
+          </v-col>
+          <v-col cols="12" sm="2">
+            <v-switch v-model="soSemOc" color="brown" density="compact" hide-details
+              label="Só sem OC" />
           </v-col>
           <v-col cols="12" sm="3" class="d-flex gap-2">
             <v-btn color="primary" variant="tonal" rounded="lg" :loading="carregandoEnt" @click="carregarEntradas">
@@ -433,7 +437,7 @@
       </v-card>
 
       <v-card rounded="xl" elevation="1">
-        <v-data-table :headers="headersEntradas" :items="entradas" :loading="carregandoEnt"
+        <v-data-table :headers="headersEntradas" :items="entradasFiltradas" :loading="carregandoEnt"
           density="comfortable" hover
           no-data-text="Nenhuma entrada escriturada. Use 'Importar XML' ou Escriturar via NF-e Recebidas.">
           <template #item.emitente="{ item }">
@@ -452,11 +456,17 @@
             <v-chip size="small" :color="corStatusEntrada(item.status)" variant="tonal">
               {{ labelStatusEntrada(item.status) }}
             </v-chip>
+            <v-chip v-if="pendenteOc(item)" size="x-small" color="brown" variant="tonal" class="ml-1"
+              prepend-icon="mdi-file-link-outline" title="Escriturada sem Ordem de Compra vinculada">sem OC</v-chip>
           </template>
           <template #item.totalItens="{ item }">
             <span class="text-body-2">{{ item.totalItens }}</span>
           </template>
           <template #item.acoes="{ item }">
+            <v-btn v-if="pendenteOc(item)" icon="mdi-file-link-outline" size="small" variant="text" color="brown"
+              @click.stop="abrirEntrada(item)" title="Vincular Ordem de Compra" />
+            <v-btn v-if="pendenteOc(item)" icon="mdi-bell-off-outline" size="small" variant="text" color="grey"
+              :loading="ignorandoOc === item.id" @click.stop="ignorarOc(item)" title="Dispensar: esta nota não tem OC" />
             <v-btn icon="mdi-arrow-right-circle-outline" size="small" variant="text" color="primary"
               @click="abrirEntrada(item)" title="Abrir escrituração" />
           </template>
@@ -1094,7 +1104,7 @@ import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -1103,6 +1113,7 @@ import { formatarCnpj } from '@/utils/documento'
 const auth = useAuthStore()
 const notif = useNotifStore()
 const router = useRouter()
+const route = useRoute()
 const aba = ref('emitidas')
 
 // ── Emitidas ──
@@ -1487,6 +1498,22 @@ const headersEntradas = [
   { title: '', key: 'acoes', sortable: false, align: 'end' as const },
 ]
 
+// Pendência de vincular Ordem de Compra: processada, sem OC e não dispensada.
+const soSemOc = ref(false)
+const ignorandoOc = ref<string | null>(null)
+function pendenteOc(item: any) {
+  return item.status === 'Processada' && item.semOc && !item.vinculoOcIgnorado
+}
+const entradasFiltradas = computed(() =>
+  soSemOc.value ? entradas.value.filter(pendenteOc) : entradas.value)
+async function ignorarOc(item: any) {
+  if (!confirm(`Dispensar a Ordem de Compra desta nota de ${item.emitenteNome}? Marque quando a nota realmente não veio de um pedido.`)) return
+  ignorandoOc.value = item.id
+  try { await api.patch(`/fiscal/entradas/${item.id}/ignorar-oc`); item.vinculoOcIgnorado = true }
+  catch { notif.erro('Não foi possível dispensar.') }
+  finally { ignorandoOc.value = null }
+}
+
 function corStatusEntrada(s: string) {
   return ({ EmEdicao: 'warning', Processada: 'success', Estornada: 'error' } as any)[s] ?? 'default'
 }
@@ -1769,6 +1796,9 @@ watch(aba, (v) => {
 })
 
 onMounted(async () => {
+  // Vindo do sininho: /fiscal?aba=entradas&semOc=1
+  if (route.query.aba === 'entradas') aba.value = 'entradas'
+  if (route.query.semOc) { soSemOc.value = true; aba.value = 'entradas' }
   await Promise.all([carregarEmitidas(), carregarLocaisEstoque()])
 })
 </script>

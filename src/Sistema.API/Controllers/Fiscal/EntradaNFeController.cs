@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Domain.Cadastros.Entities;
+using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Fiscal.Entities;
@@ -42,6 +43,9 @@ public class EntradaNFeController(SistemaDbContext db,
                 e.DataEmissao, e.DataEntrada, e.ValorTotal,
                 Status = e.Status.ToString(), e.DataProcessamento,
                 TotalItens = e.Itens.Count,
+                e.VinculoOcIgnorado,
+                // Sem Ordem de Compra vinculada (nem link direto nem ponte N:N).
+                SemOc = e.PedidoCompraId == null && !db.EntradasNFePedidos.Any(v => v.EntradaNFeId == e.Id),
             }).ToListAsync(ct);
 
         return Ok(lista);
@@ -721,6 +725,17 @@ public class EntradaNFeController(SistemaDbContext db,
         return Ok(new { afetados, jaAplicado = false, freteAplicado = req.ValorFrete, freteCteAcumulado = entrada.FreteCteAplicado });
     }
 
+    /// <summary>Dispensa/reativa a cobrança de vincular OC nesta entrada (nota sem pedido prévio).</summary>
+    [HttpPatch("{id:guid}/ignorar-oc")]
+    public async Task<IActionResult> IgnorarVinculoOc(Guid id, [FromQuery] bool reativar = false, CancellationToken ct = default)
+    {
+        var entrada = await db.EntradasNFe.FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (entrada is null) return NotFound();
+        if (reativar) entrada.ReativarVinculoOc(); else entrada.IgnorarVinculoOc();
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     [HttpPatch("{id:guid}/pedido-compra")]
     public async Task<IActionResult> VincularPedidoCompra(
         Guid id, [FromBody] VincularPedidoRequest req, CancellationToken ct)
@@ -755,6 +770,17 @@ public class EntradaNFeController(SistemaDbContext db,
         entrada.VincularPedidoCompra(ids.Count > 0 ? ids[0] : null);
         foreach (var pid in ids.Skip(1))
             db.EntradasNFePedidos.Add(EntradaNFePedido.Criar(id, pid));
+
+        // Vínculo PÓS-escrituração: a NF já foi processada (estoque já entrou), então fecha a(s)
+        // OC(s) como Recebida(s) — o confronto de faltantes só roda no processamento normal.
+        if (entrada.Status == StatusEntradaNFe.Processada && ids.Count > 0)
+        {
+            var nnf = entrada.ChaveAcesso.Length == 44 ? entrada.ChaveAcesso.Substring(25, 9).TrimStart('0') : null;
+            var peds = await db.PedidosCompra.Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+            foreach (var p in peds)
+                if (p.Status != StatusPedidoCompra.Recebido && p.Status != StatusPedidoCompra.Cancelado)
+                    p.ReceberComNota(nnf);
+        }
 
         await db.SaveChangesAsync(ct);
         return Ok(new { primario = ids.FirstOrDefault(), total = ids.Count });

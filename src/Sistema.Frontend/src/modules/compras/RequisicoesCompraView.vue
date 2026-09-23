@@ -145,6 +145,22 @@
         <v-card-text class="pa-4">
           <div v-if="det.observacao" class="text-body-2 mb-3"><b>Obs.:</b> {{ det.observacao }}</div>
 
+          <!-- Adicionar item a esta requisição (enquanto Aberta) -->
+          <div v-if="det.status === 'Aberta'" class="mb-3">
+            <div class="d-flex ga-2">
+              <v-autocomplete v-model="addSel" :items="prodOpcoes" :loading="buscandoProd"
+                item-title="descricao" item-value="id" return-object no-filter clearable
+                label="Adicionar produto a esta requisição" variant="outlined" density="compact" class="flex-grow-1"
+                @update:search="buscarProduto" />
+              <v-text-field v-model.number="addQtd" label="Qtd" type="number" min="1"
+                variant="outlined" density="compact" style="width:90px" @keyup.enter="adicionarItemExistente" />
+              <v-btn icon="mdi-plus" color="primary" variant="tonal" :disabled="!addSel" :loading="adicionandoItem"
+                @click="adicionarItemExistente" />
+            </div>
+            <v-btn size="small" variant="text" color="teal" prepend-icon="mdi-plus-box-outline"
+              @click="abrirNovoProdRapidoExistente">Não achou? Cadastrar produto novo</v-btn>
+          </div>
+
           <!-- Acompanhamento: o que vai chegar (NF já cruzada) x aguardando fornecedor -->
           <v-alert v-if="conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
@@ -420,6 +436,7 @@ const unidades = ref<any[]>([])
 const uniTitle = (u: any) => u?.descricao ? `${u.sigla} — ${u.descricao}` : (u?.sigla ?? '')
 const dlgProdRapido = ref(false)
 const salvandoProdRapido = ref(false)
+const prodRapidoModo = ref<'nova' | 'existente'>('nova')
 const prodRapido = ref<{ descricao: string; unidadeMedidaId: string | null }>({ descricao: '', unidadeMedidaId: null })
 async function carregarUnidades() {
   if (unidades.value.length) return
@@ -429,6 +446,13 @@ async function carregarUnidades() {
   } catch { unidades.value = [] }
 }
 async function abrirNovoProdRapido() {
+  prodRapidoModo.value = 'nova'
+  await carregarUnidades()
+  prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null }
+  dlgProdRapido.value = true
+}
+async function abrirNovoProdRapidoExistente() {
+  prodRapidoModo.value = 'existente'
   await carregarUnidades()
   prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null }
   dlgProdRapido.value = true
@@ -443,12 +467,37 @@ async function salvarProdRapido() {
       descricao: pr.descricao.trim(),
       unidadeMedidaId: pr.unidadeMedidaId,
     })
-    novaItens.value.push({ produtoId: data.id, descricao: data.descricao, quantidade: Math.max(1, Number(qtdSel.value) || 1) })
+    if (prodRapidoModo.value === 'existente' && det.value?.id) {
+      await api.post(`/requisicoes-compra/${det.value.id}/itens`, {
+        itens: [{ produtoId: data.id, quantidade: Math.max(1, Number(addQtd.value) || 1) }],
+      })
+      await recarregarDetalhe()
+    } else {
+      novaItens.value.push({ produtoId: data.id, descricao: data.descricao, quantidade: Math.max(1, Number(qtdSel.value) || 1) })
+    }
     dlgProdRapido.value = false
     notif.ok(`Produto "${data.descricao}" criado e adicionado.`)
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível cadastrar o produto.')
   } finally { salvandoProdRapido.value = false }
+}
+
+// Adicionar item a uma requisição JÁ existente (aberta).
+const addSel = ref<any>(null)
+const addQtd = ref(1)
+const adicionandoItem = ref(false)
+async function adicionarItemExistente() {
+  if (!addSel.value || !det.value?.id) return
+  adicionandoItem.value = true
+  try {
+    await api.post(`/requisicoes-compra/${det.value.id}/itens`, {
+      itens: [{ produtoId: addSel.value.id, quantidade: Math.max(1, Number(addQtd.value) || 1) }],
+    })
+    notif.ok('Item adicionado à requisição.')
+    addSel.value = null; addQtd.value = 1; prodOpcoes.value = []
+    await recarregarDetalhe()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao adicionar item.') }
+  finally { adicionandoItem.value = false }
 }
 async function salvarNova() {
   if (!novaItens.value.length) return

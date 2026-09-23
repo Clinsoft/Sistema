@@ -43,6 +43,34 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         return Ok(new { requisicao.Id });
     }
 
+    /// <summary>Adiciona itens a uma requisição JÁ EXISTENTE (só enquanto Aberta).</summary>
+    [HttpPost("{id:guid}/itens")]
+    public async Task<IActionResult> AdicionarItens(Guid id, [FromBody] AdicionarItensRequisicaoRequest req, CancellationToken ct)
+    {
+        var requisicao = await db.RequisicoesCompra.Include(r => r.Itens).FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (requisicao is null) return NotFound();
+        if (requisicao.Status != StatusRequisicaoCompra.Aberta)
+            return BadRequest(new { mensagem = "Só é possível adicionar itens em requisição aberta." });
+        if (req.Itens is null || req.Itens.Count == 0)
+            return BadRequest(new { mensagem = "Nenhum item para adicionar." });
+
+        var ids = req.Itens.Select(i => i.ProdutoId).ToList();
+        var descricoes = await db.Produtos.AsNoTracking()
+            .Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.Descricao })
+            .ToDictionaryAsync(p => p.Id, p => p.Descricao, ct);
+
+        var add = 0;
+        foreach (var it in req.Itens)
+        {
+            if (it.Quantidade <= 0) continue;
+            var desc = descricoes.TryGetValue(it.ProdutoId, out var d) ? d : "(produto)";
+            requisicao.AdicionarItem(it.ProdutoId, desc, it.Quantidade);
+            add++;
+        }
+        await uow.SalvarAsync(ct);
+        return Ok(new { adicionados = add });
+    }
+
     /// <summary>Lista requisições. Atendente vê as da própria loja; gestor vê todas.</summary>
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] Guid empresaId, [FromQuery] string? status,
@@ -436,6 +464,7 @@ public record CriarRequisicaoRequest(
     List<ItemRequisicaoRequest> Itens);
 
 public record ItemRequisicaoRequest(Guid ProdutoId, decimal Quantidade);
+public record AdicionarItensRequisicaoRequest(List<ItemRequisicaoRequest> Itens);
 
 public record ConsolidarRequest(Guid EmpresaId, Guid UsuarioId);
 

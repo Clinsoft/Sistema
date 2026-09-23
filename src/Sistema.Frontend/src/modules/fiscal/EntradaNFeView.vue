@@ -166,7 +166,7 @@
                   variant="outlined" density="compact" clearable multiple chips closable-chips
                   :hint="mostrarTodosPedidos
                     ? 'Mostrando TODOS os pedidos pendentes.'
-                    : 'Mostrando só os pedidos deste fornecedor e desta loja. Uma NF pode atender vários — selecione todos que ela cobre.'"
+                    : 'Mostrando os pedidos deste fornecedor/loja (se não houver, mostra todos). Uma NF pode atender vários — selecione todos que ela cobre. Se faltar algum, ligue \'Mostrar todos\'.'"
                   persistent-hint
                   @update:model-value="salvarPedidosCompra" />
                 <v-switch v-model="mostrarTodosPedidos" color="primary" density="compact" hide-details
@@ -1654,13 +1654,18 @@ const mostrarTodosPedidos = ref(false)
 // Mostra só os pedidos do MESMO fornecedor e MESMA loja da nota (já conhecidos),
 // mantendo sempre os já selecionados. Facilita a escrituração e evita associação errada.
 const pedidosCompraFiltrados = computed(() => {
+  if (mostrarTodosPedidos.value) return pedidosCompra.value
   const fid = entrada.value?.fornecedorId ?? null
   const lid = localEstoqueId.value ?? entrada.value?.localEstoqueId ?? null
-  if (mostrarTodosPedidos.value) return pedidosCompra.value
   const sel = new Set(pedidosCompraIds.value ?? [])
-  return pedidosCompra.value.filter((p: any) =>
+  const estrito = pedidosCompra.value.filter((p: any) =>
     sel.has(p.id) ||
     ((!fid || p.fornecedorId === fid) && (!lid || p.localEstoqueId === lid)))
+  // Se o filtro por fornecedor/loja não encontrou NENHUM pedido novo (só os já
+  // selecionados, ou nada), mostra TODOS — senão a OC "some" quando o fornecedor/
+  // loja da OC diverge do que veio na NF (motivo comum de "a OC não aparecia").
+  const semNovos = estrito.every((p: any) => sel.has(p.id))
+  return semNovos ? pedidosCompra.value : estrito
 })
 
 // Financeiro

@@ -116,23 +116,28 @@
           <v-alert v-if="conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
             <b v-if="conf.completo">Todos os {{ conf.totalItens }} itens já estão cobertos (vão chegar ou já em pedido) — evite pedir de novo.</b>
-            <b v-else>{{ conf.jaEmPedido }} já em pedido · {{ conf.vaoChegar }} vão chegar · {{ conf.itensPendentes }} ainda sem pedido (de {{ conf.totalItens }}).</b>
+            <b v-else>{{ conf.jaEmPedido }} já em pedido · {{ conf.vaoChegar }} vão chegar · <span v-if="conf.precisaPedir" class="text-error">{{ conf.precisaPedir }} precisa pedir (estoque baixo)</span> · {{ conf.itensPendentes }} sem pedido (de {{ conf.totalItens }}).</b>
             <div class="text-caption text-medium-emphasis mt-1">
-              A coluna <b>Já em pedido</b> mostra em qual pedido de compra o item já está — se estiver lá, <b>não peça de novo</b>.
+              <b>Já em pedido</b> conta só pedidos <b>em aberto</b> (a caminho) — os <b>Recebidos</b> aparecem como histórico, não cobrem necessidade. Se o <b>estoque</b> está no/abaixo do mínimo, o item mostra <b>Precisa pedir</b> mesmo com OC antiga.
             </div>
             <v-table density="compact" class="mt-2 bg-transparent">
               <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
-                <th style="width:200px">Já em pedido</th>
+                <th class="text-center" style="width:90px">Estoque</th>
+                <th style="width:200px">Pedidos</th>
                 <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
                 <tr v-for="l in conf.itens" :key="l.produtoId"
-                  :class="l.jaPedido ? 'bg-amber-lighten-5' : ''">
+                  :class="l.situacao === 'PrecisaPedir' ? 'bg-red-lighten-5' : (l.jaPedido ? 'bg-amber-lighten-5' : '')">
                   <td>{{ l.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
+                  <td class="text-center">
+                    <span :class="l.estoqueBaixo ? 'text-error font-weight-bold' : ''"
+                      :title="'Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
+                  </td>
                   <td>
                     <template v-if="l.pedidos && l.pedidos.length">
                       <v-chip v-for="p in l.pedidos" :key="p.numero" size="x-small" class="mr-1 mb-1"
-                        :color="p.status === 'Recebido' ? 'success' : (p.status === 'Enviado' ? 'info' : 'warning')"
+                        :color="p.status === 'Recebido' ? 'default' : (p.status === 'Enviado' ? 'info' : 'warning')"
                         variant="tonal" :title="p.status">
                         {{ p.numero }} · {{ p.status }}
                       </v-chip>
@@ -140,11 +145,14 @@
                     <span v-else class="text-caption text-medium-emphasis">—</span>
                   </td>
                   <td class="text-center">
-                    <v-chip v-if="l.situacao === 'VaiChegar'" size="small" color="success" variant="tonal">
+                    <v-chip v-if="l.situacao === 'PrecisaPedir'" size="small" color="error" variant="flat">
+                      <v-icon start size="14">mdi-alert-circle-outline</v-icon>Precisa pedir
+                    </v-chip>
+                    <v-chip v-else-if="l.situacao === 'VaiChegar'" size="small" color="success" variant="tonal">
                       <v-icon start size="14">mdi-truck-check-outline</v-icon>Vai chegar
                     </v-chip>
                     <v-chip v-else-if="l.situacao === 'JaPedido'" size="small" color="info" variant="tonal">
-                      <v-icon start size="14">mdi-cart-check</v-icon>Já pedido
+                      <v-icon start size="14">mdi-cart-check</v-icon>A caminho
                     </v-chip>
                     <v-chip v-else size="small" color="warning" variant="tonal">
                       <v-icon start size="14">mdi-clock-outline</v-icon>Sem pedido

@@ -281,44 +281,76 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(m => m.ProdutoId).Distinct().ToListAsync(ct);
         var chegaramSet = chegaram.ToHashSet();
 
-        // TODOS os pedidos NÃO cancelados da MESMA loja (vinculados ou não, Rascunho/Enviado/
-        // Recebido) — para detectar se o item já está em algum pedido e evitar pedir duplicado.
+        // Pedidos NÃO cancelados da MESMA loja. Só os EM ABERTO (Rascunho/Enviado) contam como
+        // "a caminho" — pedido Recebido já chegou (é histórico) e NÃO cobre a necessidade atual.
         var pedidosLoja = await db.PedidosCompra.AsNoTracking()
             .Where(p => p.EmpresaId == req.EmpresaId
                 && p.LocalEstoqueId == req.LocalEstoqueId
                 && p.Status != StatusPedidoCompra.Cancelado)
-            .Select(p => new { p.Id, p.Numero, Status = p.Status.ToString() }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
 
         var pedidoIds = pedidosLoja.Select(p => p.Id).ToList();
-        var infoPorId = pedidosLoja.ToDictionary(p => p.Id, p => new { p.Numero, p.Status });
+        var infoPorId = pedidosLoja.ToDictionary(p => p.Id, p => new { p.Numero, Status = p.Status.ToString(), Aberto = p.Status != StatusPedidoCompra.Recebido });
 
         var itensPedido = await db.ItensPedidoCompra.AsNoTracking()
             .Where(i => pedidoIds.Contains(i.PedidoCompraId))
             .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
             .ToListAsync(ct);
 
+        // Saldo ATUAL do produto NESTA loja (reconstruído do histórico de movimentações) e mínimo.
+        var saldos = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == req.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId
+                && reqProdutoIds.Contains(m.ProdutoId))
+            .GroupBy(m => m.ProdutoId)
+            .Select(g => new
+            {
+                ProdutoId = g.Key,
+                Saldo = g.Sum(m => m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada ? m.Quantidade
+                                 : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida ? -m.Quantidade : 0m)
+            }).ToListAsync(ct))
+            .ToDictionary(x => x.ProdutoId, x => x.Saldo);
+        var minimos = await db.Produtos.AsNoTracking()
+            .Where(p => reqProdutoIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.EstoqueMinimo }).ToDictionaryAsync(p => p.Id, p => p.EstoqueMinimo, ct);
+
         var linhas = itens.Select(it =>
         {
             var casados = itensPedido.Where(ip => ip.ProdutoId == it.ProdutoId).ToList();
-            var pedido = casados.Sum(c => c.Quantidade);
             var pedidosDoItem = casados
                 .Select(c => infoPorId.GetValueOrDefault(c.PedidoCompraId))
                 .Where(x => x is not null)
                 .GroupBy(x => x!.Numero)
-                .Select(gg => new { numero = gg.Key, status = gg.First()!.Status })
+                .Select(gg => new { numero = gg.Key, status = gg.First()!.Status, aberto = gg.First()!.Aberto })
                 .OrderBy(x => x.numero).ToList();
+            // "Coberto" só por pedido EM ABERTO (não recebido).
+            var pedidoAberto = casados.Where(c => infoPorId.TryGetValue(c.PedidoCompraId, out var i2) && i2.Aberto).Sum(c => c.Quantidade);
+            var jaPedido = pedidoAberto > 0;
             var vaiChegar = chegaramSet.Contains(it.ProdutoId);
-            var jaPedido = pedido > 0;
+            var estoqueLoja = saldos.GetValueOrDefault(it.ProdutoId, 0m);
+            var minimo = minimos.GetValueOrDefault(it.ProdutoId, 0m);
+            var estoqueBaixo = estoqueLoja <= minimo;
+
+            // Estoque no/abaixo do mínimo MANDA: precisa pedir mesmo que exista OC antiga (o
+            // produto pode já ter acabado). Só não alerta se há pedido EM ABERTO a caminho.
+            string situacao;
+            if (estoqueBaixo && !jaPedido) situacao = "PrecisaPedir";
+            else if (jaPedido) situacao = "JaPedido";
+            else if (vaiChegar) situacao = "VaiChegar";
+            else situacao = "Aguardando";
+
             return new
             {
                 produtoId = it.ProdutoId,
                 descricao = it.Descricao,
                 requisitado = it.Quantidade,
-                pedido,
-                pendente = Math.Max(0, it.Quantidade - pedido),
+                pedido = pedidoAberto,
+                pendente = Math.Max(0, it.Quantidade - pedidoAberto),
                 jaPedido,
+                estoqueLoja,
+                estoqueMinimo = minimo,
+                estoqueBaixo,
                 pedidos = pedidosDoItem,
-                situacao = vaiChegar ? "VaiChegar" : (jaPedido ? "JaPedido" : "Aguardando"),
+                situacao,
             };
         }).ToList();
 
@@ -328,6 +360,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             aproximado = false,
             totalItens = linhas.Count,
             jaEmPedido = linhas.Count(l => l.jaPedido),
+            precisaPedir = linhas.Count(l => l.situacao == "PrecisaPedir"),
             itensPendentes = linhas.Count(l => !l.jaPedido && l.situacao != "VaiChegar"),
             vaoChegar = linhas.Count(l => l.situacao == "VaiChegar"),
             completo = linhas.All(l => l.situacao == "VaiChegar" || l.jaPedido),

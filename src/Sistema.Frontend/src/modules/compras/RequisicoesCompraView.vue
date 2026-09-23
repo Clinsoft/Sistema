@@ -70,6 +70,10 @@
               variant="outlined" density="compact" style="width:90px" @keyup.enter="addItem" />
             <v-btn icon="mdi-plus" color="primary" variant="tonal" :disabled="!prodSel" @click="addItem" />
           </div>
+          <div class="mb-3">
+            <v-btn size="small" variant="text" color="teal" prepend-icon="mdi-plus-box-outline"
+              @click="abrirNovoProdRapido">Não achou? Cadastrar produto novo</v-btn>
+          </div>
           <v-table density="compact">
             <thead><tr><th>Produto</th><th style="width:90px" class="text-center">Qtd</th><th style="width:48px"></th></tr></thead>
             <tbody>
@@ -93,6 +97,35 @@
           <v-btn color="primary" rounded="lg" :loading="salvando" :disabled="!novaItens.length" @click="salvarNova">
             Enviar requisição ({{ novaItens.length }} {{ novaItens.length === 1 ? 'item' : 'itens' }})
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: cadastro rápido de produto (pedir algo que não existe no cadastro) -->
+    <v-dialog v-model="dlgProdRapido" max-width="460" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-plus-box-outline" color="teal" /> Cadastrar produto novo
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dlgProdRapido = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="text-caption text-medium-emphasis mb-3">
+            Cria um produto simples (categoria "Diversos", marca "Sem marca") já para incluir na requisição.
+            O gestor completa o cadastro depois.
+          </div>
+          <v-text-field v-model="prodRapido.descricao" label="Descrição do produto *"
+            variant="outlined" density="compact" class="mb-2" autofocus />
+          <v-select v-model="prodRapido.unidadeMedidaId" :items="unidades" :item-title="uniTitle" item-value="id"
+            label="Unidade *" variant="outlined" density="compact" hide-details />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dlgProdRapido = false">Cancelar</v-btn>
+          <v-btn color="teal" rounded="lg" :loading="salvandoProdRapido"
+            :disabled="!prodRapido.descricao || !prodRapido.unidadeMedidaId"
+            @click="salvarProdRapido">Cadastrar e adicionar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -380,6 +413,42 @@ function addItem() {
   if (existe) existe.quantidade += q
   else novaItens.value.push({ produtoId: p.id, descricao: p.descricao, quantidade: q })
   prodSel.value = null; qtdSel.value = 1; prodOpcoes.value = []
+}
+
+// ── Cadastro rápido de produto (pedir algo que não existe no cadastro) ──
+const unidades = ref<any[]>([])
+const uniTitle = (u: any) => u?.descricao ? `${u.sigla} — ${u.descricao}` : (u?.sigla ?? '')
+const dlgProdRapido = ref(false)
+const salvandoProdRapido = ref(false)
+const prodRapido = ref<{ descricao: string; unidadeMedidaId: string | null }>({ descricao: '', unidadeMedidaId: null })
+async function carregarUnidades() {
+  if (unidades.value.length) return
+  try {
+    const r = await api.get('/unidades-medida', { params: { empresaId: auth.empresaId } })
+    unidades.value = Array.isArray(r.data) ? r.data : (r.data.itens ?? [])
+  } catch { unidades.value = [] }
+}
+async function abrirNovoProdRapido() {
+  await carregarUnidades()
+  prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null }
+  dlgProdRapido.value = true
+}
+async function salvarProdRapido() {
+  const pr = prodRapido.value
+  if (!pr.descricao || !pr.unidadeMedidaId) return
+  salvandoProdRapido.value = true
+  try {
+    const { data } = await api.post('/produtos/rapido', {
+      empresaId: auth.empresaId,
+      descricao: pr.descricao.trim(),
+      unidadeMedidaId: pr.unidadeMedidaId,
+    })
+    novaItens.value.push({ produtoId: data.id, descricao: data.descricao, quantidade: Math.max(1, Number(qtdSel.value) || 1) })
+    dlgProdRapido.value = false
+    notif.ok(`Produto "${data.descricao}" criado e adicionado.`)
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível cadastrar o produto.')
+  } finally { salvandoProdRapido.value = false }
 }
 async function salvarNova() {
   if (!novaItens.value.length) return

@@ -1843,8 +1843,11 @@ async function carregarAuxiliares() {
   ])
   configFiscal.value = cfg.data ?? null
   locaisEstoque.value = locais.data
+  // Mantém as OCs Recebidas na lista (uma OC pode atender mais de uma NF, e a nota pode ser
+  // vinculada depois do processamento) — só esconde as Canceladas. Se sumisse a Recebida, a
+  // nota "sem OC" não teria como ser vinculada e o autocomplete podia até descartar a seleção.
   pedidosCompra.value = (pedidos.data ?? [])
-    .filter((p: any) => p.status !== 'Recebido' && p.status !== 'Cancelado')
+    .filter((p: any) => p.status !== 'Cancelado')
     .map((p: any) => ({
       ...p,
       label: `OC #${p.numero} · ${p.lojaNome ?? 'sem unidade'} · ${p.fornecedorNome ?? '—'} · ${fmtData(p.dataPedido)}${p.status ? ' · ' + p.status : ''}`,

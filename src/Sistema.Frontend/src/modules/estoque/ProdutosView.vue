@@ -452,7 +452,7 @@
         <v-divider />
 
         <v-card-text class="pa-0" style="max-height:78vh;overflow-y:auto">
-          <v-form ref="formulario">
+          <v-form ref="formulario" @submit.prevent>
             <div class="prod-form-body">
 
               <!-- ── SEÇÃO: IDENTIFICAÇÃO ───────────────────────── -->
@@ -975,7 +975,7 @@
                         variant="outlined" density="compact" style="width:90px" />
                       <v-select v-model="compUnid" :items="['un','kg','g','100g','dz']" label="Un."
                         variant="outlined" density="compact" style="width:80px" hide-details />
-                      <v-btn icon="mdi-plus" color="primary" variant="tonal" :disabled="!compSel" @click="addComponente" />
+                      <v-btn icon="mdi-plus" type="button" color="primary" variant="tonal" :disabled="!compSel" @click.prevent="addComponente" />
                     </div>
 
                     <v-table density="compact">
@@ -2555,12 +2555,12 @@ function addComponente() {
   const p = compSel.value
   if (!p) return
   const porPeso = p.produtoBalanca || p.vendidoFracionado
-  comp.value.itens.push({
+  comp.value.itens = [...comp.value.itens, {
     componenteId: p.id, descricao: p.descricao,
     quantidade: Math.max(0, Number(compQtd.value) || 1),
     unidade: compUnid.value || (porPeso ? 'kg' : 'un'),
     custoUnitario: p.custoUnitario ?? 0, porPeso,
-  })
+  }]
   compSel.value = null; compQtd.value = null; compUnid.value = 'un'; compOpcoes.value = []
 }
 async function salvarComposicao() {

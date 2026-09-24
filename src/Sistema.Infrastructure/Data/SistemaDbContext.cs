@@ -32,6 +32,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     // Estoque
     public DbSet<Categoria> Categorias => Set<Categoria>();
     public DbSet<Marca> Marcas => Set<Marca>();
+    public DbSet<ComponenteComposicao> ComponentesComposicao => Set<ComponenteComposicao>();
     public DbSet<UnidadeMedida> UnidadesMedida => Set<UnidadeMedida>();
     public DbSet<LocalEstoque> LocaisEstoque => Set<LocalEstoque>();
     public DbSet<Produto> Produtos => Set<Produto>();

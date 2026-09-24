@@ -614,6 +614,157 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { id, descricao = req.Descricao.Trim(), codigo = novo?.Codigo, custoUnitario = custo });
     }
 
+    // ─── Produto COMPOSTO (composição + produção) ──────────────────────────────
+
+    /// <summary>Composição do produto (componentes + rendimento) e o custo calculado (soma dos componentes).</summary>
+    [HttpGet("{id:guid}/composicao")]
+    public async Task<IActionResult> ObterComposicao(Guid id, CancellationToken ct)
+    {
+        var prod = await db.Produtos.AsNoTracking().Where(p => p.Id == id)
+            .Select(p => new { p.EhComposto, p.RendimentoComposicao }).FirstOrDefaultAsync(ct);
+        if (prod is null) return NotFound();
+
+        var itens = await db.ComponentesComposicao.AsNoTracking().Where(c => c.ProdutoCompostoId == id)
+            .Select(c => new { c.ComponenteProdutoId, c.Quantidade, c.Unidade }).ToListAsync(ct);
+        var compIds = itens.Select(i => i.ComponenteProdutoId).ToList();
+        var comps = await db.Produtos.AsNoTracking().Where(p => compIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Descricao, p.CustoUnitario, porPeso = p.ProdutoBalanca || p.VendidoFracionado, p.EstoqueAtual })
+            .ToDictionaryAsync(p => p.Id, ct);
+
+        var lista = itens.Select(i =>
+        {
+            comps.TryGetValue(i.ComponenteProdutoId, out var c);
+            var custo = c?.CustoUnitario ?? 0m;
+            return new
+            {
+                componenteId = i.ComponenteProdutoId,
+                descricao = c?.Descricao ?? "(produto)",
+                unidade = i.Unidade,
+                quantidade = i.Quantidade,
+                custoUnitario = custo,
+                subtotal = Math.Round(i.Quantidade * custo, 2),
+                porPeso = c?.porPeso ?? false,
+                estoqueComponente = c?.EstoqueAtual ?? 0m,
+            };
+        }).ToList();
+
+        var rend = prod.RendimentoComposicao > 0 ? prod.RendimentoComposicao : 1m;
+        var custoReceita = lista.Sum(x => x.subtotal);
+        return Ok(new
+        {
+            ehComposto = prod.EhComposto,
+            rendimento = rend,
+            custoReceita = Math.Round(custoReceita, 2),
+            custoUnitario = Math.Round(custoReceita / rend, 2),
+            itens = lista,
+        });
+    }
+
+    /// <summary>Salva a composição (substitui os componentes) e recalcula o custo do composto.</summary>
+    [HttpPut("{id:guid}/composicao")]
+    public async Task<IActionResult> SalvarComposicao(Guid id, [FromBody] SalvarComposicaoRequest req, CancellationToken ct)
+    {
+        var prod = await db.Produtos.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (prod is null) return NotFound();
+
+        var atuais = await db.ComponentesComposicao.Where(c => c.ProdutoCompostoId == id).ToListAsync(ct);
+        db.ComponentesComposicao.RemoveRange(atuais);
+
+        var rend = req.Rendimento > 0 ? req.Rendimento : 1m;
+        var itens = (req.Itens ?? new()).Where(i => i.ComponenteId != id && i.Quantidade > 0).ToList();
+        foreach (var it in itens)
+            db.ComponentesComposicao.Add(Sistema.Domain.Estoque.Entities.ComponenteComposicao.Criar(
+                id, it.ComponenteId, it.Quantidade, it.Unidade ?? "un"));
+
+        prod.MarcarComposto(itens.Count > 0, rend);
+        await uow.SalvarAsync(ct);
+        await RecalcularCustoCompostoAsync(id, rend, ct);
+        return NoContent();
+    }
+
+    /// <summary>Produz X do produto composto: baixa os componentes e credita o composto no estoque da loja.</summary>
+    [HttpPost("{id:guid}/produzir")]
+    public async Task<IActionResult> Produzir(Guid id, [FromBody] ProduzirRequest req, CancellationToken ct)
+    {
+        if (req.Quantidade <= 0) return BadRequest(new { mensagem = "Informe a quantidade a produzir." });
+        if (req.LocalEstoqueId == Guid.Empty) return BadRequest(new { mensagem = "Informe a loja da produção." });
+
+        var composto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (composto is null) return NotFound();
+        if (!composto.EhComposto) return BadRequest(new { mensagem = "Este produto não é composto." });
+
+        var comps = await db.ComponentesComposicao.AsNoTracking().Where(c => c.ProdutoCompostoId == id).ToListAsync(ct);
+        if (comps.Count == 0) return BadRequest(new { mensagem = "Composição vazia." });
+
+        var rend = composto.RendimentoComposicao > 0 ? composto.RendimentoComposicao : 1m;
+        var fator = req.Quantidade / rend;
+
+        var compIds = comps.Select(c => c.ComponenteProdutoId).ToList();
+        var produtos = await db.Produtos.Where(p => compIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+
+        // Confere estoque suficiente na loja (por movimentações) antes de baixar.
+        var saldos = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == composto.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId && compIds.Contains(m.ProdutoId))
+            .GroupBy(m => m.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Saldo = g.Sum(m =>
+                m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada ? m.Quantidade
+              : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida ? -m.Quantidade : 0m) })
+            .ToListAsync(ct)).ToDictionary(x => x.ProdutoId, x => x.Saldo);
+
+        var faltas = new List<object>();
+        decimal custoReceita = 0m;
+        foreach (var c in comps)
+        {
+            var baixa = Math.Round(c.Quantidade * fator, 3);
+            var saldo = saldos.GetValueOrDefault(c.ComponenteProdutoId, 0m);
+            var pcusto = produtos.TryGetValue(c.ComponenteProdutoId, out var pp) ? pp.CustoUnitario : 0m;
+            custoReceita += c.Quantidade * pcusto;
+            if (baixa > saldo)
+                faltas.Add(new { componente = produtos.TryGetValue(c.ComponenteProdutoId, out var p2) ? p2.Descricao : "(produto)", precisa = baixa, tem = saldo });
+        }
+        if (faltas.Count > 0 && !req.Forcar)
+            return BadRequest(new { mensagem = "Estoque insuficiente de componentes na loja.", faltas });
+
+        var usuarioId = Guid.TryParse(User.FindFirst("sub")?.Value, out var uid) ? uid : (Guid?)null;
+        var doc = $"Produção {composto.Codigo}";
+        foreach (var c in comps)
+        {
+            var baixa = Math.Round(c.Quantidade * fator, 3);
+            if (baixa <= 0) continue;
+            var pcusto = produtos.TryGetValue(c.ComponenteProdutoId, out var pp) ? pp.CustoUnitario : 0m;
+            db.MovimentacoesEstoque.Add(Sistema.Domain.Estoque.Entities.MovimentacaoEstoque.Criar(
+                composto.EmpresaId, c.ComponenteProdutoId, req.LocalEstoqueId,
+                Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida, baixa, pcusto,
+                documentoOrigem: doc, usuarioId: usuarioId, observacao: $"Componente de {composto.Descricao}"));
+            produtos[c.ComponenteProdutoId].AjustarEstoque(-baixa);
+        }
+
+        var custoUnitComposto = rend > 0 ? Math.Round(custoReceita / rend, 4) : custoReceita;
+        db.MovimentacoesEstoque.Add(Sistema.Domain.Estoque.Entities.MovimentacaoEstoque.Criar(
+            composto.EmpresaId, id, req.LocalEstoqueId,
+            Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada, req.Quantidade, custoUnitComposto,
+            documentoOrigem: doc, usuarioId: usuarioId, observacao: "Produção (composto)"));
+        composto.AjustarEstoque(req.Quantidade);
+
+        await uow.SalvarAsync(ct);
+        return Ok(new { produzido = req.Quantidade, custoUnitario = custoUnitComposto });
+    }
+
+    private async Task RecalcularCustoCompostoAsync(Guid id, decimal rendimento, CancellationToken ct)
+    {
+        var comps = await db.ComponentesComposicao.AsNoTracking().Where(c => c.ProdutoCompostoId == id)
+            .Select(c => new { c.ComponenteProdutoId, c.Quantidade }).ToListAsync(ct);
+        if (comps.Count == 0) return;
+        var ids = comps.Select(c => c.ComponenteProdutoId).ToList();
+        var custos = await db.Produtos.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.CustoUnitario }).ToDictionaryAsync(p => p.Id, p => p.CustoUnitario, ct);
+        var custoReceita = comps.Sum(c => c.Quantidade * (custos.GetValueOrDefault(c.ComponenteProdutoId, 0m)));
+        var rend = rendimento > 0 ? rendimento : 1m;
+        var prod = await db.Produtos.FirstOrDefaultAsync(p => p.Id == id, ct);
+        prod?.DefinirCustoComposicao(Math.Round(custoReceita / rend, 4));
+        await uow.SalvarAsync(ct);
+    }
+
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Editar(Guid id, [FromBody] EditarProdutoCompletoRequest req,
         CancellationToken ct)
@@ -1344,6 +1495,9 @@ public record AlterarPrecosRequest(List<AlterarPrecoItemRequest> Itens);
 
 public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 public record CriarProdutoRapidoRequest(Guid EmpresaId, string Descricao, Guid UnidadeMedidaId, decimal? CustoUnitario = null);
+public record ComponenteComposicaoRequest(Guid ComponenteId, decimal Quantidade, string? Unidade);
+public record SalvarComposicaoRequest(decimal Rendimento, List<ComponenteComposicaoRequest> Itens);
+public record ProduzirRequest(Guid LocalEstoqueId, decimal Quantidade, bool Forcar = false);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);

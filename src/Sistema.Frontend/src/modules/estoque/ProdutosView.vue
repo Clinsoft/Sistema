@@ -942,6 +942,64 @@
                 </div>
               </div>
 
+              <!-- ── SEÇÃO: COMPOSIÇÃO / PRODUÇÃO (produto feito de outros) ────────── -->
+              <div class="prod-secao" v-if="editando && !ehAtendente">
+                <div class="prod-secao-header">
+                  <v-icon icon="mdi-set-merge" size="16" />
+                  <span>Composição (produto feito de outros)</span>
+                </div>
+                <div class="prod-secao-body">
+                  <v-switch v-model="comp.ehComposto" color="primary" density="compact" hide-details
+                    label="Este produto é feito da combinação de outros (produção)" class="mb-2" />
+                  <template v-if="comp.ehComposto">
+                    <div class="d-flex ga-2 align-center mb-2 flex-wrap">
+                      <v-text-field v-model.number="comp.rendimento" label="Rendimento (qto a receita produz)"
+                        type="number" min="0.001" variant="outlined" density="compact" hide-details style="max-width:220px" />
+                      <v-chip color="teal" variant="tonal" size="small">
+                        Custo calculado: R$ {{ fmtNum(custoComposto) }}/un
+                      </v-chip>
+                      <v-spacer />
+                      <v-btn size="small" color="indigo" variant="tonal" prepend-icon="mdi-factory"
+                        :disabled="!comp.itens.length" @click="abrirProduzir">Produzir</v-btn>
+                    </div>
+
+                    <div class="d-flex ga-2 mb-2">
+                      <v-autocomplete v-model="compSel" :items="compOpcoes" :loading="compBuscando"
+                        item-title="descricao" item-value="id" return-object no-filter clearable
+                        label="Adicionar componente (produto)" variant="outlined" density="compact" class="flex-grow-1"
+                        @update:search="buscarComponente" />
+                      <v-text-field v-model.number="compQtd" label="Qtd" type="number" min="0"
+                        variant="outlined" density="compact" style="width:90px" />
+                      <v-select v-model="compUnid" :items="['un','kg','g','100g','dz']" label="Un."
+                        variant="outlined" density="compact" style="width:80px" hide-details />
+                      <v-btn icon="mdi-plus" color="primary" variant="tonal" :disabled="!compSel" @click="addComponente" />
+                    </div>
+
+                    <v-table density="compact">
+                      <thead><tr><th>Componente</th><th class="text-center" style="width:120px">Qtd</th>
+                        <th class="text-right" style="width:110px">Custo un.</th>
+                        <th class="text-right" style="width:110px">Subtotal</th><th style="width:44px"></th></tr></thead>
+                      <tbody>
+                        <tr v-for="(c, idx) in comp.itens" :key="idx">
+                          <td>{{ c.descricao }}</td>
+                          <td class="text-center">{{ fmtNum(c.quantidade) }} {{ c.unidade }}</td>
+                          <td class="text-right">R$ {{ fmtNum(c.custoUnitario) }}</td>
+                          <td class="text-right">R$ {{ fmtNum(c.quantidade * c.custoUnitario) }}</td>
+                          <td><v-btn icon="mdi-close" size="x-small" variant="text" color="error" @click="comp.itens.splice(idx,1)" /></td>
+                        </tr>
+                        <tr v-if="!comp.itens.length"><td colspan="5" class="text-center pa-3 text-medium-emphasis">Nenhum componente</td></tr>
+                      </tbody>
+                    </v-table>
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      Custo unit. = soma dos componentes ÷ rendimento. O <b>preço de venda</b> você define no cadastro. "Produzir" baixa os componentes e credita este produto no estoque da loja.
+                    </div>
+                    <div class="d-flex justify-end mt-2">
+                      <v-btn size="small" color="primary" variant="tonal" :loading="salvandoComp" @click="salvarComposicao">Salvar composição</v-btn>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
               <!-- ── SEÇÃO: VALIDADE E LOTES ────────────────────── -->
               <div class="prod-secao" v-if="editando && (form.controlarValidade || form.controlarLote || lotes.length > 0)">
                 <div class="prod-secao-header">
@@ -1170,6 +1228,34 @@
           <v-spacer />
           <v-btn variant="text" @click="dialogLote = false">Cancelar</v-btn>
           <v-btn color="primary" :loading="salvandoLote" @click="salvarLote">Salvar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog: Produzir (composto) -->
+    <v-dialog v-model="dlgProduzir" max-width="420" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-factory" color="indigo" /> Produzir {{ form.descricao }}
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dlgProduzir = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div class="text-caption text-medium-emphasis mb-3">
+            Baixa os componentes e credita este produto no estoque da loja escolhida.
+          </div>
+          <v-select v-model="producao.localEstoqueId" :items="locaisEstoque" item-title="nome" item-value="id"
+            label="Loja da produção *" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model.number="producao.quantidade" label="Quantidade a produzir *"
+            type="number" min="0" variant="outlined" density="compact" hide-details />
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dlgProduzir = false">Cancelar</v-btn>
+          <v-btn color="indigo" rounded="lg" :loading="produzindo"
+            :disabled="!producao.localEstoqueId || !producao.quantidade"
+            @click="produzir(false)">Produzir</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -2415,6 +2501,7 @@ async function abrirEdicao(item: any) {
     embalagens.value = p.embalagens ?? []
     nutri.value = p.nutricional ? { ...nutriPadrao(), ...p.nutricional } : nutriPadrao()
     await carregarLotes()
+    await carregarComposicao()
   } catch { /* silencioso */ }
 }
 
@@ -2422,6 +2509,97 @@ function fecharDialog() {
   dialog.value = false
   arquivoImagem.value = null
   previewImagem.value = null
+}
+
+// ─── Composição (produto composto) + produção ────────────────────────────────
+const comp = ref<{ ehComposto: boolean; rendimento: number; itens: any[] }>({ ehComposto: false, rendimento: 1, itens: [] })
+const compSel = ref<any>(null)
+const compQtd = ref<number | null>(null)
+const compUnid = ref('un')
+const compOpcoes = ref<any[]>([])
+const compBuscando = ref(false)
+const salvandoComp = ref(false)
+const custoComposto = computed(() => {
+  const receita = comp.value.itens.reduce((s, c) => s + (c.quantidade || 0) * (c.custoUnitario || 0), 0)
+  const rend = comp.value.rendimento > 0 ? comp.value.rendimento : 1
+  return Math.round(receita / rend * 100) / 100
+})
+async function carregarComposicao() {
+  comp.value = { ehComposto: false, rendimento: 1, itens: [] }
+  if (!produtoEditandoId.value) return
+  try {
+    const { data } = await api.get(`/produtos/${produtoEditandoId.value}/composicao`)
+    comp.value = {
+      ehComposto: !!data.ehComposto, rendimento: data.rendimento || 1,
+      itens: (data.itens ?? []).map((i: any) => ({
+        componenteId: i.componenteId, descricao: i.descricao, quantidade: i.quantidade,
+        unidade: i.unidade, custoUnitario: i.custoUnitario, porPeso: i.porPeso,
+      })),
+    }
+  } catch { /* silencioso */ }
+}
+async function buscarComponente(q: string) {
+  if (!q || q.length < 2) return
+  compBuscando.value = true
+  try {
+    const r = await api.get('/produtos/buscar', { params: { q, empresaId: auth.empresaId } })
+    compOpcoes.value = (r.data ?? []).filter((p: any) => p.id !== produtoEditandoId.value)
+  } finally { compBuscando.value = false }
+}
+function addComponente() {
+  const p = compSel.value
+  if (!p) return
+  const porPeso = p.produtoBalanca || p.vendidoFracionado
+  comp.value.itens.push({
+    componenteId: p.id, descricao: p.descricao,
+    quantidade: Math.max(0, Number(compQtd.value) || 1),
+    unidade: compUnid.value || (porPeso ? 'kg' : 'un'),
+    custoUnitario: p.custoUnitario ?? 0, porPeso,
+  })
+  compSel.value = null; compQtd.value = null; compUnid.value = 'un'; compOpcoes.value = []
+}
+async function salvarComposicao() {
+  if (!produtoEditandoId.value) { notif.aviso('Salve o produto primeiro.'); return }
+  salvandoComp.value = true
+  try {
+    await api.put(`/produtos/${produtoEditandoId.value}/composicao`, {
+      rendimento: comp.value.rendimento > 0 ? comp.value.rendimento : 1,
+      itens: comp.value.itens.map(c => ({ componenteId: c.componenteId, quantidade: c.quantidade, unidade: c.unidade })),
+    })
+    notif.ok('Composição salva. Custo recalculado.')
+    await carregarComposicao()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao salvar a composição.') }
+  finally { salvandoComp.value = false }
+}
+
+// Produção
+const dlgProduzir = ref(false)
+const produzindo = ref(false)
+const producao = ref<{ localEstoqueId: string | null; quantidade: number | null }>({ localEstoqueId: null, quantidade: null })
+function abrirProduzir() {
+  producao.value = { localEstoqueId: locaisEstoque.value[0]?.id ?? null, quantidade: null }
+  dlgProduzir.value = true
+}
+async function produzir(forcar = false) {
+  if (!produtoEditandoId.value || !producao.value.localEstoqueId || !producao.value.quantidade) return
+  produzindo.value = true
+  try {
+    const { data } = await api.post(`/produtos/${produtoEditandoId.value}/produzir`, {
+      localEstoqueId: producao.value.localEstoqueId,
+      quantidade: producao.value.quantidade,
+      forcar,
+    })
+    notif.ok(`Produzido ${data.produzido}. Custo un.: R$ ${fmtNum(data.custoUnitario)}. Componentes baixados.`)
+    dlgProduzir.value = false
+  } catch (e: any) {
+    const d = e?.response?.data
+    if (d?.faltas && !forcar) {
+      const lista = d.faltas.map((f: any) => `${f.componente} (precisa ${f.precisa}, tem ${f.tem})`).join('\n')
+      if (confirm(`Estoque insuficiente:\n${lista}\n\nProduzir mesmo assim (estoque fica negativo)?`)) {
+        await produzir(true); return
+      }
+    } else notif.erro(d?.mensagem ?? 'Erro ao produzir.')
+  } finally { produzindo.value = false }
 }
 
 // ─── salvar produto ──────────────────────────────────────────────

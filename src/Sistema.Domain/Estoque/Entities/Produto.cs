@@ -63,6 +63,18 @@ public class Produto : Entity
     public bool ControlarValidade { get; private set; }
     public int? ValidadeEmDias { get; private set; }
 
+    // Produto COMPOSTO (feito da combinação de outros via produção/montagem).
+    // Rendimento = quanto a receita produz (na unidade do composto); os componentes ficam
+    // na tabela ComponentesComposicao. Ver DefinirComposicao.
+    public bool EhComposto { get; private set; }
+    public decimal RendimentoComposicao { get; private set; } = 1m;
+    public void MarcarComposto(bool eh, decimal rendimento)
+    {
+        EhComposto = eh;
+        RendimentoComposicao = rendimento > 0 ? rendimento : 1m;
+        AtualizadoEm = DateTime.UtcNow;
+    }
+
     // Etiqueta: fica "desatualizada" quando o preço muda (produtos de balança/peso),
     // sinalizando que é preciso reimprimir a etiqueta antes da próxima venda.
     public bool EtiquetaDesatualizada { get; private set; }
@@ -197,6 +209,16 @@ public class Produto : Entity
         MarkupAtacado = markupAtacado;
         Markup = custoUnitario > 0 ? Math.Round(precoVenda / custoUnitario, 4) : 0;
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - custoUnitario) / precoVenda * 100, 2) : 0;
+    }
+
+    /// <summary>Define o custo unitário calculado pela composição (soma dos componentes). Mantém o
+    /// preço de venda (definido manualmente) e apenas recalcula markup/margem.</summary>
+    public void DefinirCustoComposicao(decimal custoUnitario)
+    {
+        CustoUnitario = custoUnitario < 0 ? 0 : custoUnitario;
+        Markup = CustoUnitario > 0 ? Math.Round(PrecoVenda / CustoUnitario, 4) : 0;
+        MargemLucro = PrecoVenda > 0 ? Math.Round((PrecoVenda - CustoUnitario) / PrecoVenda * 100, 2) : 0;
+        AtualizadoEm = DateTime.UtcNow;
     }
 
     /// <summary>Soma ao custo unitário o frete rateado (ex.: CT-e que chegou após a entrada).

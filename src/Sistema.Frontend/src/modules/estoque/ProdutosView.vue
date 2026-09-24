@@ -2375,10 +2375,33 @@ async function confirmarUnificar() {
   } finally { unificando.value = false }
 }
 
+// Tributação padrão da empresa (Configuração Fiscal) — herdada por TODO produto novo.
+const configFiscal = ref<any>(null)
+async function carregarConfigFiscal() {
+  try {
+    const r = await api.get('/fiscal/configuracao', { params: { empresaId: auth.empresaId } })
+    configFiscal.value = r.data ?? null
+  } catch { configFiscal.value = null }
+}
+function tributacaoPadraoProduto() {
+  const c = configFiscal.value
+  const simples = (c?.regime ?? 'SimplesNacional') === 'SimplesNacional'
+  return {
+    origem: c?.origemPadrao ?? '0',
+    csosnIcms: simples ? (c?.csosnPadrao ?? '400') : '',
+    cstIcms: simples ? '' : (c?.cstIcmsPadrao ?? '00'),
+    aliquotaIcms: c?.aliquotaIcmsPadrao ?? 0,
+    cstPisCofins: c?.cstPisPadrao ?? '07',
+    aliquotaPis: c?.aliquotaPisPadrao ?? 0,
+    aliquotaCofins: c?.aliquotaCofinsPadrao ?? 0,
+    cfop: c?.cfopVendaEstadual ?? '',
+  }
+}
+
 function abrirNovo() {
   editando.value = false
   produtoEditandoId.value = null
-  form.value = formPadrao()
+  form.value = { ...formPadrao(), ...tributacaoPadraoProduto() }  // herda a tributação padrão
   nutri.value = nutriPadrao()
   embalagens.value = []
   comp.value = { ehComposto: false, rendimento: 1, itens: [] }
@@ -2818,6 +2841,9 @@ async function salvar() {
       const r = await api.post('/produtos', { empresaId: auth.empresaId, ...form.value })
       produtoEditandoId.value = r.data.id
       editando.value = true
+      // O POST só grava o básico + NCM; um PUT persiste a tributação (herdada da Config
+      // Fiscal) e os demais campos fiscais/preços já preenchidos no formulário.
+      await api.put(`/produtos/${r.data.id}`, { empresaId: auth.empresaId, ...form.value }).catch(() => null)
       // Envia imagem e ficha pendentes automaticamente se selecionadas
       if (arquivoImagem.value) await enviarImagem()
       if (arquivoFicha.value) await enviarFicha()
@@ -2845,6 +2871,7 @@ onMounted(() => {
   listar().catch(() => {})
   carregarCatalogo()
   carregarEncargos()
+  carregarConfigFiscal()
 })
 </script>
 

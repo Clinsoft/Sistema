@@ -2258,6 +2258,7 @@ function ehPorPeso(p: any) {
   return p.vendidoFracionado === true || (p.unidadeSigla || '').toUpperCase() === 'KG'
 }
 function fmtN(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+function fmtNum(v: number) { return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) }
 function fmtData(d?: string) { return d ? new Date(d).toLocaleDateString('pt-BR') : '—' }
 
 // ─── listar / carregar ───────────────────────────────────────────

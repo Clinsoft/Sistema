@@ -970,9 +970,10 @@
                       <v-autocomplete v-model="compSel" :items="compOpcoes" :loading="compBuscando"
                         item-title="descricao" item-value="id" return-object no-filter clearable
                         label="Adicionar componente (produto)" variant="outlined" density="compact" class="flex-grow-1"
-                        @update:search="buscarComponente" />
+                        @update:search="buscarComponente" @keydown.enter.prevent="addComponente" />
                       <v-text-field v-model.number="compQtd" label="Qtd" type="number" min="0"
-                        variant="outlined" density="compact" style="width:90px" />
+                        variant="outlined" density="compact" style="width:90px"
+                        @keydown.enter.prevent="addComponente" />
                       <v-select v-model="compUnid" :items="['un','kg','g','100g','dz']" label="Un."
                         variant="outlined" density="compact" style="width:80px" hide-details />
                       <v-btn icon="mdi-plus" type="button" color="primary" variant="tonal" :disabled="!compSel" @click.prevent="addComponente" />

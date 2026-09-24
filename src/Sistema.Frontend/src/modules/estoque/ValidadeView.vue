@@ -899,7 +899,8 @@ const aba = ref('painel')
 // ─── Pendentes de lançamento (validade/lote não lançados) ──────────────────────
 const pendencias = ref<any[]>([])
 const carregandoPend = ref(false)
-const pendLoja = ref('')
+// Padrão: a LOJA ATUAL (do cabeçalho) — cada unidade vê só as suas pendências.
+const pendLoja = ref<string>(auth.lojaAtualId ?? '')
 const headersPend = [
   { title: 'Loja', key: 'loja' },
   { title: 'NF nº', key: 'numeroNota' },
@@ -931,7 +932,7 @@ const atrasoPessoas = ref<any[]>([])
 const carregandoAtraso = ref(false)
 const atrasoAno = ref(new Date().getFullYear())
 const atrasoMes = ref(new Date().getMonth() + 1)
-const atrasoLoja = ref('')
+const atrasoLoja = ref<string>(auth.lojaAtualId ?? '')
 const mesesOpc = [
   { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
   { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
@@ -1707,6 +1708,14 @@ onMounted(async () => {
 let atrasoCarregado = false
 watch(aba, (v) => {
   if (v === 'atraso' && !atrasoCarregado) { atrasoCarregado = true; carregarAtraso() }
+})
+
+// Trocou a loja no cabeçalho → refiltra pendências/atraso para a nova loja.
+watch(() => auth.lojaAtualId, (v) => {
+  pendLoja.value = v ?? ''
+  atrasoLoja.value = v ?? ''
+  carregarPendencias()
+  if (atrasoCarregado) carregarAtraso()
 })
 </script>
 

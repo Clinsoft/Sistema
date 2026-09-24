@@ -328,6 +328,7 @@
         'O <b>código interno</b> é sequencial (a partir de 3001) e é o número usado na balança — não use código aleatório.',
         'Na aba <b>Nutricional</b>, busque o alimento na base <b>TACO</b> pelo nome para preencher a tabela automaticamente.',
         'Produtos criados durante a importação de NF-e já vêm com dados fiscais e fornecedor vinculados — complete aqui o que faltar.',
+        '<b>Produto composto</b> (aba Composição): marque a opção e adicione os <b>componentes</b> com a quantidade de cada um (g/kg ou un/dz) e o <b>rendimento</b>. O <b>custo</b> é somado automaticamente dos componentes e o <b>preço de venda</b> vem sugerido. No botão <b>Produzir</b>, o sistema <u>baixa o estoque dos componentes</u> e <u>credita o produto acabado</u>, já sugerindo a validade de <b>maior prazo</b> entre os componentes.',
         'Use os ícones da tabela para <b>editar</b>, <b>inativar</b> ou <b>excluir</b>. A lista atualiza sozinha após cada ação.',
       ]"
     />

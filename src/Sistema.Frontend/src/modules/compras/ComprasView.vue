@@ -17,10 +17,11 @@
       id="compras"
       titulo="Como usar os Pedidos de Compra"
       :passos="[
-        'Clique em <b>Novo Pedido</b>, escolha o <b>fornecedor</b> e adicione itens. Os produtos <b>abaixo do estoque mínimo</b> são sugeridos automaticamente — clique para incluí-los.',
+        'Clique em <b>Novo Pedido</b>, escolha o <b>fornecedor</b> e adicione itens. Os produtos <b>abaixo do estoque mínimo</b> são sugeridos automaticamente — clique para incluí-los. Se o item ainda não existe, use o <b>cadastro rápido</b> ali mesmo, sem sair do pedido.',
+        'Se houver <b>requisições abertas</b>, você pode <b>uni-las</b> em um único pedido por fornecedor, evitando pedidos duplicados.',
         'Salve como <b>Rascunho</b>. Depois use o botão <b>WhatsApp</b> 🟢 para gerar um link com o pedido e enviar ao fornecedor (marca o pedido como Enviado).',
         'Quando a mercadoria chegar, use <b>📦 Receber</b>, escolha o <b>local de estoque</b> e confirme — o estoque é atualizado automaticamente.',
-        'Use <b>🚫 Cancelar</b> em pedidos ainda não recebidos. Filtre por status e período para consultar o histórico.',
+        'Use <b>🚫 Cancelar</b> em pedidos ainda não recebidos. O filtro de <b>status</b> é instantâneo (em <b>Todos</b> os finalizados ficam ocultos para limpar a tela); filtre também por período para consultar o histórico.',
       ]"
     />
     <v-card rounded="xl" elevation="1" class="mb-3 pa-3">

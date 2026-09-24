@@ -943,7 +943,7 @@
               </div>
 
               <!-- ── SEÇÃO: COMPOSIÇÃO / PRODUÇÃO (produto feito de outros) ────────── -->
-              <div class="prod-secao" v-if="editando && !ehAtendente">
+              <div class="prod-secao" v-if="!ehAtendente">
                 <div class="prod-secao-header">
                   <v-icon icon="mdi-set-merge" size="16" />
                   <span>Composição (produto feito de outros)</span>
@@ -959,9 +959,12 @@
                         Custo calculado: R$ {{ fmtNum(custoComposto) }}/un
                       </v-chip>
                       <v-spacer />
-                      <v-btn size="small" color="indigo" variant="tonal" prepend-icon="mdi-factory"
+                      <v-btn v-if="editando" size="small" color="indigo" variant="tonal" prepend-icon="mdi-factory"
                         :disabled="!comp.itens.length" @click="abrirProduzir">Produzir</v-btn>
                     </div>
+                    <v-alert v-if="!editando" type="info" variant="tonal" density="compact" class="mb-2">
+                      Monte os componentes aqui e clique em <b>Criar Produto</b> — a composição é salva junto. Depois você poderá <b>Produzir</b>.
+                    </v-alert>
 
                     <div class="d-flex ga-2 mb-2">
                       <v-autocomplete v-model="compSel" :items="compOpcoes" :loading="compBuscando"
@@ -993,7 +996,7 @@
                     <div class="text-caption text-medium-emphasis mt-1">
                       Custo unit. = soma dos componentes ÷ rendimento. O <b>preço de venda</b> você define no cadastro. "Produzir" baixa os componentes e credita este produto no estoque da loja.
                     </div>
-                    <div class="d-flex justify-end mt-2">
+                    <div v-if="editando" class="d-flex justify-end mt-2">
                       <v-btn size="small" color="primary" variant="tonal" :loading="salvandoComp" @click="salvarComposicao">Salvar composição</v-btn>
                     </div>
                   </template>
@@ -2376,6 +2379,7 @@ function abrirNovo() {
   form.value = formPadrao()
   nutri.value = nutriPadrao()
   embalagens.value = []
+  comp.value = { ehComposto: false, rendimento: 1, itens: [] }
   arquivoImagem.value = null
   previewImagem.value = null
   dialog.value = true
@@ -2427,6 +2431,7 @@ async function duplicarProduto(item: any) {
     const p = r.data
     editando.value = false
     produtoEditandoId.value = null
+    comp.value = { ehComposto: false, rendimento: 1, itens: [] }
     form.value = {
       ...formPadrao(),
       codigo: '', codigoBarras: '',            // novos: código gerado, EAN em branco
@@ -2782,6 +2787,17 @@ async function salvar() {
       if (arquivoImagem.value) await enviarImagem()
       if (arquivoFicha.value) await enviarFicha()
       notif.ok('Produto criado! Preencha os demais campos e salve novamente se necessário.')
+    }
+    // Composição: persiste junto (novo ou edição). Se marcou composto, salva os componentes;
+    // se desmarcou mas ainda havia componentes, limpa.
+    if (produtoEditandoId.value && (comp.value.ehComposto || comp.value.itens.length)) {
+      await api.put(`/produtos/${produtoEditandoId.value}/composicao`, {
+        rendimento: comp.value.rendimento > 0 ? comp.value.rendimento : 1,
+        itens: comp.value.ehComposto
+          ? comp.value.itens.map(c => ({ componenteId: c.componenteId, quantidade: c.quantidade, unidade: c.unidade }))
+          : [],
+      }).catch(() => null)
+      await carregarComposicao()
     }
     await listar()
     if (fecharAoSalvar) fecharDialog()

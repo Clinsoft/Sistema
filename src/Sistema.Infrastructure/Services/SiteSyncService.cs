@@ -14,7 +14,7 @@ public class SiteSyncService(HttpClient http, IConfiguration config)
     public bool Configurado => !string.IsNullOrWhiteSpace(config["Site:SyncUrl"]);
 
     /// <summary>URL pública base para montar links de imagem (ex.: a API que serve /uploads).</summary>
-    public string BaseImagens => config["Site:PublicBaseUrl"] ?? "https://sistema.ecogranel.com.br";
+    public string BaseImagens => config["Site:PublicBaseUrl"] ?? Branding.BrandingRuntime.Atual.PublicBaseUrl;
 
     /// <summary>
     /// Envia a lista de produtos ao site. Retorna (sucesso, quantidade, mensagem).

@@ -22,7 +22,7 @@ public class MercadoLivreService(HttpClient http, IConfiguration config, Sistema
     private string? ClientId => config["MercadoLivre:ClientId"];
     private string? ClientSecret => config["MercadoLivre:ClientSecret"];
     private string RedirectUri => config["MercadoLivre:RedirectUri"]
-        ?? "https://sistema.ecogranel.com.br/api/mercadolivre/callback";
+        ?? (Branding.BrandingRuntime.Atual.PublicBaseUrl.TrimEnd('/') + "/api/mercadolivre/callback");
 
     public bool Configurado => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 

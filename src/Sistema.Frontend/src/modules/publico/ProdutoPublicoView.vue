@@ -107,7 +107,7 @@
 
           <!-- Rodapé -->
           <div class="text-center text-caption text-medium-emphasis mt-6">
-            Powered by EcoGranel · Loja de Produtos Naturais
+            Powered by {{ branding.nome }} · {{ branding.slogan }}
           </div>
         </template>
       </v-container>
@@ -119,6 +119,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/composables/useApi'
+import { branding } from '@/branding'
 
 const route = useRoute()
 const carregando = ref(true)

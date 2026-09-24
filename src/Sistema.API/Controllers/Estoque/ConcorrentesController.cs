@@ -128,9 +128,10 @@ public class ConcorrentesController(
         // Remove a PRÓPRIA loja (a base às vezes tem a EcoGranel): pelo nome ou por estar
         // praticamente no mesmo ponto (<40 m).
         var nomeLoja = (loja.Nome ?? "").Trim();
+        var marca = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome;
         achados = achados.Where(a =>
             a.DistanciaKm > 0.04m
-            && a.Nome.IndexOf("ecogranel", StringComparison.OrdinalIgnoreCase) < 0
+            && a.Nome.IndexOf(marca, StringComparison.OrdinalIgnoreCase) < 0
             && (nomeLoja.Length < 4 || a.Nome.IndexOf(nomeLoja, StringComparison.OrdinalIgnoreCase) < 0))
             .ToList();
 

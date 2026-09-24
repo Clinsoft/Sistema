@@ -283,7 +283,9 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                      && p.ImagemUrl != null && p.ImagemUrl != "")
             .ToListAsync(ct);
 
-        const string baseImg = "https://sistema.ecogranel.com.br";
+        var baseImg = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.PublicBaseUrl.TrimEnd('/');
+        var catalogoProdutoUrl = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.CatalogoProdutoUrl;
+        var marca = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome;
         static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
 
         var sb = new System.Text.StringBuilder();
@@ -297,12 +299,13 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
               .Append(Csv(string.IsNullOrWhiteSpace(p.DescricaoComplementar) ? p.Descricao : p.DescricaoComplementar)).Append(',')
               .Append("\"in stock\",\"new\",")
               .Append(Csv(preco)).Append(',')
-              .Append(Csv($"https://ecogranel.com.br/produtos/produto.php?p={slug}")).Append(',')
+              .Append(Csv($"{catalogoProdutoUrl}{slug}")).Append(',')
               .Append(Csv(baseImg + p.ImagemUrl)).Append(',')
-              .Append("\"EcoGranel\"").AppendLine();
+              .Append(Csv(marca)).AppendLine();
         }
 
-        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv; charset=utf-8", "catalogo-ecogranel.csv");
+        var arqCatalogo = $"catalogo-{Sistema.Infrastructure.Services.SiteSyncService.Slugify(marca)}.csv";
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv; charset=utf-8", arqCatalogo);
     }
 
     /// <summary>

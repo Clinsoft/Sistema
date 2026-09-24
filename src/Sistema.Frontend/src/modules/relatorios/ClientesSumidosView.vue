@@ -67,6 +67,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
+import { branding } from '@/branding'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -104,7 +105,7 @@ function linkWhats(item: Item) {
   let tel = (item.telefone ?? '').replace(/\D/g, '')
   if (tel.length <= 11) tel = '55' + tel   // adiciona DDI Brasil se vier sem
   const primeiro = (item.nome || '').split(' ')[0]
-  const msg = `Olá ${primeiro}! Sentimos sua falta na EcoGranel 💚 Passe na loja e aproveite nossas novidades!`
+  const msg = `Olá ${primeiro}! Sentimos sua falta na ${branding.nome} 💚 Passe na loja e aproveite nossas novidades!`
   return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
 }
 

@@ -14,7 +14,7 @@ public class SmtpEmailService(IConfiguration config) : IEmailService
         var porta    = int.Parse(config["Email:Porta"]    ?? "587");
         var usuario  = config["Email:Usuario"]    ?? "";
         var senha    = config["Email:Senha"]      ?? "";
-        var remetente = config["Email:Remetente"] ?? "noreply@ecogranel.com";
+        var remetente = config["Email:Remetente"] ?? Branding.BrandingRuntime.Atual.EmailRemetente;
 
         // Se SMTP não estiver configurado, apenas loga (dev)
         if (string.IsNullOrWhiteSpace(smtp) || string.IsNullOrWhiteSpace(usuario))

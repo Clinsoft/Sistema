@@ -17,6 +17,18 @@ public class MarketingController(
     Sistema.Infrastructure.Services.OpenAiImageService openaiImg,
     Sistema.Infrastructure.Services.ArteBrandingService branding) : ControllerBase
 {
+    /// <summary>Descrição da identidade visual da marca (da instância) para o prompt de IA.</summary>
+    private static string MontarMarcaPrompt()
+    {
+        var b = Sistema.Infrastructure.Branding.BrandingRuntime.Atual;
+        var visual = string.IsNullOrWhiteSpace(b.DescricaoVisualIa)
+            ? $"paleta em {b.CorPrimaria} e {b.CorSecundaria}, cor de destaque {b.CorAccent} e fundo claro {b.CorFundo}. Estilo natural, orgânico, saudável e acolhedor."
+            : b.DescricaoVisualIa;
+        return $"Siga a identidade visual da marca {b.Nome} ({b.Slogan}): {visual} " +
+               "Deixe o canto superior esquerdo mais limpo e sem texto, com espaço livre para a logomarca. " +
+               "Não escreva nenhum logotipo, marca d'água nem nome de marca na imagem.";
+    }
+
     // ─── Templates ────────────────────────────────────────────────────────────
 
     [HttpGet("templates")]
@@ -204,13 +216,9 @@ public class MarketingController(
             FormatoArte.BannerHorizontal => ("proporção horizontal (banner)", "1536x1024"),
             _                            => ("proporção quadrada 1:1 (feed)", "1024x1024")
         };
-        // Identidade da marca EcoGranel: paleta de cores injetada no prompt.
+        // Identidade da marca (da instância): paleta de cores injetada no prompt.
         // A logo oficial é sobreposta depois (a IA não reproduz o arquivo real).
-        const string marca =
-            "Siga a identidade visual da marca EcoGranel (produtos naturais): paleta em tons de marrom " +
-            "(#5C2D0C e #8B4513), verde-folha (#6AAF2E) e fundo bege claro (#FAF7F4). Estilo natural, " +
-            "orgânico, saudável e acolhedor. Deixe o canto superior esquerdo mais limpo e sem texto, com " +
-            "espaço livre para a logomarca. Não escreva nenhum logotipo, marca d'água nem nome de marca na imagem.";
+        var marca = MontarMarcaPrompt();
         var promptFinal = $"{req.Prompt}. Formato: {proporcao}. Arte publicitária profissional para redes sociais, " +
                           $"texto legível e bem posicionado, alta qualidade. {marca}";
 
@@ -363,11 +371,7 @@ public class MarketingController(
             precoTxt = $" Mostre o preço promocional em destaque: de R$ {de:0.00} por R$ {por:0.00}.";
         }
 
-        const string marca =
-            "Siga a identidade visual da marca EcoGranel (produtos naturais): tons de marrom (#5C2D0C e " +
-            "#8B4513), verde-folha (#6AAF2E) e bege claro (#FAF7F4). Estilo natural, orgânico e acolhedor. " +
-            "Texto legível e bem posicionado. Deixe o canto superior esquerdo mais limpo, com espaço para a " +
-            "logomarca (não desenhe logotipo nem marca d'água).";
+        var marca = MontarMarcaPrompt();
 
         var dir = Path.Combine("wwwroot", "uploads", "artes");
         Directory.CreateDirectory(dir);

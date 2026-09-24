@@ -255,7 +255,7 @@
                   <v-col cols="12">
                     <v-text-field v-model="config.nomeClubeExibicao" label="Nome do clube (exibição)"
                       variant="outlined" density="compact"
-                      hint="Ex: Clube Natural, EcoClub, Fidelidade EcoGranel" persistent-hint />
+                      hint="Ex: Clube Natural, Fidelidade da Loja" persistent-hint />
                   </v-col>
                   <v-col cols="12" md="6">
                     <v-text-field v-model.number="config.descontoMembro" label="Desconto fixo para membros"

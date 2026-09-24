@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import api from '@/composables/useApi'
+import { branding } from '@/branding'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -84,7 +85,7 @@ function enviarWhats() {
   if (!d.value) return
   const dt = new Date(data.value + 'T12:00:00').toLocaleDateString('pt-BR')
   const linhas = [
-    `📊 *Resumo EcoGranel* — ${dt}`,
+    `📊 *Resumo ${branding.nome}* — ${dt}`,
     ``,
     `💰 Vendas: R$ ${fmt(d.value.totalVendas)} (${d.value.numeroVendas} vendas)`,
     `🎟️ Ticket médio: R$ ${fmt(d.value.ticketMedio)}`,

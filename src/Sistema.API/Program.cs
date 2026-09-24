@@ -4,6 +4,14 @@ using Sistema.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Marca da instância (white-label). Bind por cima dos padrões (= EcoGranel), então chaves
+// ausentes na config mantêm o comportamento atual. Uma instância nova (ex.: Natural Sistemas)
+// define a seção "Branding" no appsettings/variáveis de ambiente.
+var branding = new Sistema.Infrastructure.Branding.BrandingOptions();
+builder.Configuration.GetSection(Sistema.Infrastructure.Branding.BrandingOptions.Section).Bind(branding);
+Sistema.Infrastructure.Branding.BrandingRuntime.Atual = branding;
+builder.Services.AddSingleton(branding);
+
 builder.Services.AddControllers(o => o.Filters.Add<Sistema.API.Auth.IsolamentoEmpresaFilter>());
 
 // Rate limiting (anti força-bruta) por IP do cliente (X-Forwarded-For atrás do nginx).
@@ -33,7 +41,7 @@ builder.Services.AddScoped<Sistema.Domain.Shared.Interfaces.ICurrentUser, Sistem
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "EcoGranel API", Version = "v1" });
+    c.SwaggerDoc("v1", new() { Title = $"{branding.Nome} API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new()
     {
         Name = "Authorization",

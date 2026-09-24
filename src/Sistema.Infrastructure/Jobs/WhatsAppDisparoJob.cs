@@ -67,7 +67,7 @@ public class WhatsAppDisparoJob(
     }
 
     // Variáveis comuns disponíveis em qualquer template.
-    private const string LinkCatalogo = "https://ecogranel.com.br/produtos";
+    private static string LinkCatalogo => Branding.BrandingRuntime.Atual.CatalogoUrl;
     private static Dictionary<string, string> VariaveisComuns(ClienteInfo c, string nomeEmpresa)
         => new()
         {

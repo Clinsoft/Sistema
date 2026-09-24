@@ -727,7 +727,7 @@
             </v-col>
           </v-row>
           <v-textarea v-model="custom.corpo" label="Corpo da mensagem" rows="4" class="mt-2"
-            hint="Use {{1}}, {{2}}… para variáveis. Ex.: Olá {{1}}, aqui é a EcoGranel!" persistent-hint />
+            hint="Use {{1}}, {{2}}… para variáveis. Ex.: Olá {{1}}, aqui é a nossa loja!" persistent-hint />
           <v-textarea v-model="custom.exemplos" label="Exemplos das variáveis (um por linha)" rows="2"
             class="mt-3" hint="Um valor por {{n}}, na ordem. Ex.: João" persistent-hint />
           <v-file-input v-model="custom.arquivoImagem" accept="image/png,image/jpeg,video/mp4,application/pdf"
@@ -793,6 +793,7 @@ import { rotuloStatus } from '@/utils/status'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
+import { branding } from '@/branding'
 
 const notif = useNotifStore()
 const auth = useAuthStore()
@@ -995,8 +996,8 @@ async function iniciarConversa() {
 
 async function enviarLinkCatalogo() {
   if (!conversaAtiva.value) return
-  const texto = '🌿 Confira nosso catálogo de produtos naturais EcoGranel:\n'
-    + 'https://ecogranel.com.br/produtos\n\nQualquer dúvida é só chamar! 🛒'
+  const texto = `🌿 Confira nosso catálogo de produtos naturais ${branding.nome}:\n`
+    + `${branding.siteUrl.replace(/\/$/, '')}/produtos\n\nQualquer dúvida é só chamar! 🛒`
   respondendo.value = true
   try {
     await api.post(`/whatsapp/conversas/${conversaAtiva.value.telefone}/responder`,

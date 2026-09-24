@@ -121,7 +121,7 @@
             <v-divider class="my-3" />
             <div class="text-body-2 font-weight-bold mb-2">URL base do QR Code</div>
             <v-text-field v-model="qrBaseUrl" variant="outlined" density="compact"
-              placeholder="https://ecogranel.com.br/produtos/produto.php?p="
+              :placeholder="branding.catalogoProdutoUrl"
               hint="O slug do produto será adicionado automaticamente" persistent-hint />
 
             <v-divider class="my-3" />
@@ -475,6 +475,7 @@ import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
+import { branding } from '@/branding'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
@@ -517,9 +518,9 @@ const zebraPorta = ref(9100)
 const zebraDpi = ref(203)
 const gondolaColunas = ref(2)
 const gondolaTamanho = ref('40x20')   // etiqueta física da loja (evita etiqueta em branco por ^LL maior)
-const marcaDaguaUrl = ref('/logo-ecogranel.png')  // semente EcoGranel de fundo (padrão)
+const marcaDaguaUrl = ref(branding.logoUrl)  // logo da marca de fundo (padrão)
 const inputMarcaDagua = ref<HTMLInputElement | null>(null)
-const qrBaseUrl = ref('https://ecogranel.com.br/produtos/produto.php?p=')
+const qrBaseUrl = ref(branding.catalogoProdutoUrl)
 const textoDescritivoEco = ref('')
 
 const borda = ref({ cor: '#2e7d32', espessura: 5 })
@@ -627,8 +628,8 @@ async function restaurarPadraoEco() {
     marcaOpacidade: 10, escalaNome: 100, escalaPreco: 100,
   }
   textoDescritivoEco.value = ''
-  qrBaseUrl.value = 'https://ecogranel.com.br/produtos/produto.php?p='
-  marcaDaguaUrl.value = '/logo-ecogranel.png'
+  qrBaseUrl.value = branding.catalogoProdutoUrl
+  marcaDaguaUrl.value = branding.logoUrl
   notif.aviso('Template restaurado para o padrão original.')
 }
 

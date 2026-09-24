@@ -32,14 +32,15 @@ public class CatalogoWhatsAppController(SistemaDbContext db, IUnitOfWork uow,
             return Ok(new { ok = false, enviados = 0, semFoto,
                 mensagem = "Nenhum produto com foto. O catálogo da Meta EXIGE imagem — cadastre fotos primeiro (botão 'Buscar foto (EAN)' em Produtos)." });
 
-        const string baseImg = "https://sistema.ecogranel.com.br";
+        var baseImg = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.PublicBaseUrl.TrimEnd('/');
+        var catalogoProdutoUrl = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.CatalogoProdutoUrl;
         var lista = comFoto.Select(p => new Sistema.Infrastructure.Services.WhatsAppCloudApiService.CatalogoProdutoMeta(
             RetailerId: p.Codigo,
             Name: p.Descricao.Length > 150 ? p.Descricao[..150] : p.Descricao,
             Description: p.DescricaoComplementar,
             PriceCents: (int)Math.Round(p.PrecoVenda * 100),
             ImageUrl: baseImg + p.ImagemUrl,
-            Url: $"https://ecogranel.com.br/produtos/produto.php?p={Sistema.Infrastructure.Services.SiteSyncService.Slugify(p.Descricao)}",
+            Url: $"{catalogoProdutoUrl}{Sistema.Infrastructure.Services.SiteSyncService.Slugify(p.Descricao)}",
             Disponivel: true)).ToList();
 
         var (ok, enviados, msg) = await whatsApp.SincronizarCatalogoAsync(cfg.CatalogId, cfg.AccessToken, lista, ct);

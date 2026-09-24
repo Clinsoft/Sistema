@@ -6,14 +6,14 @@
           <v-col cols="12" sm="8" md="5" lg="4">
             <v-card rounded="xl" elevation="4" class="pa-6">
               <div class="d-flex flex-column align-center justify-center mb-6">
-                <img src="/logo-ecogranel.png" alt="EcoGranel" style="height:72px;object-fit:contain;margin-bottom:8px"
+                <img :src="branding.logoUrl" :alt="branding.nome" style="height:72px;object-fit:contain;margin-bottom:8px"
                   onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
                 />
                 <div style="display:none" class="align-center">
                   <v-icon icon="mdi-sprout" color="success" size="36" class="mr-2" />
                   <div>
-                    <div class="text-h5 font-weight-bold text-primary">EcoGranel</div>
-                    <div class="text-caption text-medium-emphasis">Produtos Naturais</div>
+                    <div class="text-h5 font-weight-bold text-primary">{{ branding.nome }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ branding.slogan }}</div>
                   </div>
                 </div>
                 <div class="text-caption text-medium-emphasis mt-1">Sistema de Gestão</div>
@@ -137,6 +137,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import api from '@/composables/useApi'
+import { branding } from '@/branding'
 
 const auth = useAuthStore()
 const notif = useNotifStore()

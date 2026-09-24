@@ -319,6 +319,7 @@ import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
 import { useAuthStore } from '@/stores/auth'
+import { branding } from '@/branding'
 
 
 const notif = useNotifStore()
@@ -415,11 +416,11 @@ const modelosDisparo: Record<string, { corpo: string; vars: { campo: string; rot
     corpo: '🎉 Feliz aniversário, {{1}}! A {{2}} deseja um dia incrível. Passe na loja e ganhe um mimo especial! 🌿',
     vars: [
       { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'Maria' },
-      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: 'EcoGranel' },
+      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: branding.nome },
     ],
   },
   Promocao: {
-    corpo: '🌿 Oferta EcoGranel! Olá {{1}}, {{2}} está com preço especial: {{3}}. Aproveite, é por tempo limitado! 🛒',
+    corpo: `🌿 Oferta ${branding.nome}! Olá {{1}}, {{2}} está com preço especial: {{3}}. Aproveite, é por tempo limitado! 🛒`,
     vars: [
       { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'João' },
       { campo: 'produto_nome', rotulo: 'produto', exemplo: 'Granola Artesanal' },
@@ -430,8 +431,8 @@ const modelosDisparo: Record<string, { corpo: string; vars: { campo: string; rot
     corpo: '🌟 Novidade na {{2}}! Olá {{1}}, chegou coisa boa pra você. Confira nosso catálogo: {{3}}',
     vars: [
       { campo: 'primeiro_nome', rotulo: 'primeiro nome', exemplo: 'Ana' },
-      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: 'EcoGranel' },
-      { campo: 'link_catalogo', rotulo: 'link do catálogo', exemplo: 'https://ecogranel.com.br/produtos' },
+      { campo: 'nome_empresa', rotulo: 'nome da empresa', exemplo: branding.nome },
+      { campo: 'link_catalogo', rotulo: 'link do catálogo', exemplo: `${branding.siteUrl.replace(/\/$/, '')}/produtos` },
     ],
   },
   Personalizado: {

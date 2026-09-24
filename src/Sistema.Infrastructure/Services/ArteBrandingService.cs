@@ -14,7 +14,7 @@ namespace Sistema.Infrastructure.Services;
 public class ArteBrandingService(IConfiguration config)
 {
     private string LogoPath => config["Branding:LogoPath"]
-        ?? Path.Combine("wwwroot", "brand", "logo-ecogranel.png");
+        ?? Path.Combine("wwwroot", Branding.BrandingRuntime.Atual.LogoArquivo);
 
     public bool LogoDisponivel => File.Exists(LogoPath);
 

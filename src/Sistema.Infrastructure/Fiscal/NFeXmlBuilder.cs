@@ -173,7 +173,7 @@ public static class NFeXmlBuilder
         w.WriteElementString("indPres",  nota.Modelo == ModeloNF.NFCe ? "1" : "9");
         w.WriteElementString("indIntermed", "0");
         w.WriteElementString("procEmi",  "0"); // 0=app contribuinte
-        w.WriteElementString("verProc",  "EcoGranel-1.0");
+        w.WriteElementString("verProc",  Branding.BrandingRuntime.Atual.VerProc);
         // Devolução: referência à NF-e de entrada do fornecedor (obrigatório em finNFe=4).
         if (!string.IsNullOrWhiteSpace(nota.ChaveReferenciada) && nota.ChaveReferenciada.Length == 44)
         {

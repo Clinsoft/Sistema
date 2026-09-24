@@ -11,7 +11,7 @@ namespace Sistema.Infrastructure.Jobs;
 public class ArquivarDemonstrativosJob(SistemaDbContext db, PremiacaoCalculoService calc,
     ILogger<ArquivarDemonstrativosJob> logger)
 {
-    private const string BaseUrl = "https://sistema.ecogranel.com.br";
+    private static string BaseUrl => Branding.BrandingRuntime.Atual.PublicBaseUrl;
 
     /// <summary>Roda mensalmente: arquiva o mês anterior para todas as empresas.</summary>
     public async Task ExecutarAsync()

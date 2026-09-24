@@ -38,7 +38,7 @@
         <text :x="dim.logoW / 2" :y="dim.logoH * 0.65"
           text-anchor="middle" :font-size="dim.logoFontSz"
           font-weight="bold" :fill="cores.destaque" font-family="Arial, sans-serif">
-          🌿 EcoGranel
+          🌿 {{ branding.nome }}
         </text>
       </g>
 
@@ -111,7 +111,7 @@
       <text :x="dim.w / 2" :y="dim.h - dim.rodapeH * 0.25"
         text-anchor="middle" :font-size="dim.periodoFontSz * 0.85"
         :fill="cores.texto" opacity="0.6" font-family="Arial, sans-serif">
-        www.ecogranel.com.br
+        {{ siteHost }}
       </text>
     </svg>
   </div>
@@ -119,12 +119,15 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { branding } from '@/branding'
 
 const props = defineProps<{
   layout: Record<string, any>
   previewW?: number
 }>()
 
+// Só o host do site (sem https://) para o rodapé da arte.
+const siteHost = computed(() => (branding.siteUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''))
 const uid = Math.random().toString(36).slice(2, 7)
 const svgEl = ref<SVGSVGElement | null>(null)
 

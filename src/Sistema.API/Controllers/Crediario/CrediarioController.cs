@@ -116,7 +116,7 @@ public class CrediarioController(IMediator mediator, ICrediarioRepository repo, 
         var cliente = await db.Clientes.FindAsync([crediario.ClienteId], ct);
         var empresa = await db.Empresas.FindAsync([crediario.EmpresaId], ct);
 
-        var nomeEmpresa  = empresa?.NomeFantasia ?? empresa?.RazaoSocial ?? "EcoGranel";
+        var nomeEmpresa  = empresa?.NomeFantasia ?? empresa?.RazaoSocial ?? Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome;
         var cnpjEmpresa  = empresa?.Cnpj ?? "";
         var telEmpresa   = empresa?.Telefone ?? "";
         var nomeCliente  = cliente?.Nome ?? "—";

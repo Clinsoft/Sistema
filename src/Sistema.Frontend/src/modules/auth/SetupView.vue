@@ -7,14 +7,14 @@
 
             <!-- Logo -->
             <div class="d-flex flex-column align-center mb-6">
-              <img src="/logo-ecogranel.png" alt="EcoGranel" style="height:72px;object-fit:contain;margin-bottom:8px"
+              <img :src="branding.logoUrl" :alt="branding.nome" style="height:72px;object-fit:contain;margin-bottom:8px"
                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
               />
               <div style="display:none" class="align-center mb-2">
                 <v-icon size="40" color="success" class="mr-2">mdi-sprout</v-icon>
-                <span class="text-h5 font-weight-bold text-primary">EcoGranel</span>
+                <span class="text-h5 font-weight-bold text-primary">{{ branding.nome }}</span>
               </div>
-              <div class="text-h6 font-weight-bold text-primary">Bem-vindo ao EcoGranel!</div>
+              <div class="text-h6 font-weight-bold text-primary">Bem-vindo ao {{ branding.nome }}!</div>
               <div class="text-body-2 text-medium-emphasis">Configure o sistema em 2 passos simples</div>
             </div>
 
@@ -141,6 +141,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { branding } from '@/branding'
 
 const router = useRouter()
 const passo = ref(1)

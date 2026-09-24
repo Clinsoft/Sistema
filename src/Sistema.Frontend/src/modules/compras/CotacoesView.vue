@@ -374,6 +374,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
+import { branding } from '@/branding'
 import { useNotifStore } from '@/stores/notif'
 
 const auth = useAuthStore()
@@ -668,7 +669,7 @@ function imprimirRelatorio() {
     <tbody>${linhas}</tbody>
   </table>
 
-  <div class="rodape">EcoGranel — Relatório gerado automaticamente</div>
+  <div class="rodape">${branding.nome} — Relatório gerado automaticamente</div>
   <script>window.onload = () => { window.print() }<\/script>
 </body>
 </html>`

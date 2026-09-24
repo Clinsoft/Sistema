@@ -6,7 +6,7 @@
         :permanent="!mobile" :temporary="mobile">
         <v-list-item nav class="py-3">
           <template #prepend>
-            <img src="/logo-ecogranel.png" alt="EcoGranel"
+            <img :src="branding.logoUrl" :alt="branding.nome"
               :style="rail ? 'height:32px;width:32px;object-fit:contain' : 'height:36px;object-fit:contain'"
               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'"
             />
@@ -15,8 +15,8 @@
           </template>
           <template #title>
             <span v-if="!rail" class="font-weight-bold text-primary" style="font-size:15px;line-height:1.2">
-              EcoGranel<br>
-              <span class="text-caption text-medium-emphasis font-weight-regular">Produtos Naturais</span>
+              {{ branding.nome }}<br>
+              <span class="text-caption text-medium-emphasis font-weight-regular">{{ branding.slogan }}</span>
             </span>
           </template>
           <template #append>
@@ -395,6 +395,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import { useUiStore } from '@/stores/ui'
 import { storeToRefs } from 'pinia'
+import { branding } from '@/branding'
 
 const auth = useAuthStore()
 const notif = useNotifStore()
@@ -409,7 +410,7 @@ drawer.value = !mobile.value
 const rail = ref(false)
 const tema = ref<'ecoGranelLight' | 'ecoGranelDark'>('ecoGranelLight')
 
-const tituloPagina = computed(() => (route.meta.titulo as string) ?? 'EcoGranel')
+const tituloPagina = computed(() => (route.meta.titulo as string) ?? branding.nome)
 
 // Perfil "Atendente" só enxerga um conjunto reduzido de telas no menu.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')

@@ -3,7 +3,7 @@
     <!-- Barra superior -->
     <v-app-bar :elevation="scrolled ? 3 : 0" color="primary" height="64" class="vitrine-appbar">
       <div class="d-flex align-center px-3" style="width: 100%; max-width: 1200px; margin: 0 auto;">
-        <img src="/logo-ecogranel.png" alt="logo" class="vitrine-logo" />
+        <img :src="branding.logoUrl" alt="logo" class="vitrine-logo" />
         <div class="ml-3">
           <div class="text-h6 font-weight-bold" style="line-height: 1.1">{{ nomeLoja || 'Loja Online' }}</div>
           <div class="text-caption" style="opacity: .8; line-height: 1">Produtos naturais a granel</div>
@@ -108,7 +108,7 @@
 
       <!-- Rodapé -->
       <footer class="vitrine-footer">
-        <img src="/logo-ecogranel.png" alt="logo" class="footer-logo" />
+        <img :src="branding.logoUrl" alt="logo" class="footer-logo" />
         <div class="text-body-2 font-weight-bold">{{ nomeLoja }}</div>
         <div class="text-caption" style="opacity:.7">Produtos naturais a granel · pagamento na retirada ou entrega</div>
       </footer>
@@ -257,6 +257,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
+import { branding } from '@/branding'
 
 interface Produto {
   id: string; descricao: string; precoVenda: number

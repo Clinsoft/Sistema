@@ -192,7 +192,9 @@ public class DanfeService : IDanfeService
                     {
                         if (entrada)
                             c.Item().Text("Nota de devolução de compra. Referência à NF-e de entrada informada no campo próprio.").FontSize(7);
-                        c.Item().Text($"Emitido por EcoGranel em {DateTime.Now:dd/MM/yyyy HH:mm}.").FontSize(7);
+                        var emissor = !string.IsNullOrWhiteSpace(empresa.NomeFantasia) ? empresa.NomeFantasia
+                            : (!string.IsNullOrWhiteSpace(empresa.RazaoSocial) ? empresa.RazaoSocial : Branding.BrandingRuntime.Atual.Nome);
+                        c.Item().Text($"Emitido por {emissor} em {DateTime.Now:dd/MM/yyyy HH:mm}.").FontSize(7);
                     });
                 });
             });
@@ -225,7 +227,7 @@ public class DanfeService : IDanfeService
     {
         try
         {
-            var p = System.IO.Path.Combine("wwwroot", "logo-ecogranel.png");
+            var p = System.IO.Path.Combine("wwwroot", Branding.BrandingRuntime.Atual.LogoArquivo);
             return System.IO.File.Exists(p) ? System.IO.File.ReadAllBytes(p) : null;
         }
         catch { return null; }

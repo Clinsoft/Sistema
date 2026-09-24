@@ -21,7 +21,7 @@ public static class RegulamentoPremiacao
         decimal metaLoja, decimal metaIndividual, decimal valorBase, decimal valorBaseReduzido,
         decimal minPresenca, decimal thresholdLoja, decimal thresholdIndividual, decimal redutorPercent)
     {
-        var razao = string.IsNullOrWhiteSpace(empresaRazao) ? "ECOGRANEL COMERCIO DE PRODUTOS NATURAIS LTDA" : empresaRazao.ToUpperInvariant();
+        var razao = string.IsNullOrWhiteSpace(empresaRazao) ? Branding.BrandingRuntime.Atual.RazaoSocialPadrao : empresaRazao.ToUpperInvariant();
         var comp = new DateTime(ano, mes, 1).ToString("MMMM 'de' yyyy", PtBr);
         var tLoja = thresholdLoja.ToString("0.##", PtBr);
         var tInd = thresholdIndividual.ToString("0.##", PtBr);

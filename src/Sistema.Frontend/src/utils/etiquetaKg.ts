@@ -1,4 +1,5 @@
 import QRCode from 'qrcode'
+import { branding } from '@/branding'
 
 /**
  * Template PADRÃO de etiqueta para produtos vendidos por peso (kg).
@@ -15,7 +16,6 @@ export interface EtiquetaKgData {
   slug?: string | null      // usado no QR; se ausente, gerado do nome
 }
 
-const QR_BASE = 'https://ecogranel.com.br/produtos/produto.php?p='
 const TEXTO_PADRAO = 'Produto 100% natural, sem conservantes. Conserve em local seco e arejado.'
 
 function slugify(nome: string): string {
@@ -36,7 +36,7 @@ function esc(s: string) {
 
 /** Gera o HTML de uma etiqueta kg (usado no preview e na impressão). */
 async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<string> {
-  const url = QR_BASE + (it.slug || slugify(it.nome))
+  const url = branding.catalogoProdutoUrl + (it.slug || slugify(it.nome))
   let qr = ''
   try { qr = await QRCode.toDataURL(url, { width: 240, margin: 1 }) } catch { /* ignora */ }
   const preco100 = (it.precoVenda ?? 0) / 10
@@ -74,8 +74,8 @@ export interface EtiquetaKgOpts {
   escalaPreco?: number      // % do tamanho do preço
 }
 
-// Logo padrão (semente EcoGranel) servida na raiz do site.
-const LOGO_PADRAO = '/logo-ecogranel.png'
+// Logo padrão da marca (servida na raiz do site).
+const LOGO_PADRAO = () => branding.logoUrl
 
 /** Baixa uma imagem e converte para data URL (garante que imprime no pop-up). */
 async function toDataUrl(url: string): Promise<string> {
@@ -153,7 +153,7 @@ export async function imprimirEtiquetasKg(
   if (!lista.length) return
 
   // Semente/logo de fundo: usa a informada ou a logo padrão da EcoGranel.
-  const marcaUrl = await toDataUrl(o.marcaDaguaUrl || LOGO_PADRAO)
+  const marcaUrl = await toDataUrl(o.marcaDaguaUrl || LOGO_PADRAO())
 
   const cards = (await Promise.all(lista.map(it => cardHtml(it, o)))).join('')
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas EcoGranel</title>

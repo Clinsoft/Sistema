@@ -11,6 +11,7 @@ import './styles/responsive.css'
 
 import App from './App.vue'
 import router from './router'
+import { carregarBranding, aplicarBranding } from './branding'
 
 const vuetify = createVuetify({
   components,
@@ -56,4 +57,10 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(vuetify)
-app.mount('#app')
+
+// Carrega a marca da instância (nome/logo/cores) ANTES de montar, para não "piscar"
+// a marca padrão. Em falha, mantém os padrões (= EcoGranel) e monta assim mesmo.
+carregarBranding().finally(() => {
+  aplicarBranding(vuetify)
+  app.mount('#app')
+})

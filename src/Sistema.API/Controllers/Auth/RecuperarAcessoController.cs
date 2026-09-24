@@ -48,7 +48,7 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
         var corpo = $"""
             <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px">
               <div style="text-align:center;margin-bottom:24px">
-                <h2 style="color:#5a3e2b;margin:0">EcoGranel</h2>
+                <h2 style="color:#5a3e2b;margin:0">{Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome}</h2>
                 <p style="color:#777;margin:4px 0 0">Sistema de Gestão</p>
               </div>
               <div style="background:#f9f6f0;border-radius:12px;padding:24px">
@@ -84,7 +84,7 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
             </div>
             """;
 
-        await email.EnviarAsync(usuario.Email, "EcoGranel — Recuperação de Acesso", corpo, ct);
+        await email.EnviarAsync(usuario.Email, $"{Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome} — Recuperação de Acesso", corpo, ct);
 
         return Ok(new { mensagem = "Se o CNPJ estiver cadastrado, você receberá um e-mail com as instruções." });
     }

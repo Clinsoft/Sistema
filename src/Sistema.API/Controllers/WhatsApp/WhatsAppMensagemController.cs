@@ -227,8 +227,8 @@ public class WhatsAppMensagemController(
         }
 
         // Corpo padrão: {{1}} nome, {{2}} desconto, {{3}} produto, {{4}} de, {{5}} por.
-        const string corpo =
-            "🌿 Oferta EcoGranel!\n\n" +
+        var corpo =
+            $"🌿 Oferta {Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome}!\n\n" +
             "Olá {{1}}, aproveite {{2}} em {{3}}.\n" +
             "De {{4}} por {{5}}.\n\n" +
             "Válido por tempo limitado. Passe na loja ou responda aqui! 🛒";

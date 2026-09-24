@@ -630,6 +630,12 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         var comps = await db.Produtos.AsNoTracking().Where(p => compIds.Contains(p.Id))
             .Select(p => new { p.Id, p.Descricao, p.CustoUnitario, porPeso = p.ProdutoBalanca || p.VendidoFracionado, p.EstoqueAtual })
             .ToDictionaryAsync(p => p.Id, ct);
+        // Validade de MAIOR prazo (mais longa) de cada componente, pelos lotes com saldo.
+        var validades = (await db.Lotes.AsNoTracking()
+            .Where(l => compIds.Contains(l.ProdutoId) && l.Quantidade > 0 && l.DataValidade != null)
+            .GroupBy(l => l.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Validade = g.Max(x => x.DataValidade) })
+            .ToListAsync(ct)).ToDictionary(x => x.ProdutoId, x => x.Validade);
 
         var lista = itens.Select(i =>
         {
@@ -648,6 +654,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                 subtotal = Math.Round(qtdBase * custo, 2),
                 porPeso,
                 estoqueComponente = c?.EstoqueAtual ?? 0m,
+                validade = validades.GetValueOrDefault(i.ComponenteProdutoId),
             };
         }).ToList();
 
@@ -659,6 +666,8 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             rendimento = rend,
             custoReceita = Math.Round(custoReceita, 2),
             custoUnitario = Math.Round(custoReceita / rend, 2),
+            // Validade sugerida = a de MAIOR prazo entre os componentes.
+            validadeSugerida = lista.Where(x => x.validade != null).Select(x => x.validade).DefaultIfEmpty(null).Max(),
             itens = lista,
         });
     }
@@ -750,14 +759,27 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         }
 
         var custoUnitComposto = rend > 0 ? Math.Round(custoReceita / rend, 4) : custoReceita;
+
+        // Lote do composto produzido (com a validade informada — sugerida = maior prazo dos componentes).
+        Guid? loteId = null;
+        if (req.Validade.HasValue)
+        {
+            var lote = Sistema.Domain.Estoque.Entities.Lote.Criar(
+                composto.EmpresaId, id, req.LocalEstoqueId,
+                $"PROD-{DateTime.Now:yyMMdd}", req.Quantidade, custoUnitComposto,
+                dataFabricacao: DateTime.Today, dataValidade: req.Validade.Value);
+            db.Lotes.Add(lote);
+            loteId = lote.Id;
+        }
+
         db.MovimentacoesEstoque.Add(Sistema.Domain.Estoque.Entities.MovimentacaoEstoque.Criar(
             composto.EmpresaId, id, req.LocalEstoqueId,
             Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada, req.Quantidade, custoUnitComposto,
-            documentoOrigem: doc, usuarioId: usuarioId, observacao: "Produção (composto)"));
+            loteId: loteId, documentoOrigem: doc, usuarioId: usuarioId, observacao: "Produção (composto)"));
         composto.AjustarEstoque(req.Quantidade);
 
         await uow.SalvarAsync(ct);
-        return Ok(new { produzido = req.Quantidade, custoUnitario = custoUnitComposto });
+        return Ok(new { produzido = req.Quantidade, custoUnitario = custoUnitComposto, validade = req.Validade });
     }
 
     private async Task RecalcularCustoCompostoAsync(Guid id, decimal rendimento, CancellationToken ct)
@@ -1522,7 +1544,7 @@ public record AtualizarPrecoRequest(decimal NovoCusto, decimal NovoPreco);
 public record CriarProdutoRapidoRequest(Guid EmpresaId, string Descricao, Guid UnidadeMedidaId, decimal? CustoUnitario = null);
 public record ComponenteComposicaoRequest(Guid ComponenteId, decimal Quantidade, string? Unidade);
 public record SalvarComposicaoRequest(decimal Rendimento, List<ComponenteComposicaoRequest> Itens);
-public record ProduzirRequest(Guid LocalEstoqueId, decimal Quantidade, bool Forcar = false);
+public record ProduzirRequest(Guid LocalEstoqueId, decimal Quantidade, bool Forcar = false, DateTime? Validade = null);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids);

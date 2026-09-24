@@ -1252,7 +1252,11 @@
           <v-select v-model="producao.localEstoqueId" :items="locaisEstoque" item-title="nome" item-value="id"
             label="Loja da produção *" variant="outlined" density="compact" class="mb-2" />
           <v-text-field v-model.number="producao.quantidade" label="Quantidade a produzir *"
-            type="number" min="0" variant="outlined" density="compact" hide-details />
+            type="number" min="0" variant="outlined" density="compact" class="mb-2" />
+          <v-text-field v-model="producao.validade" label="Validade do lote produzido" type="date"
+            variant="outlined" density="compact" hide-details
+            :hint="validadeSugerida ? 'Sugerida: a de maior prazo entre os componentes' : 'Componentes sem validade cadastrada'"
+            persistent-hint />
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -2543,6 +2547,7 @@ function fecharDialog() {
 
 // ─── Composição (produto composto) + produção ────────────────────────────────
 const comp = ref<{ ehComposto: boolean; rendimento: number; itens: any[] }>({ ehComposto: false, rendimento: 1, itens: [] })
+const validadeSugerida = ref<string | null>(null)
 const compSel = ref<any>(null)
 const compQtd = ref<number | null>(null)
 const compUnid = ref('un')
@@ -2589,9 +2594,11 @@ watch([custoComposto, () => comp.value.ehComposto], () => {
 })
 async function carregarComposicao() {
   comp.value = { ehComposto: false, rendimento: 1, itens: [] }
+  validadeSugerida.value = null
   if (!produtoEditandoId.value) return
   try {
     const { data } = await api.get(`/produtos/${produtoEditandoId.value}/composicao`)
+    validadeSugerida.value = data.validadeSugerida ? String(data.validadeSugerida).slice(0, 10) : null
     comp.value = {
       ehComposto: !!data.ehComposto, rendimento: data.rendimento || 1,
       itens: (data.itens ?? []).map((i: any) => ({
@@ -2638,9 +2645,9 @@ async function salvarComposicao() {
 // Produção
 const dlgProduzir = ref(false)
 const produzindo = ref(false)
-const producao = ref<{ localEstoqueId: string | null; quantidade: number | null }>({ localEstoqueId: null, quantidade: null })
+const producao = ref<{ localEstoqueId: string | null; quantidade: number | null; validade: string | null }>({ localEstoqueId: null, quantidade: null, validade: null })
 function abrirProduzir() {
-  producao.value = { localEstoqueId: locaisEstoque.value[0]?.id ?? null, quantidade: null }
+  producao.value = { localEstoqueId: locaisEstoque.value[0]?.id ?? null, quantidade: null, validade: validadeSugerida.value }
   dlgProduzir.value = true
 }
 async function produzir(forcar = false) {
@@ -2650,6 +2657,7 @@ async function produzir(forcar = false) {
     const { data } = await api.post(`/produtos/${produtoEditandoId.value}/produzir`, {
       localEstoqueId: producao.value.localEstoqueId,
       quantidade: producao.value.quantidade,
+      validade: producao.value.validade || null,
       forcar,
     })
     notif.ok(`Produzido ${data.produzido}. Custo un.: R$ ${fmtNum(data.custoUnitario)}. Componentes baixados.`)

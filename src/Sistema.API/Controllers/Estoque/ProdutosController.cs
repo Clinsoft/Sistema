@@ -635,15 +635,18 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         {
             comps.TryGetValue(i.ComponenteProdutoId, out var c);
             var custo = c?.CustoUnitario ?? 0m;
+            var porPeso = c?.porPeso ?? false;
+            var qtdBase = QtdBaseComposicao(i.Quantidade, i.Unidade, porPeso);
             return new
             {
                 componenteId = i.ComponenteProdutoId,
                 descricao = c?.Descricao ?? "(produto)",
                 unidade = i.Unidade,
                 quantidade = i.Quantidade,
-                custoUnitario = custo,
-                subtotal = Math.Round(i.Quantidade * custo, 2),
-                porPeso = c?.porPeso ?? false,
+                custoUnitario = custo,             // por unidade BASE (kg p/ granel, un p/ unitário)
+                quantidadeBase = qtdBase,          // convertida p/ a unidade base
+                subtotal = Math.Round(qtdBase * custo, 2),
+                porPeso,
                 estoqueComponente = c?.EstoqueAtual ?? 0m,
             };
         }).ToList();
@@ -711,16 +714,23 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
               : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida ? -m.Quantidade : 0m) })
             .ToListAsync(ct)).ToDictionary(x => x.ProdutoId, x => x.Saldo);
 
+        decimal BaixaDe(Sistema.Domain.Estoque.Entities.ComponenteComposicao c)
+        {
+            var porPeso = produtos.TryGetValue(c.ComponenteProdutoId, out var p) && (p.ProdutoBalanca || p.VendidoFracionado);
+            return Math.Round(QtdBaseComposicao(c.Quantidade, c.Unidade, porPeso) * fator, 3);
+        }
+
         var faltas = new List<object>();
         decimal custoReceita = 0m;
         foreach (var c in comps)
         {
-            var baixa = Math.Round(c.Quantidade * fator, 3);
+            var baixa = BaixaDe(c);
             var saldo = saldos.GetValueOrDefault(c.ComponenteProdutoId, 0m);
-            var pcusto = produtos.TryGetValue(c.ComponenteProdutoId, out var pp) ? pp.CustoUnitario : 0m;
-            custoReceita += c.Quantidade * pcusto;
+            var porPeso = produtos.TryGetValue(c.ComponenteProdutoId, out var pp) && (pp.ProdutoBalanca || pp.VendidoFracionado);
+            var pcusto = pp?.CustoUnitario ?? 0m;
+            custoReceita += QtdBaseComposicao(c.Quantidade, c.Unidade, porPeso) * pcusto;
             if (baixa > saldo)
-                faltas.Add(new { componente = produtos.TryGetValue(c.ComponenteProdutoId, out var p2) ? p2.Descricao : "(produto)", precisa = baixa, tem = saldo });
+                faltas.Add(new { componente = pp?.Descricao ?? "(produto)", precisa = baixa, tem = saldo });
         }
         if (faltas.Count > 0 && !req.Forcar)
             return BadRequest(new { mensagem = "Estoque insuficiente de componentes na loja.", faltas });
@@ -729,7 +739,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         var doc = $"Produção {composto.Codigo}";
         foreach (var c in comps)
         {
-            var baixa = Math.Round(c.Quantidade * fator, 3);
+            var baixa = BaixaDe(c);
             if (baixa <= 0) continue;
             var pcusto = produtos.TryGetValue(c.ComponenteProdutoId, out var pp) ? pp.CustoUnitario : 0m;
             db.MovimentacoesEstoque.Add(Sistema.Domain.Estoque.Entities.MovimentacaoEstoque.Criar(
@@ -753,16 +763,31 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     private async Task RecalcularCustoCompostoAsync(Guid id, decimal rendimento, CancellationToken ct)
     {
         var comps = await db.ComponentesComposicao.AsNoTracking().Where(c => c.ProdutoCompostoId == id)
-            .Select(c => new { c.ComponenteProdutoId, c.Quantidade }).ToListAsync(ct);
+            .Select(c => new { c.ComponenteProdutoId, c.Quantidade, c.Unidade }).ToListAsync(ct);
         if (comps.Count == 0) return;
         var ids = comps.Select(c => c.ComponenteProdutoId).ToList();
-        var custos = await db.Produtos.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.CustoUnitario }).ToDictionaryAsync(p => p.Id, p => p.CustoUnitario, ct);
-        var custoReceita = comps.Sum(c => c.Quantidade * (custos.GetValueOrDefault(c.ComponenteProdutoId, 0m)));
+        var info = await db.Produtos.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.CustoUnitario, porPeso = p.ProdutoBalanca || p.VendidoFracionado })
+            .ToDictionaryAsync(p => p.Id, ct);
+        var custoReceita = comps.Sum(c =>
+        {
+            info.TryGetValue(c.ComponenteProdutoId, out var pi);
+            return QtdBaseComposicao(c.Quantidade, c.Unidade, pi?.porPeso ?? false) * (pi?.CustoUnitario ?? 0m);
+        });
         var rend = rendimento > 0 ? rendimento : 1m;
         var prod = await db.Produtos.FirstOrDefaultAsync(p => p.Id == id, ct);
         prod?.DefinirCustoComposicao(Math.Round(custoReceita / rend, 4));
         await uow.SalvarAsync(ct);
+    }
+
+    /// <summary>Converte a quantidade de um componente (na unidade digitada) para a unidade BASE de
+    /// estoque do componente: granel = kg (g÷1000, 100g×0,1, mg÷1e6); unitário = un (dz×12).</summary>
+    private static decimal QtdBaseComposicao(decimal quantidade, string? unidade, bool porPeso)
+    {
+        var u = (unidade ?? "").Trim().ToLowerInvariant();
+        if (porPeso)
+            return u switch { "g" => quantidade / 1000m, "mg" => quantidade / 1_000_000m, "100g" => quantidade * 0.1m, _ => quantidade };
+        return u == "dz" ? quantidade * 12m : quantidade;
     }
 
     [HttpPut("{id:guid}")]

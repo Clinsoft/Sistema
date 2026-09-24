@@ -970,12 +970,12 @@
                       <v-autocomplete v-model="compSel" :items="compOpcoes" :loading="compBuscando"
                         item-title="descricao" item-value="id" return-object no-filter clearable
                         label="Adicionar componente (produto)" variant="outlined" density="compact" class="flex-grow-1"
-                        @update:search="buscarComponente" @keydown.enter.prevent="addComponente" />
-                      <v-text-field v-model.number="compQtd" label="Qtd" type="number" min="0"
-                        variant="outlined" density="compact" style="width:90px"
+                        @update:search="buscarComponente" @update:model-value="onCompSel" @keydown.enter.prevent="addComponente" />
+                      <v-text-field v-model.number="compQtd" label="Qtd" type="number" min="0" step="any"
+                        variant="outlined" density="compact" style="width:100px"
                         @keydown.enter.prevent="addComponente" />
-                      <v-select v-model="compUnid" :items="['un','kg','g','100g','dz']" label="Un."
-                        variant="outlined" density="compact" style="width:80px" hide-details />
+                      <v-select v-model="compUnid" :items="unidadesComp" label="Unidade"
+                        variant="outlined" density="compact" style="width:100px" hide-details />
                       <v-btn icon="mdi-plus" type="button" color="primary" variant="tonal" :disabled="!compSel" @click.prevent="addComponente" />
                     </div>
 
@@ -987,15 +987,15 @@
                         <tr v-for="(c, idx) in comp.itens" :key="idx">
                           <td>{{ c.descricao }}</td>
                           <td class="text-center">{{ fmtNum(c.quantidade) }} {{ c.unidade }}</td>
-                          <td class="text-right">R$ {{ fmtNum(c.custoUnitario) }}</td>
-                          <td class="text-right">R$ {{ fmtNum(c.quantidade * c.custoUnitario) }}</td>
+                          <td class="text-right">R$ {{ fmtNum(c.custoUnitario) }}/{{ c.porPeso ? 'kg' : 'un' }}</td>
+                          <td class="text-right">R$ {{ fmtNum(qtdBaseFront(c) * c.custoUnitario) }}</td>
                           <td><v-btn icon="mdi-close" size="x-small" variant="text" color="error" @click="comp.itens.splice(idx,1)" /></td>
                         </tr>
                         <tr v-if="!comp.itens.length"><td colspan="5" class="text-center pa-3 text-medium-emphasis">Nenhum componente</td></tr>
                       </tbody>
                     </v-table>
                     <div class="text-caption text-medium-emphasis mt-1">
-                      Custo unit. = soma dos componentes ÷ rendimento. O <b>preço de venda</b> você define no cadastro. "Produzir" baixa os componentes e credita este produto no estoque da loja.
+                      <b>Unidade do componente:</b> a granel escolha <b>g</b> ou <b>kg</b> (ex.: 100 <b>g</b> = 0,1 kg); unitário use <b>un</b>. Custo unit. do composto = soma dos componentes ÷ rendimento; o <b>preço de venda</b> você define no cadastro. "Produzir" baixa os componentes e credita este produto no estoque da loja.
                     </div>
                     <div v-if="editando" class="d-flex justify-end mt-2">
                       <v-btn size="small" color="primary" variant="tonal" :loading="salvandoComp" @click="salvarComposicao">Salvar composição</v-btn>
@@ -2526,11 +2526,29 @@ const compUnid = ref('un')
 const compOpcoes = ref<any[]>([])
 const compBuscando = ref(false)
 const salvandoComp = ref(false)
+// Converte a qtd do componente (na unidade digitada) para a unidade BASE (kg p/ granel, un p/ unitário).
+function qtdBaseFront(c: any): number {
+  const q = c.quantidade || 0
+  const u = (c.unidade || '').toLowerCase()
+  if (c.porPeso) return u === 'g' ? q / 1000 : u === 'mg' ? q / 1e6 : u === '100g' ? q * 0.1 : q
+  return u === 'dz' ? q * 12 : q
+}
 const custoComposto = computed(() => {
-  const receita = comp.value.itens.reduce((s, c) => s + (c.quantidade || 0) * (c.custoUnitario || 0), 0)
+  const receita = comp.value.itens.reduce((s, c) => s + qtdBaseFront(c) * (c.custoUnitario || 0), 0)
   const rend = comp.value.rendimento > 0 ? comp.value.rendimento : 1
   return Math.round(receita / rend * 100) / 100
 })
+// Opções de unidade conforme o componente selecionado (granel = peso; senão = unidade).
+const unidadesComp = computed(() => {
+  const p = compSel.value
+  if (!p) return ['un', 'kg', 'g']
+  return (p.produtoBalanca || p.vendidoFracionado) ? ['g', 'kg'] : ['un', 'dz']
+})
+function onCompSel() {
+  const p = compSel.value
+  if (!p) return
+  compUnid.value = (p.produtoBalanca || p.vendidoFracionado) ? 'g' : 'un'
+}
 async function carregarComposicao() {
   comp.value = { ehComposto: false, rendimento: 1, itens: [] }
   if (!produtoEditandoId.value) return

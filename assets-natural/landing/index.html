@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Natural Sistemas — Gestão completa para lojas de produtos naturais</title>
+<meta name="description" content="PDV, emissão fiscal (NFC-e), controle de estoque e validade, WhatsApp e marketing com IA para lojas de produtos naturais e granel. Teste grátis por 14 dias.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta property="og:title" content="Natural Sistemas — Gestão para lojas de produtos naturais">
+<meta property="og:description" content="Tudo para vender mais e organizar sua loja: PDV, fiscal, estoque, validade, WhatsApp e marketing com IA.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --verde:#12A150; --verde-esc:#0E7C3E; --escuro:#12351C; --marca:#1B5E20;
+  --sol:#FF9E00; --sol2:#FFC107;
+  --fundo:#F4F9F4; --card:#FFFFFF; --texto:#233524; --suave:#5C6E5D; --linha:#E1EBE1;
+  --raio:16px; --sombra:0 10px 30px rgba(18,53,28,.08); --sombra2:0 18px 44px rgba(18,53,28,.14);
+  --max:1140px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,Arial,sans-serif;color:var(--texto);background:var(--fundo);line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.disp{font-family:'Poppins','Inter',sans-serif;line-height:1.15;color:var(--marca)}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 20px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-family:'Inter';border-radius:12px;padding:14px 22px;font-size:15px;cursor:pointer;border:0;transition:transform .12s ease,box-shadow .12s ease;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--verde);color:#fff;box-shadow:0 8px 20px rgba(18,161,80,.32)}
+.btn-primary:hover{box-shadow:0 12px 26px rgba(18,161,80,.42)}
+.btn-ghost{background:#fff;color:var(--marca);border:1.5px solid var(--linha)}
+.btn-ghost:hover{border-color:var(--verde)}
+.btn-wa{background:#25D366;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:8px;background:rgba(18,161,80,.10);color:var(--verde-esc);font-weight:600;font-size:13px;padding:7px 14px;border-radius:999px}
+.sec{padding:76px 0}
+.center{text-align:center}
+.eyebrow{color:var(--verde);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:13px}
+.h2{font-size:clamp(26px,4vw,38px);margin:10px 0 12px}
+.lead{color:var(--suave);font-size:clamp(16px,2.2vw,18px);max-width:640px;margin:0 auto}
+
+/* Header */
+header{position:sticky;top:0;z-index:50;background:rgba(244,249,244,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--linha)}
+.nav{display:flex;align-items:center;gap:18px;height:68px}
+.nav img{height:38px}
+.nav .links{display:flex;gap:26px;margin-left:14px}
+.nav .links a{color:var(--suave);font-weight:500;font-size:15px}
+.nav .links a:hover{color:var(--marca)}
+.nav .sp{flex:1}
+.nav .cta{display:flex;gap:10px;align-items:center}
+.menu-btn{display:none;background:none;border:0;font-size:26px;color:var(--marca);cursor:pointer}
+
+/* Hero */
+.hero{position:relative;overflow:hidden;background:radial-gradient(900px 420px at 78% -20%,#E6F6EA,transparent),radial-gradient(700px 380px at 0% 0%,#FFF6E3,transparent)}
+.hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center;padding:70px 0 84px}
+.hero h1{font-size:clamp(32px,5.2vw,52px);letter-spacing:-.5px}
+.hero h1 .g{color:var(--verde)}
+.hero p.sub{font-size:clamp(16px,2.4vw,20px);color:var(--suave);margin:18px 0 26px;max-width:560px}
+.hero .actions{display:flex;gap:14px;flex-wrap:wrap}
+.trust{display:flex;gap:20px;flex-wrap:wrap;margin-top:22px;color:var(--suave);font-size:14px}
+.trust span{display:inline-flex;align-items:center;gap:7px}
+.trust i{color:var(--verde)}
+
+/* Hero mock */
+.mock{position:relative}
+.mock .screen{background:var(--card);border:1px solid var(--linha);border-radius:20px;box-shadow:var(--sombra2);padding:18px}
+.mock .bar{display:flex;gap:6px;margin-bottom:14px}
+.mock .bar i{width:11px;height:11px;border-radius:50%;background:#E4ECE4;display:inline-block}
+.mrow{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--linha);border-radius:12px;margin-bottom:10px}
+.mrow .ic{width:38px;height:38px;border-radius:10px;background:rgba(18,161,80,.12);color:var(--verde);display:flex;align-items:center;justify-content:center;font-size:20px}
+.mrow .tt{font-weight:600;font-size:14px;color:var(--marca)}
+.mrow .ds{font-size:12px;color:var(--suave)}
+.mrow .val{margin-left:auto;font-weight:700;color:var(--verde-esc)}
+.badge-float{position:absolute;background:#fff;border:1px solid var(--linha);box-shadow:var(--sombra);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.badge-float i{font-size:22px}
+.bf1{top:-18px;right:16px}
+.bf1 i{color:var(--sol)}
+.bf2{bottom:-16px;left:-10px}
+.bf2 i{color:var(--verde)}
+.badge-float .tt{font-weight:700;font-size:14px;color:var(--marca);line-height:1.1}
+.badge-float .ds{font-size:11px;color:var(--suave)}
+
+/* segmentos */
+.segs{background:#fff;border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)}
+.segs .in{display:flex;gap:14px 34px;flex-wrap:wrap;justify-content:center;align-items:center;padding:22px 0;color:var(--suave);font-weight:600}
+.segs .in span{display:inline-flex;align-items:center;gap:8px;font-size:15px}
+.segs .in i{color:var(--verde)}
+
+/* features */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+.feat{background:var(--card);border:1px solid var(--linha);border-radius:var(--raio);padding:24px;box-shadow:var(--sombra);transition:transform .15s ease,box-shadow .15s ease}
+.feat:hover{transform:translateY(-4px);box-shadow:var(--sombra2)}
+.feat .ic{width:50px;height:50px;border-radius:14px;background:rgba(18,161,80,.12);color:var(--verde);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px}
+.feat h3{font-size:18px;margin-bottom:6px}
+.feat p{color:var(--suave);font-size:14.5px}
+
+/* passos */
+.passos{background:#fff;border-top:1px solid var(--linha);border-bottom:1px solid var(--linha)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:40px}
+.step{position:relative;padding:24px;border-radius:var(--raio);background:var(--fundo);border:1px solid var(--linha)}
+.step .n{width:40px;height:40px;border-radius:50%;background:var(--verde);color:#fff;font-weight:800;font-family:'Poppins';display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.step h3{font-size:17px;margin-bottom:6px}
+.step p{color:var(--suave);font-size:14.5px}
+
+/* planos */
+.toggle{display:inline-flex;background:#fff;border:1px solid var(--linha);border-radius:999px;padding:5px;margin:18px auto 0;gap:4px}
+.toggle button{border:0;background:none;padding:9px 18px;border-radius:999px;font-weight:600;color:var(--suave);cursor:pointer;font-size:14px}
+.toggle button.on{background:var(--verde);color:#fff}
+.eco{color:var(--verde-esc);font-weight:600;font-size:13px;margin-top:8px}
+.planos{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px;align-items:start}
+.plano{background:var(--card);border:1px solid var(--linha);border-radius:18px;padding:28px 24px;box-shadow:var(--sombra)}
+.plano.top{border:2px solid var(--verde);box-shadow:var(--sombra2);position:relative}
+.plano .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--verde);color:#fff;font-size:12px;font-weight:700;padding:5px 14px;border-radius:999px}
+.plano .nome{display:flex;align-items:center;gap:9px;font-weight:700;font-family:'Poppins';color:var(--marca);font-size:19px}
+.plano .para{color:var(--suave);font-size:13.5px;margin:4px 0 16px}
+.preco{font-family:'Poppins';font-weight:800;color:var(--marca);font-size:38px;line-height:1}
+.preco small{font-size:15px;font-weight:600;color:var(--suave)}
+.sub2{color:var(--suave);font-size:12.5px;margin-top:4px;min-height:18px}
+.plano ul{list-style:none;margin:18px 0 22px;border-top:1px solid var(--linha);padding-top:16px}
+.plano li{display:flex;gap:9px;align-items:flex-start;font-size:14px;color:var(--texto);margin-bottom:9px}
+.plano li i{color:var(--verde);font-size:17px;margin-top:1px}
+.plano li.mais{color:var(--marca);font-weight:600}
+.plano .btn{width:100%;justify-content:center}
+.nota-planos{color:var(--suave);font-size:13px;text-align:center;margin-top:20px}
+
+/* faq */
+.faq{max-width:800px;margin:34px auto 0}
+details{background:#fff;border:1px solid var(--linha);border-radius:12px;padding:2px 18px;margin-bottom:12px}
+details summary{cursor:pointer;list-style:none;padding:16px 0;font-weight:600;color:var(--marca);display:flex;justify-content:space-between;align-items:center;font-size:15.5px}
+details summary::-webkit-details-marker{display:none}
+details summary i{transition:transform .2s ease;color:var(--verde)}
+details[open] summary i{transform:rotate(180deg)}
+details p{color:var(--suave);padding:0 0 16px;font-size:14.5px}
+
+/* cta band */
+.band{background:linear-gradient(135deg,var(--verde),var(--verde-esc));color:#fff;border-radius:24px;padding:48px 36px;text-align:center;box-shadow:var(--sombra2)}
+.band h2{color:#fff;font-size:clamp(24px,3.6vw,34px)}
+.band p{color:rgba(255,255,255,.9);margin:10px auto 24px;max-width:560px}
+.band .btn-primary{background:#fff;color:var(--verde-esc)}
+.band .btn-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.6)}
+
+/* footer */
+footer{background:#0F2A16;color:#C8D8C8;padding:52px 0 26px;margin-top:8px}
+footer .cols{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:30px}
+footer img{height:40px;margin-bottom:12px}
+footer h4{color:#fff;font-size:14px;margin-bottom:12px;font-family:'Poppins'}
+footer a{display:block;color:#AFC4AF;margin-bottom:9px;font-size:14px}
+footer a:hover{color:#fff}
+footer .desc{font-size:14px;max-width:320px;color:#9FB79F}
+footer .bottom{border-top:1px solid rgba(255,255,255,.12);margin-top:30px;padding-top:18px;font-size:13px;color:#8CA88C;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+@media (max-width:900px){
+  .hero-grid{grid-template-columns:1fr;gap:34px}
+  .grid,.steps,.planos{grid-template-columns:1fr}
+  .nav .links{display:none}
+  .menu-btn{display:block}
+  .nav .cta .btn-ghost{display:none}
+  footer .cols{grid-template-columns:1fr}
+  .mock{max-width:420px;margin:0 auto}
+}
+.mobile-links{display:none;flex-direction:column;gap:4px;padding:8px 0 16px}
+.mobile-links a{padding:10px 4px;color:var(--suave);font-weight:500;border-bottom:1px solid var(--linha)}
+.mobile-links.open{display:flex}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <img src="/logo.svg" alt="Natural Sistemas">
+    <nav class="links">
+      <a href="#recursos">Recursos</a>
+      <a href="#como">Como funciona</a>
+      <a href="#planos">Planos</a>
+      <a href="#faq">Dúvidas</a>
+    </nav>
+    <div class="sp"></div>
+    <div class="cta">
+      <a class="btn btn-ghost" href="https://app.naturalsistemas.com.br">Entrar</a>
+      <a class="btn btn-primary" href="https://app.naturalsistemas.com.br/#/setup">Começar grátis</a>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu"><i class="ti ti-menu-2"></i></button>
+    </div>
+  </div>
+  <div class="wrap mobile-links" id="mobileLinks">
+    <a href="#recursos">Recursos</a>
+    <a href="#como">Como funciona</a>
+    <a href="#planos">Planos</a>
+    <a href="#faq">Dúvidas</a>
+    <a href="https://app.naturalsistemas.com.br">Entrar</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="pill"><i class="ti ti-leaf"></i> Feito para lojas de produtos naturais e granel</span>
+      <h1>A sua loja natural <span class="g">organizada e vendendo mais</span></h1>
+      <p class="sub">PDV, nota fiscal, estoque, validade, WhatsApp e marketing com inteligência artificial — tudo em um só sistema, simples de usar no dia a dia.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://app.naturalsistemas.com.br/#/setup"><i class="ti ti-rocket"></i> Começar grátis por 14 dias</a>
+        <a class="btn btn-wa" id="waHero" href="#contato"><i class="ti ti-brand-whatsapp"></i> Falar com vendas</a>
+      </div>
+      <div class="trust">
+        <span><i class="ti ti-circle-check"></i> 14 dias grátis</span>
+        <span><i class="ti ti-circle-check"></i> Sem cartão para testar</span>
+        <span><i class="ti ti-circle-check"></i> Cancele quando quiser</span>
+      </div>
+    </div>
+
+    <div class="mock">
+      <div class="screen">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="mrow"><div class="ic"><i class="ti ti-cash-register"></i></div><div><div class="tt">Venda no PDV</div><div class="ds">Granola 250g · balança</div></div><div class="val">R$ 18,90</div></div>
+        <div class="mrow"><div class="ic"><i class="ti ti-file-invoice"></i></div><div><div class="tt">NFC-e emitida</div><div class="ds">Autorizada pela SEFAZ</div></div><div class="val"><i class="ti ti-check"></i></div></div>
+        <div class="mrow"><div class="ic"><i class="ti ti-calendar-stats"></i></div><div><div class="tt">Validade</div><div class="ds">3 lotes vencem em 15 dias</div></div><div class="val">3</div></div>
+        <div class="mrow"><div class="ic"><i class="ti ti-brand-whatsapp"></i></div><div><div class="tt">Oferta no WhatsApp</div><div class="ds">Enviada para 128 clientes</div></div><div class="val">128</div></div>
+      </div>
+      <div class="badge-float bf1"><i class="ti ti-trending-up"></i><div><div class="tt">+23%</div><div class="ds">nas vendas</div></div></div>
+      <div class="badge-float bf2"><i class="ti ti-sparkles"></i><div><div class="tt">Arte pronta</div><div class="ds">criada por IA</div></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="segs">
+  <div class="wrap in">
+    <span><i class="ti ti-plant-2"></i> Produtos naturais</span>
+    <span><i class="ti ti-scale"></i> Granel</span>
+    <span><i class="ti ti-basket"></i> Empórios</span>
+    <span><i class="ti ti-building-store"></i> Mercearias saudáveis</span>
+    <span><i class="ti ti-bottle"></i> Suplementos</span>
+  </div>
+</div>
+
+<section class="sec" id="recursos">
+  <div class="wrap center">
+    <span class="eyebrow">Recursos</span>
+    <h2 class="h2">Tudo o que a sua loja precisa, sem malabarismo</h2>
+    <p class="lead">Um sistema pensado para o balcão de quem vende a granel e produtos naturais — do peso na balança à nota fiscal, do estoque ao marketing.</p>
+    <div class="grid">
+      <div class="feat"><div class="ic"><i class="ti ti-cash-register"></i></div><h3>PDV com balança</h3><p>Venda rápida com leitura de código de balança, desconto, sangria e fechamento de caixa protegido.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-file-invoice"></i></div><h3>Nota fiscal (NFC-e/NF-e)</h3><p>Emita, cancele e faça devolução com poucos cliques, direto na venda, integrado à SEFAZ.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-packages"></i></div><h3>Estoque e validade</h3><p>Controle por lote, alertas de vencimento e de estoque mínimo, etiquetas de gôndola e balança.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-brand-whatsapp"></i></div><h3>WhatsApp integrado</h3><p>Atenda, envie ofertas, aniversário e catálogo. Traga o cliente de volta para a loja.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-sparkles"></i></div><h3>Marketing com IA</h3><p>Gere artes e textos de promoção com a cara da sua marca em segundos, sem designer.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-report-money"></i></div><h3>Financeiro e DRE</h3><p>Contas a pagar e receber, fluxo de caixa e o resultado da loja sempre na palma da mão.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-heart-handshake"></i></div><h3>Fidelidade e cashback</h3><p>Clube de clientes, cashback automático e promoções que aumentam o ticket e a recompra.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-building-community"></i></div><h3>Multi-loja</h3><p>Gerencie várias filiais, veja o resultado por loja e compare o desempenho da rede.</p></div>
+      <div class="feat"><div class="ic"><i class="ti ti-device-mobile"></i></div><h3>Funciona no celular</h3><p>Acompanhe as vendas e cobre a equipe de qualquer lugar, direto do seu telefone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec passos" id="como">
+  <div class="wrap center">
+    <span class="eyebrow">Como funciona</span>
+    <h2 class="h2">No ar em minutos</h2>
+    <p class="lead">Sem instalação complicada. Você cria a conta e já começa a usar.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>Crie sua conta</h3><p>Cadastre a loja e o seu usuário. Grátis por 14 dias, sem cartão de crédito.</p></div>
+      <div class="step"><div class="n">2</div><h3>Cadastre os produtos</h3><p>Importe de uma planilha ou do XML das suas notas de compra — a gente ajuda na migração.</p></div>
+      <div class="step"><div class="n">3</div><h3>Comece a vender</h3><p>Abra o caixa, venda no PDV, emita a nota e acompanhe tudo em tempo real.</p></div>
+    </div>
+    <div style="margin-top:34px"><a class="btn btn-primary" href="https://app.naturalsistemas.com.br/#/setup"><i class="ti ti-rocket"></i> Criar minha conta grátis</a></div>
+  </div>
+</section>
+
+<section class="sec" id="planos">
+  <div class="wrap center">
+    <span class="eyebrow">Planos</span>
+    <h2 class="h2">Um plano para cada momento da sua loja</h2>
+    <p class="lead">Comece simples e evolua conforme cresce. Todos com 14 dias grátis.</p>
+    <div class="toggle" role="group" aria-label="Ciclo de cobrança">
+      <button id="tgMensal" class="on" onclick="setCiclo('mensal')">Mensal</button>
+      <button id="tgAnual" onclick="setCiclo('anual')">Anual</button>
+    </div>
+    <div class="eco" id="ecoLabel">&nbsp;</div>
+
+    <div class="planos">
+      <div class="plano">
+        <div class="nome"><i class="ti ti-building-store"></i> Essencial</div>
+        <div class="para">Para 1 loja começando</div>
+        <div class="preco" data-m="119" data-a="99">R$ 119<small>/mês</small></div>
+        <div class="sub2" data-sm="Cobrança mensal" data-sa="R$ 1.190/ano · economize 2 meses">Cobrança mensal</div>
+        <ul>
+          <li><i class="ti ti-check"></i> PDV com balança</li>
+          <li><i class="ti ti-check"></i> NFC-e e NF-e</li>
+          <li><i class="ti ti-check"></i> Estoque e validade</li>
+          <li><i class="ti ti-check"></i> Etiquetas</li>
+          <li><i class="ti ti-check"></i> Até 3 usuários · suporte por e-mail</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://app.naturalsistemas.com.br/#/setup">Testar grátis</a>
+      </div>
+
+      <div class="plano top">
+        <div class="tag">Mais popular</div>
+        <div class="nome"><i class="ti ti-rocket"></i> Profissional</div>
+        <div class="para">Para quem quer vender mais</div>
+        <div class="preco" data-m="229" data-a="191">R$ 229<small>/mês</small></div>
+        <div class="sub2" data-sm="Cobrança mensal" data-sa="R$ 2.290/ano · economize 2 meses">Cobrança mensal</div>
+        <ul>
+          <li class="mais">Tudo do Essencial, mais:</li>
+          <li><i class="ti ti-check"></i> Financeiro e DRE</li>
+          <li><i class="ti ti-check"></i> WhatsApp e disparos</li>
+          <li><i class="ti ti-check"></i> Marketing com IA</li>
+          <li><i class="ti ti-check"></i> Fidelidade e cashback</li>
+          <li><i class="ti ti-check"></i> Recebíveis de cartão</li>
+          <li><i class="ti ti-check"></i> Usuários ilimitados · suporte WhatsApp</li>
+        </ul>
+        <a class="btn btn-primary" href="https://app.naturalsistemas.com.br/#/setup">Começar agora</a>
+      </div>
+
+      <div class="plano">
+        <div class="nome"><i class="ti ti-building-community"></i> Rede</div>
+        <div class="para">Para várias filiais</div>
+        <div class="preco" data-m="379" data-a="316">R$ 379<small>/mês</small></div>
+        <div class="sub2" data-sm="Loja extra R$ 149/mês" data-sa="R$ 3.790/ano · loja extra R$ 149">Loja extra R$ 149/mês</div>
+        <ul>
+          <li class="mais">Tudo do Profissional, mais:</li>
+          <li><i class="ti ti-check"></i> Multi-loja</li>
+          <li><i class="ti ti-check"></i> DRE por loja</li>
+          <li><i class="ti ti-check"></i> Metas e premiação da equipe</li>
+          <li><i class="ti ti-check"></i> Cotações e concorrência</li>
+          <li><i class="ti ti-check"></i> Suporte prioritário</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://app.naturalsistemas.com.br/#/setup">Testar grátis</a>
+      </div>
+    </div>
+    <p class="nota-planos">Certificado digital A1 (para nota fiscal) por conta do cliente. Migração de dados a partir de R$ 299 — fale com a gente.</p>
+  </div>
+</section>
+
+<section class="sec" id="faq" style="padding-top:20px">
+  <div class="wrap center">
+    <span class="eyebrow">Dúvidas frequentes</span>
+    <h2 class="h2">Ainda com perguntas?</h2>
+    <div class="faq" style="text-align:left">
+      <details><summary>Preciso instalar alguma coisa? <i class="ti ti-chevron-down"></i></summary><p>Não. O Natural Sistemas funciona pelo navegador, no computador e no celular. Você cria a conta e já começa a usar.</p></details>
+      <details><summary>O sistema emite nota fiscal? <i class="ti ti-chevron-down"></i></summary><p>Sim — NFC-e (cupom) e NF-e, com cancelamento e devolução. Você só precisa do seu certificado digital A1.</p></details>
+      <details><summary>Dá para migrar meus produtos e cadastros? <i class="ti ti-chevron-down"></i></summary><p>Sim. Importamos de planilha ou do XML das suas notas de compra. Nossa equipe ajuda na migração.</p></details>
+      <details><summary>Tem fidelidade e vale para venda a granel? <i class="ti ti-chevron-down"></i></summary><p>Sim. Foi feito para o balcão de granel: venda por peso, clube de clientes, cashback e promoções.</p></details>
+      <details><summary>Posso cancelar quando quiser? <i class="ti ti-chevron-down"></i></summary><p>Pode. Sem fidelidade obrigatória. Você testa 14 dias grátis e só continua se fizer sentido.</p></details>
+      <details><summary>Como funciona o suporte? <i class="ti ti-chevron-down"></i></summary><p>Por e-mail no Essencial e por WhatsApp nos planos Profissional e Rede (prioritário na Rede).</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="contato" style="padding-top:10px">
+  <div class="wrap">
+    <div class="band">
+      <h2>Pronto para organizar e vender mais?</h2>
+      <p>Crie sua conta em minutos e teste tudo por 14 dias, sem compromisso.</p>
+      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+        <a class="btn btn-primary" href="https://app.naturalsistemas.com.br/#/setup"><i class="ti ti-rocket"></i> Começar grátis</a>
+        <a class="btn btn-ghost" id="waBand" href="#"><i class="ti ti-brand-whatsapp"></i> Falar no WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <img src="/logo.svg" alt="Natural Sistemas" style="filter:brightness(0) invert(1)">
+        <p class="desc">Gestão completa para lojas de produtos naturais e granel: PDV, fiscal, estoque, validade, WhatsApp e marketing com IA.</p>
+      </div>
+      <div>
+        <h4>Produto</h4>
+        <a href="#recursos">Recursos</a>
+        <a href="#planos">Planos e preços</a>
+        <a href="#como">Como funciona</a>
+        <a href="https://app.naturalsistemas.com.br">Entrar no sistema</a>
+      </div>
+      <div>
+        <h4>Contato</h4>
+        <a id="waFooter" href="#"><i class="ti ti-brand-whatsapp"></i> WhatsApp de vendas</a>
+        <a id="mailFooter" href="#"><i class="ti ti-mail"></i> E-mail</a>
+        <a href="https://app.naturalsistemas.com.br/#/setup">Criar conta grátis</a>
+      </div>
+    </div>
+    <div class="bottom">
+      <span>© 2026 Natural Sistemas. Todos os direitos reservados.</span>
+      <span>Feito para o varejo natural do Brasil.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+function setCiclo(c){
+  var mensal = c==='mensal';
+  document.getElementById('tgMensal').classList.toggle('on',mensal);
+  document.getElementById('tgAnual').classList.toggle('on',!mensal);
+  document.querySelectorAll('.preco').forEach(function(el){
+    var v = mensal ? el.dataset.m : el.dataset.a;
+    el.innerHTML = 'R$ '+v+'<small>/mês</small>';
+  });
+  document.querySelectorAll('.sub2').forEach(function(el){
+    el.textContent = mensal ? el.dataset.sm : el.dataset.sa;
+  });
+  document.getElementById('ecoLabel').innerHTML = mensal ? '&nbsp;' : 'No plano anual você paga 10 meses e ganha 2.';
+}
+document.getElementById('menuBtn').addEventListener('click',function(){
+  document.getElementById('mobileLinks').classList.toggle('open');
+});
+document.querySelectorAll('#mobileLinks a').forEach(function(a){
+  a.addEventListener('click',function(){document.getElementById('mobileLinks').classList.remove('open')});
+});
+
+/* Contato — configure aqui o WhatsApp e o e-mail de vendas */
+var WHATS = '';   /* ex.: '5518999999999' (só números, com DDI 55) */
+var EMAIL = 'contato@naturalsistemas.com.br';
+(function(){
+  var msg = encodeURIComponent('Olá! Quero saber mais sobre o Natural Sistemas.');
+  var waUrl = WHATS ? ('https://wa.me/'+WHATS+'?text='+msg) : '';
+  ['waHero','waBand','waFooter'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    if(waUrl){ el.href = waUrl; el.target='_blank'; el.rel='noopener'; }
+    else { el.href = 'mailto:'+EMAIL; }
+  });
+  var m = document.getElementById('mailFooter'); if(m) m.href='mailto:'+EMAIL;
+})();
+</script>
+</body>
+</html>

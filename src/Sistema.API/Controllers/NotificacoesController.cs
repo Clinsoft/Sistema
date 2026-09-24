@@ -30,7 +30,9 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         //  • Validade → filtrada pela loja do atendente (o lote tem loja).
         var ehAtendente = User.EhAtendente();
         var ehGestao = User.IsInRole("Administrador") || User.IsInRole("Financeiro");
-        var lojaAtendente = ehAtendente ? (User.LojaClaim() ?? Guid.Empty) : (Guid?)null;
+        // Loja do usuário (claim). QUALQUER usuário vinculado a uma loja (atendente, gerente…)
+        // vê os alertas por loja SÓ da sua unidade; sem vínculo (ex.: admin) vê de todas.
+        var lojaUsuario = User.LojaClaim();
 
         var etiquetas = ehAtendente ? 0 : await db.Produtos.CountAsync(p =>
             p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada, ct);
@@ -45,7 +47,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
 
         var validadeProxima = await db.Lotes.CountAsync(l =>
             l.EmpresaId == empresaId && l.Quantidade > 0
-            && (lojaAtendente == null || l.LocalEstoqueId == lojaAtendente.Value)
+            && (lojaUsuario == null || l.LocalEstoqueId == lojaUsuario.Value)
             && l.DataValidade != null && l.DataValidade >= hoje && l.DataValidade <= limiteValidade, ct);
 
         // Validade/lote pendente de lançamento: nota JÁ recebida (Processada) com item que
@@ -59,7 +61,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
             && !e.ValidadePendenteIgnorada
             && e.DataEmissao >= corteValidade
-            && (lojaAtendente == null || e.LocalEstoqueId == lojaAtendente.Value)
+            && (lojaUsuario == null || e.LocalEstoqueId == lojaUsuario.Value)
             && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
                 && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)), ct);
 
@@ -68,6 +70,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var entradaSemOc = ehAtendente ? 0 : await db.EntradasNFe.CountAsync(e =>
             e.EmpresaId == empresaId && e.Status == StatusEntradaNFe.Processada
             && !e.VinculoOcIgnorado && e.DataEmissao >= corteValidade
+            && (lojaUsuario == null || e.LocalEstoqueId == lojaUsuario.Value)
             && e.PedidoCompraId == null
             && !db.EntradasNFePedidos.Any(v => v.EntradaNFeId == e.Id), ct);
 

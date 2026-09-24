@@ -27,7 +27,9 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         [FromQuery] bool incluirZerados,
         CancellationToken ct)
     {
-        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: sempre a própria loja
+        // Usuário vinculado a uma loja vê SÓ a dele (qualquer perfil, não só atendente).
+        var lojaUsuarioLote = User.LojaClaim();
+        localEstoqueId = lojaUsuarioLote ?? User.EscoparLoja(localEstoqueId);
         var hoje = DateTime.Today;
         var query =
             from l in db.Lotes.AsNoTracking()
@@ -66,6 +68,9 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
     public async Task<IActionResult> Vencimentos([FromQuery] Guid empresaId, [FromQuery] int diasAlerta = 30, CancellationToken ct = default)
     {
         var lotes = await repo.ListarVencidosOuProximosAsync(empresaId, diasAlerta, ct);
+        // Usuário vinculado a uma loja vê SÓ os lotes da sua unidade.
+        var lojaUsuario = User.LojaClaim();
+        if (lojaUsuario.HasValue) lotes = lotes.Where(l => l.LocalEstoqueId == lojaUsuario.Value).ToList();
         var produtoIds = lotes.Select(l => l.ProdutoId).Distinct().ToList();
         var produtos = produtoIds.Count > 0
             ? await db.Produtos.AsNoTracking()
@@ -163,7 +168,7 @@ public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfW
         [FromQuery] DateTime inicio, [FromQuery] DateTime fim,
         [FromQuery] Guid? localEstoqueId, [FromQuery] string? destino, CancellationToken ct)
     {
-        localEstoqueId = User.EscoparLoja(localEstoqueId);   // atendente: só a própria loja
+        localEstoqueId = User.LojaClaim() ?? User.EscoparLoja(localEstoqueId);   // vinculado: só a própria loja
         var fimExcl = fim.Date.AddDays(1);
 
         var q = db.MovimentacoesEstoque.AsNoTracking()

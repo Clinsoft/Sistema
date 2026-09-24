@@ -500,7 +500,7 @@
       </v-alert>
 
       <div class="d-flex align-center flex-wrap gap-2 mb-3">
-        <v-select v-model="pendLoja" :items="[{ id: '', nome: 'Todas as lojas' }, ...locais]"
+        <v-select v-model="pendLoja" :items="opcoesLojaValidade" :disabled="!!lojaFixa"
           item-title="nome" item-value="id" label="Loja" variant="outlined" density="compact"
           hide-details style="max-width:260px" @update:model-value="carregarPendencias" />
         <v-spacer />
@@ -546,7 +546,7 @@
           @update:model-value="carregarAtraso" />
         <v-select v-model="atrasoAno" :items="anosOpc" label="Ano" variant="outlined" density="compact"
           hide-details style="max-width:120px" @update:model-value="carregarAtraso" />
-        <v-select v-model="atrasoLoja" :items="[{ id: '', nome: 'Todas as lojas' }, ...locais]"
+        <v-select v-model="atrasoLoja" :items="opcoesLojaValidade" :disabled="!!lojaFixa"
           item-title="nome" item-value="id" label="Loja" variant="outlined" density="compact"
           hide-details style="max-width:240px" @update:model-value="carregarAtraso" />
         <v-spacer />
@@ -601,8 +601,9 @@
               clearable @update:model-value="listarLotes" />
           </v-col>
           <v-col cols="12" md="3">
-            <v-select v-model="filtroLocal" :items="locais" item-title="nome" item-value="id"
-              label="Local de estoque" variant="outlined" density="compact" hide-details clearable
+            <v-select v-model="filtroLocal" :items="lojaFixa ? locais.filter((l:any)=>String(l.id)===String(lojaFixa)) : locais"
+              :disabled="!!lojaFixa" :clearable="!lojaFixa" item-title="nome" item-value="id"
+              label="Local de estoque" variant="outlined" density="compact" hide-details
               @update:model-value="listarLotes" />
           </v-col>
           <v-col cols="auto">
@@ -899,8 +900,14 @@ const aba = ref('painel')
 // ─── Pendentes de lançamento (validade/lote não lançados) ──────────────────────
 const pendencias = ref<any[]>([])
 const carregandoPend = ref(false)
-// Padrão: a LOJA ATUAL (do cabeçalho) — cada unidade vê só as suas pendências.
-const pendLoja = ref<string>(auth.lojaAtualId ?? '')
+// Loja FIXA do usuário (vínculo no cadastro). Se tiver, ele só pode ver a dele.
+const lojaFixa = computed<string | null>(() => auth.usuario?.localEstoqueId ?? null)
+// Opções de loja do filtro: preso a uma loja → só a dele; senão todas.
+const opcoesLojaValidade = computed(() => lojaFixa.value
+  ? locais.value.filter((l: any) => String(l.id) === String(lojaFixa.value))
+  : [{ id: '', nome: 'Todas as lojas' }, ...locais.value])
+// Padrão: a loja fixa (se houver) ou a loja atual do cabeçalho.
+const pendLoja = ref<string>(auth.usuario?.localEstoqueId ?? auth.lojaAtualId ?? '')
 const headersPend = [
   { title: 'Loja', key: 'loja' },
   { title: 'NF nº', key: 'numeroNota' },
@@ -932,7 +939,7 @@ const atrasoPessoas = ref<any[]>([])
 const carregandoAtraso = ref(false)
 const atrasoAno = ref(new Date().getFullYear())
 const atrasoMes = ref(new Date().getMonth() + 1)
-const atrasoLoja = ref<string>(auth.lojaAtualId ?? '')
+const atrasoLoja = ref<string>(auth.usuario?.localEstoqueId ?? auth.lojaAtualId ?? '')
 const mesesOpc = [
   { value: 1, label: 'Janeiro' }, { value: 2, label: 'Fevereiro' }, { value: 3, label: 'Março' },
   { value: 4, label: 'Abril' }, { value: 5, label: 'Maio' }, { value: 6, label: 'Junho' },
@@ -1418,7 +1425,7 @@ const lotesLista = ref<any[]>([])
 const alertasVenc = ref<any[]>([])
 const locais = ref<any[]>([])
 const buscaLote = ref('')
-const filtroLocal = ref<string | null>(null)
+const filtroLocal = ref<string | null>(auth.usuario?.localEstoqueId ?? null)
 
 const vencidos = computed(() => alertasVenc.value.filter(l => l.vencido).length)
 const proximos = computed(() => alertasVenc.value.filter(l => !l.vencido).length)
@@ -1710,8 +1717,9 @@ watch(aba, (v) => {
   if (v === 'atraso' && !atrasoCarregado) { atrasoCarregado = true; carregarAtraso() }
 })
 
-// Trocou a loja no cabeçalho → refiltra pendências/atraso para a nova loja.
+// Trocou a loja no cabeçalho → refiltra (só se o usuário NÃO for preso a uma loja).
 watch(() => auth.lojaAtualId, (v) => {
+  if (lojaFixa.value) return
   pendLoja.value = v ?? ''
   atrasoLoja.value = v ?? ''
   carregarPendencias()

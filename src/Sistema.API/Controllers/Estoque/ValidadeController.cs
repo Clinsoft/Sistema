@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using Sistema.API.Extensions;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
@@ -20,6 +21,8 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     [HttpGet("painel")]
     public async Task<IActionResult> Painel([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
+        var lojaUsuario = User.LojaClaim();
+        if (lojaUsuario.HasValue) localEstoqueId = lojaUsuario.Value;
         var cfg = await CarregarConfig(empresaId, ct);
         var hoje = DateTime.Today;
 
@@ -250,6 +253,10 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     public async Task<IActionResult> Pendencias([FromQuery] Guid empresaId, [FromQuery] int dias = 90,
         [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
+        // Usuário vinculado a uma loja SÓ vê a dele — força a loja do claim (ignora o que o front manda).
+        var lojaUsuario = User.LojaClaim();
+        if (lojaUsuario.HasValue) localEstoqueId = lojaUsuario.Value;
+
         var corte = DateTime.Today.AddDays(-Math.Abs(dias == 0 ? 90 : dias));
         // Notas de jul/2026 e anteriores são backlog antigo — fora do controle (decisão do gestor).
         var inicioControle = new DateTime(2026, 8, 1);
@@ -304,6 +311,8 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     public async Task<IActionResult> AtrasoPorPessoa([FromQuery] Guid empresaId,
         [FromQuery] int ano, [FromQuery] int mes, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
+        var lojaUsuario = User.LojaClaim();
+        if (lojaUsuario.HasValue) localEstoqueId = lojaUsuario.Value;
         if (ano == 0) ano = DateTime.Today.Year;
         if (mes == 0) mes = DateTime.Today.Month;
         var inicioMes = new DateTime(ano, mes, 1);

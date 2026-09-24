@@ -56,13 +56,15 @@ public class CriarProdutoHandler(IProdutoRepository repo, IUnitOfWork uow)
                 throw new InvalidOperationException($"Já existe produto com o código '{codigo}'.");
         }
 
-        if (cmd.CodigoBarras is not null &&
-            await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId && p.CodigoBarras == cmd.CodigoBarras, ct))
-            throw new InvalidOperationException($"Já existe produto com o código de barras '{cmd.CodigoBarras}'.");
+        // Código de barras vazio/espaços = SEM código (não colide com outros "sem código").
+        var ean = string.IsNullOrWhiteSpace(cmd.CodigoBarras) ? null : cmd.CodigoBarras.Trim();
+        if (ean is not null &&
+            await repo.ExisteAsync(p => p.EmpresaId == cmd.EmpresaId && p.CodigoBarras == ean, ct))
+            throw new InvalidOperationException($"Já existe produto com o código de barras '{ean}'.");
 
         var produto = Produto.Criar(cmd.EmpresaId, codigo, cmd.Descricao,
             cmd.CategoriaId, cmd.MarcaId, cmd.UnidadeMedidaId,
-            cmd.CustoUnitario, cmd.PrecoVenda, cmd.CodigoBarras);
+            cmd.CustoUnitario, cmd.PrecoVenda, ean);
 
         produto.DefinirEstoqueMinimo(cmd.EstoqueMinimo);
 

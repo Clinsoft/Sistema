@@ -995,7 +995,7 @@
                       </tbody>
                     </v-table>
                     <div class="text-caption text-medium-emphasis mt-1">
-                      <b>Unidade do componente:</b> a granel escolha <b>g</b> ou <b>kg</b> (ex.: 100 <b>g</b> = 0,1 kg); unitário use <b>un</b>. Custo unit. do composto = soma dos componentes ÷ rendimento; o <b>preço de venda</b> você define no cadastro. "Produzir" baixa os componentes e credita este produto no estoque da loja.
+                      <b>Unidade do componente:</b> a granel escolha <b>g</b> ou <b>kg</b> (ex.: 100 <b>g</b> = 0,1 kg); unitário use <b>un</b>. Custo unit. do composto = soma dos componentes ÷ rendimento; o <b>preço de venda</b> é sugerido em <b>custo × 1,7 (markup 70%)</b> — ajuste no campo Preço de venda. "Produzir" baixa os componentes e credita este produto no estoque da loja.
                     </div>
                     <div v-if="editando" class="d-flex justify-end mt-2">
                       <v-btn size="small" color="primary" variant="tonal" :loading="salvandoComp" @click="salvarComposicao">Salvar composição</v-btn>
@@ -2549,6 +2549,21 @@ function onCompSel() {
   if (!p) return
   compUnid.value = (p.produtoBalanca || p.vendidoFracionado) ? 'g' : 'un'
 }
+
+// Produto composto: sugere o custo (soma dos componentes) e o preço de venda
+// (markup 70% → custo × 1,7). Não sobrescreve se o usuário ajustou o preço manualmente.
+const MARKUP_COMPOSTO = 1.7
+const ultimaSugestaoPreco = ref<number | null>(null)
+watch([custoComposto, () => comp.value.ehComposto], () => {
+  if (!comp.value.ehComposto) return
+  form.value.custoUnitario = custoComposto.value
+  const atual = Number(form.value.precoVenda) || 0
+  if (!atual || atual === ultimaSugestaoPreco.value) {
+    const sugestao = Math.round(custoComposto.value * MARKUP_COMPOSTO * 100) / 100
+    form.value.precoVenda = sugestao
+    ultimaSugestaoPreco.value = sugestao
+  }
+})
 async function carregarComposicao() {
   comp.value = { ehComposto: false, rendimento: 1, itens: [] }
   if (!produtoEditandoId.value) return

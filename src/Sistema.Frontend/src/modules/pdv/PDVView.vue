@@ -109,17 +109,18 @@
         <transition name="pdv-promo-slide">
           <div v-if="promoAtiva && !promoDismissed" class="pdv-promo-bar">
             <v-icon size="20" class="pdv-promo-icon">mdi-bullhorn-variant</v-icon>
-            <div class="pdv-promo-viewport">
+            <div class="pdv-promo-viewport" style="cursor:pointer" title="Ver todas as ofertas"
+              @click="dialogOfertas = true">
               <transition name="pdv-promo-fade" mode="out-in">
                 <span class="pdv-promo-texto" :key="promoIdx">
                   <strong>Informe ao cliente:</strong> {{ promoAtiva }}
                 </span>
               </transition>
             </div>
-            <div v-if="todasPromocoes.length > 1" class="pdv-promo-dots">
-              <span v-for="(_, i) in todasPromocoes" :key="i"
-                class="pdv-promo-dot" :class="{ ativo: i === promoIdx }" />
-            </div>
+            <button v-if="todasPromocoes.length > 1" class="pdv-promo-vertodas"
+              title="Ver todas as ofertas" @click="dialogOfertas = true">
+              Ver todas ({{ todasPromocoes.length }})
+            </button>
             <button class="pdv-promo-dismiss" title="Dispensar" @click="fecharPromo">
               <v-icon size="14">mdi-close</v-icon>
             </button>
@@ -1015,6 +1016,37 @@
             Ver histórico de sessões
           </v-btn>
         </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Todas as ofertas ativas (para o operador oferecer ao cliente) -->
+    <v-dialog v-model="dialogOfertas" max-width="560" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-2 d-flex align-center gap-2 text-body-1 font-weight-bold">
+          <v-icon icon="mdi-bullhorn-variant" color="deep-orange" />
+          Ofertas ativas — informe ao cliente
+          <v-chip size="small" color="deep-orange" variant="tonal" class="ml-1">{{ todasPromocoes.length }}</v-chip>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="dialogOfertas = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0">
+          <div v-if="!todasPromocoes.length" class="pa-6 text-center text-medium-emphasis">Nenhuma oferta ativa.</div>
+          <v-list v-else density="comfortable">
+            <v-list-item v-for="(p, i) in todasPromocoes" :key="i">
+              <template #prepend>
+                <v-avatar size="26" color="deep-orange" variant="tonal" class="mr-2">
+                  <span class="text-caption font-weight-bold">{{ i + 1 }}</span>
+                </v-avatar>
+              </template>
+              <v-list-item-title class="text-body-2" style="white-space:normal">{{ p }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-3 justify-end">
+          <v-btn variant="text" @click="dialogOfertas = false">Fechar</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -2292,6 +2324,7 @@ const sorteios = ref<any[]>([])
 const promoMenorValor = ref<any>(null)   // promo "menor valor ganha X%" aplicada automaticamente no carrinho
 const promoIdx = ref(0)
 const promoDismissed = ref(false)
+const dialogOfertas = ref(false)
 const promoAtiva = computed(() => todasPromocoes.value[promoIdx.value] ?? null)
 
 let promoTimer: any = null
@@ -3096,6 +3129,20 @@ onUnmounted(() => {
   transition: all .12s;
 }
 .pdv-promo-dismiss:hover { opacity: 1; background: rgba(255,255,255,.35); }
+.pdv-promo-vertodas {
+  border: none;
+  background: rgba(255,255,255,.22);
+  color: #fff;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .12s;
+}
+.pdv-promo-vertodas:hover { background: rgba(255,255,255,.4); }
 
 /* Fade entre mensagens do banner */
 .pdv-promo-fade-enter-active { transition: opacity .4s ease, transform .4s ease; }

@@ -19,6 +19,7 @@ public class BrandingController(BrandingOptions branding) : ControllerBase
         nome = branding.Nome,
         slogan = branding.Slogan,
         logoUrl = branding.LogoUrl,
+        faviconUrl = string.IsNullOrWhiteSpace(branding.FaviconUrl) ? branding.LogoUrl : branding.FaviconUrl,
         siteUrl = branding.SiteUrl,
         publicBaseUrl = branding.PublicBaseUrl,
         catalogoProdutoUrl = branding.CatalogoProdutoUrl,

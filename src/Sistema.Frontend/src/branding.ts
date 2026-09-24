@@ -12,6 +12,7 @@ export interface Branding {
   nome: string
   slogan: string
   logoUrl: string
+  faviconUrl: string
   siteUrl: string
   publicBaseUrl: string
   catalogoProdutoUrl: string
@@ -26,6 +27,7 @@ const PADRAO: Branding = {
   nome: 'EcoGranel',
   slogan: 'Produtos Naturais',
   logoUrl: '/logo-ecogranel.png',
+  faviconUrl: '/logo-ecogranel.png',
   siteUrl: 'https://ecogranel.com.br',
   publicBaseUrl: 'https://sistema.ecogranel.com.br',
   catalogoProdutoUrl: 'https://ecogranel.com.br/produtos/produto.php?p=',
@@ -59,7 +61,9 @@ export function aplicarBranding(vuetify: any): void {
       link.rel = 'icon'
       document.head.appendChild(link)
     }
-    link.href = branding.logoUrl
+    link.href = branding.faviconUrl || branding.logoUrl
+    // tipo correto para SVG (senão alguns navegadores ignoram)
+    if ((branding.faviconUrl || branding.logoUrl).endsWith('.svg')) link.type = 'image/svg+xml'
   } catch { /* ignora */ }
 
   // Sobrescreve as cores dos temas Vuetify (mantém os nomes ecoGranelLight/Dark

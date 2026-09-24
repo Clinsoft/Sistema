@@ -22,6 +22,9 @@ public sealed class BrandingOptions
     /// <summary>URL/caminho público da logo usado pelo frontend (servido de wwwroot ou /public).</summary>
     public string LogoUrl { get; set; } = "/logo-ecogranel.png";
 
+    /// <summary>Ícone quadrado para o favicon/aba. Vazio = usa a LogoUrl.</summary>
+    public string FaviconUrl { get; set; } = "";
+
     /// <summary>Nome do arquivo de logo dentro de wwwroot (DANFE, artes de marketing).</summary>
     public string LogoArquivo { get; set; } = "logo-ecogranel.png";
 

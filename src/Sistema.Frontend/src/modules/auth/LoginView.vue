@@ -67,13 +67,34 @@
                 </v-btn>
               </v-form>
 
-              <v-divider class="my-5" />
+              <div class="text-center my-5 d-flex align-center">
+                <v-divider />
+                <span class="px-3 text-caption text-medium-emphasis">ou</span>
+                <v-divider />
+              </div>
 
-              <div class="text-center text-body-2 text-medium-emphasis">
-                Primeira vez aqui?
-                <router-link to="/setup" class="text-primary font-weight-medium text-decoration-none">
-                  Configurar o sistema
-                </router-link>
+              <!-- Chamada para novos clientes: precisa ficar evidente para quem
+                   acabou de contratar e ainda não tem configurado o sistema. -->
+              <div class="primeira-vez pa-4 rounded-lg text-center">
+                <div class="text-subtitle-2 font-weight-bold mb-1">
+                  <v-icon icon="mdi-hand-wave" color="accent" size="20" class="mr-1" />
+                  É a sua primeira vez aqui?
+                </div>
+                <div class="text-body-2 text-medium-emphasis mb-3">
+                  Configure sua loja em poucos minutos e comece a usar.
+                </div>
+                <v-btn
+                  to="/setup"
+                  color="accent"
+                  block
+                  size="large"
+                  rounded="lg"
+                  variant="flat"
+                  prepend-icon="mdi-rocket-launch-outline"
+                  class="text-none font-weight-bold"
+                >
+                  Começar agora — configurar o sistema
+                </v-btn>
               </div>
             </v-card>
           </v-col>
@@ -218,3 +239,11 @@ function fecharDialogRecuperar() {
   recuperarSucesso.value = ''
 }
 </script>
+
+<style scoped>
+/* Destaque suave para a chamada de primeiro acesso (novos clientes) */
+.primeira-vez {
+  background: rgba(var(--v-theme-accent), 0.10);
+  border: 1px solid rgba(var(--v-theme-accent), 0.35);
+}
+</style>

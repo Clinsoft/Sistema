@@ -29,6 +29,8 @@
 
         <v-list density="compact" nav open-strategy="multiple">
 
+          <!-- Menu da LOJA (oculto para o super-admin, que é só console de assinaturas) -->
+          <template v-if="!auth.superAdmin">
           <!-- 1. Dashboard -->
           <v-list-item v-if="!ehAtendente && !ehContador" prepend-icon="mdi-view-dashboard-outline" title="Dashboard"
             to="/" value="/" color="primary" rounded="lg" />
@@ -210,6 +212,7 @@
           <v-list-item v-if="!ehContador" prepend-icon="mdi-whatsapp" title="WhatsApp"
             :append-icon="temRecurso('Whatsapp') ? undefined : 'mdi-lock'"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />
+          </template>
 
           <!-- Painel SaaS (só o dono do produto / super-admin) -->
           <v-list-item v-if="auth.superAdmin" prepend-icon="mdi-shield-crown-outline" title="Administração (SaaS)"
@@ -359,6 +362,15 @@
       </v-app-bar>
 
       <v-main>
+        <!-- Faixa de teste grátis: mostra o botão de pagamento desde o cadastro. -->
+        <v-alert v-if="assinatura.emTrial && !auth.superAdmin" type="info" variant="tonal"
+          density="comfortable" class="mb-0 rounded-0" icon="mdi-gift-outline">
+          <div class="d-flex align-center flex-wrap" style="gap:8px">
+            <span>Você está no <strong>teste grátis</strong> — faltam <strong>{{ assinatura.diasTrial }}</strong> dia(s). Assine para não perder o acesso.</span>
+            <v-spacer />
+            <v-btn size="small" color="success" variant="flat" prepend-icon="mdi-credit-card-outline" to="/assinatura">Assinar agora</v-btn>
+          </div>
+        </v-alert>
         <v-alert v-if="balancaPendentes > 0" type="warning" variant="tonal"
           density="comfortable" class="mb-0 rounded-0" icon="mdi-scale-balance">
           <div class="d-flex align-center flex-wrap" style="gap:8px">
@@ -471,7 +483,10 @@ onMounted(() => {
   // sem precisar relogar). Sessões antigas também passam a ter o seletor.
   if (auth.logado) auth.carregarLojas()
   if (auth.logado) assinatura.carregar()   // hidrata plano/recursos ao recarregar a página
-  if (auth.logado) auth.verificarSuperAdmin()   // habilita o painel SaaS para o dono do produto
+  if (auth.logado) auth.verificarSuperAdmin().then(() => {
+    // Super-admin abre direto no painel (console puro, sem o sistema de loja).
+    if (auth.superAdmin && route.path !== '/admin') router.push('/admin')
+  })
   auth.fixarLojaAtendente()   // atendente sempre preso à própria loja (corrige localStorage antigo)
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })

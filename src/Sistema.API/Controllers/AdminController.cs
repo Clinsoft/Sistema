@@ -38,8 +38,16 @@ public class AdminController(SistemaDbContext db, IConfiguration config, IMemory
     {
         if (!EhSuperAdmin()) return Forbid();
 
+        // Empresas dos próprios super-admins não são "clientes" — não entram na lista.
+        var emailsAdmin = (config["SuperAdmin:Emails"] ?? "")
+            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var empresasAdmin = await db.Usuarios.AsNoTracking()
+            .Where(u => u.Email != null && emailsAdmin.Contains(u.Email))
+            .Select(u => u.EmpresaId).Distinct().ToListAsync(ct);
+
         var rows = await (from a in db.Assinaturas.AsNoTracking()
                           join e in db.Empresas.AsNoTracking() on a.EmpresaId equals e.Id
+                          where !empresasAdmin.Contains(a.EmpresaId)
                           select new { a, e.NomeFantasia, e.Cnpj, e.Email, e.CriadoEm }).ToListAsync(ct);
 
         var usuarios = await db.Usuarios.AsNoTracking()

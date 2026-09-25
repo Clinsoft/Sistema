@@ -40,6 +40,10 @@ api.interceptors.response.use(
       localStorage.clear()
       window.location.hash = '#/login'
     }
+    // 402 = assinatura vencida/bloqueada ou recurso fora do plano → tela de assinatura.
+    if (err.response?.status === 402 && !window.location.hash.includes('/assinatura')) {
+      window.location.hash = '#/assinatura'
+    }
     return Promise.reject(err)
   }
 )

@@ -247,9 +247,15 @@ router.beforeEach((to) => {
     return '/contabilidade'
   }
 
+  // Super-admin (dono do produto) é um CONSOLE puro: só o painel de assinaturas,
+  // sem o sistema de loja.
+  if (auth.logado && auth.superAdmin && !to.meta.publica && to.path !== '/admin') {
+    return '/admin'
+  }
+
   // Gate por assinatura/plano (só depois de carregada; antes disso é permissivo,
   // o backend é a trava real). Bloqueada/expirada → tela de regularização.
-  if (auth.logado && !to.meta.publica && to.path !== '/assinatura') {
+  if (auth.logado && !auth.superAdmin && !to.meta.publica && to.path !== '/assinatura') {
     const ass = useAssinaturaStore()
     if (ass.carregado) {
       if (ass.bloqueado) return '/assinatura'

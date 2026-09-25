@@ -2112,6 +2112,26 @@ const nutriPadrao = () => ({
   acidoFolico: null as number | null, colesterol: null as number | null,
   ingredientes: '', alergenicos: '', modoConservacao: '',
 })
+// Mapeia o nutricional vindo da API (nomes da ENTIDADE) para o modelo do FORMULÁRIO.
+// Sem isso, campos como calorias/carboidratos/gorduras totais/fibras ficavam em branco.
+const mapearNutricional = (n: any) => ({
+  ...nutriPadrao(),
+  porcao: n.porcao ?? '',
+  caloriasKcal: n.calorias ?? null,
+  carboidratos: n.carboidratosTotais ?? null,
+  proteinas: n.proteinas ?? null,
+  lipidiosTotais: n.gordurasTotais ?? null,
+  gordurasSaturadas: n.gordurasSaturadas ?? null,
+  gordurasTrans: n.gordurasTrans ?? null,
+  fibraAlimentar: n.fibrasDieteticas ?? null,
+  sodio: n.sodio ?? null,
+  calcio: n.calcio ?? null, ferro: n.ferro ?? null, zinco: n.zinco ?? null,
+  magnesio: n.magnesio ?? null, selenio: n.selenio ?? null,
+  vitaminaC: n.vitaminaC ?? null, vitaminaA: n.vitaminaA ?? null,
+  vitaminaB6: n.vitaminaB6 ?? null, vitaminaB12: n.vitaminaB12 ?? null,
+  acidoFolico: n.acidoFolico ?? null, colesterol: n.colesterol ?? null,
+  ingredientes: n.ingredientes ?? '', alergenicos: n.alergenicos ?? '', modoConservacao: n.modoConservacao ?? '',
+})
 const nutri = ref(nutriPadrao())
 const salvandoNutri = ref(false)
 
@@ -2534,7 +2554,7 @@ async function abrirEdicao(item: any) {
       informacaoAdicional: p.informacaoAdicional ?? '',
     }
     embalagens.value = p.embalagens ?? []
-    nutri.value = p.nutricional ? { ...nutriPadrao(), ...p.nutricional } : nutriPadrao()
+    nutri.value = p.nutricional ? mapearNutricional(p.nutricional) : nutriPadrao()
     await carregarLotes()
     await carregarComposicao()
   } catch { /* silencioso */ }

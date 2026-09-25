@@ -61,6 +61,20 @@ public static class PlanoCatalogo
         _ => 1,
     };
 
+    /// <summary>Preço do plano no ciclo (mensal ou anual = paga 10 meses). Valores aprovados.</summary>
+    public static decimal Preco(PlanoAssinatura plano, CicloCobranca ciclo)
+    {
+        var mensal = plano switch
+        {
+            PlanoAssinatura.Micro => 79m,
+            PlanoAssinatura.Essencial => 119m,
+            PlanoAssinatura.Profissional => 229m,
+            PlanoAssinatura.Rede => 379m,
+            _ => 0m,
+        };
+        return ciclo == CicloCobranca.Anual ? mensal * 10m : mensal;   // anual: paga 10, ganha 2
+    }
+
     public static string Nome(PlanoAssinatura plano) => plano switch
     {
         PlanoAssinatura.Micro => "Micro",

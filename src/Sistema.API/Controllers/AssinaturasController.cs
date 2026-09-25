@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Sistema.Domain.Assinaturas;
 using Sistema.Infrastructure.Data;
+using Sistema.Infrastructure.Services;
 
 namespace Sistema.API.Controllers;
 
@@ -14,8 +16,60 @@ namespace Sistema.API.Controllers;
 [Route("api/minha-assinatura")]
 [Authorize]
 [Sistema.API.Auth.PermitirBloqueado]   // precisa abrir mesmo com assinatura bloqueada (tela de regularização)
-public class AssinaturasController(SistemaDbContext db) : ControllerBase
+public class AssinaturasController(SistemaDbContext db, AsaasService asaas, IMemoryCache cache) : ControllerBase
 {
+    /// <summary>Gera/retorna a fatura recorrente (Asaas) para o lojista assinar o plano.
+    /// Funciona mesmo com assinatura vencida (é como o cliente regulariza).</summary>
+    [HttpPost("checkout")]
+    public async Task<IActionResult> Checkout([FromBody] CheckoutDto dto, CancellationToken ct)
+    {
+        if (!asaas.Configurado)
+            return StatusCode(503, new { mensagem = "Pagamento online ainda não configurado. Fale com o suporte." });
+
+        var empresaId = EmpresaClaim();
+        if (empresaId is null) return Unauthorized();
+
+        var empresa = await db.Empresas.FirstOrDefaultAsync(e => e.Id == empresaId.Value, ct);
+        var assin = await db.Assinaturas.FirstOrDefaultAsync(a => a.EmpresaId == empresaId.Value, ct);
+        if (empresa is null || assin is null) return NotFound(new { mensagem = "Assinatura não encontrada." });
+
+        var plano = Enum.TryParse<PlanoAssinatura>(dto.Plano, true, out var p) ? p : assin.Plano;
+        var ciclo = string.Equals(dto.Ciclo, "Anual", StringComparison.OrdinalIgnoreCase) ? CicloCobranca.Anual : CicloCobranca.Mensal;
+
+        try
+        {
+            // Já tem assinatura no gateway e o plano/ciclo não mudou → devolve o link existente.
+            if (!string.IsNullOrWhiteSpace(assin.AsaasSubscriptionId) && plano == assin.Plano && ciclo == assin.Ciclo)
+            {
+                var linkExistente = await asaas.ObterLinkFaturaAsync(assin.AsaasSubscriptionId!, ct);
+                return Ok(new { link = linkExistente, jaExistia = true });
+            }
+
+            var customerId = assin.AsaasCustomerId
+                ?? await asaas.CriarClienteAsync(empresa.NomeFantasia, empresa.Cnpj, empresa.Email, empresa.Telefone, ct);
+
+            // Primeira cobrança ao fim do trial (se ainda em trial), senão hoje.
+            var venc = assin.TrialAte is DateTime t && t > DateTime.UtcNow ? DateOnly.FromDateTime(t) : DateOnly.FromDateTime(DateTime.Today);
+            var valor = PlanoCatalogo.Preco(plano, ciclo);
+            var subId = await asaas.CriarAssinaturaAsync(customerId, valor, venc,
+                ciclo == CicloCobranca.Anual ? "YEARLY" : "MONTHLY",
+                $"Assinatura {PlanoCatalogo.Nome(plano)} — Natural Sistemas", ct);
+
+            assin.TrocarPlano(plano, dto.LojasContratadas);
+            assin.DefinirCiclo(ciclo);
+            assin.VincularAsaas(customerId, subId);
+            await db.SaveChangesAsync(ct);
+            cache.Remove($"assinatura:{empresaId.Value}");
+
+            var link = await asaas.ObterLinkFaturaAsync(subId, ct);
+            return Ok(new { link, valor, plano = plano.ToString(), ciclo = ciclo.ToString() });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { mensagem = "Falha ao gerar a cobrança.", detalhe = ex.Message });
+        }
+    }
+
     [HttpGet]
     public async Task<IActionResult> Minha(CancellationToken ct)
     {
@@ -74,3 +128,5 @@ public class AssinaturasController(SistemaDbContext db) : ControllerBase
     private Guid? EmpresaClaim()
         => Guid.TryParse(User.FindFirst("empresaId")?.Value, out var id) ? id : null;
 }
+
+public record CheckoutDto(string? Plano = null, string? Ciclo = null, int? LojasContratadas = null);

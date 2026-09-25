@@ -35,6 +35,31 @@
       </div>
     </v-card>
 
+    <!-- Assinar / pagar -->
+    <v-card rounded="xl" elevation="1" class="pa-6 mb-4">
+      <div class="text-overline text-medium-emphasis">Assinar / regularizar</div>
+      <div class="text-body-2 text-medium-emphasis mb-3">Pague por Pix, boleto ou cartão. No plano anual você paga 10 meses e ganha 2.</div>
+      <v-row dense align="center">
+        <v-col cols="12" sm="5">
+          <v-select v-model="planoSel" :items="planos" label="Plano" density="comfortable" variant="outlined" hide-details />
+        </v-col>
+        <v-col cols="12" sm="4">
+          <v-btn-toggle v-model="cicloSel" mandatory density="comfortable" color="primary" rounded="lg" class="w-100">
+            <v-btn value="Mensal" class="text-none flex-grow-1">Mensal</v-btn>
+            <v-btn value="Anual" class="text-none flex-grow-1">Anual</v-btn>
+          </v-btn-toggle>
+        </v-col>
+        <v-col cols="12" sm="3" class="text-right">
+          <div class="text-h6 font-weight-bold text-primary">R$ {{ preco }}</div>
+          <div class="text-caption text-medium-emphasis">{{ cicloSel === 'Anual' ? 'por ano' : 'por mês' }}</div>
+        </v-col>
+      </v-row>
+      <v-btn color="success" size="large" rounded="lg" block class="text-none font-weight-bold mt-3"
+        prepend-icon="mdi-credit-card-outline" :loading="gerando" @click="assinar">
+        Gerar pagamento
+      </v-btn>
+    </v-card>
+
     <!-- Status atual -->
     <v-card rounded="xl" elevation="1" class="pa-6">
       <div class="text-overline text-medium-emphasis">Minha assinatura</div>
@@ -65,12 +90,38 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAssinaturaStore } from '@/stores/assinatura'
+import api from '@/composables/useApi'
+import { useNotifStore } from '@/stores/notif'
 
 const ass = useAssinaturaStore()
 const route = useRoute()
+const notif = useNotifStore()
+
+const planos = ['Micro', 'Essencial', 'Profissional', 'Rede']
+const PRECO_MENSAL: Record<string, number> = { Micro: 79, Essencial: 119, Profissional: 229, Rede: 379 }
+const planoSel = ref(['Micro', 'Essencial', 'Profissional', 'Rede'].includes(ass.plano) ? ass.plano : 'Profissional')
+const cicloSel = ref<'Mensal' | 'Anual'>('Mensal')
+const gerando = ref(false)
+const preco = computed(() => {
+  const m = PRECO_MENSAL[planoSel.value] ?? 0
+  return (cicloSel.value === 'Anual' ? m * 10 : m).toLocaleString('pt-BR')
+})
+
+async function assinar() {
+  gerando.value = true
+  try {
+    const { data } = await api.post('/minha-assinatura/checkout', { plano: planoSel.value, ciclo: cicloSel.value }, { _quiet: true } as any)
+    if (data?.link) window.open(data.link, '_blank')
+    else notif.aviso('Cobrança gerada, mas sem link de fatura. Fale com o suporte.')
+  } catch (e: any) {
+    notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível gerar o pagamento.')
+  } finally {
+    gerando.value = false
+  }
+}
 
 const whatsappUrl = 'https://wa.me/5518981952545?text=' +
   encodeURIComponent('Olá! Quero ativar/regularizar minha assinatura do Natural Sistemas.')

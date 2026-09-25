@@ -32,6 +32,10 @@ public class Assinatura : Entity
     /// <summary>Observação livre do gestor (motivo de bloqueio, acordo, etc.).</summary>
     public string? Observacao { get; private set; }
 
+    // Integração com gateway de pagamento (Asaas).
+    public string? AsaasCustomerId { get; private set; }
+    public string? AsaasSubscriptionId { get; private set; }
+
     private Assinatura() { }
 
     /// <summary>Cria a assinatura em TRIAL ao configurar a empresa (Setup).</summary>
@@ -59,6 +63,12 @@ public class Assinatura : Entity
         Plano = plano;
         if (plano == PlanoAssinatura.Rede && lojasContratadas is int n) LojasContratadas = Math.Max(1, n);
         else if (plano != PlanoAssinatura.Rede) LojasContratadas = 1;
+    }
+
+    public void VincularAsaas(string customerId, string subscriptionId)
+    {
+        AsaasCustomerId = customerId;
+        AsaasSubscriptionId = subscriptionId;
     }
 
     public void DefinirCiclo(CicloCobranca ciclo) => Ciclo = ciclo;

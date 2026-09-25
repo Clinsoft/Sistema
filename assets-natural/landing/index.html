@@ -43,8 +43,11 @@ a{color:inherit;text-decoration:none}
 
 /* Header */
 header{position:sticky;top:0;z-index:50;background:rgba(244,249,244,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--linha)}
-.nav{display:flex;align-items:center;gap:18px;height:80px}
-.nav img{height:56px}
+.nav{display:flex;align-items:center;gap:18px;height:74px}
+.brand{display:flex;align-items:center;gap:11px}
+.brand img{height:46px;width:auto}
+.brand .bn{font-family:'Poppins',sans-serif;font-weight:800;font-size:20px;line-height:.96;color:var(--marca);letter-spacing:.02em}
+.brand .bn small{display:block;font-weight:600;font-size:15px;letter-spacing:.16em;color:var(--marca)}
 .nav .links{display:flex;gap:26px;margin-left:14px}
 .nav .links a{color:var(--suave);font-weight:500;font-size:15px}
 .nav .links a:hover{color:var(--marca)}
@@ -169,7 +172,10 @@ footer .bottom{border-top:1px solid rgba(255,255,255,.12);margin-top:30px;paddin
 
 <header>
   <div class="wrap nav">
-    <img src="/logo.png" alt="Natural Sistemas">
+    <a class="brand" href="/" aria-label="Natural Sistemas">
+      <img src="/emblema.png" alt="Natural Sistemas">
+      <span class="bn">NATURAL<small>SISTEMAS</small></span>
+    </a>
     <nav class="links">
       <a href="#recursos">Recursos</a>
       <a href="#como">Como funciona</a>

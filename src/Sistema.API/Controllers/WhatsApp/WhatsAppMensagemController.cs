@@ -494,10 +494,10 @@ public class WhatsAppMensagemController(
     /// <summary>Enfileira imediatamente o job de promoções para esta empresa.</summary>
     [HttpPost("disparar-promocao")]
     [Authorize]
-    public IActionResult DispararPromocaoAgora([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId)
+    public IActionResult DispararPromocaoAgora([FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, [FromQuery] bool forcar = false)
     {
         Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
-            j => j.DispararPromocaoManualAsync(empresaId, localEstoqueId));
+            j => j.DispararPromocaoManualAsync(empresaId, localEstoqueId, forcar));
         return Accepted(new { mensagem = "Disparo de promoção enfileirado. Aguarde alguns instantes." });
     }
 
@@ -516,7 +516,9 @@ public class WhatsAppMensagemController(
     /// usado para o disparo pós-aprovação da Meta sem depender de uma sessão logada.</summary>
     [HttpPost("disparar-promocao-todas-lojas")]
     [AllowAnonymous]
-    public async Task<IActionResult> DispararPromocaoTodasLojas([FromQuery] Guid empresaId, CancellationToken ct)
+    public async Task<IActionResult> DispararPromocaoTodasLojas(
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, [FromQuery] bool forcar,
+        CancellationToken ct)
     {
         var ip = HttpContext.Connection.RemoteIpAddress;
         if (ip is null || !System.Net.IPAddress.IsLoopback(ip) || Request.Headers.ContainsKey("X-Forwarded-For"))
@@ -524,15 +526,16 @@ public class WhatsAppMensagemController(
 
         var lojas = await db.ConfiguracoesWhatsAppMensagem.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId && c.Ativo
-                     && c.PhoneNumberId != null && c.AccessToken != null)
+                     && c.PhoneNumberId != null && c.AccessToken != null
+                     && (localEstoqueId == null || c.LocalEstoqueId == localEstoqueId))
             .Select(c => c.LocalEstoqueId)
             .ToListAsync(ct);
 
         foreach (var loja in lojas)
             Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.WhatsAppDisparoJob>(
-                j => j.DispararPromocaoManualAsync(empresaId, loja));
+                j => j.DispararPromocaoManualAsync(empresaId, loja, forcar));
 
-        return Ok(new { mensagem = "Disparo de promoção enfileirado para todas as lojas.", lojas = lojas.Count });
+        return Ok(new { mensagem = "Disparo de promoção enfileirado.", lojas = lojas.Count, forcar });
     }
 
     /// <summary>

@@ -19,6 +19,10 @@ public class WhatsAppDisparoJob(
     WhatsAppCloudApiService whatsApp,
     ILogger<WhatsAppDisparoJob> logger)
 {
+    // Promoções em massa são SEMANAIS (não diárias): a Meta bloqueia marketing repetido
+    // no mesmo cliente (cap 131049) e pode penalizar o número. Dispara só neste dia.
+    private const DayOfWeek DiaPromocaoSemanal = DayOfWeek.Thursday;
+
     [AutomaticRetry(Attempts = 2)]
     public async Task ExecutarAsync()
     {
@@ -58,7 +62,9 @@ public class WhatsAppDisparoJob(
             if (cfg.EnviarAniversario)
                 await DispararAniversariantes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
-            if (cfg.EnviarPromocoes)
+            // Promoção: SEMANAL (só no dia definido). Junta o máximo de ofertas ativas
+            // da fase laranja daquela loja numa única mensagem de texto (multi-linha).
+            if (cfg.EnviarPromocoes && DateTime.Today.DayOfWeek == DiaPromocaoSemanal)
                 await DispararPromocoes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
             if (cfg.EnviarNovidades)
@@ -129,7 +135,8 @@ public class WhatsAppDisparoJob(
     /// Para evitar spam: no máximo 1 disparo de promoção por dia para o mesmo cliente.
     /// </summary>
     private async Task DispararPromocoes(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true,
+        bool forcar = false)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Promocao);
         if (template is null)
@@ -178,8 +185,26 @@ public class WhatsAppDisparoJob(
             listaTxt += $" • e mais {ofertas.Count - maxItens} ofertas na loja";
         var descontoTxt = $"{ofertas[0].Desconto:0}% de desconto";
 
-        // Clientes que ainda não receberam promoção hoje
-        var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
+        // Versão "linhas" (template novo, 1 produto por linha): 5 slots, cada um em uma
+        // linha ÚNICA — a quebra de linha fica no CORPO do template, não na variável.
+        // Nome curto p/ não estourar; slot sem oferta recebe "—" (a Meta rejeita vazio).
+        string LinhaCurta(string nome, decimal precoDe, decimal desc, string tipoDesc)
+        {
+            var precoPromo = tipoDesc == "Percentual"
+                ? Math.Round(precoDe * (1 - desc / 100m), 2)
+                : precoDe - desc;
+            var nm = nome.Trim();
+            if (nm.Length > 42) nm = nm[..41].TrimEnd() + "…";
+            return $"{nm} — de R$ {precoDe.ToString("0.00", ptBR)} por R$ {precoPromo.ToString("0.00", ptBR)}";
+        }
+        var linhas = ofertas.Take(5)
+            .Select(o => LinhaCurta(o.Descricao, o.PrecoVenda, o.Desconto, o.TipoDesconto)).ToList();
+        while (linhas.Count < 5) linhas.Add("—");
+
+        // Clientes que ainda não receberam promoção hoje (forcar=true ignora o limite diário).
+        var jaEnviados = forcar
+            ? new List<Guid?>()
+            : await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
         var clientes = await db.Clientes.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
@@ -201,13 +226,20 @@ public class WhatsAppDisparoJob(
             var ctx = VariaveisComuns(c, nomeEmpresa);
             ctx["ofertas_lista"] = listaTxt;
             ctx["desconto"]      = descontoTxt;
+            ctx["oferta_1"] = linhas[0]; ctx["oferta_2"] = linhas[1]; ctx["oferta_3"] = linhas[2];
+            ctx["oferta_4"] = linhas[3]; ctx["oferta_5"] = linhas[4];
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
 
         if (ehMatriz)
             await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, template,
-                new Dictionary<string, string> { ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt }, localEstoqueId);
+                new Dictionary<string, string>
+                {
+                    ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt,
+                    ["oferta_1"] = linhas[0], ["oferta_2"] = linhas[1], ["oferta_3"] = linhas[2],
+                    ["oferta_4"] = linhas[3], ["oferta_5"] = linhas[4],
+                }, localEstoqueId);
 
         logger.LogInformation("[WhatsApp] Promoções {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);
@@ -315,7 +347,7 @@ public class WhatsAppDisparoJob(
     // ─── Disparos manuais (chamados via Hangfire.BackgroundJob.Enqueue) ───────
 
     /// <summary>Dispara promoções manualmente para uma empresa específica.</summary>
-    public async Task DispararPromocaoManualAsync(Guid empresaId, Guid? localEstoqueId = null)
+    public async Task DispararPromocaoManualAsync(Guid empresaId, Guid? localEstoqueId = null, bool forcar = false)
     {
         var empresa = await db.Empresas.AsNoTracking()
             .Where(e => e.Id == empresaId)
@@ -335,7 +367,7 @@ public class WhatsAppDisparoJob(
             return;
         }
 
-        await DispararPromocoes(empresa.Id, empresa.NomeFantasia, cfg, localEstoqueId);
+        await DispararPromocoes(empresa.Id, empresa.NomeFantasia, cfg, localEstoqueId, forcar: forcar);
     }
 
     /// <summary>Dispara novidades manualmente para uma empresa específica (ignora proteção de 7 dias).</summary>

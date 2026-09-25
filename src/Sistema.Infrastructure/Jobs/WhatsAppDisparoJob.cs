@@ -179,6 +179,22 @@ public class WhatsAppDisparoJob(
             listaTxt += $" • e mais {ofertas.Count - maxItens} ofertas na loja";
         var descontoTxt = $"{ofertas[0].Desconto:0}% de desconto";
 
+        // Versão "linhas" (template novo, 1 produto por linha): 5 slots, cada um em uma
+        // linha ÚNICA — a quebra de linha fica no CORPO do template, não na variável.
+        // Nome curto p/ não estourar; slot sem oferta recebe "—" (a Meta rejeita vazio).
+        string LinhaCurta(string nome, decimal precoDe, decimal desc, string tipoDesc)
+        {
+            var precoPromo = tipoDesc == "Percentual"
+                ? Math.Round(precoDe * (1 - desc / 100m), 2)
+                : precoDe - desc;
+            var nm = nome.Trim();
+            if (nm.Length > 42) nm = nm[..41].TrimEnd() + "…";
+            return $"{nm} — de R$ {precoDe.ToString("0.00", ptBR)} por R$ {precoPromo.ToString("0.00", ptBR)}";
+        }
+        var linhas = ofertas.Take(5)
+            .Select(o => LinhaCurta(o.Descricao, o.PrecoVenda, o.Desconto, o.TipoDesconto)).ToList();
+        while (linhas.Count < 5) linhas.Add("—");
+
         // Clientes que ainda não receberam promoção hoje (forcar=true ignora o limite diário).
         var jaEnviados = forcar
             ? new List<Guid?>()
@@ -204,13 +220,20 @@ public class WhatsAppDisparoJob(
             var ctx = VariaveisComuns(c, nomeEmpresa);
             ctx["ofertas_lista"] = listaTxt;
             ctx["desconto"]      = descontoTxt;
+            ctx["oferta_1"] = linhas[0]; ctx["oferta_2"] = linhas[1]; ctx["oferta_3"] = linhas[2];
+            ctx["oferta_4"] = linhas[3]; ctx["oferta_5"] = linhas[4];
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
 
         if (ehMatriz)
             await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, template,
-                new Dictionary<string, string> { ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt }, localEstoqueId);
+                new Dictionary<string, string>
+                {
+                    ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt,
+                    ["oferta_1"] = linhas[0], ["oferta_2"] = linhas[1], ["oferta_3"] = linhas[2],
+                    ["oferta_4"] = linhas[3], ["oferta_5"] = linhas[4],
+                }, localEstoqueId);
 
         logger.LogInformation("[WhatsApp] Promoções {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);

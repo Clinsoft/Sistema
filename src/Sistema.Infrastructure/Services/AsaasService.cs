@@ -26,6 +26,8 @@ public class AsaasService(HttpClient http, IConfiguration config)
         if (http.BaseAddress is null) http.BaseAddress = new Uri(baseUrl);
         if (!http.DefaultRequestHeaders.Contains("access_token"))
             http.DefaultRequestHeaders.Add("access_token", config["Asaas:ApiKey"] ?? "");
+        if (!http.DefaultRequestHeaders.UserAgent.Any())
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("NaturalSistemas/1.0");   // Asaas exige User-Agent
         return http;
     }
 

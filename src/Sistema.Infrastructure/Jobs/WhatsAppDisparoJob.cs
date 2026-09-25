@@ -151,7 +151,9 @@ public class WhatsAppDisparoJob(
                && pr.AplicaEm == "Produto"
                && pr.DataInicio <= hoje && (pr.DataFim == null || pr.DataFim >= hoje)
                && (localEstoqueId == null || pr.LocalEstoqueId == localEstoqueId)
-            orderby p.Descricao
+            // Vencimento mais próximo primeiro: os itens mais urgentes aparecem no topo
+            // (a lista corta em maxItens, então os urgentes não podem ficar de fora).
+            orderby pr.DataFim
             select new { p.Descricao, p.PrecoVenda, pr.TipoDesconto, pr.Desconto }
         ).ToListAsync();
 

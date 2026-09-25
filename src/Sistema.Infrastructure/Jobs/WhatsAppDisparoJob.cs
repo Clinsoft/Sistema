@@ -19,6 +19,10 @@ public class WhatsAppDisparoJob(
     WhatsAppCloudApiService whatsApp,
     ILogger<WhatsAppDisparoJob> logger)
 {
+    // Promoções em massa são SEMANAIS (não diárias): a Meta bloqueia marketing repetido
+    // no mesmo cliente (cap 131049) e pode penalizar o número. Dispara só neste dia.
+    private const DayOfWeek DiaPromocaoSemanal = DayOfWeek.Thursday;
+
     [AutomaticRetry(Attempts = 2)]
     public async Task ExecutarAsync()
     {
@@ -58,7 +62,9 @@ public class WhatsAppDisparoJob(
             if (cfg.EnviarAniversario)
                 await DispararAniversariantes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
-            if (cfg.EnviarPromocoes)
+            // Promoção: SEMANAL (só no dia definido). Junta o máximo de ofertas ativas
+            // da fase laranja daquela loja numa única mensagem de texto (multi-linha).
+            if (cfg.EnviarPromocoes && DateTime.Today.DayOfWeek == DiaPromocaoSemanal)
                 await DispararPromocoes(cfg.EmpresaId, nomeEmpresa, cfg, localEstoqueId, ehMatriz);
 
             if (cfg.EnviarNovidades)

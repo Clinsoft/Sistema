@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.API.Auth;
+using Sistema.Domain.Assinaturas;
 using Sistema.Domain.Cadastros.Entities;
 using Sistema.Domain.Cadastros.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
@@ -156,6 +158,21 @@ public class UsuariosController(SistemaDbContext db, IUsuarioRepository repo, IU
         var emailEmUso = await db.Usuarios.AsNoTracking().AnyAsync(u =>
             u.EmpresaId == empresaId && u.Email == acesso.Email && u.Id != ignorarId, ct);
         if (emailEmUso) return "Já existe um colaborador com este e-mail de acesso.";
+
+        // Limite de usuários com ACESSO do plano (colaborador sem login não conta).
+        var limites = await LimitePlano.ObterAsync(db, empresaId, ct);
+        if (limites is { } lim && lim.MaxUsuarios != PlanoCatalogo.Ilimitado)
+        {
+            var jaExistiaAcesso = ignorarId is Guid gid && await db.Usuarios.AsNoTracking()
+                .AnyAsync(u => u.Id == gid && u.Email != null && u.SenhaHash != null, ct);
+            if (!jaExistiaAcesso)
+            {
+                var comAcesso = await db.Usuarios.CountAsync(u =>
+                    u.EmpresaId == empresaId && u.Email != null && u.SenhaHash != null && u.Ativo, ct);
+                if (comAcesso >= lim.MaxUsuarios)
+                    return $"Limite de usuários do seu plano atingido ({lim.MaxUsuarios}). Faça upgrade para adicionar mais.";
+            }
+        }
 
         c.ConcederAcesso(acesso.Email, BCrypt.Net.BCrypt.HashPassword(acesso.Senha), acesso.Perfil);
         return null;

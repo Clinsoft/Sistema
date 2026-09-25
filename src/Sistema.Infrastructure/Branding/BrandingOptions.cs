@@ -55,6 +55,9 @@ public sealed class BrandingOptions
     /// <summary>Identificador do software no XML da NF-e (tag verProc).</summary>
     public string VerProc { get; set; } = "EcoGranel-1.0";
 
+    /// <summary>Instância SaaS com auto-cadastro público (várias lojas se cadastram). Padrão false (single-tenant, ex.: EcoGranel).</summary>
+    public bool AutoCadastro { get; set; } = false;
+
     /// <summary>Descrição livre da paleta para o prompt de IA (marketing). Vazio = monta a partir das cores.</summary>
     public string DescricaoVisualIa { get; set; } = "";
 }

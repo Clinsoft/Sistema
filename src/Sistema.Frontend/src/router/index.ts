@@ -8,6 +8,9 @@ const router = createRouter({
     { path: '/setup', component: () => import('@/modules/auth/SetupView.vue'),
       meta: { publica: true } },
 
+    { path: '/cadastro', component: () => import('@/modules/auth/SignupView.vue'),
+      meta: { publica: true } },
+
     { path: '/login', component: () => import('@/modules/auth/LoginView.vue'),
       meta: { publica: true } },
 

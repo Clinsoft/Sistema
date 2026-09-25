@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.API.Auth;
+using Sistema.Domain.Assinaturas;
 using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
@@ -32,6 +34,15 @@ public class LocaisEstoqueController(SistemaDbContext db, IUnitOfWork uow) : Con
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] LocalEstoqueRequest req, CancellationToken ct)
     {
+        // Limite de lojas do plano (Micro/Essencial/Profissional = 1; Rede = contratadas).
+        var limites = await LimitePlano.ObterAsync(db, req.EmpresaId, ct);
+        if (limites is { } lim && lim.MaxLojas != PlanoCatalogo.Ilimitado)
+        {
+            var qtd = await db.LocaisEstoque.CountAsync(l => l.EmpresaId == req.EmpresaId && l.Ativo, ct);
+            if (qtd >= lim.MaxLojas)
+                return BadRequest(new { mensagem = $"Seu plano permite {lim.MaxLojas} loja(s). Faça upgrade para o plano Rede para ter mais." });
+        }
+
         // Só pode haver um local principal por empresa
         if (req.Principal)
         {

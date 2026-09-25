@@ -84,7 +84,7 @@
                   Configure sua loja em poucos minutos e comece a usar.
                 </div>
                 <v-btn
-                  to="/setup"
+                  :to="branding.autoCadastro ? '/cadastro' : '/setup'"
                   color="accent"
                   block
                   size="large"

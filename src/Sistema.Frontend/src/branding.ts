@@ -21,6 +21,7 @@ export interface Branding {
   corSecundaria: string
   corAccent: string
   corFundo: string
+  autoCadastro: boolean
 }
 
 const PADRAO: Branding = {
@@ -36,6 +37,7 @@ const PADRAO: Branding = {
   corSecundaria: '#8B4513',
   corAccent: '#6AAF2E',
   corFundo: '#FAF7F4',
+  autoCadastro: false,
 }
 
 export const branding = reactive<Branding>({ ...PADRAO })

@@ -28,5 +28,6 @@ public class BrandingController(BrandingOptions branding) : ControllerBase
         corSecundaria = branding.CorSecundaria,
         corAccent = branding.CorAccent,
         corFundo = branding.CorFundo,
+        autoCadastro = branding.AutoCadastro,
     });
 }

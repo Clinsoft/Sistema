@@ -6,8 +6,8 @@
         :permanent="!mobile" :temporary="mobile">
         <v-list-item nav class="py-3">
           <template #prepend>
-            <img :src="branding.logoUrl" :alt="branding.nome"
-              :style="rail ? 'height:32px;width:32px;object-fit:contain' : 'height:36px;object-fit:contain'"
+            <img :src="branding.faviconUrl || branding.logoUrl" :alt="branding.nome"
+              :style="rail ? 'height:34px;width:34px;object-fit:contain' : 'height:40px;width:40px;object-fit:contain'"
               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'"
             />
             <v-icon icon="mdi-sprout" color="success"

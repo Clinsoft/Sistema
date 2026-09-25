@@ -10,6 +10,7 @@ namespace Sistema.API.Controllers.Contabilidade;
 [ApiController]
 [Route("api/contabilidade/lancamentos")]
 [Authorize(Roles = "Administrador,Contador")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class LancamentosContabeisController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]

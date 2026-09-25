@@ -13,6 +13,7 @@ namespace Sistema.API.Controllers;
 [ApiController]
 [Route("api/minha-assinatura")]
 [Authorize]
+[Sistema.API.Auth.PermitirBloqueado]   // precisa abrir mesmo com assinatura bloqueada (tela de regularização)
 public class AssinaturasController(SistemaDbContext db) : ControllerBase
 {
     [HttpGet]

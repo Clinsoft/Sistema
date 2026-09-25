@@ -15,6 +15,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/financeiro/financiamentos")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class FinanciamentosController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     // ── Comprometimento mensal ───────────────────────────────────────────────

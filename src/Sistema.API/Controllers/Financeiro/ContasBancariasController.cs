@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/contas-bancarias")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class ContasBancariasController(IContaBancariaRepository repo, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]

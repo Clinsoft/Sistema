@@ -11,6 +11,7 @@ namespace Sistema.API.Controllers.Marketing;
 [ApiController]
 [Route("api/marketing")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.MarketingIa)]
 public class MarketingController(
     SistemaDbContext db, IUnitOfWork uow,
     Sistema.Infrastructure.Services.GeminiImageService gemini,

@@ -11,6 +11,7 @@ namespace Sistema.API.Controllers.Contabilidade;
 [ApiController]
 [Route("api/contabilidade/xml")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class DownloadXmlController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Lista os meses/anos disponíveis para download de XML.</summary>

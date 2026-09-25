@@ -10,6 +10,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/financeiro/operadoras-cartao")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class OperadorasCartaoController(SistemaDbContext db) : ControllerBase
 {
     [HttpGet]

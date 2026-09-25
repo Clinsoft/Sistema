@@ -11,6 +11,7 @@ namespace Sistema.API.Controllers.WhatsApp;
 
 [ApiController]
 [Route("api/whatsapp/mensagem")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Whatsapp)]
 public class WhatsAppMensagemController(
     SistemaDbContext db,
     IUnitOfWork uow,

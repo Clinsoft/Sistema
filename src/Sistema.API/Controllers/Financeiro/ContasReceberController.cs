@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/contas-receber")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class ContasReceberController(
     ILancamentoFinanceiroRepository repo,
     IContaBancariaRepository contaRepo,

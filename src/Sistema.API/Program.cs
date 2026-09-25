@@ -12,7 +12,12 @@ builder.Configuration.GetSection(Sistema.Infrastructure.Branding.BrandingOptions
 Sistema.Infrastructure.Branding.BrandingRuntime.Atual = branding;
 builder.Services.AddSingleton(branding);
 
-builder.Services.AddControllers(o => o.Filters.Add<Sistema.API.Auth.IsolamentoEmpresaFilter>());
+builder.Services.AddMemoryCache();
+builder.Services.AddControllers(o =>
+{
+    o.Filters.Add<Sistema.API.Auth.IsolamentoEmpresaFilter>();
+    o.Filters.Add<Sistema.API.Auth.AssinaturaGateFilter>();   // gate por plano/status (SaaS)
+});
 
 // Rate limiting (anti força-bruta) por IP do cliente (X-Forwarded-For atrás do nginx).
 builder.Services.AddRateLimiter(options =>

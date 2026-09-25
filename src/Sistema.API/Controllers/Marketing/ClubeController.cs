@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Marketing;
 [ApiController]
 [Route("api/clube")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Fidelidade)]
 public class ClubeController(SistemaDbContext db) : ControllerBase
 {
     // ── Membros ──────────────────────────────────────────────────────────

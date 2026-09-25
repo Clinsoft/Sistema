@@ -10,6 +10,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/folha")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class FolhaController(SistemaDbContext db, ILogger<FolhaPagamentoJob> logger) : ControllerBase
 {
     /// <summary>

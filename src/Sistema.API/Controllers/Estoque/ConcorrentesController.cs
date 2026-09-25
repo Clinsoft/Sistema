@@ -14,6 +14,7 @@ namespace Sistema.API.Controllers.Estoque;
 [ApiController]
 [Route("api/concorrentes")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Concorrencia)]
 public class ConcorrentesController(
     SistemaDbContext db, MapaConcorrenciaService mapa, GooglePlacesService google,
     MercadoLivreService ml) : ControllerBase

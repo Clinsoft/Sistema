@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Marketing;
 [ApiController]
 [Route("api/promocoes")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Fidelidade)]
 public class PromocoesController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Lista as promoções da empresa, com filtros de tipo, status (calculado) e texto.</summary>

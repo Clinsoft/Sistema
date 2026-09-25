@@ -15,6 +15,7 @@ namespace Sistema.API.Controllers.Crediario;
 [ApiController]
 [Route("api/crediario")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class CrediarioController(IMediator mediator, ICrediarioRepository repo, SistemaDbContext db) : ControllerBase
 {
     /// <summary>Abre um novo crediário para o cliente.</summary>

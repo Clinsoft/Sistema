@@ -8,6 +8,7 @@ namespace Sistema.API.Controllers.Crediario;
 [ApiController]
 [Route("api/relatorios/crediario")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class RelatorioCrediarioController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Contas a receber do crediário — parcelas em aberto.</summary>

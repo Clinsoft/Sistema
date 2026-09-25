@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Marketing;
 [ApiController]
 [Route("api/cupons-sorteio")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Fidelidade)]
 public class CuponsSorteioController(SistemaDbContext db) : ControllerBase
 {
     /// <summary>Gera um cupom de sorteio para uma venda (registra os dados do cliente na urna).</summary>

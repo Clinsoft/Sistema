@@ -14,6 +14,7 @@ namespace Sistema.API.Controllers.Estoque;
 [ApiController]
 [Route("api/etiquetas")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Etiquetas)]
 public class EtiquetasController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     /// <summary>Obtém a configuração salva de um template (ex.: "ecogranel").</summary>

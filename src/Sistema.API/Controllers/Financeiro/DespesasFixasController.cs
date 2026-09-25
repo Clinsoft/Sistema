@@ -9,6 +9,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/despesas-fixas")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class DespesasFixasController(SistemaDbContext db, ILogger<DespesasFixasJob> logger) : ControllerBase
 {
     /// <summary>

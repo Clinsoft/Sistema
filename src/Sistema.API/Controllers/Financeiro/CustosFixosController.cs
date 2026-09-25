@@ -10,6 +10,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/custos-fixos")]
 [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class CustosFixosController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]

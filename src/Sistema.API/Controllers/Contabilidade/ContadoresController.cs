@@ -11,6 +11,7 @@ namespace Sistema.API.Controllers.Contabilidade;
 [ApiController]
 [Route("api/contabilidade/contadores")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class ContadoresController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]

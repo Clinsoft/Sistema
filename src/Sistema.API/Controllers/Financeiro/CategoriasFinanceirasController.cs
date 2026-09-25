@@ -10,6 +10,7 @@ namespace Sistema.API.Controllers.Financeiro;
 [ApiController]
 [Route("api/categorias-financeiras")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Financeiro)]
 public class CategoriasFinanceirasController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet]

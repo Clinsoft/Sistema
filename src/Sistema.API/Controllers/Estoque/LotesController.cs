@@ -12,6 +12,7 @@ namespace Sistema.API.Controllers.Estoque;
 [ApiController]
 [Route("api/lotes")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Validade)]
 public class LotesController(ILoteRepository repo, SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     [HttpGet("produto/{produtoId:guid}")]

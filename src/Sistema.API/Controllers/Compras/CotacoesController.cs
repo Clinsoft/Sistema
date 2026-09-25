@@ -11,6 +11,7 @@ namespace Sistema.API.Controllers.Compras;
 [ApiController]
 [Route("api/cotacoes")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Cotacoes)]
 public class CotacoesController(SistemaDbContext db) : ControllerBase
 {
     [HttpPost("comparar")]

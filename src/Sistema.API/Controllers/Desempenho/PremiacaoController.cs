@@ -15,6 +15,7 @@ namespace Sistema.API.Controllers.Desempenho;
 [ApiController]
 [Route("api/premiacao")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Premiacao)]
 public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService calc, ArquivarDemonstrativosJob arquivador) : ControllerBase
 {
     private Guid UsuarioId =>

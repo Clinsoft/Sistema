@@ -14,6 +14,7 @@ namespace Sistema.API.Controllers.WhatsApp;
 [ApiController]
 [Route("api/whatsapp/pedidos")]
 [Authorize]
+[Sistema.API.Auth.RequerRecurso(Sistema.Domain.Assinaturas.Recurso.Whatsapp)]
 public class PedidosWhatsAppController(SistemaDbContext db, IUnitOfWork uow) : ControllerBase
 {
     private static readonly TimeZoneInfo TzBrasil =

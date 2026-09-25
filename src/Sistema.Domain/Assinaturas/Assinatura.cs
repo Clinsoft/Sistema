@@ -36,6 +36,11 @@ public class Assinatura : Entity
     public string? AsaasCustomerId { get; private set; }
     public string? AsaasSubscriptionId { get; private set; }
 
+    // Régua de lembretes (evita repetir o mesmo aviso todo dia).
+    public string? UltimoLembrete { get; private set; }
+    public DateTime? UltimoLembreteEm { get; private set; }
+    public void RegistrarLembrete(string chave) { UltimoLembrete = chave; UltimoLembreteEm = DateTime.UtcNow; }
+
     private Assinatura() { }
 
     /// <summary>Cria a assinatura em TRIAL ao configurar a empresa (Setup).</summary>
@@ -56,6 +61,7 @@ public class Assinatura : Entity
     {
         Status = StatusAssinatura.Ativa;
         ProximoVencimento = proximoVencimento;
+        UltimoLembrete = null;   // novo ciclo: os lembretes voltam a valer
     }
 
     public void TrocarPlano(PlanoAssinatura plano, int? lojasContratadas = null)

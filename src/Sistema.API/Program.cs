@@ -235,6 +235,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.AssinaturaStatusJob>(
     job => job.ExecutarAsync(),
     "10 */6 * * *", optsBR);   // a cada 6h — bloqueia trial expirado / inadimplência (SaaS)
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.AssinaturaLembreteJob>(
+    "assinaturas-lembretes",
+    job => job.ExecutarAsync(),
+    "0 12 * * *", optsBR);   // 12h — régua de lembretes de vencimento (trial/assinatura)
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RetransmitirNotasPendentesJob>(
     "nfce-retransmitir-pendentes",
     job => job.ExecutarAsync(),

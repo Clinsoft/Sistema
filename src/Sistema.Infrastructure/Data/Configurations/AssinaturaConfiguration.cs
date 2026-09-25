@@ -18,5 +18,6 @@ public class AssinaturaConfiguration : IEntityTypeConfiguration<Assinatura>
         b.Property(a => a.AsaasCustomerId).HasMaxLength(50);
         b.Property(a => a.AsaasSubscriptionId).HasMaxLength(50);
         b.HasIndex(a => a.AsaasSubscriptionId);
+        b.Property(a => a.UltimoLembrete).HasMaxLength(30);
     }
 }

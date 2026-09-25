@@ -7,7 +7,7 @@
         <div class="text-caption text-medium-emphasis">Assinaturas das lojas-cliente · {{ lista.length }} conta(s)</div>
       </div>
       <v-spacer />
-      <v-btn variant="text" prepend-icon="mdi-gavel" class="text-none mr-1" @click="rodarBloqueio">Verificar bloqueios</v-btn>
+      <v-btn variant="text" prepend-icon="mdi-cog-sync-outline" class="text-none mr-1" @click="rodarBloqueio" title="Bloqueia trial expirado/inadimplência e envia os lembretes de vencimento">Rodar manutenção</v-btn>
       <v-btn variant="text" prepend-icon="mdi-refresh" :loading="carregando" @click="carregar" class="text-none">Atualizar</v-btn>
     </div>
 

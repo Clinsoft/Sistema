@@ -93,7 +93,7 @@
                   prepend-icon="mdi-rocket-launch-outline"
                   class="text-none font-weight-bold"
                 >
-                  Começar agora — configurar o sistema
+                  Começar agora
                 </v-btn>
               </div>
             </v-card>

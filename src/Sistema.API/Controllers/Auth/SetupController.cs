@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.Domain.Assinaturas;
 using Sistema.Domain.Cadastros.Entities;
 using Sistema.Infrastructure.Data;
 
@@ -52,6 +53,12 @@ public class SetupController(SistemaDbContext db) : ControllerBase
         var admin = Usuario.Criar(empresa.Id, req.NomeAdmin, req.EmailAdmin, senhaHash, "Administrador");
         db.Usuarios.Add(admin);
 
+        // Assinatura em TRIAL (14 dias, recursos do Profissional liberados). O plano-alvo
+        // (o que passa a valer/cobrar após o trial) começa como Profissional e pode ser
+        // ajustado pelo cliente/gestor. Persistida na mesma transação.
+        var planoEscolhido = Enum.TryParse<PlanoAssinatura>(req.Plano, true, out var p) ? p : PlanoAssinatura.Profissional;
+        db.Assinaturas.Add(Assinatura.CriarTrial(empresa.Id, planoEscolhido));
+
         await db.SaveChangesAsync(ct);
 
         return Ok(new
@@ -84,5 +91,7 @@ public record SetupRequest(
     // Admin
     string NomeAdmin,
     string EmailAdmin,
-    string SenhaAdmin
+    string SenhaAdmin,
+    // Plano-alvo escolhido no site (opcional; trial libera Profissional de qualquer forma)
+    string? Plano = null
 );

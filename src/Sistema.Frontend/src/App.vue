@@ -77,6 +77,7 @@
           <v-list-group v-if="!ehAtendente && !ehContador" value="financeiro">
             <template #activator="{ props }">
               <v-list-item v-bind="props" prepend-icon="mdi-currency-usd"
+                :append-icon="temRecurso('Financeiro') ? undefined : 'mdi-lock'"
                 title="Financeiro" color="primary" rounded="lg" />
             </template>
             <v-list-item prepend-icon="mdi-view-dashboard" title="Painel Financeiro"
@@ -128,8 +129,10 @@
               <v-list-item v-bind="props" prepend-icon="mdi-trophy-outline" title="Desempenho" color="amber-darken-2" rounded="lg" />
             </template>
             <v-list-item v-if="ehGestor" prepend-icon="mdi-trophy-outline" title="Premiação por Desempenho"
+              :append-icon="temRecurso('Premiacao') ? undefined : 'mdi-lock'"
               to="/desempenho/premiacao" value="/desempenho/premiacao" color="amber-darken-2" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-file-sign" title="Aceites da Premiação"
+              :append-icon="temRecurso('Premiacao') ? undefined : 'mdi-lock'"
               to="/desempenho/aceites" value="/desempenho/aceites" color="amber-darken-2" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-medal-outline" title="Meu Desempenho"
               to="/desempenho/meu" value="/desempenho/meu" color="amber-darken-2" rounded="lg" class="pl-4" />
@@ -149,6 +152,7 @@
             <v-list-item prepend-icon="mdi-clipboard-text-outline" title="Requisições de Compra"
               to="/compras/requisicoes" value="/compras/requisicoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item prepend-icon="mdi-file-compare" title="Comparar Cotações"
+              :append-icon="temRecurso('Cotacoes') ? undefined : 'mdi-lock'"
               to="/compras/cotacoes" value="/compras/cotacoes" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="ehGestor" prepend-icon="mdi-cart-arrow-down" title="Sugestão de Compra"
               to="/estoque/sugestao-compra" value="/estoque/sugestao-compra" color="primary" rounded="lg" class="pl-4" />
@@ -185,6 +189,7 @@
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-currency-usd" title="Alterar Preços"
               to="/estoque/alterar-precos" value="/estoque/alterar-precos" color="primary" rounded="lg" class="pl-4" />
             <v-list-item v-if="!ehAtendente" prepend-icon="mdi-map-marker-radius" title="Concorrência"
+              :append-icon="temRecurso('Concorrencia') ? undefined : 'mdi-lock'"
               to="/concorrencia" value="/concorrencia" color="deep-purple" rounded="lg" class="pl-4" />
           </v-list-group>
 
@@ -199,9 +204,11 @@
           </v-list-group>
 
           <v-list-item v-if="!ehContador" prepend-icon="mdi-bullhorn-outline" title="Marketing"
+            :append-icon="temRecurso('MarketingIa') ? undefined : 'mdi-lock'"
             to="/marketing" value="/marketing" color="primary" rounded="lg" />
 
           <v-list-item v-if="!ehContador" prepend-icon="mdi-whatsapp" title="WhatsApp"
+            :append-icon="temRecurso('Whatsapp') ? undefined : 'mdi-lock'"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />
 
         </v-list>
@@ -394,6 +401,7 @@ import { useDisplay } from 'vuetify'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import { useUiStore } from '@/stores/ui'
+import { useAssinaturaStore } from '@/stores/assinatura'
 import { storeToRefs } from 'pinia'
 import { branding } from '@/branding'
 
@@ -404,6 +412,9 @@ const router = useRouter()
 const { mobile } = useDisplay()
 const ui = useUiStore()
 const { drawer } = storeToRefs(ui)
+const assinatura = useAssinaturaStore()
+// Atalho para o template: libera item do menu conforme o plano da assinatura.
+const temRecurso = (nome: string) => assinatura.temRecurso(nome)
 
 // No celular o menu começa fechado (overlay); no desktop começa aberto.
 drawer.value = !mobile.value
@@ -455,6 +466,7 @@ onMounted(() => {
   // Mantém a lista de lojas sempre fresca (reflete lojas ativadas/inativadas
   // sem precisar relogar). Sessões antigas também passam a ter o seletor.
   if (auth.logado) auth.carregarLojas()
+  if (auth.logado) assinatura.carregar()   // hidrata plano/recursos ao recarregar a página
   auth.fixarLojaAtendente()   // atendente sempre preso à própria loja (corrige localStorage antigo)
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })

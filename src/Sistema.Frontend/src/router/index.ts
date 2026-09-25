@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useAssinaturaStore } from '@/stores/assinatura'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -186,9 +187,27 @@ const router = createRouter({
     { path: '/configuracoes/saude-jobs', component: () => import('@/modules/configuracoes/SaudeJobsView.vue'),
       meta: { titulo: 'Saúde dos Jobs' } },
 
+    { path: '/assinatura', component: () => import('@/modules/assinatura/AssinaturaView.vue'),
+      meta: { titulo: 'Minha Assinatura' } },
+
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ]
 })
+
+// Recursos exigidos por rota (gate por plano). Prefixo mais específico primeiro.
+const GATES: { p: string; r: string }[] = [
+  { p: '/compras/cotacoes', r: 'Cotacoes' },
+  { p: '/desempenho/premiacao', r: 'Premiacao' },
+  { p: '/desempenho/aceites', r: 'Premiacao' },
+  { p: '/concorrencia', r: 'Concorrencia' },
+  { p: '/financeiro', r: 'Financeiro' },
+  { p: '/contabilidade', r: 'Financeiro' },
+  { p: '/crediario', r: 'Financeiro' },
+  { p: '/whatsapp', r: 'Whatsapp' },
+  { p: '/marketing', r: 'MarketingIa' },
+  { p: '/estoque/validade', r: 'Validade' },
+  { p: '/estoque/etiquetas', r: 'Etiquetas' },
+]
 
 // Rotas que o perfil "Atendente" pode acessar (o resto é bloqueado por URL também).
 const ROTAS_ATENDENTE = [
@@ -220,6 +239,17 @@ router.beforeEach((to) => {
   if (auth.logado && role === 'Contador' && !to.meta.publica
       && !PREFIXOS_CONTADOR.some(p => to.path === p || to.path.startsWith(p + '/'))) {
     return '/contabilidade'
+  }
+
+  // Gate por assinatura/plano (só depois de carregada; antes disso é permissivo,
+  // o backend é a trava real). Bloqueada/expirada → tela de regularização.
+  if (auth.logado && !to.meta.publica && to.path !== '/assinatura') {
+    const ass = useAssinaturaStore()
+    if (ass.carregado) {
+      if (ass.bloqueado) return '/assinatura'
+      const gate = GATES.find(g => to.path === g.p || to.path.startsWith(g.p + '/'))
+      if (gate && !ass.temRecurso(gate.r)) return `/assinatura?recurso=${gate.r}`
+    }
   }
 })
 

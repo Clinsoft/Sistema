@@ -23,6 +23,9 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     // Auditoria
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // Assinaturas (SaaS)
+    public DbSet<Sistema.Domain.Assinaturas.Assinatura> Assinaturas => Set<Sistema.Domain.Assinaturas.Assinatura>();
+
     // Cadastros
     public DbSet<Empresa> Empresas => Set<Empresa>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();

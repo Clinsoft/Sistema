@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/composables/useApi'
+import { useAssinaturaStore } from '@/stores/assinatura'
 
 interface Usuario { id: string; nome: string; email: string; role: string; localEstoqueId?: string | null }
 interface EmpresaResumo { id: string; nomeFantasia: string; cnpj: string; tipoUnidade: string }
@@ -62,6 +63,9 @@ export const useAuthStore = defineStore('auth', () => {
     await carregarLojas()
     lojaAtualId.value = (u.localEstoqueId ?? lojas.value[0]?.id) ?? null
     localStorage.setItem('lojaAtualId', lojaAtualId.value ?? '')
+
+    // Carrega a assinatura (plano/recursos liberados) da empresa.
+    await useAssinaturaStore().carregar()
   }
 
   async function carregarLojas() {

@@ -129,7 +129,8 @@ public class WhatsAppDisparoJob(
     /// Para evitar spam: no máximo 1 disparo de promoção por dia para o mesmo cliente.
     /// </summary>
     private async Task DispararPromocoes(Guid empresaId, string nomeEmpresa,
-        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true)
+        ConfiguracaoWhatsAppMensagem cfg, Guid? localEstoqueId = null, bool ehMatriz = true,
+        bool forcar = false)
     {
         var template = await ObterTemplate(empresaId, TipoDisparoWhatsApp.Promocao);
         if (template is null)
@@ -178,8 +179,10 @@ public class WhatsAppDisparoJob(
             listaTxt += $" • e mais {ofertas.Count - maxItens} ofertas na loja";
         var descontoTxt = $"{ofertas[0].Desconto:0}% de desconto";
 
-        // Clientes que ainda não receberam promoção hoje
-        var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
+        // Clientes que ainda não receberam promoção hoje (forcar=true ignora o limite diário).
+        var jaEnviados = forcar
+            ? new List<Guid?>()
+            : await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
         var clientes = await db.Clientes.AsNoTracking()
             .Where(c => c.EmpresaId == empresaId
                      && c.Ativo
@@ -315,7 +318,7 @@ public class WhatsAppDisparoJob(
     // ─── Disparos manuais (chamados via Hangfire.BackgroundJob.Enqueue) ───────
 
     /// <summary>Dispara promoções manualmente para uma empresa específica.</summary>
-    public async Task DispararPromocaoManualAsync(Guid empresaId, Guid? localEstoqueId = null)
+    public async Task DispararPromocaoManualAsync(Guid empresaId, Guid? localEstoqueId = null, bool forcar = false)
     {
         var empresa = await db.Empresas.AsNoTracking()
             .Where(e => e.Id == empresaId)
@@ -335,7 +338,7 @@ public class WhatsAppDisparoJob(
             return;
         }
 
-        await DispararPromocoes(empresa.Id, empresa.NomeFantasia, cfg, localEstoqueId);
+        await DispararPromocoes(empresa.Id, empresa.NomeFantasia, cfg, localEstoqueId, forcar: forcar);
     }
 
     /// <summary>Dispara novidades manualmente para uma empresa específica (ignora proteção de 7 dias).</summary>

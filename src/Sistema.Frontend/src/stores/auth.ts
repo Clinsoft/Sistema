@@ -25,6 +25,14 @@ export const useAuthStore = defineStore('auth', () => {
   const lojaAtualId = ref<string | null>(localStorage.getItem('lojaAtualId') || null)
   const lojaAtual = computed(() => lojas.value.find(l => l.id === lojaAtualId.value) ?? null)
 
+  const superAdmin = ref(false)
+  async function verificarSuperAdmin() {
+    try {
+      const { data } = await api.get('/admin/eu', { _quiet: true } as any)
+      superAdmin.value = !!data?.superAdmin
+    } catch { superAdmin.value = false }
+  }
+
   const logado = computed(() => !!token.value)
   const iniciais = computed(() =>
     usuario.value?.nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() ?? '??'
@@ -66,6 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Carrega a assinatura (plano/recursos liberados) da empresa.
     await useAssinaturaStore().carregar()
+    await verificarSuperAdmin()
   }
 
   async function carregarLojas() {
@@ -139,6 +148,7 @@ export const useAuthStore = defineStore('auth', () => {
     token, usuario, empresaId, logado, iniciais,
     filiais, empresaAtual, temFiliais,
     lojas, lojaAtualId, lojaAtual, carregarLojas, setLoja, fixarLojaAtendente,
+    superAdmin, verificarSuperAdmin,
     login, sair, carregarFiliais, trocarFilial,
   }
 })

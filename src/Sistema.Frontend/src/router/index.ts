@@ -193,6 +193,9 @@ const router = createRouter({
     { path: '/assinatura', component: () => import('@/modules/assinatura/AssinaturaView.vue'),
       meta: { titulo: 'Minha Assinatura' } },
 
+    { path: '/admin', component: () => import('@/modules/admin/AdminView.vue'),
+      meta: { titulo: 'Administração (SaaS)' } },
+
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ]
 })

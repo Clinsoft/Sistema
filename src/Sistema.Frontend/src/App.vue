@@ -211,6 +211,10 @@
             :append-icon="temRecurso('Whatsapp') ? undefined : 'mdi-lock'"
             to="/whatsapp" value="/whatsapp" color="primary" rounded="lg" />
 
+          <!-- Painel SaaS (só o dono do produto / super-admin) -->
+          <v-list-item v-if="auth.superAdmin" prepend-icon="mdi-shield-crown-outline" title="Administração (SaaS)"
+            to="/admin" value="/admin" color="deep-purple-darken-1" rounded="lg" />
+
         </v-list>
 
         <template #append>
@@ -467,6 +471,7 @@ onMounted(() => {
   // sem precisar relogar). Sessões antigas também passam a ter o seletor.
   if (auth.logado) auth.carregarLojas()
   if (auth.logado) assinatura.carregar()   // hidrata plano/recursos ao recarregar a página
+  if (auth.logado) auth.verificarSuperAdmin()   // habilita o painel SaaS para o dono do produto
   auth.fixarLojaAtendente()   // atendente sempre preso à própria loja (corrige localStorage antigo)
 })
 watch(() => route.path, () => { if (route.path === '/estoque/produtos' || route.path === '/financeiro/contas-pagar') carregarNotificacoes() })

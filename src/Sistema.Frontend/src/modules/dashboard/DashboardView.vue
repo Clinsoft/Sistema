@@ -2,7 +2,7 @@
   <div>
     <v-row class="mb-2">
       <v-col>
-        <div class="text-h6 font-weight-bold">Bom dia, {{ auth.usuario?.nome?.split(' ')?.[0] }}!</div>
+        <div class="text-h6 font-weight-bold">{{ saudacao }}, {{ auth.usuario?.nome?.split(' ')?.[0] }}!</div>
         <div class="text-body-2 text-medium-emphasis">{{ dataHoje }}</div>
       </v-col>
     </v-row>
@@ -973,6 +973,13 @@ const carregando = ref(true)
 const dataHoje = new Date().toLocaleDateString('pt-BR', {
   weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
 })
+// Saudação conforme a hora do dia (antes ficava "Bom dia" fixo).
+const saudacao = (() => {
+  const h = new Date().getHours()
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+})()
 const mesAtual = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 const mesAtualNum = new Date().getMonth() + 1
 const anoAtual = new Date().getFullYear()

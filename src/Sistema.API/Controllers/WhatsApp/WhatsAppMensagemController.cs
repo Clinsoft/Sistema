@@ -213,36 +213,58 @@ public class WhatsAppMensagemController(
         if (cfg?.BusinessAccountId is null || cfg.AccessToken is null)
             return BadRequest(new { mensagem = "Configure o Business Account ID e o Access Token primeiro." });
 
-        // Imagem de exemplo do cabeçalho: usa uma arte já gerada (PNG), se existir.
-        byte[]? imagemExemplo = null;
-        var arte = await db.ArtesMarketing.AsNoTracking()
-            .Where(a => a.EmpresaId == req.EmpresaId && a.UrlExportada != null)
-            .OrderByDescending(a => a.CriadoEm)
-            .FirstOrDefaultAsync(ct);
-        if (arte?.UrlExportada is { } url)
+        // Mensagem SÓ TEXTO (sem imagem): {{1}} = primeiro nome do cliente,
+        // {{2}} = lista das ofertas de 30% da loja (montada no disparo, em uma linha).
+        var corpo =
+            "🌿 Ofertas EcoGranel!\n\n" +
+            "Olá {{1}}, separamos ofertas especiais pra você:\n\n" +
+            "{{2}}\n\n" +
+            "Válido enquanto durar o estoque. Passe na loja ou responda aqui! 🛒";
+        var exemplos = new[]
         {
-            var caminho = Path.Combine("wwwroot", url.TrimStart('/'));
-            if (System.IO.File.Exists(caminho))
-                imagemExemplo = await System.IO.File.ReadAllBytesAsync(caminho, ct);
-        }
-
-        // Corpo padrão: {{1}} nome, {{2}} desconto, {{3}} produto, {{4}} de, {{5}} por.
-        const string corpo =
-            "🌿 Oferta EcoGranel!\n\n" +
-            "Olá {{1}}, aproveite {{2}} em {{3}}.\n" +
-            "De {{4}} por {{5}}.\n\n" +
-            "Válido por tempo limitado. Passe na loja ou responda aqui! 🛒";
-        var exemplos = new[] { "João", "10% de desconto", "Stévia Choco", "R$ 10,36", "R$ 9,32" };
-        var nome = string.IsNullOrWhiteSpace(req.Nome) ? "promocao_produto" : req.Nome!.Trim().ToLowerInvariant();
+            "João",
+            "Cookies Coco de R$ 10,00 por R$ 7,00 • Tapioca de R$ 8,00 por R$ 5,60",
+        };
+        // Nome ÚNICO por criação: a Meta bloqueia recriar um template com nome/idioma
+        // que foi excluído (trava de ~30 dias). Sufixo data+aleatório evita a colisão.
+        var baseNome = string.IsNullOrWhiteSpace(req.Nome) ? "promocao_ofertas" : req.Nome!.Trim().ToLowerInvariant();
+        baseNome = System.Text.RegularExpressions.Regex.Replace(baseNome, "[^a-z0-9_]+", "_").Trim('_');
+        if (string.IsNullOrEmpty(baseNome)) baseNome = "promocao_ofertas";
+        var nome = $"{baseNome}_{DateTime.Now:yyyyMMdd}_{Guid.NewGuid().ToString("N")[..6]}";
 
         var (ok, status, erro) = await whatsAppService.CriarTemplateAsync(
             cfg.BusinessAccountId, cfg.AccessToken, cfg.AppId,
-            nome, corpo, exemplos, imagemExemplo, "MARKETING", ct);
+            nome, corpo, exemplos, null, "MARKETING", ct);
 
         if (!ok)
             return StatusCode(502, new { mensagem = $"A Meta recusou a criação: {erro}" });
 
-        return Ok(new { nome, status, comImagem = imagemExemplo != null });
+        // Mapeamento das variáveis: {{1}}→primeiro nome, {{2}}→lista de ofertas.
+        // Registra este template como o de PROMOÇÃO (desativa os anteriores do tipo),
+        // para o disparo automático usá-lo assim que a Meta aprovar.
+        var variaveisJson = "[{\"posicao\":1,\"campo\":\"primeiro_nome\"},{\"posicao\":2,\"campo\":\"ofertas_lista\"}]";
+        var irmaos = await db.TemplatesWhatsAppMensagem
+            .Where(t => t.EmpresaId == req.EmpresaId && t.TipoDisparo == TipoDisparoWhatsApp.Promocao && t.Ativo)
+            .ToListAsync(ct);
+        foreach (var s in irmaos) s.Desativar();
+
+        var jaExiste = await db.TemplatesWhatsAppMensagem
+            .FirstOrDefaultAsync(t => t.EmpresaId == req.EmpresaId && t.NomeMeta == nome, ct);
+        if (jaExiste is null)
+        {
+            var novo = TemplateWhatsAppMensagem.Criar(
+                req.EmpresaId, nome, TipoDisparoWhatsApp.Promocao, "pt_BR", variaveisJson, corpo);
+            db.TemplatesWhatsAppMensagem.Add(novo);
+        }
+        else
+        {
+            jaExiste.Ativar();
+            jaExiste.Atualizar(nome, "pt_BR", variaveisJson, corpo);
+            jaExiste.DefinirHeaderMidia(null, null);
+        }
+        await uow.SalvarAsync(ct);
+
+        return Ok(new { nome, status, comImagem = false });
     }
 
     /// <summary>Cria um template PERSONALIZADO na Meta e envia para análise.</summary>

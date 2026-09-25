@@ -16,32 +16,34 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
     [HttpPost]
     public async Task<IActionResult> Recuperar([FromBody] RecuperarAcessoRequest req, CancellationToken ct)
     {
-        // Normaliza CNPJ: mantém apenas letras maiúsculas e dígitos (formato RF 2026 é alfanumérico)
-        var cnpjLimpo = new string(req.Cnpj.ToUpperInvariant()
-            .Where(c => char.IsLetterOrDigit(c)).ToArray());
+        // Recupera POR E-MAIL (padrão) ou por CNPJ (compatibilidade). Resposta sempre genérica.
+        Sistema.Domain.Cadastros.Entities.Usuario? usuario;
 
-        var empresa = await db.Empresas.AsNoTracking()
-            .FirstOrDefaultAsync(e =>
-                e.Cnpj == cnpjLimpo ||
-                new string(e.Cnpj.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray()) == cnpjLimpo, ct);
+        if (!string.IsNullOrWhiteSpace(req.Email))
+        {
+            var emailLimpo = req.Email!.Trim();
+            usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Email == emailLimpo && u.Ativo, ct);
+        }
+        else if (!string.IsNullOrWhiteSpace(req.Cnpj))
+        {
+            var cnpjLimpo = new string(req.Cnpj!.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+            var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Cnpj == cnpjLimpo, ct);
+            usuario = empresa is null ? null : await db.Usuarios
+                .Where(u => u.EmpresaId == empresa.Id && u.Ativo && u.Perfil == "Administrador")
+                .OrderBy(u => u.CriadoEm).FirstOrDefaultAsync(ct);
+        }
+        else
+        {
+            return BadRequest(new { mensagem = "Informe o e-mail ou o CNPJ." });
+        }
 
-        if (empresa is null)
-            // Resposta genérica para não revelar se CNPJ existe
-            return Ok(new { mensagem = "Se o CNPJ estiver cadastrado, você receberá um e-mail com as instruções." });
-
-        // Busca usuário administrador da empresa
-        var usuario = await db.Usuarios
-            .Where(u => u.EmpresaId == empresa.Id && u.Ativo && u.Perfil == "Administrador")
-            .OrderBy(u => u.CriadoEm)
-            .FirstOrDefaultAsync(ct);
-
+        // Não achou → resposta genérica (não revela se existe).
         if (usuario is null)
-            return Ok(new { mensagem = "Se o CNPJ estiver cadastrado, você receberá um e-mail com as instruções." });
+            return Ok(new { mensagem = "Se estiver cadastrado, você receberá uma nova senha no e-mail." });
 
-        // Gera nova senha aleatória
+        // Gera nova senha aleatória e grava.
         var novaSenha = GerarSenha();
-        var novoHash = BCrypt.Net.BCrypt.HashPassword(novaSenha);
-        usuario.AlterarSenha(novoHash);
+        usuario.AlterarSenha(BCrypt.Net.BCrypt.HashPassword(novaSenha));
         await uow.SalvarAsync(ct);
 
         // Monta e-mail
@@ -54,7 +56,7 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
               <div style="background:#f9f6f0;border-radius:12px;padding:24px">
                 <h3 style="color:#5a3e2b;margin-top:0">Recuperação de Acesso</h3>
                 <p>Olá, <strong>{usuario.Nome}</strong>!</p>
-                <p>Recebemos uma solicitação de recuperação de acesso para o CNPJ <strong>{FormatarCnpj(cnpjLimpo)}</strong>.</p>
+                <p>Recebemos uma solicitação de recuperação de acesso da sua conta.</p>
                 <p>Suas novas credenciais de acesso são:</p>
                 <table style="border-collapse:collapse;width:100%;margin:16px 0">
                   <tr>
@@ -84,9 +86,9 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
             </div>
             """;
 
-        await email.EnviarAsync(usuario.Email, $"{Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome} — Recuperação de Acesso", corpo, ct);
+        await email.EnviarAsync(usuario.Email!, $"{Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome} — Recuperação de Acesso", corpo, ct);
 
-        return Ok(new { mensagem = "Se o CNPJ estiver cadastrado, você receberá um e-mail com as instruções." });
+        return Ok(new { mensagem = "Se estiver cadastrado, você receberá uma nova senha no e-mail." });
     }
 
     private static string GerarSenha()
@@ -115,4 +117,4 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
             : cnpj;
 }
 
-public record RecuperarAcessoRequest(string Cnpj);
+public record RecuperarAcessoRequest(string? Cnpj = null, string? Email = null);

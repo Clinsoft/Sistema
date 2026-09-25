@@ -112,8 +112,8 @@
 
         <v-card-text class="pa-5 pt-2">
           <p class="text-body-2 text-medium-emphasis mb-4">
-            Informe o <strong>CNPJ</strong> da empresa cadastrada no sistema. Enviaremos
-            seu e-mail de acesso e uma nova senha para o endereço registrado.
+            Informe o <strong>e-mail</strong> cadastrado. Vamos gerar uma nova senha
+            e enviar para esse endereço.
           </p>
 
           <v-alert v-if="recuperarSucesso" type="success" variant="tonal" density="compact" class="mb-3">
@@ -122,16 +122,15 @@
 
           <v-form v-if="!recuperarSucesso" ref="formRecuperar" @submit.prevent="recuperarAcesso">
             <v-text-field
-              v-model="cnpjRecuperar"
-              label="CNPJ da empresa"
-              placeholder="AB.CDE.FGH/IJKL-00"
-              prepend-inner-icon="mdi-domain"
+              v-model="emailRecuperar"
+              label="E-mail cadastrado"
+              type="email"
+              placeholder="voce@sualoja.com.br"
+              prepend-inner-icon="mdi-email-outline"
               variant="outlined"
               density="comfortable"
-              :rules="cnpjRules"
-              maxlength="18"
+              :rules="[r => !!r || 'Informe o e-mail']"
               autofocus
-              @keydown="onCnpjKeydown"
             />
           </v-form>
         </v-card-text>
@@ -190,41 +189,16 @@ async function entrar() {
 // ─── Recuperar acesso ──────────────────────────────────────────────
 const dialogRecuperar = ref(false)
 const formRecuperar = ref()
-const cnpjRecuperar = ref('')
+const emailRecuperar = ref('')
 const recuperandoAcesso = ref(false)
 const recuperarSucesso = ref('')
-
-function limparCnpj(v: string) {
-  return v.toUpperCase().replace(/[^A-Z0-9]/g, '')
-}
-
-// Regras declaradas como array constante — acessíveis diretamente no template
-const cnpjRules = [
-  (v: string) => !!v || 'Informe o CNPJ',
-  (v: string) => {
-    const r = limparCnpj(v)
-    if (r.length !== 14) return 'CNPJ deve ter 14 caracteres'
-    if (!/^\d{2}$/.test(r.slice(12))) return 'Dígitos verificadores inválidos'
-    return true
-  },
-]
-
-function onCnpjKeydown(e: KeyboardEvent) {
-  // Permite: teclas de controle, backspace, delete, setas, tab
-  if (['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Enter'].includes(e.key)) return
-  const raw = limparCnpj(cnpjRecuperar.value)
-  if (raw.length >= 14) { e.preventDefault(); return }
-  // Posições 12-13 só aceitam dígito
-  if (raw.length >= 12 && !/[0-9]/.test(e.key)) { e.preventDefault(); return }
-  if (!/[A-Za-z0-9]/.test(e.key)) e.preventDefault()
-}
 
 async function recuperarAcesso() {
   const { valid } = await formRecuperar.value.validate()
   if (!valid) return
   recuperandoAcesso.value = true
   try {
-    const r = await api.post('/auth/recuperar-acesso', { cnpj: limparCnpj(cnpjRecuperar.value) })
+    const r = await api.post('/auth/recuperar-acesso', { email: emailRecuperar.value.trim() })
     recuperarSucesso.value = r.data.mensagem
   } catch {
     notif.erro('Não foi possível processar a solicitação. Tente novamente.')
@@ -235,7 +209,7 @@ async function recuperarAcesso() {
 
 function fecharDialogRecuperar() {
   dialogRecuperar.value = false
-  cnpjRecuperar.value = ''
+  emailRecuperar.value = ''
   recuperarSucesso.value = ''
 }
 </script>

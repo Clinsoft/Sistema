@@ -33,6 +33,15 @@ public class AdminController(SistemaDbContext db, IConfiguration config, IMemory
     [HttpGet("eu")]
     public IActionResult Eu() => Ok(new { superAdmin = EhSuperAdmin() });
 
+    /// <summary>Roda o job de bloqueio de trial expirado/inadimplência sob demanda.</summary>
+    [HttpPost("rodar-bloqueio")]
+    public IActionResult RodarBloqueio()
+    {
+        if (!EhSuperAdmin()) return Forbid();
+        Hangfire.BackgroundJob.Enqueue<Sistema.Infrastructure.Jobs.AssinaturaStatusJob>(j => j.ExecutarAsync());
+        return Ok(new { ok = true, mensagem = "Verificação de bloqueio enfileirada." });
+    }
+
     [HttpGet("empresas")]
     public async Task<IActionResult> Empresas(CancellationToken ct)
     {

@@ -7,6 +7,7 @@
         <div class="text-caption text-medium-emphasis">Assinaturas das lojas-cliente · {{ lista.length }} conta(s)</div>
       </div>
       <v-spacer />
+      <v-btn variant="text" prepend-icon="mdi-gavel" class="text-none mr-1" @click="rodarBloqueio">Verificar bloqueios</v-btn>
       <v-btn variant="text" prepend-icon="mdi-refresh" :loading="carregando" @click="carregar" class="text-none">Atualizar</v-btn>
     </div>
 
@@ -97,6 +98,10 @@ const estender = (e: any) => acao(api.post(`/admin/${e.empresaId}/trial`, { dias
 const bloquear = (e: any) => acao(api.post(`/admin/${e.empresaId}/bloquear`, {}), 'Assinatura bloqueada.')
 const reativar = (e: any) => acao(api.post(`/admin/${e.empresaId}/reativar`, {}), 'Assinatura reativada.')
 const trocarPlano = (e: any, plano: string) => acao(api.post(`/admin/${e.empresaId}/plano`, { plano }), `Plano alterado para ${plano}.`)
+async function rodarBloqueio() {
+  try { await api.post('/admin/rodar-bloqueio'); notif.ok('Verificação de bloqueios enfileirada.'); setTimeout(carregar, 3000) }
+  catch { notif.erro('Falha ao rodar a verificação.') }
+}
 
 const labelSit = (s: string) => ({ TrialAtivo: 'Em teste', TrialExpirado: 'Teste expirado', Ativa: 'Ativa', EmTolerancia: 'Em tolerância', Bloqueada: 'Bloqueada', Cancelada: 'Cancelada' } as any)[s] ?? s
 const corSit = (s: string) => ({ TrialAtivo: 'info', Ativa: 'success', EmTolerancia: 'warning', TrialExpirado: 'error', Bloqueada: 'error', Cancelada: 'grey' } as any)[s] ?? 'grey'

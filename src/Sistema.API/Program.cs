@@ -230,6 +230,11 @@ RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.LimparVendasAbertasJob>(
     job => job.ExecutarAsync(),
     "0 * * * *", optsBR);   // de hora em hora — descarta vendas em aberto há +6h
 
+RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.AssinaturaStatusJob>(
+    "assinaturas-bloqueio",
+    job => job.ExecutarAsync(),
+    "10 */6 * * *", optsBR);   // a cada 6h — bloqueia trial expirado / inadimplência (SaaS)
+
 RecurringJob.AddOrUpdate<Sistema.Infrastructure.Jobs.RetransmitirNotasPendentesJob>(
     "nfce-retransmitir-pendentes",
     job => job.ExecutarAsync(),

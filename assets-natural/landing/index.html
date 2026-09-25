@@ -112,7 +112,7 @@ header{position:sticky;top:0;z-index:50;background:rgba(244,249,244,.85);backdro
 .toggle button{border:0;background:none;padding:9px 18px;border-radius:999px;font-weight:600;color:var(--suave);cursor:pointer;font-size:14px}
 .toggle button.on{background:var(--verde);color:#fff}
 .eco{color:var(--verde-esc);font-weight:600;font-size:13px;margin-top:8px}
-.planos{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px;align-items:start}
+.planos{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:34px;align-items:start}
 .plano{background:var(--card);border:1px solid var(--linha);border-radius:18px;padding:28px 24px;box-shadow:var(--sombra)}
 .plano.top{border:2px solid var(--verde);box-shadow:var(--sombra2);position:relative}
 .plano .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--verde);color:#fff;font-size:12px;font-weight:700;padding:5px 14px;border-radius:999px}
@@ -154,6 +154,7 @@ footer a:hover{color:#fff}
 footer .desc{font-size:14px;max-width:320px;color:#9FB79F}
 footer .bottom{border-top:1px solid rgba(255,255,255,.12);margin-top:30px;padding-top:18px;font-size:13px;color:#8CA88C;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
 
+@media (max-width:1120px) and (min-width:901px){ .planos{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:900px){
   .hero-grid{grid-template-columns:1fr;gap:34px}
   .grid,.steps,.planos{grid-template-columns:1fr}
@@ -285,6 +286,19 @@ footer .bottom{border-top:1px solid rgba(255,255,255,.12);margin-top:30px;paddin
 
     <div class="planos">
       <div class="plano">
+        <div class="nome"><i class="ti ti-device-desktop"></i> Micro</div>
+        <div class="para">Só o essencial para vender</div>
+        <div class="preco" data-m="79" data-a="66">R$ 79<small>/mês</small></div>
+        <div class="sub2" data-sm="Cobrança mensal" data-sa="R$ 790/ano · economize 2 meses">Cobrança mensal</div>
+        <ul>
+          <li><i class="ti ti-check"></i> PDV com balança</li>
+          <li><i class="ti ti-check"></i> NFC-e e NF-e</li>
+          <li><i class="ti ti-check"></i> 1 usuário · suporte por e-mail</li>
+        </ul>
+        <a class="btn btn-ghost" href="https://app.naturalsistemas.com.br/#/setup">Testar grátis</a>
+      </div>
+
+      <div class="plano">
         <div class="nome"><i class="ti ti-building-store"></i> Essencial</div>
         <div class="para">Para 1 loja começando</div>
         <div class="preco" data-m="119" data-a="99">R$ 119<small>/mês</small></div>
@@ -333,7 +347,7 @@ footer .bottom{border-top:1px solid rgba(255,255,255,.12);margin-top:30px;paddin
         <a class="btn btn-ghost" href="https://app.naturalsistemas.com.br/#/setup">Testar grátis</a>
       </div>
     </div>
-    <p class="nota-planos">Certificado digital A1 (para nota fiscal) por conta do cliente. Migração de dados a partir de R$ 299 — fale com a gente.</p>
+    <p class="nota-planos">Onboarding opcional (migração dos seus produtos e cadastros a partir de planilha ou XML): <b>R$ 299</b>, cobrança única. Certificado digital A1 (para nota fiscal) por conta do cliente.</p>
   </div>
 </section>
 

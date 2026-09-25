@@ -50,10 +50,39 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
                && p.Ativo
             select new
             {
-                l.Id, l.ProdutoId, l.DataValidade, l.Quantidade,
+                l.Id, l.ProdutoId, l.LocalEstoqueId, l.DataValidade, l.Quantidade,
                 Produto = new { p.Descricao, p.PrecoVenda, p.CategoriaId }
             }
         ).AsNoTracking().ToListAsync();
+
+        // ── Limpeza: desativa ofertas automáticas que não valem mais ──
+        // (produto inativo, validade já passou, ou não há mais lote qualificado
+        //  naquela loja dentro da janela). Evita "produto que não existe mais"
+        //  e ofertas vazando entre lojas.
+        var lotesValidosPorLoja = lotes
+            .Where(l => l.DataValidade.HasValue)
+            .Select(l => new { l.ProdutoId, l.LocalEstoqueId, Dias = (l.DataValidade!.Value.Date - hoje).Days })
+            .Where(l => l.Dias >= PromoDiasMin && l.Dias <= PromoDiasMax)
+            .Select(l => (l.ProdutoId, l.LocalEstoqueId))
+            .ToHashSet();
+
+        var ofertasAtivas = await db.Promocoes
+            .Where(pr => pr.EmpresaId == empresaId && pr.Ativa && pr.Nome.StartsWith("OFERTA —"))
+            .ToListAsync();
+        int ofertasEncerradas = 0;
+        foreach (var of in ofertasAtivas)
+        {
+            var expirou = of.DataFim.HasValue && of.DataFim.Value.Date < hoje;
+            var semLoja = of.LocalEstoqueId is null; // legado: oferta sem loja vaza p/ todas
+            var semLote = of.ReferenciaId is null
+                || of.LocalEstoqueId is null
+                || !lotesValidosPorLoja.Contains((of.ReferenciaId.Value, of.LocalEstoqueId.Value));
+            if (expirou || semLoja || semLote)
+            {
+                of.DefinirAtiva(false);
+                ofertasEncerradas++;
+            }
+        }
 
         // Alerta já processados hoje para este nível (evita duplicar)
         var alertasHoje = await db.AlertasValidade
@@ -62,7 +91,9 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
 
         int totalAmarelo = 0, totalVermelho = 0, totalUrgente = 0, totalVencido = 0;
         int totalPromos = 0;
-        var promoPorProduto = new Dictionary<Guid, Guid>();
+        // Chave por (produto, loja): a oferta é da LOJA onde o lote está vencendo,
+        // senão vaza para as outras lojas no PDV.
+        var promoPorProdutoLoja = new Dictionary<(Guid Produto, Guid Loja), Guid>();
 
         foreach (var lote in lotes)
         {
@@ -75,12 +106,14 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
             // a critério do administrador.
             if (dias >= PromoDiasMin && dias <= PromoDiasMax
                 && cfg.PromoAutomatica && !cfg.ExigeAprovacao
-                && !promoPorProduto.ContainsKey(lote.ProdutoId))
+                && !promoPorProdutoLoja.ContainsKey((lote.ProdutoId, lote.LocalEstoqueId)))
             {
-                // Evita duplicar: só cria se ainda não há promoção ativa vigente.
+                // Evita duplicar: só cria se ainda não há promoção ativa vigente
+                // PARA A MESMA LOJA (a oferta é da loja onde o lote está vencendo).
                 var jaTemPromo = await db.Promocoes.AnyAsync(pr =>
                     pr.EmpresaId == empresaId && pr.Ativa
                     && pr.ReferenciaId == lote.ProdutoId
+                    && pr.LocalEstoqueId == lote.LocalEstoqueId
                     && (pr.DataFim == null || pr.DataFim >= hoje));
 
                 if (!jaTemPromo)
@@ -91,10 +124,11 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
                         "Desconto", "Percentual", cfg.DescontoAutoPercent,
                         hoje, lote.DataValidade.Value.Date,
                         "Produto", lote.ProdutoId,
-                        0, 0, 0, 0, apenasClube: false, cumulativo: false);
+                        0, 0, 0, 0, apenasClube: false, cumulativo: false,
+                        localEstoqueId: lote.LocalEstoqueId);
 
                     db.Promocoes.Add(promo);
-                    promoPorProduto[lote.ProdutoId] = promo.Id;
+                    promoPorProdutoLoja[(lote.ProdutoId, lote.LocalEstoqueId)] = promo.Id;
                     totalPromos++;
                 }
             }
@@ -112,7 +146,7 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
             // Registra o alerta
             var alerta = AlertaValidade.Criar(empresaId, lote.ProdutoId, lote.Id,
                 lote.DataValidade.Value, nivel);
-            if (promoPorProduto.TryGetValue(lote.ProdutoId, out var promoId))
+            if (promoPorProdutoLoja.TryGetValue((lote.ProdutoId, lote.LocalEstoqueId), out var promoId))
                 alerta.MarcarPromoGerada(promoId);
             db.AlertasValidade.Add(alerta);
 
@@ -128,8 +162,8 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
         await db.SaveChangesAsync();
 
         logger.LogInformation(
-            "[VALIDADE] {Empresa}: 🟡 {Am} amarelo | 🔴 {Ve} vermelho | ⚠️ {Ur} urgente | ✖ {Vn} vencido | {Pr} promos geradas",
-            nomeFantasia, totalAmarelo, totalVermelho, totalUrgente, totalVencido, totalPromos);
+            "[VALIDADE] {Empresa}: 🟡 {Am} amarelo | 🔴 {Ve} vermelho | ⚠️ {Ur} urgente | ✖ {Vn} vencido | {Pr} promos geradas | {Enc} ofertas encerradas",
+            nomeFantasia, totalAmarelo, totalVermelho, totalUrgente, totalVencido, totalPromos, ofertasEncerradas);
     }
 
     private static string? ClassificarNivel(int dias, ConfiguracaoValidade cfg)

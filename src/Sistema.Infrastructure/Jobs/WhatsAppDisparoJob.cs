@@ -138,41 +138,43 @@ public class WhatsAppDisparoJob(
             return;
         }
 
-        // Busca a promoção ativa vigente (módulo Promoções) — fonte única de verdade.
+        // Ofertas de 30% (validade) DESTA loja — promoções automáticas "OFERTA —"
+        // carimbadas com a LOJA (LocalEstoqueId). Uma única mensagem com a LISTA.
         var hoje = DateTime.Today;
-        var promo = await db.Promocoes.AsNoTracking()
-            .Where(p => p.EmpresaId == empresaId && p.Ativa
-                     && p.DataInicio <= hoje
-                     && (p.DataFim == null || p.DataFim >= hoje))
-            .OrderByDescending(p => p.CriadoEm)
-            .FirstOrDefaultAsync();
+        var ptBR = new System.Globalization.CultureInfo("pt-BR");
 
-        if (promo is null)
+        var ofertas = await (
+            from pr in db.Promocoes.AsNoTracking()
+            join p in db.Produtos.AsNoTracking() on pr.ReferenciaId equals p.Id
+            where pr.EmpresaId == empresaId && pr.Ativa
+               && pr.Nome.StartsWith("OFERTA —")
+               && pr.AplicaEm == "Produto"
+               && pr.DataInicio <= hoje && (pr.DataFim == null || pr.DataFim >= hoje)
+               && (localEstoqueId == null || pr.LocalEstoqueId == localEstoqueId)
+            orderby p.Descricao
+            select new { p.Descricao, p.PrecoVenda, pr.TipoDesconto, pr.Desconto }
+        ).ToListAsync();
+
+        if (ofertas.Count == 0)
         {
-            logger.LogInformation("[WhatsApp] {Empresa}: nenhuma promoção ativa hoje.", nomeEmpresa);
+            logger.LogInformation("[WhatsApp] {Empresa}: nenhuma oferta de validade ativa nesta loja.", nomeEmpresa);
             return;
         }
 
-        // Produto e preços da promoção (quando aplica a um produto específico)
-        var ptBR = new System.Globalization.CultureInfo("pt-BR");
-        string produtoNome = "", precoDeTxt = "", precoPromoTxt = "";
-        if (promo.AplicaEm == "Produto" && promo.ReferenciaId is { } pid)
+        // Monta a lista em UMA linha (a Meta não aceita quebra de linha dentro de variável).
+        const int maxItens = 10;
+        string LinhaOferta(decimal precoDe, decimal desc, string tipoDesc, string nome)
         {
-            var prod = await db.Produtos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pid);
-            if (prod is not null)
-            {
-                produtoNome = prod.Descricao;
-                var precoDe = prod.PrecoVenda;
-                var precoPromo = promo.TipoDesconto == "Percentual"
-                    ? Math.Round(precoDe * (1 - promo.Desconto / 100m), 2)
-                    : precoDe - promo.Desconto;
-                precoDeTxt    = $"R$ {precoDe.ToString("0.00", ptBR)}";
-                precoPromoTxt = $"R$ {precoPromo.ToString("0.00", ptBR)}";
-            }
+            var precoPromo = tipoDesc == "Percentual"
+                ? Math.Round(precoDe * (1 - desc / 100m), 2)
+                : precoDe - desc;
+            return $"{nome} de R$ {precoDe.ToString("0.00", ptBR)} por R$ {precoPromo.ToString("0.00", ptBR)}";
         }
-        var descontoTxt = promo.TipoDesconto == "Percentual"
-            ? $"{promo.Desconto:0}% de desconto"
-            : $"R$ {promo.Desconto.ToString("0.00", ptBR)} de desconto";
+        var listaTxt = string.Join(" • ",
+            ofertas.Take(maxItens).Select(o => LinhaOferta(o.PrecoVenda, o.Desconto, o.TipoDesconto, o.Descricao)));
+        if (ofertas.Count > maxItens)
+            listaTxt += $" • e mais {ofertas.Count - maxItens} ofertas na loja";
+        var descontoTxt = $"{ofertas[0].Desconto:0}% de desconto";
 
         // Clientes que ainda não receberam promoção hoje
         var jaEnviados = await JaEnviadosHoje(empresaId, TipoDisparoWhatsApp.Promocao);
@@ -195,24 +197,15 @@ public class WhatsAppDisparoJob(
         foreach (var c in clientes)
         {
             var ctx = VariaveisComuns(c, nomeEmpresa);
-            ctx["produto_nome"]        = produtoNome;
-            ctx["produto_preco"]       = precoDeTxt;
-            ctx["produto_preco_promo"] = precoPromoTxt;
-            ctx["data_validade"]       = promo.DataFim?.ToString("dd/MM/yyyy") ?? "";
-            ctx["desconto"]            = descontoTxt;
-            ctx["nome_promocao"]       = promo.Nome;
+            ctx["ofertas_lista"] = listaTxt;
+            ctx["desconto"]      = descontoTxt;
             var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
 
         if (ehMatriz)
             await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, template,
-                new Dictionary<string, string>
-                {
-                    ["produto_nome"] = produtoNome, ["produto_preco"] = precoDeTxt,
-                    ["produto_preco_promo"] = precoPromoTxt, ["data_validade"] = promo.DataFim?.ToString("dd/MM/yyyy") ?? "",
-                    ["desconto"] = descontoTxt, ["nome_promocao"] = promo.Nome,
-                }, localEstoqueId);
+                new Dictionary<string, string> { ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt }, localEstoqueId);
 
         logger.LogInformation("[WhatsApp] Promoções {Empresa}: {E} enviados, {F} falhas",
             nomeEmpresa, enviados, falhas);

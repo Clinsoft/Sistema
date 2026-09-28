@@ -6,6 +6,8 @@
         <div class="text-caption text-medium-emphasis">Cadastre bandeiras, taxas e prazos de repasse</div>
       </div>
       <v-spacer />
+      <v-btn color="indigo" variant="tonal" prepend-icon="mdi-credit-card-check-outline"
+        to="/financeiro/conciliacao-cartao" class="text-none mr-2">Conciliar vendas</v-btn>
       <v-btn color="primary" prepend-icon="mdi-plus" @click="abrirNova">Nova Operadora</v-btn>
     </div>
 

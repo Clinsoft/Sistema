@@ -50,6 +50,26 @@
         </v-table>
       </v-card>
 
+      <v-card v-if="res.formaDivergente?.length" rounded="xl" elevation="1" class="mb-4">
+        <v-card-title class="text-subtitle-1 d-flex align-center">
+          <v-icon color="deep-orange" class="mr-2">mdi-swap-horizontal</v-icon>
+          Forma registrada errada ({{ res.formaDivergente.length }})
+        </v-card-title>
+        <v-card-subtitle>Casou pela hora+valor, mas a forma no sistema difere da máquina (ex.: cliente pagou Pix e foi lançado como cartão).</v-card-subtitle>
+        <v-table density="compact" height="240" fixed-header>
+          <thead><tr><th>Data</th><th class="text-right">Valor</th><th>No sistema</th><th></th><th>Na máquina</th><th>Cliente</th></tr></thead>
+          <tbody>
+            <tr v-for="(t,i) in res.formaDivergente" :key="i">
+              <td>{{ fmtD(t.data) }}</td><td class="text-right">{{ fmt(t.valor) }}</td>
+              <td><v-chip size="x-small" color="grey" label>{{ t.formaSistema }}</v-chip></td>
+              <td><v-icon size="16">mdi-arrow-right</v-icon></td>
+              <td><v-chip size="x-small" color="deep-orange" label>{{ t.formaOperadora }}</v-chip></td>
+              <td class="text-truncate" style="max-width:140px">{{ t.cliente }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card>
+
       <v-row dense>
         <v-col cols="12" md="6">
           <v-card rounded="xl" elevation="1">

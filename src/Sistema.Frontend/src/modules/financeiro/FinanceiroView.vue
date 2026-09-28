@@ -36,6 +36,8 @@
             <v-divider class="my-1" />
             <v-list-item prepend-icon="mdi-credit-card-clock-outline" title="Recebíveis de Cartão"
               to="/financeiro/recebiveis-cartao" color="indigo" rounded="lg" />
+            <v-list-item prepend-icon="mdi-credit-card-check-outline" title="Conciliação de Cartão"
+              to="/financeiro/conciliacao-cartao" color="indigo" rounded="lg" />
             <v-list-item prepend-icon="mdi-credit-card-settings-outline" title="Operadoras de Cartão"
               to="/financeiro/operadoras-cartao" color="grey-darken-1" rounded="lg" />
           </v-list>

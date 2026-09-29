@@ -9,7 +9,8 @@ namespace Sistema.Application.Vendas.Commands;
 public record AdicionarItemVendaCommand(
     Guid VendaId, Guid ProdutoId,
     decimal Quantidade, decimal? PrecoUnitario = null,
-    decimal PercentualDesconto = 0, decimal? DescontoValor = null) : IRequest;
+    decimal PercentualDesconto = 0, decimal? DescontoValor = null,
+    decimal? TotalInformado = null) : IRequest;
 
 public class AdicionarItemVendaValidator : AbstractValidator<AdicionarItemVendaCommand>
 {
@@ -32,7 +33,7 @@ public class AdicionarItemVendaHandler(IVendaRepository vendaRepo, IProdutoRepos
             ?? throw new KeyNotFoundException("Produto não encontrado.");
 
         var preco = cmd.PrecoUnitario ?? produto.PrecoVenda;
-        venda.AdicionarItem(produto.Id, produto.Descricao, cmd.Quantidade, preco, cmd.PercentualDesconto, cmd.DescontoValor);
+        venda.AdicionarItem(produto.Id, produto.Descricao, cmd.Quantidade, preco, cmd.PercentualDesconto, cmd.DescontoValor, cmd.TotalInformado);
 
         // A venda vem rastreada de ObterComItensAsync: o SaveChanges já insere o
         // item novo. Chamar Update() marcaria o item novo como Modified → UPDATE

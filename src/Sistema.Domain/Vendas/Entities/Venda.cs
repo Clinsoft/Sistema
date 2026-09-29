@@ -53,9 +53,10 @@ public class Venda : Entity
         };
 
     public void AdicionarItem(Guid produtoId, string descricao, decimal quantidade,
-        decimal precoUnitario, decimal percentualDesconto = 0, decimal? descontoValor = null)
+        decimal precoUnitario, decimal percentualDesconto = 0, decimal? descontoValor = null,
+        decimal? totalBruto = null)
     {
-        var item = ItemVenda.Criar(Id, produtoId, descricao, quantidade, precoUnitario, percentualDesconto, descontoValor);
+        var item = ItemVenda.Criar(Id, produtoId, descricao, quantidade, precoUnitario, percentualDesconto, descontoValor, totalBruto);
         _itens.Add(item);
         RecalcularTotais();
     }
@@ -115,7 +116,9 @@ public class Venda : Entity
         if (!_itens.Any()) throw new InvalidOperationException("Venda sem itens.");
         // Tolerância de arredondamento: o front soma em ponto flutuante (JS) e pode
         // divergir do decimal do backend em até ~1 centavo POR ITEM (vendas por kg).
-        var tolerancia = Math.Max(0.005m, _itens.Count * 0.01m);
+        // Rede de segurança: além do total já vir da soma dos itens (que agora usa o total
+        // da balança), o erro máximo de arredondamento por item ≈ preço × 0,0005 (meio grama).
+        var tolerancia = Math.Min(0.50m, Math.Max(0.02m, _itens.Sum(i => i.PrecoUnitario) * 0.001m));
         if (TotalPago < Total - tolerancia) throw new InvalidOperationException("Pagamento insuficiente.");
 
         Status = StatusVenda.Finalizada;

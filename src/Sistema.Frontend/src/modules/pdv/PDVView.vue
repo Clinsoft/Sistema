@@ -1942,6 +1942,10 @@ async function finalizar() {
         quantidade: item.quantidade,
         precoUnitario: item.precoUnitario,
         descontoValor: descRs > 0 ? descRs : 0,
+        // Total BRUTO do item (antes do desconto). Na balança vem da etiqueta; o backend
+        // usa este total quando bate com preço×qty na faixa de arredondamento, eliminando
+        // o "pagamento insuficiente" de 1 centavo em produtos por kg.
+        totalInformado: Math.round((item.total + descRs) * 100) / 100,
       })
     }
 

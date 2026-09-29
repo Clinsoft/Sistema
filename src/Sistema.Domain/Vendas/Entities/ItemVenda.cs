@@ -37,9 +37,17 @@ public class ItemVenda : Entity
     /// </summary>
     public static ItemVenda Criar(Guid vendaId, Guid produtoId, string descricao,
         decimal quantidade, decimal precoUnitario, decimal percentualDesconto = 0,
-        decimal? descontoValor = null)
+        decimal? descontoValor = null, decimal? totalBruto = null)
     {
-        var bruto = Math.Round(precoUnitario * quantidade, 2);   // mesma base do que aparece na tela e na NFC-e
+        var brutoCalc = Math.Round(precoUnitario * quantidade, 2);
+        // Produto de BALANÇA: a etiqueta traz o TOTAL (ex.: R$ 11,35); a quantidade é
+        // derivada (total ÷ preço) e arredondada em 3 casas — recalcular preço×qty daria
+        // alguns centavos de erro em itens caros. Usa o total informado quando ele bate
+        // com preço×qty dentro da faixa de arredondamento (senão ignora, evitando abuso).
+        var bruto = totalBruto is { } tb && tb > 0
+            && Math.Abs(tb - brutoCalc) <= Math.Max(0.05m, precoUnitario * 0.002m)
+            ? Math.Round(tb, 2)
+            : brutoCalc;
         var totalDesconto = descontoValor is { } dv
             ? Math.Round(Math.Clamp(dv, 0m, bruto), 2)            // desconto em reais (autoritativo)
             : Math.Round(bruto * percentualDesconto / 100, 2);   // compat.: desconto em %

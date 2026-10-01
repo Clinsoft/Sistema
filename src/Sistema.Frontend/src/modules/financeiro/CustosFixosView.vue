@@ -71,7 +71,9 @@
       <v-card rounded="xl">
         <v-card-title class="pa-4 pb-2">{{ editandoId ? 'Editar' : 'Novo' }} Custo Fixo</v-card-title>
         <v-card-text>
-          <v-text-field v-model="form.descricao" label="Descrição *" variant="outlined" density="compact" class="mb-3" />
+          <v-form ref="formEdicao">
+          <v-text-field v-model="form.descricao" label="Descrição *" variant="outlined" density="compact" class="mb-3"
+            :rules="[r => !!r || 'Obrigatório']" />
           <v-select
             v-model="form.categoria"
             :items="categorias"
@@ -88,7 +90,9 @@
             prefix="R$"
             variant="outlined"
             density="compact"
+            :rules="[r => (Number(r) > 0) || 'Informe um valor']"
           />
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -101,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
 import api from '@/composables/useApi'
@@ -114,6 +118,7 @@ interface CustoFixo { id: string; descricao: string; valor: number; categoria?: 
 const custos = ref<CustoFixo[]>([])
 const carregando = ref(true)
 const dialog = ref(false)
+const formEdicao = ref()
 const salvando = ref(false)
 const editandoId = ref<string | null>(null)
 const form = ref({ descricao: '', valor: 0, categoria: '' })
@@ -154,16 +159,19 @@ function abrirNovo() {
   editandoId.value = null
   form.value = { descricao: '', valor: 0, categoria: '' }
   dialog.value = true
+  nextTick(() => formEdicao.value?.resetValidation())
 }
 
 function editar(c: CustoFixo) {
   editandoId.value = c.id
   form.value = { descricao: c.descricao, valor: c.valor, categoria: c.categoria ?? '' }
   dialog.value = true
+  nextTick(() => formEdicao.value?.resetValidation())
 }
 
 async function salvar() {
-  if (!form.value.descricao || !form.value.valor) return
+  const _v = await formEdicao.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const body = { empresaId: auth.empresaId, ...form.value }

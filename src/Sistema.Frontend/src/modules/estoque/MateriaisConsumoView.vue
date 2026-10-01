@@ -98,6 +98,7 @@
           {{ editando ? 'Editar material' : 'Novo material' }}
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
+          <v-form ref="formNovoEl">
           <v-row dense>
             <v-col cols="12" sm="4">
               <v-text-field v-model="form.codigo" label="Código" variant="outlined" density="compact"
@@ -106,10 +107,12 @@
             </v-col>
             <v-col cols="12" sm="8">
               <v-text-field v-model="form.descricao" label="Descrição *" variant="outlined"
+                :rules="[r => !!r || 'Obrigatório']"
                 density="compact" autofocus />
             </v-col>
             <v-col cols="12" sm="6">
               <v-select v-model="form.unidadeMedidaId" :items="unidades" item-title="sigla" item-value="id"
+                :rules="[r => !!r || 'Obrigatório']"
                 label="Unidade *" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
@@ -136,6 +139,7 @@
               <v-switch v-model="form.ativo" color="success" density="compact" hide-details label="Ativo" />
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-btn v-if="editando" variant="text" color="error" :loading="excluindo"
@@ -143,7 +147,7 @@
           <v-spacer />
           <v-btn variant="text" @click="dlg = false">Cancelar</v-btn>
           <v-btn color="primary" rounded="lg" :loading="salvando"
-            :disabled="!form.descricao || !form.unidadeMedidaId" @click="salvar">Salvar</v-btn>
+            @click="salvar">Salvar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -155,6 +159,7 @@
           <v-icon color="success">mdi-plus-circle-outline</v-icon>Entrada de material
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
+          <v-form ref="formEntradaEl">
           <div class="text-body-2 font-weight-medium mb-1">{{ alvo?.descricao }}</div>
           <div class="text-caption text-medium-emphasis mb-3">
             Estoque atual: <b>{{ fmtQtd(alvo?.estoqueAtual) }}</b> ·
@@ -163,11 +168,13 @@
           <v-row dense>
             <v-col cols="6">
               <v-text-field v-model.number="formEntrada.quantidade" label="Quantidade *" type="number"
-                variant="outlined" density="compact" hide-details />
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']"
+                variant="outlined" density="compact" />
             </v-col>
             <v-col cols="6">
               <v-text-field v-model.number="formEntrada.custoUnitario" label="Custo unitário *" type="number"
-                prefix="R$" variant="outlined" density="compact" hide-details />
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']"
+                prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" class="mt-2">
               <v-text-field v-model="formEntrada.observacao" label="Observação / documento"
@@ -178,12 +185,13 @@
             Total: <b>R$ {{ fmt(formEntrada.quantidade * formEntrada.custoUnitario) }}</b> ·
             Novo saldo: <b>{{ fmtQtd((alvo?.estoqueAtual ?? 0) + formEntrada.quantidade) }}</b>
           </v-alert>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dlgEntrada = false">Cancelar</v-btn>
           <v-btn color="success" rounded="lg" :loading="salvando"
-            :disabled="!(formEntrada.quantidade > 0)" @click="salvarEntrada">Lançar entrada</v-btn>
+            @click="salvarEntrada">Lançar entrada</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -195,6 +203,7 @@
           <v-icon color="teal">mdi-tune-variant</v-icon>Ajustar estoque
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
+          <v-form ref="formAjusteEl">
           <div class="text-body-2 font-weight-medium mb-1">{{ alvo?.descricao }}</div>
           <div class="text-caption text-medium-emphasis mb-3">
             Estoque no sistema: <b>{{ fmtQtd(alvo?.estoqueAtual) }}</b>
@@ -202,7 +211,8 @@
           <v-row dense>
             <v-col cols="6">
               <v-text-field v-model.number="formAjuste.quantidadeContada" label="Qtd. física contada *"
-                type="number" variant="outlined" density="compact" hide-details />
+                :rules="[r => (r !== null && r !== undefined && r !== '') || 'Obrigatório']"
+                type="number" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="6">
               <v-text-field :model-value="diferencaAjuste" label="Diferença" readonly
@@ -212,6 +222,7 @@
           </v-row>
           <v-text-field v-model="formAjuste.observacao" label="Observação" variant="outlined"
             density="compact" hide-details class="mt-2" />
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -344,7 +355,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -370,6 +381,10 @@ const dlgAjuste = ref(false)
 const dlgConsumo = ref(false)
 const dlgInventario = ref(false)
 const dlgMov = ref(false)
+// refs dos <v-form> p/ validar e destacar os obrigatórios em vermelho (um por diálogo)
+const formNovoEl = ref()
+const formEntradaEl = ref()
+const formAjusteEl = ref()
 const editando = ref(false)
 const alvo = ref<any>(null)
 const movs = ref<any[]>([])
@@ -483,6 +498,7 @@ function abrirNovo() {
   // Unidade mais comum para materiais: UN
   form.value.unidadeMedidaId = unidades.value.find((u: any) => u.sigla === 'UN')?.id ?? unidades.value[0]?.id ?? null
   dlg.value = true
+  nextTick(() => formNovoEl.value?.resetValidation())
 }
 
 function abrirEdicao(item: any) {
@@ -497,9 +513,12 @@ function abrirEdicao(item: any) {
     codigoBarras: item.codigoBarras ?? '', ativo: item.ativo,
   }
   dlg.value = true
+  nextTick(() => formNovoEl.value?.resetValidation())
 }
 
 async function salvar() {
+  const _v = await formNovoEl.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const body = { empresaId: auth.empresaId, ...form.value }
@@ -530,9 +549,12 @@ function abrirEntrada(item: any) {
   alvo.value = item
   formEntrada.value = { quantidade: 0, custoUnitario: item.ultimoCusto || 0, observacao: '' }
   dlgEntrada.value = true
+  nextTick(() => formEntradaEl.value?.resetValidation())
 }
 
 async function salvarEntrada() {
+  const _v = await formEntradaEl.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     await api.post(`/materiais-consumo/${alvo.value.id}/entrada`, {
@@ -553,9 +575,12 @@ function abrirAjuste(item: any) {
   alvo.value = item
   formAjuste.value = { quantidadeContada: item.estoqueAtual ?? 0, observacao: '' }
   dlgAjuste.value = true
+  nextTick(() => formAjusteEl.value?.resetValidation())
 }
 
 async function salvarAjuste() {
+  const _v = await formAjusteEl.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     await api.post(`/materiais-consumo/${alvo.value.id}/ajuste`, {

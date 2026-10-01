@@ -124,11 +124,13 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <v-form ref="formPedido">
           <v-row dense class="mb-3">
             <v-col cols="12" sm="8">
               <v-autocomplete v-model="np.fornecedorId" :items="forns"
                 item-title="razaoSocial" item-value="id" auto-select-first clearable
                 label="Fornecedor *" variant="outlined" density="compact"
+                :rules="[r => !!r || 'Obrigatório']"
                 no-data-text="Nenhum fornecedor cadastrado" />
             </v-col>
             <v-col cols="12" sm="4">
@@ -239,6 +241,7 @@
               <td class="font-weight-bold text-primary">R$ {{ fmt(totalNp) }}</td><td></td>
             </tr></tfoot>
           </v-table>
+          </v-form>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-4 justify-end">
@@ -259,16 +262,20 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <v-form ref="formProdRapido">
           <div class="text-caption text-medium-emphasis mb-3">
             Cria um produto simples (categoria "Diversos", marca "Sem marca") já para incluir no pedido.
             Você completa o cadastro depois em Cadastros → Produtos.
           </div>
           <v-text-field v-model="prodRapido.descricao" label="Descrição do produto *"
+            :rules="[r => !!r || 'Obrigatório']"
             variant="outlined" density="compact" class="mb-2" autofocus />
           <v-select v-model="prodRapido.unidadeMedidaId" :items="unidades" :item-title="uniTitle" item-value="id"
-            label="Unidade *" variant="outlined" density="compact" class="mb-2" />
+            label="Unidade *" :rules="[r => !!r || 'Obrigatório']"
+            variant="outlined" density="compact" class="mb-2" />
           <v-text-field v-model.number="prodRapido.custoUnitario" label="Custo unit. (R$) — opcional"
             type="number" variant="outlined" density="compact" hide-details />
+          </v-form>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -285,11 +292,13 @@
       <v-card rounded="xl">
         <v-card-title class="pa-4">Receber Pedido</v-card-title>
         <v-card-text class="pa-4">
+          <v-form ref="formRec">
           <v-row dense class="mb-3">
             <v-col cols="12">
               <v-select v-model="rec.localEstoqueId" :items="locaisEstoque"
                 item-title="nome" item-value="id" label="Local de estoque (entrada) *"
-                variant="outlined" density="compact" hide-details
+                :rules="[r => !!r || 'Obrigatório']"
+                variant="outlined" density="compact"
                 hint="Onde as mercadorias serão lançadas" persistent-hint />
             </v-col>
             <v-col cols="6">
@@ -319,6 +328,7 @@
           <div class="text-caption text-medium-emphasis mt-1">
             Confira o que chegou. O que foi pedido e <b>não veio</b> vira um rascunho para re-pedir ao fornecedor.
           </div>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 justify-end">
           <v-btn variant="text" @click="dialogRec = false">Cancelar</v-btn>
@@ -419,7 +429,7 @@
 <script setup lang="ts">
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -429,6 +439,8 @@ const carregando = ref(false); const salvando = ref(false)
 const pedidos = ref<any[]>([]); const forns = ref<any[]>([]); const prods = ref<any[]>([])
 const locaisEstoque = ref<any[]>([])
 const dialog = ref(false); const dialogRec = ref(false)
+const formPedido = ref()  // <v-form> do Novo Pedido (destaca obrigatórios em vermelho)
+const formRec = ref()     // <v-form> do Receber Pedido
 const dialogDet = ref(false); const det = ref<any>(null)
 const totalDet = computed(() => (det.value?.itens ?? []).reduce((s: number, i: any) => s + (i.total ?? i.quantidade * i.precoUnitario), 0))
 const faltantes = ref<Record<string, boolean>>({})
@@ -516,13 +528,17 @@ function addItem() { if (!it.value.produtoId) return; np.value.itens.push({...it
 
 // Cadastro rápido de produto (para incluir no pedido algo que não existe no cadastro).
 const dlgProdRapido = ref(false)
+const formProdRapido = ref()  // <v-form> do cadastro rápido de produto
 const salvandoProdRapido = ref(false)
 const prodRapido = ref<{ descricao: string; unidadeMedidaId: string | null; custoUnitario: number | null }>({ descricao: '', unidadeMedidaId: null, custoUnitario: null })
 function abrirNovoProdRapido() {
   prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null, custoUnitario: null }
   dlgProdRapido.value = true
+  nextTick(() => formProdRapido.value?.resetValidation())
 }
 async function salvarProdRapido() {
+  const _v = await formProdRapido.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   const pr = prodRapido.value
   if (!pr.descricao || !pr.unidadeMedidaId) return
   salvandoProdRapido.value = true
@@ -549,6 +565,7 @@ async function abrirNovo() {
   selecionados.value = {}
   pickerEstoque.value = 'Abaixo do mínimo'; pickerUnidade.value = null; pickerBusca.value = ''
   dialog.value = true
+  nextTick(() => formPedido.value?.resetValidation())
   if (!forns.value.length || !prods.value.length) await carregarCatalogo()
   try {
     // Posição de TODOS os produtos (sem filtro) — filtramos no cliente.
@@ -604,6 +621,8 @@ function addSugestao(p: any) {
   })
 }
 async function salvar() {
+  const _v = await formPedido.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     await api.post('/pedidos-compra', {
@@ -872,9 +891,11 @@ async function abrirRecebimento(item: any) {
     rec.value = { pedidoId: item.id, localEstoqueId: locaisEstoque.value[0]?.id ?? null, dataRecebimento: new Date().toISOString().slice(0, 10), numeroNf: '', itens: [] }
   }
   dialogRec.value = true
+  nextTick(() => formRec.value?.resetValidation())
 }
 async function confirmarRec() {
-  if (!rec.value.localEstoqueId) { notif.erro('Selecione o local de estoque para dar entrada.'); return }
+  const _v = await formRec.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     // Envia a quantidade recebida de TODOS os itens (inclui 0) para o backend detectar faltantes.

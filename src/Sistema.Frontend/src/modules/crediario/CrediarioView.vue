@@ -222,6 +222,7 @@
           Receber Parcela {{ parcelaSelecionada?.numero }}
         </v-card-title>
         <v-card-text>
+          <v-form ref="formPagamento">
           <v-row dense>
             <v-col cols="12">
               <div class="text-body-2 mb-3">
@@ -235,19 +236,21 @@
             </v-col>
             <v-col cols="12">
               <v-text-field v-model.number="pagamento.valorPago" label="Valor recebido (R$) *"
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']"
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12">
               <v-text-field v-model="pagamento.dataPagamento" label="Data do recebimento *"
+                :rules="[r => !!r || 'Obrigatório']"
                 type="date" variant="outlined" density="compact" />
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn variant="text" @click="dlgPagamento = false" :disabled="salvando">Cancelar</v-btn>
           <v-btn color="success" rounded="lg" :loading="salvando"
-            :disabled="!(pagamento.valorPago > 0) || !pagamento.dataPagamento"
             @click="confirmarPagamento">
             Confirmar Recebimento
           </v-btn>
@@ -263,10 +266,12 @@
           Novo Crediário
         </v-card-title>
         <v-card-text>
+          <v-form ref="formNovo">
           <v-row dense>
             <v-col cols="12">
               <v-autocomplete v-model="novoForm.clienteId" label="Cliente *"
                 :items="clientesBusca" item-title="nome" item-value="id"
+                :rules="[r => !!r || 'Obrigatório']"
                 variant="outlined" density="compact"
                 :loading="buscandoCliente"
                 @update:search="buscarClientes"
@@ -276,6 +281,7 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="novoForm.valorTotal" label="Valor Total (R$) *"
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']"
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
@@ -285,6 +291,7 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="novoForm.numeroParcelas" label="Nº de Parcelas *"
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']"
                 type="number" min="1" max="60" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
@@ -294,6 +301,7 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model="novoForm.dataPrimeiraParcela" label="1ª Parcela em *"
+                :rules="[r => !!r || 'Obrigatório']"
                 type="date" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
@@ -318,6 +326,7 @@
               Parcela aprox.: <strong>R$ {{ fmt(valorParcela) }}</strong>
             </div>
           </v-card>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -332,7 +341,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -351,6 +360,9 @@ const crediarios = ref<any[]>([])
 const dlgParcelas = ref(false)
 const dlgPagamento = ref(false)
 const dlgNovo = ref(false)
+// refs dos <v-form> p/ validar e destacar os obrigatórios em vermelho (um por diálogo)
+const formPagamento = ref()
+const formNovo = ref()
 const crediarioSelecionado = ref<any>(null)
 const parcelas = ref<any[]>([])
 const parcelaSelecionada = ref<any>(null)
@@ -449,9 +461,12 @@ function abrirPagamento(parcela: any) {
     dataPagamento: new Date().toISOString().slice(0, 10),
   }
   dlgPagamento.value = true
+  nextTick(() => formPagamento.value?.resetValidation())
 }
 
 async function confirmarPagamento() {
+  const _v = await formPagamento.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     await api.post(`/crediario/parcelas/${parcelaSelecionada.value.id}/pagar`, {
@@ -540,13 +555,12 @@ function abrirNovo() {
   novoForm.value = novoFormPadrao()
   clientesBusca.value = []
   dlgNovo.value = true
+  nextTick(() => formNovo.value?.resetValidation())
 }
 
 async function salvarNovo() {
-  if (!novoForm.value.clienteId || novoForm.value.valorTotal <= 0 || !novoForm.value.dataPrimeiraParcela) {
-    notif.erro('Preencha cliente, valor total e data da 1ª parcela.')
-    return
-  }
+  const _v = await formNovo.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const clienteId = typeof novoForm.value.clienteId === 'object'

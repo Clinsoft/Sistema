@@ -186,17 +186,21 @@
           <v-toolbar-title class="text-body-1 font-weight-bold">Finalizar pedido</v-toolbar-title>
         </v-toolbar>
         <v-card-text class="pa-4">
+          <v-form ref="formCheckout">
           <div class="text-overline text-medium-emphasis mb-1">Seus dados</div>
           <v-text-field v-model="ped.nome" label="Seu nome *" variant="outlined"
-            density="comfortable" prepend-inner-icon="mdi-account" class="mb-2" hide-details />
+            :rules="[r => !!r || 'Obrigatório']"
+            density="comfortable" prepend-inner-icon="mdi-account" class="mb-2" />
           <v-text-field v-model="ped.telefone" label="WhatsApp / Telefone *" variant="outlined"
+            :rules="[r => !!r || 'Obrigatório']"
             density="comfortable" type="tel" prepend-inner-icon="mdi-whatsapp"
-            placeholder="(00) 00000-0000" class="mb-4" hide-details />
+            placeholder="(00) 00000-0000" class="mb-4" />
 
           <div class="text-overline text-medium-emphasis mb-1">Entrega</div>
           <v-select v-if="lojas.length > 1" v-model="ped.lojaId" :items="lojas"
             item-title="nome" item-value="id" label="Loja *" variant="outlined"
-            density="comfortable" prepend-inner-icon="mdi-storefront" class="mb-2" hide-details />
+            :rules="[r => !!r || 'Obrigatório']"
+            density="comfortable" prepend-inner-icon="mdi-storefront" class="mb-2" />
 
           <div class="entrega-toggle mb-3">
             <button class="entrega-op" :class="{ ativo: ped.tipoEntrega === 'Retirada' }"
@@ -211,10 +215,12 @@
 
           <v-textarea v-if="ped.tipoEntrega === 'Entrega'" v-model="ped.endereco"
             label="Endereço de entrega *" variant="outlined" rows="2" auto-grow
-            density="comfortable" prepend-inner-icon="mdi-map-marker" class="mb-2" hide-details />
+            :rules="[r => !!r || 'Obrigatório']"
+            density="comfortable" prepend-inner-icon="mdi-map-marker" class="mb-2" />
           <v-textarea v-model="ped.observacao" label="Observação (opcional)"
             variant="outlined" rows="2" auto-grow density="comfortable"
             prepend-inner-icon="mdi-note-text-outline" hide-details />
+          </v-form>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-4">
@@ -253,7 +259,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
@@ -279,6 +285,7 @@ const categoria = ref<string | null>(null)
 const carrinho = ref<ItemCarrinho[]>([])
 const carrinhoAberto = ref(false)
 const checkoutAberto = ref(false)
+const formCheckout = ref()  // <v-form> do checkout (destaca obrigatórios em vermelho)
 const sucessoAberto = ref(false)
 const enviando = ref(false)
 const scrolled = ref(false)
@@ -329,6 +336,7 @@ watch(carrinho, () => localStorage.setItem(chaveCarrinho, JSON.stringify(carrinh
 function abrirCheckout() {
   if (!ped.value.lojaId && lojas.value.length) ped.value.lojaId = lojas.value[0].id
   checkoutAberto.value = true
+  nextTick(() => formCheckout.value?.resetValidation())
 }
 
 function onScroll() { scrolled.value = window.scrollY > 8 }
@@ -363,12 +371,8 @@ async function carregar() {
 }
 
 async function enviarPedido() {
-  if (!ped.value.nome.trim() || !ped.value.telefone.trim()) {
-    alert('Preencha nome e telefone.'); return
-  }
-  if (ped.value.tipoEntrega === 'Entrega' && !ped.value.endereco.trim()) {
-    alert('Informe o endereço de entrega.'); return
-  }
+  const _v = await formCheckout.value?.validate()
+  if (_v && _v.valid === false) return
   enviando.value = true
   try {
     const { data } = await api.post(`/publico/vitrine/${empresaId}/pedido`, {

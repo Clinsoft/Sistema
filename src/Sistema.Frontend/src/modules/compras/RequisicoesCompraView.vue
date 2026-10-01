@@ -615,6 +615,8 @@ async function gerarPedido(g: { fornecedor: string; fornecedorId: string | null;
   if (!g.fornecedorId) { notif.aviso('Grupo sem fornecedor vinculado.'); return }
   gerando.value = g.fornecedor
   try {
+    // 1) Criação do pedido — só ISTO define sucesso/erro. Qualquer recarga da tela
+    //    fica fora deste try pra não mascarar um pedido que foi gravado.
     await api.post('/pedidos-compra', {
       empresaId: auth.empresaId,
       fornecedorId: g.fornecedorId,
@@ -623,15 +625,34 @@ async function gerarPedido(g: { fornecedor: string; fornecedorId: string | null;
       requisicaoCompraId: det.value?.id ?? null,
       itens: g.itens.map(i => ({
         produtoId: i.produtoId, descricao: i.descricao,
-        quantidade: i.quantidade, precoUnitario: i.custoUnitario,
+        quantidade: Number(i.quantidade) || 0, precoUnitario: Number(i.custoUnitario) || 0,
       })),
     })
-    notif.ok(`Pedido criado para ${g.fornecedor}. Requisição marcada como processada.`)
-    if (det.value) det.value.status = 'Processada'
-    await carregar()
-    await carregarConferencia()
-  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Erro ao gerar o pedido.') }
-  finally { gerando.value = null }
+  } catch (e: any) {
+    notif.erro(msgErro(e, 'Erro ao gerar o pedido.'))
+    gerando.value = null
+    return
+  }
+  // 2) Sucesso garantido (pedido gravado). Recarga é secundária.
+  notif.ok(`Pedido criado para ${g.fornecedor}. Requisição marcada como processada.`)
+  if (det.value) det.value.status = 'Processada'
+  try { await carregar(); await carregarConferencia() } catch { /* recarga é secundária */ }
+  gerando.value = null
+}
+
+/** Extrai a mensagem real do backend (mensagem/detail/title/errors do ProblemDetails). */
+function msgErro(e: any, padrao: string): string {
+  const d = e?.response?.data
+  if (!d) return padrao
+  if (typeof d === 'string' && d.trim()) return d
+  if (d.mensagem) return d.mensagem
+  if (d.detail) return d.detail
+  if (d.errors && typeof d.errors === 'object') {
+    const msgs = Object.values(d.errors).flat().filter(Boolean)
+    if (msgs.length) return msgs.join(' · ')
+  }
+  if (d.title) return d.title
+  return padrao
 }
 
 async function marcarProcessada() {

@@ -40,6 +40,17 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
 
         var hoje = DateTime.Today;
 
+        // ── Desativa automaticamente QUALQUER promoção vencida (DataFim < hoje) ──
+        // Assim ninguém precisa encerrar na mão: ao passar a data de validade a
+        // promoção sai do "Ativa" sozinha (some do PDV e da lista de ativas).
+        // O PDV já esconde por StatusCalculado; isto acerta a flag no banco também.
+        var promosVencidas = await db.Promocoes
+            .Where(p => p.EmpresaId == empresaId && p.Ativa
+                     && p.DataFim != null && p.DataFim.Value.Date < hoje)
+            .ToListAsync();
+        foreach (var pv in promosVencidas) pv.DefinirAtiva(false);
+        int promosVencidasDesativadas = promosVencidas.Count;
+
         // Busca todos os lotes com validade definida, não zerados
         var lotes = await (
             from l in db.Lotes
@@ -162,8 +173,8 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
         await db.SaveChangesAsync();
 
         logger.LogInformation(
-            "[VALIDADE] {Empresa}: 🟡 {Am} amarelo | 🔴 {Ve} vermelho | ⚠️ {Ur} urgente | ✖ {Vn} vencido | {Pr} promos geradas | {Enc} ofertas encerradas",
-            nomeFantasia, totalAmarelo, totalVermelho, totalUrgente, totalVencido, totalPromos, ofertasEncerradas);
+            "[VALIDADE] {Empresa}: 🟡 {Am} amarelo | 🔴 {Ve} vermelho | ⚠️ {Ur} urgente | ✖ {Vn} vencido | {Pr} promos geradas | {Enc} ofertas encerradas | {Venc} promos vencidas desativadas",
+            nomeFantasia, totalAmarelo, totalVermelho, totalUrgente, totalVencido, totalPromos, ofertasEncerradas, promosVencidasDesativadas);
     }
 
     private static string? ClassificarNivel(int dias, ConfiguracaoValidade cfg)

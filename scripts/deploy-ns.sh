@@ -7,6 +7,7 @@
 #     bash scripts/deploy-ns.sh --backend-only
 #     bash scripts/deploy-ns.sh --frontend-only
 #     bash scripts/deploy-ns.sh --no-build     # usa o último build em /tmp
+#     bash scripts/deploy-ns.sh --dry-run      # mostra o que faria, sem tocar no servidor
 #
 #  O QUE FAZ: compila o master, confere que é a base SaaS (gate presente),
 #  faz backup do que está no servidor, envia os 4 DLLs + o dist, REPÕE a marca
@@ -41,17 +42,21 @@ SCP="scp -i $NS_KEY -o StrictHostKeyChecking=no"
 DOTNET="dotnet"; command -v dotnet >/dev/null 2>&1 || DOTNET="/c/Program Files/dotnet/dotnet.exe"
 
 # ---- Flags ----
-DO_BACKEND=1; DO_FRONTEND=1; DO_BUILD=1
+DO_BACKEND=1; DO_FRONTEND=1; DO_BUILD=1; DRY=0
 for a in "${@:-}"; do
   case "$a" in
     "") ;;
     --backend-only)  DO_FRONTEND=0 ;;
     --frontend-only) DO_BACKEND=0 ;;
     --no-build)      DO_BUILD=0 ;;
+    --dry-run)       DRY=1 ;;
     -h|--help) grep -E '^#( |!)' "$0" | sed 's/^#//'; exit 0 ;;
     *) echo "arg desconhecido: $a (use --help)"; exit 2 ;;
   esac
 done
+
+# Executa o comando — ou só mostra, em --dry-run (não toca em nada no servidor).
+run() { if [ "$DRY" = 1 ]; then echo "   [dry-run] $*"; else "$@"; fi; }
 
 cd "$REPO"
 
@@ -66,29 +71,37 @@ echo ">> Deploy NS @ $STAMP | branch=$BR commit=$(git rev-parse --short HEAD)$DI
 # ---- Build backend ----
 if [ "$DO_BACKEND" = 1 ] && [ "$DO_BUILD" = 1 ]; then
   echo ">> [backend] dotnet publish..."
-  rm -rf /tmp/ns-build
-  "$DOTNET" publish src/Sistema.API -c Release -o /tmp/ns-build >/tmp/ns-build.log 2>&1 \
-    || { echo "FALHA no build backend:"; tail -25 /tmp/ns-build.log; exit 1; }
-  # sanity: o build do NS PRECISA ter o gate SaaS (senão é a base EcoGranel por engano)
-  if ! grep -aql AssinaturaGateFilter /tmp/ns-build/Sistema.API.dll; then
-    echo "ERRO: build sem AssinaturaGateFilter — não é a base SaaS. Abortado."; exit 1
+  if [ "$DRY" = 1 ]; then
+    echo "   [dry-run] $DOTNET publish src/Sistema.API -c Release -o /tmp/ns-build"
+  else
+    rm -rf /tmp/ns-build
+    "$DOTNET" publish src/Sistema.API -c Release -o /tmp/ns-build >/tmp/ns-build.log 2>&1 \
+      || { echo "FALHA no build backend:"; tail -25 /tmp/ns-build.log; exit 1; }
+    # sanity: o build do NS PRECISA ter o gate SaaS (senão é a base EcoGranel por engano)
+    if ! grep -aql AssinaturaGateFilter /tmp/ns-build/Sistema.API.dll; then
+      echo "ERRO: build sem AssinaturaGateFilter — não é a base SaaS. Abortado."; exit 1
+    fi
+    echo "   build ok (gate SaaS presente)."
   fi
-  echo "   build ok (gate SaaS presente)."
 fi
 
 # ---- Build frontend ----
 if [ "$DO_FRONTEND" = 1 ] && [ "$DO_BUILD" = 1 ]; then
   echo ">> [frontend] vite build..."
-  ( cd src/Sistema.Frontend && npx vite build >/tmp/ns-fe.log 2>&1 ) \
-    || { echo "FALHA no build frontend:"; tail -25 /tmp/ns-fe.log; exit 1; }
-  echo "   build ok ($(grep -o 'index-[A-Za-z0-9_-]*\.js' src/Sistema.Frontend/dist/index.html | head -1))."
+  if [ "$DRY" = 1 ]; then
+    echo "   [dry-run] (cd src/Sistema.Frontend && npx vite build)"
+  else
+    ( cd src/Sistema.Frontend && npx vite build >/tmp/ns-fe.log 2>&1 ) \
+      || { echo "FALHA no build frontend:"; tail -25 /tmp/ns-fe.log; exit 1; }
+    echo "   build ok ($(grep -o 'index-[A-Za-z0-9_-]*\.js' src/Sistema.Frontend/dist/index.html | head -1))."
+  fi
 fi
 
 # ---- Deploy backend (4 DLLs juntos + restart) ----
 if [ "$DO_BACKEND" = 1 ]; then
   echo ">> [backend] enviando e aplicando (reinicia o serviço)..."
-  $SCP "${DLLS[@]/#//tmp/ns-build/}" "$NS_HOST:/tmp/"
-  $SSH "$NS_HOST" "set -e
+  run $SCP "${DLLS[@]/#//tmp/ns-build/}" "$NS_HOST:/tmp/"
+  run $SSH "$NS_HOST" "set -e
     mkdir -p $BAK/api
     cd $API_DIR && cp ${DLLS[*]} $BAK/api/
     cp ${DLLS[*]/#//tmp/} $API_DIR/
@@ -100,9 +113,9 @@ fi
 # ---- Deploy frontend (dist + repõe marca do NS) ----
 if [ "$DO_FRONTEND" = 1 ]; then
   echo ">> [frontend] enviando e aplicando (estático)..."
-  tar -czf /tmp/ns-dist.tar.gz -C src/Sistema.Frontend/dist .
-  $SCP /tmp/ns-dist.tar.gz "$NS_HOST:/tmp/"
-  $SSH "$NS_HOST" "set -e
+  run tar -czf /tmp/ns-dist.tar.gz -C src/Sistema.Frontend/dist .
+  run $SCP /tmp/ns-dist.tar.gz "$NS_HOST:/tmp/"
+  run $SSH "$NS_HOST" "set -e
     mkdir -p $BAK
     cp -r $DIST_DIR $BAK/dist
     rm -rf $DIST_DIR/*
@@ -113,8 +126,8 @@ fi
 
 # ---- Health-check ----
 echo ">> sanity:"
-$SSH "$NS_HOST" "
+run $SSH "$NS_HOST" "
   printf '   /api/branding (SaaS, 200): '; curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5131/api/branding
   printf '   /api/produtos (401):       '; curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5131/api/produtos
   printf '   app https (200):           '; curl -s -o /dev/null -w '%{http_code}\n' $APP_URL/"
-echo ">> Deploy concluído. Backup do que havia antes: $BAK (no servidor)."
+if [ "$DRY" = 1 ]; then echo ">> [dry-run] nada foi enviado/reiniciado."; else echo ">> Deploy concluído. Backup do que havia antes: $BAK (no servidor)."; fi

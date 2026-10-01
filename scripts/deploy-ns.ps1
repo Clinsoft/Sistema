@@ -6,6 +6,7 @@
 #   & "D:\Sistema\scripts\deploy-ns.ps1" --frontend-only
 #   & "D:\Sistema\scripts\deploy-ns.ps1" --backend-only
 #   & "D:\Sistema\scripts\deploy-ns.ps1" --no-build
+#   & "D:\Sistema\scripts\deploy-ns.ps1" --dry-run   # simula, sem tocar no servidor
 
 $ErrorActionPreference = 'Stop'
 

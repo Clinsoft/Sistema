@@ -209,13 +209,16 @@
           Nova Conta a Pagar
         </v-card-title>
         <v-card-text>
+          <v-form ref="formNovo">
           <v-row dense>
             <v-col cols="12">
               <v-text-field v-model="form.descricao" label="Descrição *"
+                :rules="[r => !!r || 'Obrigatório']"
                 variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
               <v-select v-model="form.categoria" label="Categoria *" :items="categorias"
+                :rules="[r => !!r || 'Obrigatório']"
                 variant="outlined" density="compact">
                 <template #item="{ item, props }">
                   <v-list-item v-bind="props">
@@ -270,10 +273,12 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="form.valorOriginal" label="Valor total (R$) *"
+                :rules="[r => (Number(r) > 0) || 'Informe o valor']"
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model="form.dataVencimento" label="Primeiro vencimento *"
+                :rules="[r => !!r || 'Obrigatório']"
                 type="date" variant="outlined" density="compact" />
             </v-col>
 
@@ -338,6 +343,7 @@
                 variant="outlined" density="compact" hide-details />
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -718,7 +724,7 @@
 import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
@@ -925,6 +931,7 @@ const dasValor = computed(() => ((das.value.faturamento || 0) * (das.value.aliqu
 const lancamentos = ref<any[]>([])
 const dialogPagamento = ref(false)
 const dialogNovo = ref(false)
+const formNovo = ref()   // ref do <v-form> p/ validar e destacar os obrigatórios em vermelho
 const dialogEditar = ref(false)
 const dialogReneg = ref(false)
 const pagamento = ref({ id: '', valor: 0, data: new Date().toISOString().slice(0, 10) })
@@ -1175,6 +1182,8 @@ function abrirNovo() {
   form.value = formPadrao()
   form.value.localEstoqueId = auth.lojaAtualId ?? null   // padrão: loja ativa do topo
   dialogNovo.value = true
+  // Abre limpo (sem marcar os obrigatórios em vermelho antes da 1ª tentativa).
+  nextTick(() => formNovo.value?.resetValidation())
 }
 
 /**
@@ -1194,6 +1203,7 @@ function duplicarConta(item: any) {
     _buscaForneced: '',
   }
   dialogNovo.value = true
+  nextTick(() => formNovo.value?.resetValidation())
   notif.aviso('Cópia carregada. Escolha o fornecedor/beneficiário e salve.')
 }
 
@@ -1203,8 +1213,11 @@ function duplicarConta(item: any) {
  */
 async function salvarNova(continuar = false) {
   const f = form.value
-  if (!f.descricao || !f.categoria || f.valorOriginal <= 0 || !f.dataVencimento) {
-    notif.erro('Preencha todos os campos obrigatórios.')
+  // Valida pelo v-form: os campos obrigatórios que faltarem ficam destacados
+  // em vermelho (com a mensagem embaixo), além do aviso no rodapé.
+  const r = await formNovo.value?.validate()
+  if (r && r.valid === false) {
+    notif.erro('Preencha os campos destacados em vermelho.')
     return
   }
   salvando.value = true

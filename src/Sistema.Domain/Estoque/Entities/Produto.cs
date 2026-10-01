@@ -406,10 +406,22 @@ public class Produto : Entity
 
     public void EntradaEstoque(decimal quantidade, decimal custoUnitario)
     {
-        if (EstoqueAtual + quantidade > 0)
-            CustoUnitario = Math.Round(
-                (EstoqueAtual * CustoUnitario + quantidade * custoUnitario)
+        // Média ponderada só faz sentido com saldo POSITIVO. Se o estoque está zerado
+        // ou NEGATIVO (produto vendido além do saldo antes da entrada), a média usaria
+        // uma base negativa e podia gerar CUSTO NEGATIVO — nesse caso adota-se o custo
+        // da nova entrada. Nunca deixa o custo ficar < 0.
+        var custoNovo = custoUnitario < 0 ? 0 : custoUnitario;
+        if (EstoqueAtual > 0 && EstoqueAtual + quantidade > 0)
+        {
+            var media = Math.Round(
+                (EstoqueAtual * CustoUnitario + quantidade * custoNovo)
                 / (EstoqueAtual + quantidade), 4);
+            CustoUnitario = media < 0 ? custoNovo : media;
+        }
+        else
+        {
+            CustoUnitario = custoNovo;
+        }
         EstoqueAtual += quantidade;
     }
 

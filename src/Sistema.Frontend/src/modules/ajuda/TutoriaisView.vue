@@ -57,7 +57,9 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
-          <v-text-field v-model="form.titulo" label="Título *" variant="outlined" density="compact" class="mb-3" />
+          <v-form ref="formEdicao">
+          <v-text-field v-model="form.titulo" label="Título *" variant="outlined" density="compact" class="mb-3"
+            :rules="[r => !!r || 'Obrigatório']" />
           <v-row dense class="mb-1">
             <v-col cols="8">
               <v-text-field v-model="form.categoria" label="Categoria (ex.: PDV, Compras)"
@@ -75,6 +77,7 @@
             variant="outlined" density="compact" hint="Uma etapa por linha" persistent-hint />
           <v-switch v-model="form.ativo" color="primary" density="compact" hide-details
             :label="form.ativo ? 'Visível para o atendente' : 'Oculto'" class="mt-2" />
+          </v-form>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -87,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -99,6 +102,7 @@ const ehGestor = computed(() => ['Administrador', 'Gerente'].includes(auth.usuar
 const carregando = ref(false)
 const tutoriais = ref<any[]>([])
 const dialog = ref(false)
+const formEdicao = ref()
 const salvando = ref(false)
 const semeando = ref(false)
 const editandoId = ref<string | null>(null)
@@ -128,13 +132,16 @@ async function carregar() {
   } catch { tutoriais.value = [] } finally { carregando.value = false }
 }
 
-function abrirNovo() { editandoId.value = null; form.value = formPadrao(); form.value.ordem = tutoriais.value.length; dialog.value = true }
+function abrirNovo() { editandoId.value = null; form.value = formPadrao(); form.value.ordem = tutoriais.value.length; dialog.value = true; nextTick(() => formEdicao.value?.resetValidation()) }
 function abrirEdicao(t: any) {
   editandoId.value = t.id
   form.value = { titulo: t.titulo, categoria: t.categoria ?? '', videoUrl: t.videoUrl ?? '', descricao: t.descricao ?? '', ordem: t.ordem ?? 0, ativo: t.ativo }
   dialog.value = true
+  nextTick(() => formEdicao.value?.resetValidation())
 }
 async function salvar() {
+  const _v = await formEdicao.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const dados = { ...form.value, empresaId: auth.empresaId }

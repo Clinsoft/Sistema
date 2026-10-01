@@ -198,6 +198,7 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <v-form ref="formIA">
           <v-row>
             <v-col cols="12" md="5">
               <v-text-field v-model="iaForm.titulo" label="Título da arte"
@@ -207,12 +208,13 @@
               <v-select v-model="iaForm.tipo" :items="tiposArte" label="Tipo" variant="outlined"
                 density="compact" class="mb-2" />
               <v-textarea v-model="iaForm.prompt" label="Descreva a arte (prompt) *"
+                :rules="[r => !!r || 'Obrigatório']"
                 variant="outlined" density="compact" rows="5" auto-grow
                 placeholder="Ex: Banner de promoção de granola artesanal, fundo verde natural com folhas, texto '30% OFF' em destaque, estilo clean e apetitoso"
                 hint="Quanto mais detalhes (produto, oferta, cores, estilo), melhor o resultado" persistent-hint />
               <v-btn color="deep-purple" block class="mt-3" size="large"
                 prepend-icon="mdi-auto-fix" :loading="gerandoIA"
-                :disabled="!iaForm.prompt" @click="gerarComIA">
+                @click="gerarComIA">
                 Gerar Imagem
               </v-btn>
             </v-col>
@@ -235,6 +237,7 @@
               </div>
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -314,7 +317,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useNotifStore } from '@/stores/notif'
@@ -327,6 +330,8 @@ const auth = useAuthStore()
 
 // ── Geração com IA (Nano Banana 2 / Gemini) ──
 const dialogIA = ref(false)
+// ref do <v-form> p/ validar e destacar o obrigatório em vermelho
+const formIA = ref()
 const gerandoIA = ref(false)
 const imagemGeradaUrl = ref('')
 const arteGeradaId = ref<string | null>(null)
@@ -342,10 +347,12 @@ function abrirIA() {
   imagemGeradaUrl.value = ''
   arteGeradaId.value = null
   dialogIA.value = true
+  nextTick(() => formIA.value?.resetValidation())
 }
 
 async function gerarComIA() {
-  if (!iaForm.value.prompt) { notif.erro('Descreva a arte no prompt.'); return }
+  const _v = await formIA.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   gerandoIA.value = true
   imagemGeradaUrl.value = ''
   try {

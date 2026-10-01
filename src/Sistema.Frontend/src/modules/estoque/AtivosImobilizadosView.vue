@@ -102,6 +102,7 @@
           {{ editando ? 'Editar bem' : 'Novo bem' }}
         </v-card-title>
         <v-card-text class="pa-4 pt-2">
+          <v-form ref="formEdicao">
           <v-row dense>
             <v-col cols="12" sm="4">
               <v-text-field v-model="form.codigo" label="Código" variant="outlined" density="compact"
@@ -110,11 +111,11 @@
             </v-col>
             <v-col cols="12" sm="8">
               <v-text-field v-model="form.descricao" label="Descrição *" variant="outlined"
-                density="compact" autofocus />
+                density="compact" autofocus :rules="[r => !!r || 'Obrigatório']" />
             </v-col>
             <v-col cols="12" sm="4">
               <v-select v-model="form.categoria" :items="categorias" label="Categoria *"
-                variant="outlined" density="compact" />
+                variant="outlined" density="compact" :rules="[r => !!r || 'Obrigatório']" />
             </v-col>
             <v-col cols="12" sm="8">
               <v-autocomplete v-model="form.fornecedorPrincipalId" :items="fornecedores"
@@ -123,11 +124,12 @@
             </v-col>
             <v-col cols="12" sm="4">
               <v-text-field v-model.number="form.valorAquisicao" label="Valor de aquisição *"
-                type="number" prefix="R$" variant="outlined" density="compact" />
+                type="number" prefix="R$" variant="outlined" density="compact"
+                :rules="[r => (Number(r) > 0) || 'Informe um valor']" />
             </v-col>
             <v-col cols="12" sm="4">
               <v-text-field v-model="form.dataAquisicao" label="Data de aquisição *" type="date"
-                variant="outlined" density="compact" />
+                variant="outlined" density="compact" :rules="[r => !!r || 'Obrigatório']" />
             </v-col>
             <v-col cols="12" sm="4">
               <v-text-field v-model.number="form.quantidade" label="Quantidade" type="number"
@@ -166,6 +168,7 @@
                 variant="outlined" density="compact" />
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -187,10 +190,12 @@
           <div class="text-caption text-medium-emphasis mb-3">
             Valor contábil hoje: <b>R$ {{ fmt(alvo?.valorContabil) }}</b>
           </div>
+          <v-form ref="formBaixaRef">
           <v-text-field v-model="formBaixa.data" label="Data da baixa" type="date"
             variant="outlined" density="compact" class="mb-2" hide-details />
           <v-select v-model="formBaixa.motivo" :items="motivosBaixa" label="Motivo *"
-            variant="outlined" density="compact" hide-details />
+            variant="outlined" density="compact" :rules="[r => !!r || 'Obrigatório']" />
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -204,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -225,6 +230,8 @@ const filtroAtivo = ref<boolean | null>(true)
 
 const dlg = ref(false)
 const dlgBaixa = ref(false)
+const formEdicao = ref()
+const formBaixaRef = ref()
 const editando = ref(false)
 const alvo = ref<any>(null)
 
@@ -327,6 +334,7 @@ function abrirNovo() {
   alvo.value = null
   form.value = formPadrao()
   dlg.value = true
+  nextTick(() => formEdicao.value?.resetValidation())
 }
 
 function abrirEdicao(item: any) {
@@ -344,9 +352,12 @@ function abrirEdicao(item: any) {
     observacao: item.observacao ?? '', ativo: item.ativo,
   }
   dlg.value = true
+  nextTick(() => formEdicao.value?.resetValidation())
 }
 
 async function salvar() {
+  const _v = await formEdicao.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const body = { empresaId: auth.empresaId, ...form.value }
@@ -364,9 +375,12 @@ function abrirBaixa(item: any) {
   alvo.value = item
   formBaixa.value = { data: new Date().toISOString().slice(0, 10), motivo: '' }
   dlgBaixa.value = true
+  nextTick(() => formBaixaRef.value?.resetValidation())
 }
 
 async function salvarBaixa() {
+  const _v = await formBaixaRef.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     const r = await api.post(`/ativos-imobilizados/${alvo.value.id}/baixar`, {

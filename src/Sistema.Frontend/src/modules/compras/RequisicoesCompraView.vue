@@ -111,14 +111,18 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
+          <v-form ref="formProdRapido">
           <div class="text-caption text-medium-emphasis mb-3">
             Cria um produto simples (categoria "Diversos", marca "Sem marca") já para incluir na requisição.
             O gestor completa o cadastro depois.
           </div>
           <v-text-field v-model="prodRapido.descricao" label="Descrição do produto *"
+            :rules="[r => !!r || 'Obrigatório']"
             variant="outlined" density="compact" class="mb-2" autofocus />
           <v-select v-model="prodRapido.unidadeMedidaId" :items="unidades" :item-title="uniTitle" item-value="id"
-            label="Unidade *" variant="outlined" density="compact" hide-details />
+            label="Unidade *" :rules="[r => !!r || 'Obrigatório']"
+            variant="outlined" density="compact" />
+          </v-form>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3 justify-end">
@@ -351,7 +355,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -435,6 +439,7 @@ function addItem() {
 const unidades = ref<any[]>([])
 const uniTitle = (u: any) => u?.descricao ? `${u.sigla} — ${u.descricao}` : (u?.sigla ?? '')
 const dlgProdRapido = ref(false)
+const formProdRapido = ref()  // <v-form> do cadastro rápido de produto
 const salvandoProdRapido = ref(false)
 const prodRapidoModo = ref<'nova' | 'existente'>('nova')
 const prodRapido = ref<{ descricao: string; unidadeMedidaId: string | null }>({ descricao: '', unidadeMedidaId: null })
@@ -450,14 +455,18 @@ async function abrirNovoProdRapido() {
   await carregarUnidades()
   prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null }
   dlgProdRapido.value = true
+  nextTick(() => formProdRapido.value?.resetValidation())
 }
 async function abrirNovoProdRapidoExistente() {
   prodRapidoModo.value = 'existente'
   await carregarUnidades()
   prodRapido.value = { descricao: '', unidadeMedidaId: unidades.value[0]?.id ?? null }
   dlgProdRapido.value = true
+  nextTick(() => formProdRapido.value?.resetValidation())
 }
 async function salvarProdRapido() {
+  const _v = await formProdRapido.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   const pr = prodRapido.value
   if (!pr.descricao || !pr.unidadeMedidaId) return
   salvandoProdRapido.value = true

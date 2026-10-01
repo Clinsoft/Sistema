@@ -102,6 +102,7 @@
           <v-icon icon="mdi-tune-vertical" color="primary" /> Ajustar Estoque
         </v-card-title>
         <v-card-text class="pa-4 pt-2" v-if="ajuste.produto">
+          <v-form ref="formAjuste">
           <div class="text-body-2 mb-3">
             <strong>{{ ajuste.produto.descricao }}</strong>
             <div class="text-caption text-medium-emphasis">
@@ -109,15 +110,18 @@
             </div>
           </div>
           <v-select v-model="ajuste.localEstoqueId" :items="locaisEstoque" item-title="nome" item-value="id"
-            label="Local de estoque *" variant="outlined" density="compact" class="mb-2" />
+            label="Local de estoque *" variant="outlined" density="compact" class="mb-2"
+            :rules="[r => !!r || 'Obrigatório']" />
           <v-text-field v-model.number="ajuste.quantidadeContada" label="Quantidade contada (real) *"
             type="number" variant="outlined" density="compact" class="mb-2"
-            hint="O sistema calcula e registra a diferença" persistent-hint />
+            hint="O sistema calcula e registra a diferença" persistent-hint
+            :rules="[r => (r !== null && r !== undefined && r !== '') || 'Informe a quantidade']" />
           <v-text-field v-model="ajuste.observacao" label="Motivo / Observação"
             variant="outlined" density="compact" />
           <v-alert v-if="ajuste.quantidadeContada != null" type="info" variant="tonal" density="compact" class="mt-3">
             Diferença: <b>{{ (ajuste.quantidadeContada - (ajuste.produto.estoqueAtual ?? 0)).toFixed(2) }}</b>
           </v-alert>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
@@ -132,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -152,6 +156,7 @@ const filtroLoja = ref<string | null>(auth.lojaAtualId ?? null)  // já vem na l
 const apenasAbaixoMinimo = ref(false)
 
 const dlgAjuste = ref(false)
+const formAjuste = ref()
 const ajuste = ref<any>({ produto: null, localEstoqueId: null, quantidadeContada: 0, observacao: '' })
 
 const headers = [
@@ -205,10 +210,12 @@ function abrirAjuste(produto: any) {
   const local = locaisEstoque.value.find((l: any) => l.principal)?.id ?? locaisEstoque.value[0]?.id ?? null
   ajuste.value = { produto, localEstoqueId: local, quantidadeContada: produto.estoqueAtual ?? 0, observacao: '' }
   dlgAjuste.value = true
+  nextTick(() => formAjuste.value?.resetValidation())
 }
 
 async function salvarAjuste() {
-  if (!ajuste.value.localEstoqueId) { notif.erro('Selecione o local de estoque.'); return }
+  const _v = await formAjuste.value?.validate()
+  if (_v && _v.valid === false) { notif.erro('Preencha os campos destacados em vermelho.'); return }
   salvando.value = true
   try {
     await api.post('/ajuste-estoque/unitario', {

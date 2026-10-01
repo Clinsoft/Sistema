@@ -17,6 +17,9 @@
 # =============================================================================
 set -euo pipefail
 
+# Garante dotnet/node/npm/npx no PATH mesmo quando chamado via Git Bash do PowerShell.
+export PATH="/c/Program Files/dotnet:/c/Program Files/nodejs:$PATH"
+
 # ---- Config do servidor NS ----
 NS_HOST="root@191.252.212.225"
 NS_KEY="$HOME/.ssh/natural-sistemas"               # = C:/Users/User/.ssh/natural-sistemas

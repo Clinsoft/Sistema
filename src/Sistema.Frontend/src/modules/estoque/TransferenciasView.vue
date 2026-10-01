@@ -64,7 +64,8 @@
             <!-- Busca produto -->
             <v-text-field v-model="form.buscaProduto" label="Produto *"
               variant="outlined" density="compact" @update:model-value="buscarProduto"
-              :loading="buscandoProduto" class="mb-1" />
+              :loading="buscandoProduto" class="mb-1"
+              :rules="[() => !!form.produtoId || 'Selecione um produto da lista']" />
             <v-list v-if="produtosSugeridos.length" elevation="2" rounded="lg" class="mb-2">
               <v-list-item v-for="p in produtosSugeridos" :key="p.id"
                 :title="p.descricao" :subtitle="`Cód: ${p.codigo} | Estoque: ${p.estoqueAtual}`"

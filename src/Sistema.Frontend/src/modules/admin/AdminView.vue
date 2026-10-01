@@ -11,6 +11,8 @@
       <v-btn variant="text" prepend-icon="mdi-refresh" :loading="carregando" @click="carregar" class="text-none">Atualizar</v-btn>
     </div>
 
+    <v-alert v-if="nfseErro" type="warning" variant="tonal" density="compact" class="mb-3" :text="`Emissor NFS-e: ${nfseErro}`" />
+
     <!-- Resumo -->
     <v-row dense class="mb-2">
       <v-col v-for="c in resumo" :key="c.label" cols="6" sm="3">
@@ -26,7 +28,7 @@
         <thead>
           <tr>
             <th>Loja</th><th>Plano</th><th>Situação</th><th class="text-center">Usuários</th>
-            <th class="text-center">Lojas</th><th>Vencimento / Trial</th><th class="text-right">Ações</th>
+            <th class="text-center">Lojas</th><th v-if="nfseAtivo" class="text-center">NFS-e</th><th>Vencimento / Trial</th><th class="text-right">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -42,6 +44,11 @@
             <td><v-chip :color="corSit(e.situacao)" size="small" label>{{ labelSit(e.situacao) }}</v-chip></td>
             <td class="text-center">{{ e.usuarios }}</td>
             <td class="text-center">{{ e.lojas }}</td>
+            <td v-if="nfseAtivo" class="text-center">
+              <v-chip v-if="nfseDe(e)" :color="corNfse(nfseDe(e).assinatura)" size="x-small" label
+                :title="`${nfseDe(e).notas_emitidas} nota(s) · ${nfseDe(e).ambiente}`">{{ labelNfse(nfseDe(e).assinatura) }}</v-chip>
+              <span v-else class="text-medium-emphasis">—</span>
+            </td>
             <td class="text-caption">
               <span v-if="e.situacao.startsWith('Trial')">Trial até {{ fmtData(e.trialAte) }}</span>
               <span v-else-if="e.proximoVencimento">Vence {{ fmtData(e.proximoVencimento) }}</span>
@@ -55,7 +62,33 @@
             </td>
           </tr>
           <tr v-if="!lista.length && !carregando">
-            <td colspan="7" class="text-center text-medium-emphasis py-6">Nenhuma loja cadastrada ainda.</td>
+            <td :colspan="nfseAtivo ? 8 : 7" class="text-center text-medium-emphasis py-6">Nenhuma loja cadastrada ainda.</td>
+          </tr>
+        </tbody>
+      </v-table>
+    </v-card>
+
+    <!-- Clientes que existem SÓ no Emissor NFS-e (não são lojas da Natural) -->
+    <v-card v-if="nfseAtivo && nfseSoEmissor.length" rounded="xl" elevation="1" class="mt-4">
+      <v-card-title class="text-subtitle-1 d-flex align-center">
+        <v-icon size="20" color="deep-purple-darken-1" class="mr-2">mdi-file-document-outline</v-icon>
+        Só no Emissor NFS-e
+        <span class="text-caption text-medium-emphasis ml-2">{{ nfseSoEmissor.length }} — não são lojas da Natural</span>
+      </v-card-title>
+      <v-table density="comfortable">
+        <thead>
+          <tr><th>Empresa</th><th>Município</th><th>Situação</th><th class="text-center">Notas</th><th>Último acesso</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="c in nfseSoEmissor" :key="c.id">
+            <td>
+              <div class="font-weight-medium">{{ c.razao_social }}</div>
+              <div class="text-caption text-medium-emphasis">{{ fmtCnpj(c.cnpj) }}</div>
+            </td>
+            <td>{{ c.municipio }}<span v-if="c.uf">/{{ c.uf }}</span></td>
+            <td><v-chip :color="corNfse(c.assinatura)" size="small" label>{{ labelNfse(c.assinatura) }}</v-chip></td>
+            <td class="text-center">{{ c.notas_emitidas }}</td>
+            <td class="text-caption">{{ fmtData(c.ultimo_acesso) }}</td>
           </tr>
         </tbody>
       </v-table>
@@ -72,6 +105,11 @@ const notif = useNotifStore()
 const lista = ref<any[]>([])
 const carregando = ref(false)
 const planos = ['Micro', 'Essencial', 'Profissional', 'Rede']
+const nfse = ref<any[]>([])
+const nfseErro = ref<string | null>(null)
+// so aparece na instancia que INTEGRA o NFS-e (Nfse:BaseUrl/Token configurados).
+// No EcoGranel fica false -> a coluna/seção NFS-e nem renderiza (tela identica à original).
+const nfseAtivo = ref(false)
 
 const resumo = computed(() => [
   { label: 'Total', n: lista.value.length, cor: 'primary' },
@@ -86,6 +124,14 @@ async function carregar() {
     const { data } = await api.get('/admin/empresas')
     lista.value = data.empresas ?? []
   } catch { notif.erro('Sem permissão ou falha ao carregar.') }
+  // clientes do Emissor NFS-e — falha aqui NAO derruba o painel da Natural
+  try {
+    const { data } = await api.get('/admin/nfse-clientes', { _quiet: true } as any)
+    nfseAtivo.value = !!data.configurado   // EcoGranel = false -> nada de NFS-e na tela
+    nfse.value = data.clientes ?? []
+    // so avisa se ESTA configurado mas falhou; "nao configurado" fica silencioso
+    nfseErro.value = (data.configurado && !data.ok) ? (data.erro ?? 'Falha ao ler o emissor.') : null
+  } catch { nfse.value = []; nfseErro.value = 'Não consegui consultar o Emissor NFS-e.' }
   finally { carregando.value = false }
 }
 
@@ -107,6 +153,19 @@ const labelSit = (s: string) => ({ TrialAtivo: 'Em teste', TrialExpirado: 'Teste
 const corSit = (s: string) => ({ TrialAtivo: 'info', Ativa: 'success', EmTolerancia: 'warning', TrialExpirado: 'error', Bloqueada: 'error', Cancelada: 'grey' } as any)[s] ?? 'grey'
 const fmtData = (v: string | null) => v ? new Date(v).toLocaleDateString('pt-BR') : '—'
 const fmtCnpj = (c: string) => (c || '').length === 14 ? c.replace(/^(\w{2})(\w{3})(\w{3})(\w{4})(\w{2})$/, '$1.$2.$3/$4-$5') : c
+
+// --- junção com o Emissor NFS-e (por CNPJ) ---
+const soDigitos = (s: string) => (s || '').replace(/\D/g, '')
+const nfsePorCnpj = computed(() => {
+  const m = new Map<string, any>()
+  for (const c of nfse.value) m.set(soDigitos(c.cnpj), c)
+  return m
+})
+const nfseDe = (e: any) => nfsePorCnpj.value.get(soDigitos(e.cnpj))
+const cnpjsLojas = computed(() => new Set(lista.value.map((e: any) => soDigitos(e.cnpj))))
+const nfseSoEmissor = computed(() => nfse.value.filter((c: any) => !cnpjsLojas.value.has(soDigitos(c.cnpj))))
+const labelNfse = (s: string) => ({ trial: 'Teste', ativa: 'Ativa', inadimplente: 'Em atraso', cancelada: 'Cancelada' } as any)[s] ?? s
+const corNfse = (s: string) => ({ trial: 'info', ativa: 'success', inadimplente: 'warning', cancelada: 'grey' } as any)[s] ?? 'grey'
 
 onMounted(carregar)
 </script>

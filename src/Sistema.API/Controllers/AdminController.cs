@@ -18,7 +18,11 @@ namespace Sistema.API.Controllers;
 [Route("api/admin")]
 [Authorize]
 [Sistema.API.Auth.PermitirBloqueado]
-public class AdminController(SistemaDbContext db, IConfiguration config, IMemoryCache cache) : ControllerBase
+public class AdminController(
+    SistemaDbContext db,
+    IConfiguration config,
+    IMemoryCache cache,
+    Sistema.Infrastructure.Services.NfseClientesService nfse) : ControllerBase
 {
     private bool EhSuperAdmin()
     {
@@ -90,6 +94,19 @@ public class AdminController(SistemaDbContext db, IConfiguration config, IMemory
         .ToList();
 
         return Ok(new { total = lista.Count, empresas = lista });
+    }
+
+    /// <summary>
+    /// Clientes do Emissor NFS-e (app PHP separado), para o painel juntar com as lojas
+    /// da Natural POR CNPJ. Leitura via NfseClientesService; se o emissor estiver fora do
+    /// ar, devolve ok=false + lista vazia (o painel continua mostrando os dados da Natural).
+    /// </summary>
+    [HttpGet("nfse-clientes")]
+    public async Task<IActionResult> NfseClientes(CancellationToken ct)
+    {
+        if (!EhSuperAdmin()) return Forbid();
+        var r = await nfse.ListarAsync(ct);
+        return Ok(new { ok = r.Ok, configurado = nfse.Configurado, erro = r.Erro, total = r.Clientes.Count, clientes = r.Clientes });
     }
 
     [HttpPost("{id:guid}/plano")]

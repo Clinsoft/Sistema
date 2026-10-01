@@ -144,6 +144,9 @@ public static class ServiceCollectionExtensions
         // Gateway de pagamento (assinaturas SaaS): Asaas
         services.AddHttpClient<Sistema.Infrastructure.Services.AsaasService>(c =>
             c.Timeout = TimeSpan.FromSeconds(30));
+        // Emissor NFS-e (app PHP separado): leitura dos clientes p/ o painel SuperAdmin unico
+        services.AddHttpClient<Sistema.Infrastructure.Services.NfseClientesService>(c =>
+            c.Timeout = TimeSpan.FromSeconds(20));
         // Concorrência — geocodificação (Nominatim) + busca de concorrentes (Overpass/OSM)
         services.AddHttpClient<Sistema.Infrastructure.Services.MapaConcorrenciaService>(c =>
             c.Timeout = TimeSpan.FromSeconds(40));

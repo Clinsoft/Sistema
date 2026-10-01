@@ -125,9 +125,11 @@
           Novo Recebimento
         </v-card-title>
         <v-card-text>
+          <v-form ref="formNovo">
           <v-row dense>
             <v-col cols="12">
               <v-text-field v-model="form.descricao" label="Descrição *"
+                :rules="[r => !!r || 'Obrigatório']"
                 variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
@@ -157,10 +159,12 @@
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model.number="form.valorOriginal" label="Valor (R$) *"
+                :rules="[r => (Number(r) > 0) || 'Informe o valor']"
                 type="number" step="0.01" prefix="R$" variant="outlined" density="compact" />
             </v-col>
             <v-col cols="12" sm="6">
               <v-text-field v-model="form.dataVencimento" label="Primeiro vencimento *"
+                :rules="[r => !!r || 'Obrigatório']"
                 type="date" variant="outlined" density="compact" />
             </v-col>
 
@@ -195,6 +199,7 @@
                 variant="outlined" density="compact" />
             </v-col>
           </v-row>
+          </v-form>
         </v-card-text>
         <v-card-actions class="pa-4 pt-0 flex-wrap">
           <v-spacer />
@@ -307,7 +312,7 @@
 import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -318,6 +323,7 @@ const notif = useNotifStore()
 
 const carregando = ref(false)
 const salvando = ref(false)
+const formNovo = ref()   // ref do <v-form> p/ validar e destacar os obrigatórios em vermelho
 const lancamentos = ref<any[]>([])
 const dialogBaixa = ref(false)
 const dialogNovo = ref(false)
@@ -540,6 +546,7 @@ function filtrarHoje() {
 function abrirNovo() {
   form.value = formPadrao()
   dialogNovo.value = true
+  nextTick(() => formNovo.value?.resetValidation())
 }
 
 // Duplica um título: reabre "Novo Recebimento" com os dados e o cliente em branco.
@@ -554,13 +561,16 @@ function duplicarConta(item: any) {
     clienteId: item.clienteId ?? null,
   }
   dialogNovo.value = true
+  nextTick(() => formNovo.value?.resetValidation())
   notif.aviso('Cópia carregada. Confira os dados e salve.')
 }
 
 async function salvarNovo(continuar = false) {
   const f = form.value
-  if (!f.descricao || f.valorOriginal <= 0 || !f.dataVencimento) {
-    notif.erro('Preencha descrição, valor e vencimento.')
+  // Valida pelo v-form: os obrigatórios que faltarem ficam em vermelho.
+  const r = await formNovo.value?.validate()
+  if (r && r.valid === false) {
+    notif.erro('Preencha os campos destacados em vermelho.')
     return
   }
   salvando.value = true

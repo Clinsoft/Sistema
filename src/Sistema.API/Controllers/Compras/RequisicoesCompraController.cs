@@ -325,21 +325,16 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
             .ToListAsync(ct);
 
-        // Saldo ATUAL do produto NESTA loja (reconstruído do histórico de movimentações) e mínimo.
-        var saldos = (await db.MovimentacoesEstoque.AsNoTracking()
-            .Where(m => m.EmpresaId == req.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId
-                && reqProdutoIds.Contains(m.ProdutoId))
-            .GroupBy(m => m.ProdutoId)
-            .Select(g => new
-            {
-                ProdutoId = g.Key,
-                Saldo = g.Sum(m => m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada ? m.Quantidade
-                                 : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida ? -m.Quantidade : 0m)
-            }).ToListAsync(ct))
-            .ToDictionary(x => x.ProdutoId, x => x.Saldo);
-        var minimos = await db.Produtos.AsNoTracking()
+        // Estoque do produto: usa o EstoqueAtual do CADASTRO (carga inicial + entradas
+        // escrituradas − vendas). A reconstrução por loja via MovimentacoesEstoque ficava
+        // SEM o saldo de abertura (a carga inicial não gerou movimentação) → saldo muito
+        // negativo e "precisa pedir" FALSO em produtos cheios. EstoqueAtual é o número
+        // confiável (total da empresa). [[reconstrução por loja precisa do saldo de abertura]]
+        var prodEstoque = await db.Produtos.AsNoTracking()
             .Where(p => reqProdutoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.EstoqueMinimo }).ToDictionaryAsync(p => p.Id, p => p.EstoqueMinimo, ct);
+            .Select(p => new { p.Id, p.EstoqueAtual, p.EstoqueMinimo }).ToListAsync(ct);
+        var saldos = prodEstoque.ToDictionary(x => x.Id, x => x.EstoqueAtual);
+        var minimos = prodEstoque.ToDictionary(x => x.Id, x => x.EstoqueMinimo);
 
         var linhas = itens.Select(it =>
         {
@@ -357,13 +352,20 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             var estoqueLoja = saldos.GetValueOrDefault(it.ProdutoId, 0m);
             var minimo = minimos.GetValueOrDefault(it.ProdutoId, 0m);
             var estoqueBaixo = estoqueLoja <= minimo;
+            var temRecebido = pedidosDoItem.Any(p => p.status == "Recebido");
 
-            // Estoque no/abaixo do mínimo MANDA: precisa pedir mesmo que exista OC antiga (o
-            // produto pode já ter acabado). Só não alerta se há pedido EM ABERTO a caminho.
+            // Prioridade (o que o usuário precisa fazer):
+            //  1) pedido EM ABERTO a caminho  → não pedir de novo (A caminho)
+            //  2) deu entrada desde a requisição → já chegou (Chegou)
+            //  3) estoque baixo MAS tem pedido já Recebido → chegou e falta ESCRITURAR
+            //     (não é pra pedir de novo — é pra lançar a entrada p/ o estoque subir)
+            //  4) estoque baixo e nada cobrindo → Precisa pedir
+            //  5) resto → Estoque OK
             string situacao;
-            if (estoqueBaixo && !jaPedido) situacao = "PrecisaPedir";
-            else if (jaPedido) situacao = "JaPedido";
+            if (jaPedido) situacao = "JaPedido";
             else if (vaiChegar) situacao = "VaiChegar";
+            else if (estoqueBaixo && temRecebido) situacao = "RecebidoEscriturar";
+            else if (estoqueBaixo) situacao = "PrecisaPedir";
             else situacao = "Aguardando";
 
             return new
@@ -377,6 +379,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoqueLoja,
                 estoqueMinimo = minimo,
                 estoqueBaixo,
+                temRecebido,
                 pedidos = pedidosDoItem,
                 situacao,
             };
@@ -389,9 +392,12 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             totalItens = linhas.Count,
             jaEmPedido = linhas.Count(l => l.jaPedido),
             precisaPedir = linhas.Count(l => l.situacao == "PrecisaPedir"),
-            itensPendentes = linhas.Count(l => !l.jaPedido && l.situacao != "VaiChegar"),
+            recebidoEscriturar = linhas.Count(l => l.situacao == "RecebidoEscriturar"),
+            // "sem pedido" = pendente de ação de compra: só o que realmente precisa pedir.
+            itensPendentes = linhas.Count(l => l.situacao == "PrecisaPedir"),
             vaoChegar = linhas.Count(l => l.situacao == "VaiChegar"),
-            completo = linhas.All(l => l.situacao == "VaiChegar" || l.jaPedido),
+            // Coberto = a caminho, chegou, ou recebido (falta só escriturar) — nada a pedir.
+            completo = linhas.All(l => l.situacao is "VaiChegar" or "JaPedido" or "RecebidoEscriturar" or "Aguardando"),
             itens = linhas,
         });
     }

@@ -282,7 +282,10 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
     /// Usa o vínculo pedido→requisição quando existe; senão, cai para os pedidos da
     /// mesma loja criados a partir da data da requisição (aproximado, para dados antigos).
     /// </summary>
+    /// <summary>Conferência (estoque por loja + situação de compra). Só gestor — o atendente
+    /// NÃO deve ver o estoque de cada unidade (evita uso indevido).</summary>
     [HttpGet("{id:guid}/conferencia")]
+    [Authorize(Roles = "Administrador,Gerente")]
     public async Task<IActionResult> Conferencia(Guid id, CancellationToken ct)
     {
         var req = await db.RequisicoesCompra.AsNoTracking()

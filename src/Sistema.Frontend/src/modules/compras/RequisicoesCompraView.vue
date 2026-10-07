@@ -165,8 +165,8 @@
               @click="abrirNovoProdRapidoExistente">Não achou? Cadastrar produto novo</v-btn>
           </div>
 
-          <!-- Acompanhamento: o que vai chegar (NF já cruzada) x aguardando fornecedor -->
-          <v-alert v-if="conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
+          <!-- Acompanhamento: estoque por loja + situação. SÓ GESTOR (o atendente não vê estoque). -->
+          <v-alert v-if="ehGestor && conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
             <b v-if="conf.completo">Nada a pedir nesta requisição — os {{ conf.totalItens }} itens já estão cobertos (a caminho, chegaram ou com estoque). Evite pedir de novo.</b>
             <b v-else>
@@ -551,6 +551,8 @@ const conf = ref<any>(null)
 const mostrarConf = ref(false)
 
 async function carregarConferencia() {
+  // Conferência (estoque por loja) é só do gestor — atendente nem chama a API.
+  if (!ehGestor.value) { conf.value = null; return }
   if (!det.value?.id) return
   try {
     const r = await api.get(`/requisicoes-compra/${det.value.id}/conferencia`)

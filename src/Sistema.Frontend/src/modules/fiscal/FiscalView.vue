@@ -202,6 +202,13 @@
               prepend-inner-icon="mdi-magnify" />
           </v-col>
           <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosRec.numero" label="Nº da nota"
+              variant="outlined" density="compact" hide-details clearable
+              prepend-inner-icon="mdi-pound" inputmode="numeric"
+              hint="Digite o número e Enter — traz o emitente" persistent-hint
+              @keyup.enter="carregarRecebidas" />
+          </v-col>
+          <v-col cols="12" sm="2">
             <FiltroMes @selecionar="(i, f) => { filtrosRec.dataInicio = i; filtrosRec.dataFim = f; carregarRecebidas() }" />
           </v-col>
           <v-col cols="12" sm="2">
@@ -404,7 +411,6 @@
           'O sistema extrai automaticamente <b>emitente, itens, totais e duplicatas</b>, cadastra o <b>fornecedor</b> pelo CNPJ (se novo) e tenta <b>vincular os produtos</b> por código de barras ou código do fornecedor.',
           'Itens não vinculados aparecem como <b>pendentes</b>. Clique em <b>Abrir Entrada</b> para conferir: vincule/cadastre os produtos, ajuste conversão de unidade, lote/validade e o preço de venda sugerido.',
           'Ao <b>Processar</b> a entrada, o estoque é movimentado e as <b>duplicatas viram contas a pagar</b>. A entrada pode ser <b>editada</b> enquanto Em Edição, ou <b>estornada/excluída</b> (Administrador) depois. Use o filtro por status para localizar entradas.',
-          '<b>Ordem de Compra</b>: vincule a entrada à OC que originou a compra (o botão funciona mesmo depois de processada e fecha a OC como <b>Recebida</b>). Notas sem OC ganham o chip <b>sem OC</b>; use o filtro <b>Só sem OC</b> para achá-las e o botão <b>Ignorar</b> para dispensar as que não terão OC (compras avulsas).',
         ]"
       />
 
@@ -1183,6 +1189,7 @@ const resumoRecebidas = ref({
 
 const filtrosRec = ref({
   emitente: '',
+  numero: '',
   dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   dataFim: new Date().toISOString().slice(0, 10),
   manifestacao: null as string | null,

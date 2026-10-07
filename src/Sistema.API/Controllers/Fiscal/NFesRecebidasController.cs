@@ -52,6 +52,7 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
     public async Task<IActionResult> Listar(
         [FromQuery] Guid empresaId,
         [FromQuery] string? emitente,
+        [FromQuery] string? numero,
         [FromQuery] DateTime? dataInicio,
         [FromQuery] DateTime? dataFim,
         [FromQuery] ManifestacaoTipo? manifestacao,
@@ -60,6 +61,20 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
     {
         var query = db.NotasFiscaisRecebidas.AsNoTracking()
             .Where(n => n.EmpresaId == empresaId);
+
+        // Busca por NÚMERO da nota (nNF): fica nos 9 dígitos na posição 26 da chave de acesso.
+        // Ex.: digitar "67211" acha a nota 000067211 e mostra o emitente.
+        if (!string.IsNullOrWhiteSpace(numero))
+        {
+            var dig = new string(numero.Where(char.IsDigit).ToArray());
+            if (dig.Length == 44)
+                query = query.Where(n => n.ChaveAcesso == dig);
+            else if (dig.Length is > 0 and <= 9)
+            {
+                var num9 = dig.PadLeft(9, '0');
+                query = query.Where(n => n.ChaveAcesso.Length >= 34 && n.ChaveAcesso.Substring(25, 9) == num9);
+            }
+        }
 
         // Modelo 57 = CT-e (frete). Quando não pedido, a listagem de NF-e exclui os CT-e
         // (que têm tela própria); quando modelo="57", traz apenas os CT-e.
@@ -74,10 +89,12 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
             query = query.Where(n =>
                 n.EmitenteNome.Contains(emitente) || n.EmitenteCnpj.Contains(emitente));
 
-        if (dataInicio.HasValue)
+        // Busca por número ignora o período (acha a nota em qualquer data).
+        var buscaPorNumero = !string.IsNullOrWhiteSpace(numero);
+        if (dataInicio.HasValue && !buscaPorNumero)
             query = query.Where(n => n.DataEmissao >= dataInicio.Value);
 
-        if (dataFim.HasValue)
+        if (dataFim.HasValue && !buscaPorNumero)
             query = query.Where(n => n.DataEmissao < dataFim.Value.AddDays(1));
 
         if (manifestacao.HasValue)

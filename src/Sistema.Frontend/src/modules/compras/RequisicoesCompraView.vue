@@ -175,11 +175,11 @@
               · {{ conf.jaEmPedido }} a caminho · {{ conf.vaoChegar }} já chegou (de {{ conf.totalItens }} itens).
             </b>
             <div class="text-caption text-medium-emphasis mt-1">
-              <b>Estoque</b> = saldo desta loja (igual à Posição de Estoque). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
+              <b>Estoque por loja</b> = saldo de cada unidade (igual à Posição de Estoque). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
             </div>
             <v-table density="compact" class="mt-2 bg-transparent">
               <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
-                <th class="text-center" style="width:90px" title="Saldo desta loja (igual à Posição de Estoque)">Estoque</th>
+                <th class="text-center" style="width:160px" title="Saldo de cada unidade (igual à Posição de Estoque)">Estoque por loja</th>
                 <th style="width:200px">Pedidos</th>
                 <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
@@ -188,8 +188,13 @@
                   <td>{{ l.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
                   <td class="text-center">
-                    <span :class="l.estoqueBaixo ? 'text-error font-weight-bold' : ''"
-                      :title="'Saldo desta loja. Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
+                    <template v-if="l.estoquePorLoja && l.estoquePorLoja.length">
+                      <div v-for="e in l.estoquePorLoja" :key="e.loja" class="text-caption" style="line-height:1.35">
+                        <span class="text-medium-emphasis">{{ e.loja }}:</span>
+                        <b :class="e.saldo <= 0 ? 'text-error' : ''">{{ fmtQtd(e.saldo) }}</b>
+                      </div>
+                    </template>
+                    <span v-else class="text-caption text-error" title="Nenhuma unidade com saldo">sem estoque</span>
                   </td>
                   <td>
                     <template v-if="l.pedidos && l.pedidos.length">

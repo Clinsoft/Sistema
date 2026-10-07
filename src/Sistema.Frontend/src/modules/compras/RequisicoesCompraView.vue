@@ -388,7 +388,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifStore } from '@/stores/notif'
@@ -599,6 +599,20 @@ async function recarregarDetalhe() {
   det.value = { ...r.data, loja, solicitante: solic }
   carregarConferencia()
 }
+
+// Atualização automática: enquanto a requisição está aberta na tela, recarrega os itens
+// a cada 15s (só com a aba visível). Assim, ao gestor remover um item, ele some sozinho
+// da tela do atendente (e vice-versa) sem precisar reabrir.
+const detTimer = ref<any>(null)
+watch(dialogDet, (aberto) => {
+  clearInterval(detTimer.value)
+  if (aberto) {
+    detTimer.value = setInterval(() => {
+      if (!document.hidden && det.value?.id) recarregarDetalhe().catch(() => {})
+    }, 15000)
+  }
+})
+onUnmounted(() => clearInterval(detTimer.value))
 
 // ── Mover item para outro fornecedor ──
 const fornecedores = ref<any[]>([])

@@ -377,6 +377,11 @@
                   prepend-icon="mdi-history" title="Anterior ao início do sistema"
                   subtitle="Nota histórica (antes de 25/07/2026) — não escriturar"
                   disabled />
+                <v-list-item v-else-if="!escrituravel(item)"
+                  prepend-icon="mdi-cancel"
+                  :title="item.situacao !== 'Autorizada' ? ('Nota ' + String(item.situacao).toLowerCase() + ' — não escriturar') : 'Operação recusada — não escriturar'"
+                  subtitle="Não entra no estoque/financeiro"
+                  disabled />
                 <v-list-item v-else
                   prepend-icon="mdi-file-import-outline" title="Escriturar Entrada"
                   subtitle="Lançar no estoque e financeiro"
@@ -1202,9 +1207,10 @@ const notasRecebidasExibidas = computed(() => {
   // Só as escriturações iniciadas e não finalizadas
   if (filtrosRec.value.soNaoFinalizadas)
     r = r.filter((n: any) => n.entradaStatus === 'EmEdicao')
-  // Só as NF-e de mercadoria (mod. 55) ainda NÃO escrituradas (sem entrada)
+  // Só as NF-e de mercadoria (mod. 55) ainda NÃO escrituradas (sem entrada) —
+  // e que PODEM ser escrituradas (autorizada, não recusada pelo destinatário).
   if (filtrosRec.value.soNaoEscrituradas)
-    r = r.filter((n: any) => n.modelo === '55' && !n.entradaId)
+    r = r.filter((n: any) => n.modelo === '55' && !n.entradaId && escrituravel(n))
   return r
 })
 
@@ -1218,6 +1224,16 @@ const INICIO_ESCRITURACAO = '2026-07-25'
 // Nota anterior ao início do sistema = histórico (não deve ser escriturada).
 function notaHistorica(item: any) {
   return !!item?.dataEmissao && String(item.dataEmissao).slice(0, 10) < INICIO_ESCRITURACAO
+}
+
+// Nota que PODE ser escriturada: AUTORIZADA, não recusada pelo destinatário
+// (operação não realizada / desconhecimento) e não histórica. Cancelada/Denegada
+// ou recusada NÃO entram na fila de escrituração.
+function escrituravel(item: any) {
+  return item?.situacao === 'Autorizada'
+    && item?.manifestacao !== 'OperacaoNaoRealizada'
+    && item?.manifestacao !== 'DesconhecimentoOperacao'
+    && !notaHistorica(item)
 }
 
 // Mostra as NF-e a escriturar desde o início do sistema (elas costumam estar

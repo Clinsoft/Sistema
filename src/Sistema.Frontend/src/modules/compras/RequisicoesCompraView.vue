@@ -165,29 +165,36 @@
               @click="abrirNovoProdRapidoExistente">Não achou? Cadastrar produto novo</v-btn>
           </div>
 
-          <!-- Acompanhamento: estoque por loja + situação. SÓ GESTOR (o atendente não vê estoque). -->
-          <v-alert v-if="ehGestor && conf" :type="conf.completo ? 'success' : 'info'" variant="tonal"
+          <!-- Acompanhamento. Gestor vê estoque+situação; atendente vê só "vai chegar". -->
+          <v-alert v-if="conf" :type="(!conf.atendente && conf.completo) ? 'success' : 'info'" variant="tonal"
             density="comfortable" class="mb-3">
-            <b v-if="conf.completo">Nada a pedir nesta requisição — os {{ conf.totalItens }} itens já estão cobertos (a caminho, chegaram ou com estoque). Evite pedir de novo.</b>
-            <b v-else>
-              <span v-if="conf.precisaPedir" class="text-error">{{ conf.precisaPedir }} precisa pedir</span>
-              <span v-if="conf.recebidoEscriturar"> · <span class="text-warning">{{ conf.recebidoEscriturar }} chegou (falta escriturar)</span></span>
-              · {{ conf.jaEmPedido }} a caminho · {{ conf.vaoChegar }} já chegou (de {{ conf.totalItens }} itens).
-            </b>
-            <div class="text-caption text-medium-emphasis mt-1">
-              <b>Estoque por loja</b> = saldo de cada unidade (igual à Posição de Estoque). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
-            </div>
+            <!-- Atendente: resumo simples (vai chegar / aguardando) -->
+            <template v-if="conf.atendente">
+              <b>{{ conf.vaoChegar }} de {{ conf.totalItens }} itens já vão chegar</b> (já pedidos ou a caminho). Os demais ainda não foram pedidos — o gestor decide a compra.
+            </template>
+            <!-- Gestor: resumo completo -->
+            <template v-else>
+              <b v-if="conf.completo">Nada a pedir nesta requisição — os {{ conf.totalItens }} itens já estão cobertos (a caminho, chegaram ou com estoque). Evite pedir de novo.</b>
+              <b v-else>
+                <span v-if="conf.precisaPedir" class="text-error">{{ conf.precisaPedir }} precisa pedir</span>
+                <span v-if="conf.recebidoEscriturar"> · <span class="text-warning">{{ conf.recebidoEscriturar }} chegou (falta escriturar)</span></span>
+                · {{ conf.jaEmPedido }} a caminho · {{ conf.vaoChegar }} já chegou (de {{ conf.totalItens }} itens).
+              </b>
+              <div class="text-caption text-medium-emphasis mt-1">
+                <b>Estoque por loja</b> = saldo de cada unidade (igual à Posição de Estoque). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
+              </div>
+            </template>
             <v-table density="compact" class="mt-2 bg-transparent">
               <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
-                <th class="text-center" style="width:160px" title="Saldo de cada unidade (igual à Posição de Estoque)">Estoque por loja</th>
-                <th style="width:200px">Pedidos</th>
+                <th v-if="ehGestor" class="text-center" style="width:160px" title="Saldo de cada unidade (igual à Posição de Estoque)">Estoque por loja</th>
+                <th v-if="ehGestor" style="width:200px">Pedidos</th>
                 <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
                 <tr v-for="l in conf.itens" :key="l.produtoId"
-                  :class="l.situacao === 'PrecisaPedir' ? 'bg-red-lighten-5' : ((l.situacao === 'RecebidoEscriturar' || l.jaPedido) ? 'bg-amber-lighten-5' : '')">
+                  :class="ehGestor ? (l.situacao === 'PrecisaPedir' ? 'bg-red-lighten-5' : ((l.situacao === 'RecebidoEscriturar' || l.jaPedido) ? 'bg-amber-lighten-5' : '')) : ''">
                   <td>{{ l.descricao }}</td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
-                  <td class="text-center">
+                  <td v-if="ehGestor" class="text-center">
                     <template v-if="l.estoquePorLoja && l.estoquePorLoja.length">
                       <div v-for="e in l.estoquePorLoja" :key="e.loja" class="text-caption" style="line-height:1.35">
                         <span class="text-medium-emphasis">{{ e.loja }}:</span>
@@ -196,7 +203,7 @@
                     </template>
                     <span v-else class="text-caption text-error" title="Nenhuma unidade com saldo">sem estoque</span>
                   </td>
-                  <td>
+                  <td v-if="ehGestor">
                     <template v-if="l.pedidos && l.pedidos.length">
                       <v-chip v-for="p in l.pedidos" :key="p.numero" size="x-small" class="mr-1 mb-1"
                         :color="p.status === 'Recebido' ? 'default' : (p.status === 'Enviado' ? 'info' : 'warning')"
@@ -207,7 +214,16 @@
                     <span v-else class="text-caption text-medium-emphasis">—</span>
                   </td>
                   <td class="text-center">
-                    <v-chip v-if="l.situacao === 'Inativo'" size="small" color="grey" variant="tonal"
+                    <!-- Atendente: só "vai chegar / ainda não" (sem revelar estoque) -->
+                    <template v-if="!ehGestor">
+                      <v-chip v-if="l.coberto" size="small" color="success" variant="tonal">
+                        <v-icon start size="14">mdi-truck-check-outline</v-icon>Vai chegar
+                      </v-chip>
+                      <v-chip v-else size="small" color="grey" variant="tonal">
+                        <v-icon start size="14">mdi-clock-outline</v-icon>Ainda não pedido
+                      </v-chip>
+                    </template>
+                    <v-chip v-else-if="l.situacao === 'Inativo'" size="small" color="grey" variant="tonal"
                       title="Produto inativo (descontinuado/duplicado) — não precisa pedir.">
                       <v-icon start size="14">mdi-cancel</v-icon>Inativo — não pedir
                     </v-chip>
@@ -551,8 +567,6 @@ const conf = ref<any>(null)
 const mostrarConf = ref(false)
 
 async function carregarConferencia() {
-  // Conferência (estoque por loja) é só do gestor — atendente nem chama a API.
-  if (!ehGestor.value) { conf.value = null; return }
   if (!det.value?.id) return
   try {
     const r = await api.get(`/requisicoes-compra/${det.value.id}/conferencia`)

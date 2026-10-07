@@ -202,6 +202,13 @@
               prepend-inner-icon="mdi-magnify" />
           </v-col>
           <v-col cols="12" sm="2">
+            <v-text-field v-model="filtrosRec.numero" label="Nº da nota"
+              variant="outlined" density="compact" hide-details clearable
+              prepend-inner-icon="mdi-pound" inputmode="numeric"
+              hint="Digite o número e Enter — traz o emitente" persistent-hint
+              @keyup.enter="carregarRecebidas" />
+          </v-col>
+          <v-col cols="12" sm="2">
             <FiltroMes @selecionar="(i, f) => { filtrosRec.dataInicio = i; filtrosRec.dataFim = f; carregarRecebidas() }" />
           </v-col>
           <v-col cols="12" sm="2">
@@ -1182,6 +1189,7 @@ const resumoRecebidas = ref({
 
 const filtrosRec = ref({
   emitente: '',
+  numero: '',
   dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
   dataFim: new Date().toISOString().slice(0, 10),
   manifestacao: null as string | null,

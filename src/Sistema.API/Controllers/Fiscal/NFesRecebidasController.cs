@@ -307,8 +307,14 @@ public class NFesRecebidasController(SistemaDbContext db, IMediator mediator, ID
             .Where(e => e.EmpresaId == empresaId)
             .Select(e => e.NotaFiscalRecebidaId)
             .ToListAsync(ct)).ToHashSet();
+        // Só conta como "a escriturar" a nota AUTORIZADA e que não foi manifestada
+        // como "operação não realizada" ou "desconhecimento" — nota Cancelada/Denegada
+        // ou recusada pelo destinatário NÃO deve entrar na fila de escrituração.
         var naoEscrituradas = notas.Where(n => n.Modelo == "55"
             && n.DataEmissao.Date >= InicioEscrituracao
+            && n.Situacao == SituacaoNFeRecebida.Autorizada
+            && n.Manifestacao != ManifestacaoTipo.OperacaoNaoRealizada
+            && n.Manifestacao != ManifestacaoTipo.DesconhecimentoOperacao
             && !comEntrada.Contains(n.Id)).ToList();
 
         return Ok(new

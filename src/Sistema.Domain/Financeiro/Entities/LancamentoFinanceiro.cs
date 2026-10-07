@@ -65,6 +65,13 @@ public class LancamentoFinanceiro : Entity
         if (Status == StatusLancamento.Pago)
             throw new InvalidOperationException("Lançamento já está pago.");
 
+        // Tolerância de quitação: diferença de até 2 centavos (arredondamento de
+        // parcelamento/banco) é tratada como pagamento INTEGRAL — não deixa "sobra" de
+        // R$ 0,01 em aberto (que antes ficava como PagoParcialmente).
+        const decimal tolerancia = 0.02m;
+        if (Math.Abs(valorPago - ValorOriginal) <= tolerancia)
+            valorPago = ValorOriginal;
+
         ValorPago = valorPago;
         DataPagamento = dataPagamento;
         ContaBancariaId = contaBancariaId ?? ContaBancariaId;

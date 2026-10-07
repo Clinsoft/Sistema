@@ -282,10 +282,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
     /// Usa o vínculo pedido→requisição quando existe; senão, cai para os pedidos da
     /// mesma loja criados a partir da data da requisição (aproximado, para dados antigos).
     /// </summary>
-    /// <summary>Conferência (estoque por loja + situação de compra). Só gestor — o atendente
-    /// NÃO deve ver o estoque de cada unidade (evita uso indevido).</summary>
+    /// <summary>Conferência da requisição. O GESTOR vê estoque por loja + situação completa;
+    /// o ATENDENTE vê só os itens e se "vai chegar" (sem estoque, custo ou nº de pedido).</summary>
     [HttpGet("{id:guid}/conferencia")]
-    [Authorize(Roles = "Administrador,Gerente")]
     public async Task<IActionResult> Conferencia(Guid id, CancellationToken ct)
     {
         var req = await db.RequisicoesCompra.AsNoTracking()
@@ -417,8 +416,24 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoquePorLoja = saldoPorLoja.GetValueOrDefault(it.ProdutoId),
                 pedidos = pedidosDoItem,
                 situacao,
+                // "Vai chegar" (para o atendente): já tem pedido em aberto, já chegou, ou
+                // chegou e falta escriturar. Não revela estoque.
+                coberto = jaPedido || vaiChegar || temRecebido,
             };
         }).ToList();
+
+        // Atendente: só os itens + "vai chegar" (sem estoque, custo ou nº de pedido).
+        if (User.IsInRole("Atendente"))
+        {
+            return Ok(new
+            {
+                requisicaoId = id,
+                totalItens = linhas.Count,
+                vaoChegar = linhas.Count(l => l.coberto),
+                atendente = true,
+                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.coberto }).ToList(),
+            });
+        }
 
         return Ok(new
         {

@@ -325,18 +325,15 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
             .ToListAsync(ct);
 
-        // Estoque POR LOJA = reconstrução das MovimentacoesEstoque desta loja, somando TODOS
-        // os tipos (mesma fórmula da tela Posição de Estoque, p/ bater com ela e com o
-        // EstoqueAtual total). O bug antigo contava só Entrada−Saída (ignorava Ajuste+/−,
-        // Devolução, Transferência) → ficava negativo. Os Lotes superestimam (não baixam na
-        // venda), por isso NÃO são usados aqui.
-        var saldos = (await db.MovimentacoesEstoque.AsNoTracking()
-            .Where(m => m.EmpresaId == req.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId
-                && reqProdutoIds.Contains(m.ProdutoId))
-            .GroupBy(m => m.ProdutoId)
+        // Estoque POR LOJA = reconstrução das MovimentacoesEstoque somando TODOS os tipos
+        // (mesma fórmula da Posição de Estoque, bate com EstoqueAtual total). Calcula para
+        // TODAS as lojas (não só a da requisição) p/ mostrar o saldo de cada unidade separado.
+        var movPorLoja = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == req.EmpresaId && reqProdutoIds.Contains(m.ProdutoId))
+            .GroupBy(m => new { m.ProdutoId, m.LocalEstoqueId })
             .Select(g => new
             {
-                ProdutoId = g.Key,
+                g.Key.ProdutoId, g.Key.LocalEstoqueId,
                 Saldo = g.Sum(m =>
                     m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
                     || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
@@ -347,8 +344,20 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                     && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
                   : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
                   : 0m)
-            }).ToListAsync(ct))
+            }).ToListAsync(ct);
+        var lojaNomes = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == req.EmpresaId)
+            .ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+        // Saldo da loja DA REQUISIÇÃO (base da situação "precisa pedir").
+        var saldos = movPorLoja.Where(x => x.LocalEstoqueId == req.LocalEstoqueId)
             .ToDictionary(x => x.ProdutoId, x => x.Saldo);
+        // Saldo de CADA loja (p/ exibir separado); esconde loja com saldo 0.
+        var saldoPorLoja = movPorLoja
+            .GroupBy(x => x.ProdutoId)
+            .ToDictionary(g => g.Key, g => g
+                .Where(x => x.LocalEstoqueId != Guid.Empty && x.Saldo != 0)
+                .Select(x => new { loja = lojaNomes.GetValueOrDefault(x.LocalEstoqueId, "—"), saldo = x.Saldo })
+                .OrderBy(x => x.loja).ToList());
         var prodInfo = await db.Produtos.AsNoTracking()
             .Where(p => reqProdutoIds.Contains(p.Id))
             .Select(p => new { p.Id, p.EstoqueMinimo, p.Ativo }).ToListAsync(ct);
@@ -402,6 +411,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoqueMinimo = minimo,
                 estoqueBaixo,
                 temRecebido,
+                estoquePorLoja = saldoPorLoja.GetValueOrDefault(it.ProdutoId),
                 pedidos = pedidosDoItem,
                 situacao,
             };

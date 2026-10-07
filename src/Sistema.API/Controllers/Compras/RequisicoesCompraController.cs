@@ -416,9 +416,10 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoquePorLoja = saldoPorLoja.GetValueOrDefault(it.ProdutoId),
                 pedidos = pedidosDoItem,
                 situacao,
-                // "Vai chegar" (para o atendente): já tem pedido em aberto, já chegou, ou
-                // chegou e falta escriturar. Não revela estoque.
-                coberto = jaPedido || vaiChegar || temRecebido,
+                // "Vai chegar" (para o atendente) = há pedido ENVIADO (de fato a caminho) ou
+                // deu entrada recente. Pedido "Recebido" é HISTÓRICO (já chegou semanas atrás)
+                // e NÃO conta como "vai chegar"; rascunho também não (ainda não foi enviado).
+                coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar,
             };
         }).ToList();
 

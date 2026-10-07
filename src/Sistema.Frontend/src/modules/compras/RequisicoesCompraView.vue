@@ -175,11 +175,11 @@
               · {{ conf.jaEmPedido }} a caminho · {{ conf.vaoChegar }} já chegou (de {{ conf.totalItens }} itens).
             </b>
             <div class="text-caption text-medium-emphasis mt-1">
-              <b>Estoque</b> = saldo desta loja (pelos lotes). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
+              <b>Estoque</b> = saldo desta loja (igual à Posição de Estoque). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
             </div>
             <v-table density="compact" class="mt-2 bg-transparent">
               <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
-                <th class="text-center" style="width:90px" title="Saldo desta loja (soma dos lotes)">Estoque</th>
+                <th class="text-center" style="width:90px" title="Saldo desta loja (igual à Posição de Estoque)">Estoque</th>
                 <th style="width:200px">Pedidos</th>
                 <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
@@ -189,7 +189,7 @@
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
                   <td class="text-center">
                     <span :class="l.estoqueBaixo ? 'text-error font-weight-bold' : ''"
-                      :title="'Saldo desta loja (pelos lotes). Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
+                      :title="'Saldo desta loja. Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
                   </td>
                   <td>
                     <template v-if="l.pedidos && l.pedidos.length">

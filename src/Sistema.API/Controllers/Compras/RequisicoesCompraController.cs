@@ -325,17 +325,29 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
             .ToListAsync(ct);
 
-        // Estoque POR LOJA = soma dos Lotes com saldo DESTA loja (inclui a carga inicial e
-        // as entradas; é o saldo físico por unidade). NÃO usar a reconstrução por
-        // MovimentacoesEstoque (fica sem o saldo de abertura → negativa) nem o EstoqueAtual
-        // do cadastro (é o total da empresa, não por loja). OBS: o lote não baixa na venda,
-        // então pode superestimar levemente — melhoria futura é reconciliar o saldo de abertura.
-        var saldos = (await db.Lotes.AsNoTracking()
-            .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
-                && reqProdutoIds.Contains(l.ProdutoId) && l.Quantidade > 0)
-            .GroupBy(l => l.ProdutoId)
-            .Select(g => new { ProdutoId = g.Key, Saldo = g.Sum(l => l.Quantidade) })
-            .ToListAsync(ct))
+        // Estoque POR LOJA = reconstrução das MovimentacoesEstoque desta loja, somando TODOS
+        // os tipos (mesma fórmula da tela Posição de Estoque, p/ bater com ela e com o
+        // EstoqueAtual total). O bug antigo contava só Entrada−Saída (ignorava Ajuste+/−,
+        // Devolução, Transferência) → ficava negativo. Os Lotes superestimam (não baixam na
+        // venda), por isso NÃO são usados aqui.
+        var saldos = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == req.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId
+                && reqProdutoIds.Contains(m.ProdutoId))
+            .GroupBy(m => m.ProdutoId)
+            .Select(g => new
+            {
+                ProdutoId = g.Key,
+                Saldo = g.Sum(m =>
+                    m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            }).ToListAsync(ct))
             .ToDictionary(x => x.ProdutoId, x => x.Saldo);
         var prodInfo = await db.Produtos.AsNoTracking()
             .Where(p => reqProdutoIds.Contains(p.Id))

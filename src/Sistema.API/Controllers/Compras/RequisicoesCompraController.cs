@@ -189,6 +189,21 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         var pedIds = rascunhos.Select(p => p.Id).ToList();
         var reqLoja = abertas.ToDictionary(r => r.Id, r => r.LocalEstoqueId);
         var pedLoja = rascunhos.ToDictionary(p => p.Id, p => p.LocalEstoqueId);
+        // Data de origem de cada pendência (quando foi pedida) — p/ saber se já chegou DEPOIS.
+        var reqData = abertas.ToDictionary(r => r.Id, r => r.CriadoEm);
+        var pedData = rascunhos.ToDictionary(p => p.Id, p => p.CriadoEm);
+
+        // Último RECEBIMENTO por (produto, loja): pedido Recebido = já chegou.
+        var recebidos = await (
+            from ped in db.PedidosCompra.AsNoTracking()
+            where ped.EmpresaId == empresaId && ped.Status == StatusPedidoCompra.Recebido
+            join i in db.ItensPedidoCompra.AsNoTracking() on ped.Id equals i.PedidoCompraId
+            select new { i.ProdutoId, ped.LocalEstoqueId, Data = ped.DataRecebimento ?? ped.CriadoEm })
+            .ToListAsync(ct);
+        var recebidoMax = recebidos
+            .Where(x => x.LocalEstoqueId != null)
+            .GroupBy(x => new { x.ProdutoId, Loja = x.LocalEstoqueId!.Value })
+            .ToDictionary(g => (g.Key.ProdutoId, g.Key.Loja), g => g.Max(x => x.Data));
 
         var itensReq = await db.ItensRequisicaoCompra.AsNoTracking()
             .Where(i => reqIds.Contains(i.RequisicaoCompraId)).ToListAsync(ct);
@@ -196,9 +211,12 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Where(i => pedIds.Contains(i.PedidoCompraId)).ToListAsync(ct);
 
         var todos = itensReq
-            .Select(i => new { Loja = reqLoja.GetValueOrDefault(i.RequisicaoCompraId), i.ProdutoId, i.Descricao, i.Quantidade })
-            .Concat(itensPed.Select(i => new { Loja = pedLoja.GetValueOrDefault(i.PedidoCompraId), i.ProdutoId, i.Descricao, i.Quantidade }))
+            .Select(i => new { Loja = reqLoja.GetValueOrDefault(i.RequisicaoCompraId), i.ProdutoId, i.Descricao, i.Quantidade, Data = reqData.GetValueOrDefault(i.RequisicaoCompraId) })
+            .Concat(itensPed.Select(i => new { Loja = pedLoja.GetValueOrDefault(i.PedidoCompraId), i.ProdutoId, i.Descricao, i.Quantidade, Data = pedData.GetValueOrDefault(i.PedidoCompraId) }))
             .Where(x => x.Loja != null)
+            // PULA o que já CHEGOU depois de ter sido pedido (requisição/rascunho antigo já atendido):
+            // evita puxar de volta item que já foi recebido (ex.: bicarbonato que já chegou).
+            .Where(x => !(recebidoMax.TryGetValue((x.ProdutoId, x.Loja!.Value), out var dr) && dr >= x.Data))
             .ToList();
 
         if (todos.Count == 0)

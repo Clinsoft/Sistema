@@ -325,16 +325,23 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.PedidoCompraId, i.ProdutoId, i.Quantidade })
             .ToListAsync(ct);
 
-        // Estoque do produto: usa o EstoqueAtual do CADASTRO (carga inicial + entradas
-        // escrituradas − vendas). A reconstrução por loja via MovimentacoesEstoque ficava
-        // SEM o saldo de abertura (a carga inicial não gerou movimentação) → saldo muito
-        // negativo e "precisa pedir" FALSO em produtos cheios. EstoqueAtual é o número
-        // confiável (total da empresa). [[reconstrução por loja precisa do saldo de abertura]]
-        var prodEstoque = await db.Produtos.AsNoTracking()
+        // Estoque POR LOJA = soma dos Lotes com saldo DESTA loja (inclui a carga inicial e
+        // as entradas; é o saldo físico por unidade). NÃO usar a reconstrução por
+        // MovimentacoesEstoque (fica sem o saldo de abertura → negativa) nem o EstoqueAtual
+        // do cadastro (é o total da empresa, não por loja). OBS: o lote não baixa na venda,
+        // então pode superestimar levemente — melhoria futura é reconciliar o saldo de abertura.
+        var saldos = (await db.Lotes.AsNoTracking()
+            .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
+                && reqProdutoIds.Contains(l.ProdutoId) && l.Quantidade > 0)
+            .GroupBy(l => l.ProdutoId)
+            .Select(g => new { ProdutoId = g.Key, Saldo = g.Sum(l => l.Quantidade) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.ProdutoId, x => x.Saldo);
+        var prodInfo = await db.Produtos.AsNoTracking()
             .Where(p => reqProdutoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.EstoqueAtual, p.EstoqueMinimo }).ToListAsync(ct);
-        var saldos = prodEstoque.ToDictionary(x => x.Id, x => x.EstoqueAtual);
-        var minimos = prodEstoque.ToDictionary(x => x.Id, x => x.EstoqueMinimo);
+            .Select(p => new { p.Id, p.EstoqueMinimo, p.Ativo }).ToListAsync(ct);
+        var minimos = prodInfo.ToDictionary(x => x.Id, x => x.EstoqueMinimo);
+        var ativos = prodInfo.ToDictionary(x => x.Id, x => x.Ativo);
 
         var linhas = itens.Select(it =>
         {
@@ -353,8 +360,10 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             var minimo = minimos.GetValueOrDefault(it.ProdutoId, 0m);
             var estoqueBaixo = estoqueLoja <= minimo;
             var temRecebido = pedidosDoItem.Any(p => p.status == "Recebido");
+            var ativo = ativos.GetValueOrDefault(it.ProdutoId, true);
 
             // Prioridade (o que o usuário precisa fazer):
+            //  0) produto INATIVO (descontinuado/duplicado) → não pedir (sai do alerta)
             //  1) pedido EM ABERTO a caminho  → não pedir de novo (A caminho)
             //  2) deu entrada desde a requisição → já chegou (Chegou)
             //  3) estoque baixo MAS tem pedido já Recebido → chegou e falta ESCRITURAR
@@ -362,7 +371,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             //  4) estoque baixo e nada cobrindo → Precisa pedir
             //  5) resto → Estoque OK
             string situacao;
-            if (jaPedido) situacao = "JaPedido";
+            if (!ativo) situacao = "Inativo";
+            else if (jaPedido) situacao = "JaPedido";
             else if (vaiChegar) situacao = "VaiChegar";
             else if (estoqueBaixo && temRecebido) situacao = "RecebidoEscriturar";
             else if (estoqueBaixo) situacao = "PrecisaPedir";
@@ -396,8 +406,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             // "sem pedido" = pendente de ação de compra: só o que realmente precisa pedir.
             itensPendentes = linhas.Count(l => l.situacao == "PrecisaPedir"),
             vaoChegar = linhas.Count(l => l.situacao == "VaiChegar"),
-            // Coberto = a caminho, chegou, ou recebido (falta só escriturar) — nada a pedir.
-            completo = linhas.All(l => l.situacao is "VaiChegar" or "JaPedido" or "RecebidoEscriturar" or "Aguardando"),
+            // Coberto = a caminho, chegou, recebido (falta escriturar), ok ou inativo — nada a pedir.
+            completo = linhas.All(l => l.situacao is "VaiChegar" or "JaPedido" or "RecebidoEscriturar" or "Aguardando" or "Inativo"),
             itens = linhas,
         });
     }

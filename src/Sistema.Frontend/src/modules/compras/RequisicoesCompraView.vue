@@ -175,11 +175,11 @@
               · {{ conf.jaEmPedido }} a caminho · {{ conf.vaoChegar }} já chegou (de {{ conf.totalItens }} itens).
             </b>
             <div class="text-caption text-medium-emphasis mt-1">
-              <b>Estoque</b> = saldo total do cadastro (todas as lojas). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
+              <b>Estoque</b> = saldo desta loja (pelos lotes). <b>A caminho</b> = pedido em aberto. <b>Chegou</b> = deu entrada no estoque. <b>Recebido — escriturar</b> = o pedido chegou mas a entrada da NF-e ainda não foi lançada (o estoque não subiu) — <b>escriture, não peça de novo</b>. Só <b class="text-error">Precisa pedir</b> realmente precisa de um novo pedido.
             </div>
             <v-table density="compact" class="mt-2 bg-transparent">
               <thead><tr><th>Produto</th><th class="text-center" style="width:60px">Qtd</th>
-                <th class="text-center" style="width:90px" title="Saldo total do cadastro (todas as lojas)">Estoque</th>
+                <th class="text-center" style="width:90px" title="Saldo desta loja (soma dos lotes)">Estoque</th>
                 <th style="width:200px">Pedidos</th>
                 <th class="text-center" style="width:150px">Situação</th></tr></thead>
               <tbody>
@@ -189,7 +189,7 @@
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
                   <td class="text-center">
                     <span :class="l.estoqueBaixo ? 'text-error font-weight-bold' : ''"
-                      :title="'Estoque total (todas as lojas). Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
+                      :title="'Saldo desta loja (pelos lotes). Mínimo: ' + fmtQtd(l.estoqueMinimo)">{{ fmtQtd(l.estoqueLoja) }}</span>
                   </td>
                   <td>
                     <template v-if="l.pedidos && l.pedidos.length">
@@ -202,7 +202,11 @@
                     <span v-else class="text-caption text-medium-emphasis">—</span>
                   </td>
                   <td class="text-center">
-                    <v-chip v-if="l.situacao === 'PrecisaPedir'" size="small" color="error" variant="flat">
+                    <v-chip v-if="l.situacao === 'Inativo'" size="small" color="grey" variant="tonal"
+                      title="Produto inativo (descontinuado/duplicado) — não precisa pedir.">
+                      <v-icon start size="14">mdi-cancel</v-icon>Inativo — não pedir
+                    </v-chip>
+                    <v-chip v-else-if="l.situacao === 'PrecisaPedir'" size="small" color="error" variant="flat">
                       <v-icon start size="14">mdi-alert-circle-outline</v-icon>Precisa pedir
                     </v-chip>
                     <v-chip v-else-if="l.situacao === 'RecebidoEscriturar'" size="small" color="warning" variant="flat"

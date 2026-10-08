@@ -328,7 +328,6 @@
         'O <b>código interno</b> é sequencial (a partir de 3001) e é o número usado na balança — não use código aleatório.',
         'Na aba <b>Nutricional</b>, busque o alimento na base <b>TACO</b> pelo nome para preencher a tabela automaticamente.',
         'Produtos criados durante a importação de NF-e já vêm com dados fiscais e fornecedor vinculados — complete aqui o que faltar.',
-        '<b>Produto composto</b> (aba Composição): marque a opção e adicione os <b>componentes</b> com a quantidade de cada um (g/kg ou un/dz) e o <b>rendimento</b>. O <b>custo</b> é somado automaticamente dos componentes e o <b>preço de venda</b> vem sugerido. No botão <b>Produzir</b>, o sistema <u>baixa o estoque dos componentes</u> e <u>credita o produto acabado</u>, já sugerindo a validade de <b>maior prazo</b> entre os componentes.',
         'Use os ícones da tabela para <b>editar</b>, <b>inativar</b> ou <b>excluir</b>. A lista atualiza sozinha após cada ação.',
       ]"
     />
@@ -1433,13 +1432,13 @@ async function buscarImagensGranel() {
   }
 }
 
-// Gera a descrição complementar (benefícios) por IA em lote para TODOS os produtos.
-// Roda em páginas até terminar, com progresso. Reescreve as existentes e preenche as vazias.
+// Gera a descrição complementar (benefícios) por IA em lote — SÓ para os produtos que
+// ainda NÃO têm descrição (não reescreve os já gerados; economiza tokens). Roda em páginas.
 const gerandoDesc = ref(false)
 const progDesc = ref('')
 async function gerarDescricoesLote() {
   if (gerandoDesc.value) return
-  if (!confirm('Gerar a descrição por IA para TODOS os produtos? Isso reescreve as descrições complementares existentes.')) return
+  if (!confirm('Gerar a descrição por IA apenas para os produtos que ainda NÃO têm descrição? (os já gerados permanecem como estão)')) return
   gerandoDesc.value = true
   progDesc.value = ''
   let offset = 0, gerados = 0, falhas = 0, total = 0
@@ -1447,7 +1446,7 @@ async function gerarDescricoesLote() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const { data } = await api.post('/produtos/gerar-descricoes-lote', null, {
-        params: { empresaId: auth.empresaId, offset, limite: 12, substituir: true },
+        params: { empresaId: auth.empresaId, offset, limite: 12, substituir: false },
       })
       total = data.total ?? 0
       gerados += data.gerados ?? 0

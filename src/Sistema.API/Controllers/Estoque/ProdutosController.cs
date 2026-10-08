@@ -283,9 +283,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                      && p.ImagemUrl != null && p.ImagemUrl != "")
             .ToListAsync(ct);
 
-        var baseImg = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.PublicBaseUrl.TrimEnd('/');
-        var catalogoProdutoUrl = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.CatalogoProdutoUrl;
-        var marca = Sistema.Infrastructure.Branding.BrandingRuntime.Atual.Nome;
+        const string baseImg = "https://sistema.ecogranel.com.br";
         static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
 
         var sb = new System.Text.StringBuilder();
@@ -299,13 +297,12 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
               .Append(Csv(string.IsNullOrWhiteSpace(p.DescricaoComplementar) ? p.Descricao : p.DescricaoComplementar)).Append(',')
               .Append("\"in stock\",\"new\",")
               .Append(Csv(preco)).Append(',')
-              .Append(Csv($"{catalogoProdutoUrl}{slug}")).Append(',')
+              .Append(Csv($"https://ecogranel.com.br/produtos/produto.php?p={slug}")).Append(',')
               .Append(Csv(baseImg + p.ImagemUrl)).Append(',')
-              .Append(Csv(marca)).AppendLine();
+              .Append("\"EcoGranel\"").AppendLine();
         }
 
-        var arqCatalogo = $"catalogo-{Sistema.Infrastructure.Services.SiteSyncService.Slugify(marca)}.csv";
-        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv; charset=utf-8", arqCatalogo);
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv; charset=utf-8", "catalogo-ecogranel.csv");
     }
 
     /// <summary>
@@ -372,7 +369,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     [HttpPost("regerar-descricoes-granel")]
     [AllowAnonymous]
     public async Task<IActionResult> RegerarDescricoesGranel(
-        [FromQuery] Guid empresaId, [FromQuery] bool somenteVazias = false, CancellationToken ct = default)
+        [FromQuery] Guid empresaId, [FromQuery] bool somenteVazias = true, CancellationToken ct = default)
     {
         var ip = HttpContext.Connection.RemoteIpAddress;
         if (ip is null || !System.Net.IPAddress.IsLoopback(ip) || Request.Headers.ContainsKey("X-Forwarded-For"))
@@ -456,7 +453,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     [Authorize(Roles = "Administrador")]
     public async Task<IActionResult> GerarDescricoesLote(
         [FromQuery] Guid empresaId, [FromQuery] int offset = 0,
-        [FromQuery] int limite = 12, [FromQuery] bool substituir = true,
+        [FromQuery] int limite = 12, [FromQuery] bool substituir = false,
         CancellationToken ct = default)
     {
         if (!openai.Configurado && !gemini.Configurado)

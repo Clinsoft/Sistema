@@ -369,7 +369,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     [HttpPost("regerar-descricoes-granel")]
     [AllowAnonymous]
     public async Task<IActionResult> RegerarDescricoesGranel(
-        [FromQuery] Guid empresaId, [FromQuery] bool somenteVazias = false, CancellationToken ct = default)
+        [FromQuery] Guid empresaId, [FromQuery] bool somenteVazias = true, CancellationToken ct = default)
     {
         var ip = HttpContext.Connection.RemoteIpAddress;
         if (ip is null || !System.Net.IPAddress.IsLoopback(ip) || Request.Headers.ContainsKey("X-Forwarded-For"))
@@ -453,7 +453,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     [Authorize(Roles = "Administrador")]
     public async Task<IActionResult> GerarDescricoesLote(
         [FromQuery] Guid empresaId, [FromQuery] int offset = 0,
-        [FromQuery] int limite = 12, [FromQuery] bool substituir = true,
+        [FromQuery] int limite = 12, [FromQuery] bool substituir = false,
         CancellationToken ct = default)
     {
         if (!openai.Configurado && !gemini.Configurado)

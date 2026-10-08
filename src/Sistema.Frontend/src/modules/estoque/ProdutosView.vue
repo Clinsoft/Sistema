@@ -1432,13 +1432,13 @@ async function buscarImagensGranel() {
   }
 }
 
-// Gera a descrição complementar (benefícios) por IA em lote para TODOS os produtos.
-// Roda em páginas até terminar, com progresso. Reescreve as existentes e preenche as vazias.
+// Gera a descrição complementar (benefícios) por IA em lote — SÓ para os produtos que
+// ainda NÃO têm descrição (não reescreve os já gerados; economiza tokens). Roda em páginas.
 const gerandoDesc = ref(false)
 const progDesc = ref('')
 async function gerarDescricoesLote() {
   if (gerandoDesc.value) return
-  if (!confirm('Gerar a descrição por IA para TODOS os produtos? Isso reescreve as descrições complementares existentes.')) return
+  if (!confirm('Gerar a descrição por IA apenas para os produtos que ainda NÃO têm descrição? (os já gerados permanecem como estão)')) return
   gerandoDesc.value = true
   progDesc.value = ''
   let offset = 0, gerados = 0, falhas = 0, total = 0
@@ -1446,7 +1446,7 @@ async function gerarDescricoesLote() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const { data } = await api.post('/produtos/gerar-descricoes-lote', null, {
-        params: { empresaId: auth.empresaId, offset, limite: 12, substituir: true },
+        params: { empresaId: auth.empresaId, offset, limite: 12, substituir: false },
       })
       total = data.total ?? 0
       gerados += data.gerados ?? 0

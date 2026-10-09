@@ -1172,7 +1172,12 @@
             </thead>
             <tbody>
               <tr v-for="(c, idx) in compras" :key="idx">
-                <td>{{ c.numeroNota }}</td>
+                <td>
+                  <a v-if="c.entradaId" href="#" class="text-primary font-weight-medium"
+                    style="text-decoration:underline" title="Abrir a nota (entrada) para visualizar"
+                    @click.prevent="verNota(c)">{{ c.numeroNota }}</a>
+                  <span v-else>{{ c.numeroNota }}</span>
+                </td>
                 <td>{{ c.fornecedor }}</td>
                 <td>{{ new Date(c.dataEmissao).toLocaleDateString('pt-BR') }}</td>
                 <td>{{ new Date(c.dataEntrada).toLocaleDateString('pt-BR') }}</td>
@@ -1977,6 +1982,12 @@ async function abrirCompras() {
     compras.value = data.itens ?? []
   } catch { notif.erro('Não foi possível carregar o histórico de compras.') }
   finally { carregandoCompras.value = false }
+}
+// Clica no número da NF-e → abre a entrada (nota) para visualizar (itens, DANFE/XML).
+function verNota(c: any) {
+  if (!c?.entradaId) return
+  dialogCompras.value = false
+  router.push(`/fiscal/entradas/${c.entradaId}`)
 }
 
 function previewImagemLocal() {

@@ -1456,6 +1456,7 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                 .OrderBy(p => p.dataPedido).ToList();
             return new
             {
+                entradaId = x.Id,
                 numeroNota = x.ChaveAcesso.Length == 44 && long.TryParse(x.ChaveAcesso.Substring(25, 9), out var n) ? n : 0,
                 fornecedor = x.EmitenteNome,
                 dataEmissao = x.DataEmissao,

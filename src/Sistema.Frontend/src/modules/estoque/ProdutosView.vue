@@ -717,6 +717,14 @@
                     </v-expansion-panel>
                   </v-expansion-panels>
 
+                  <div v-if="editando" class="mb-2">
+                    <v-btn size="small" variant="tonal" color="indigo" prepend-icon="mdi-history"
+                      :loading="carregandoCompras" @click="abrirCompras"
+                      title="Ver o custo real de cada nota de compra deste produto">
+                      Custo nas notas (histórico de compras)
+                    </v-btn>
+                  </div>
+
                   <v-row dense>
                     <v-col cols="6" md="3">
                       <v-text-field v-model.number="form.custoUnitario" label="Custo (R$)"
@@ -747,12 +755,16 @@
                         type="number" variant="outlined" density="compact" prefix="R$" clearable />
                     </v-col>
                     <v-col cols="6" md="2">
-                      <v-text-field :model-value="markupExibir" label="Markup"
-                        readonly variant="outlined" density="compact" bg-color="grey-lighten-4" />
+                      <v-text-field :model-value="markupNum" label="Markup" suffix="×"
+                        type="number" step="0.01" variant="outlined" density="compact"
+                        title="Edite para recalcular o preço: preço = custo × markup"
+                        @change="aplicarMarkup" />
                     </v-col>
                     <v-col cols="6" md="2">
-                      <v-text-field :model-value="margemExibir + '%'" label="Margem"
-                        readonly variant="outlined" density="compact" bg-color="grey-lighten-4" />
+                      <v-text-field :model-value="margemNum" label="Margem" suffix="%"
+                        type="number" step="0.1" variant="outlined" density="compact"
+                        title="Edite para recalcular o preço pela margem desejada"
+                        @change="aplicarMargem" />
                     </v-col>
                   </v-row>
                 </div>
@@ -1778,6 +1790,29 @@ const markupExibir = computed(() => {
   const f = form.value
   return f.custoUnitario > 0 ? (f.precoVenda / f.custoUnitario).toFixed(2) : '—'
 })
+// Valores numéricos p/ os campos EDITÁVEIS de markup/margem (null quando não dá p/ calcular).
+const markupNum = computed(() => {
+  const f = form.value
+  return f.custoUnitario > 0 && f.precoVenda > 0
+    ? Math.round((f.precoVenda / f.custoUnitario) * 100) / 100 : null
+})
+const margemNum = computed(() => {
+  const f = form.value
+  return f.precoVenda > 0
+    ? Math.round(((f.precoVenda - f.custoUnitario) / f.precoVenda) * 1000) / 10 : null
+})
+// Edita o MARKUP → recalcula o preço de venda (preço = custo × markup).
+function aplicarMarkup(v: any) {
+  const m = parseFloat(String(v ?? '').replace(',', '.'))
+  if (!isNaN(m) && m > 0 && form.value.custoUnitario > 0)
+    form.value.precoVenda = Math.round(form.value.custoUnitario * m * 100) / 100
+}
+// Edita a MARGEM (%) → recalcula o preço (preço = custo ÷ (1 − margem/100)).
+function aplicarMargem(v: any) {
+  const g = parseFloat(String(v ?? '').replace('%', '').replace(',', '.'))
+  if (!isNaN(g) && g >= 0 && g < 100 && form.value.custoUnitario > 0)
+    form.value.precoVenda = Math.round((form.value.custoUnitario / (1 - g / 100)) * 100) / 100
+}
 const margemExibir = computed(() => {
   const f = form.value
   return f.precoVenda > 0

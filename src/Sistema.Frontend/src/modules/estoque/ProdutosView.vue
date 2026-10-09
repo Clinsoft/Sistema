@@ -1806,15 +1806,20 @@ const margemNum = computed(() => {
   return f.precoVenda > 0
     ? Math.round(((f.precoVenda - f.custoUnitario) / f.precoVenda) * 1000) / 10 : null
 })
+// Lê o valor digitado — o @change do Vuetify passa o Event (não o valor direto).
+function valorDoCampo(v: any): string {
+  if (v && typeof v === 'object' && 'target' in v) return (v.target as HTMLInputElement)?.value ?? ''
+  return String(v ?? '')
+}
 // Edita o MARKUP → recalcula o preço de venda (preço = custo × markup).
 function aplicarMarkup(v: any) {
-  const m = parseFloat(String(v ?? '').replace(',', '.'))
+  const m = parseFloat(valorDoCampo(v).replace(',', '.'))
   if (!isNaN(m) && m > 0 && form.value.custoUnitario > 0)
     form.value.precoVenda = Math.round(form.value.custoUnitario * m * 100) / 100
 }
 // Edita a MARGEM (%) → recalcula o preço (preço = custo ÷ (1 − margem/100)).
 function aplicarMargem(v: any) {
-  const g = parseFloat(String(v ?? '').replace('%', '').replace(',', '.'))
+  const g = parseFloat(valorDoCampo(v).replace('%', '').replace(',', '.'))
   if (!isNaN(g) && g >= 0 && g < 100 && form.value.custoUnitario > 0)
     form.value.precoVenda = Math.round((form.value.custoUnitario / (1 - g / 100)) * 100) / 100
 }

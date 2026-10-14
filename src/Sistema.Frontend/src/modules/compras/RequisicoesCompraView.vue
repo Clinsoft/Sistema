@@ -170,7 +170,10 @@
             density="comfortable" class="mb-3">
             <!-- Atendente: resumo simples (vai chegar / aguardando) -->
             <template v-if="conf.atendente">
-              <b>{{ conf.vaoChegar }} de {{ conf.totalItens }} itens já vão chegar</b> (já pedidos ou a caminho). Os demais ainda não foram pedidos — o gestor decide a compra.
+              <b>{{ conf.chegaram }} já chegaram</b> · {{ conf.emTransito }} em trânsito (de {{ conf.totalItens }} itens).
+              <span v-if="conf.faltaValidade" class="text-warning d-block mt-1">
+                <b>⚠ {{ conf.faltaValidade }} chegaram mas faltam o controle de validade</b> — abra e preencha a validade.
+              </span>
             </template>
             <!-- Gestor: resumo completo -->
             <template v-else>
@@ -216,8 +219,16 @@
                   <td class="text-center">
                     <!-- Atendente: só "vai chegar / ainda não" (sem revelar estoque) -->
                     <template v-if="!ehGestor">
-                      <v-chip v-if="l.coberto" size="small" color="success" variant="tonal">
-                        <v-icon start size="14">mdi-truck-check-outline</v-icon>Vai chegar
+                      <v-chip v-if="l.estado === 'ChegouFaltaValidade'" size="small" color="warning" variant="flat"
+                        title="Chegou, mas falta lançar o controle de validade deste produto.">
+                        <v-icon start size="14">mdi-calendar-alert</v-icon>Chegou — falta validade
+                      </v-chip>
+                      <v-chip v-else-if="l.estado === 'Chegou'" size="small" color="success" variant="tonal">
+                        <v-icon start size="14">mdi-check-circle-outline</v-icon>Chegou
+                      </v-chip>
+                      <v-chip v-else-if="l.estado === 'EmTransito'" size="small" color="info" variant="tonal"
+                        title="Pedido já emitido ao fornecedor — ainda não chegou na loja.">
+                        <v-icon start size="14">mdi-truck-outline</v-icon>Em trânsito
                       </v-chip>
                       <v-chip v-else size="small" color="grey" variant="tonal">
                         <v-icon start size="14">mdi-clock-outline</v-icon>Ainda não pedido

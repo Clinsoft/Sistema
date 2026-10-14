@@ -380,9 +380,18 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 .OrderBy(x => x.loja).ToList());
         var prodInfo = await db.Produtos.AsNoTracking()
             .Where(p => reqProdutoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.EstoqueMinimo, p.Ativo }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.EstoqueMinimo, p.Ativo, p.ControlarValidade }).ToListAsync(ct);
         var minimos = prodInfo.ToDictionary(x => x.Id, x => x.EstoqueMinimo);
         var ativos = prodInfo.ToDictionary(x => x.Id, x => x.Ativo);
+        var controlaValidade = prodInfo.ToDictionary(x => x.Id, x => x.ControlarValidade);
+
+        // "Chegou mas falta validade": lote criado DESDE a requisição (nesta loja) ainda SEM
+        // data de validade — a atendente deu entrada mas não preencheu o controle de validade.
+        var faltaValidadeSet = (await db.Lotes.AsNoTracking()
+            .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
+                && reqProdutoIds.Contains(l.ProdutoId)
+                && l.CriadoEm >= req.CriadoEm && l.DataValidade == null)
+            .Select(l => l.ProdutoId).Distinct().ToListAsync(ct)).ToHashSet();
 
         var linhas = itens.Select(it =>
         {
@@ -434,23 +443,33 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoquePorLoja = saldoPorLoja.GetValueOrDefault(it.ProdutoId),
                 pedidos = pedidosDoItem,
                 situacao,
-                // "Vai chegar" (para o atendente) = há pedido ENVIADO (de fato a caminho) ou
-                // deu entrada recente. Pedido "Recebido" é HISTÓRICO (já chegou semanas atrás)
-                // e NÃO conta como "vai chegar"; rascunho também não (ainda não foi enviado).
                 coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar,
+                // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido):
+                //  ChegouFaltaValidade = deu entrada mas o lote está SEM validade (ação dela)
+                //  Chegou              = deu entrada e a validade já foi lançada (ou não controla)
+                //  EmTransito          = pedido ENVIADO ao fornecedor, ainda não chegou na loja
+                //  AindaNaoPedido      = ninguém pediu ainda (o gestor decide a compra)
+                estado =
+                    (controlaValidade.GetValueOrDefault(it.ProdutoId, false) && faltaValidadeSet.Contains(it.ProdutoId))
+                        ? "ChegouFaltaValidade"
+                  : vaiChegar ? "Chegou"
+                  : pedidosDoItem.Any(p => p.status == "Enviado") ? "EmTransito"
+                  : "AindaNaoPedido",
             };
         }).ToList();
 
-        // Atendente: só os itens + "vai chegar" (sem estoque, custo ou nº de pedido).
+        // Atendente: só os itens + estado (sem estoque, custo ou nº de pedido).
         if (User.IsInRole("Atendente"))
         {
             return Ok(new
             {
                 requisicaoId = id,
                 totalItens = linhas.Count,
-                vaoChegar = linhas.Count(l => l.coberto),
+                chegaram = linhas.Count(l => l.estado is "Chegou" or "ChegouFaltaValidade"),
+                emTransito = linhas.Count(l => l.estado == "EmTransito"),
+                faltaValidade = linhas.Count(l => l.estado == "ChegouFaltaValidade"),
                 atendente = true,
-                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.coberto }).ToList(),
+                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado }).ToList(),
             });
         }
 

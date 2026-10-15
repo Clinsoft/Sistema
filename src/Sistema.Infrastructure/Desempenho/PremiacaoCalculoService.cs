@@ -43,6 +43,15 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes)
             .ToDictionaryAsync(x => x.LocalEstoqueId, x => x, ct);
 
+        // Meta do PLANEJAMENTO ANUAL (MetasVendaMensal) do mês/loja: fonte primária da meta de
+        // premiação — as duas telas ficam sempre em sincronia. Só caímos no cálculo automático
+        // (faturamento do mês anterior) quando a loja não tem planejamento definido no mês.
+        var planejamento = (await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == ano && x.Mes == mes && x.LocalEstoqueId != null)
+            .ToListAsync(ct))
+            .GroupBy(x => x.LocalEstoqueId!.Value)
+            .ToDictionary(g => g.Key, g => g.Last().Valor);
+
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
 
@@ -53,7 +62,14 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             var media = Math.Round(fat / cfg.MesesBaseMeta, 2);
             var vend = vendedoresAtivos.TryGetValue(loja, out var vv) ? vv : 0;
             if (overrides.TryGetValue(loja, out var ov))
+                // Override manual de premiação (se alguém gravar uma meta específica) ainda vence.
                 dict[loja] = new MetaResolvida(ov.MetaLoja, ov.MetaIndividual, media, vend, true);
+            else if (planejamento.TryGetValue(loja, out var metaPlan) && metaPlan > 0m)
+            {
+                // Puxa a meta do planejamento anual; individual = meta ÷ colaboradores ativos.
+                var metaInd = Math.Round(metaPlan / Math.Max(1, vend), 2);
+                dict[loja] = new MetaResolvida(metaPlan, metaInd, media, vend, false);
+            }
             else
             {
                 // Meta automática = faturamento do mês anterior × Fator (100%); individual = meta ÷ colaboradores ativos.

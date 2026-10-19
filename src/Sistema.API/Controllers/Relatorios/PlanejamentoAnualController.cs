@@ -69,42 +69,7 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         var fim = ini.AddMonths(1);
         var diasNoMes = DateTime.DaysInMonth(ano, mes);
 
-        // Boletos a pagar EM ABERTO (ou parcial) que vencem neste mês, por dia.
-        var boletos = await db.LancamentosFinanceiros.AsNoTracking()
-            .Where(l => l.EmpresaId == empresaId
-                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
-                && (l.Status == Domain.Financeiro.Entities.StatusLancamento.EmAberto
-                    || l.Status == Domain.Financeiro.Entities.StatusLancamento.PagoParcialmente)
-                && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)
-                && l.DataVencimento >= ini && l.DataVencimento < fim)
-            .Select(l => new { l.DataVencimento.Day, Saldo = l.ValorOriginal - l.ValorPago })
-            .ToListAsync(ct);
-
-        var totalPorDia = boletos.GroupBy(b => b.Day)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Saldo));
-
-        var comBoleto = totalPorDia.Values.Where(v => v > 0).ToList();
-        var maxDia = comBoleto.Count > 0 ? comBoleto.Max() : 0m;
-        var mediaDia = comBoleto.Count > 0 ? comBoleto.Average() : 0m;
-
-        string Nivel(decimal total)
-        {
-            if (total <= 0) return "leve";
-            if (total >= 15000m || (maxDia > 0 && total >= 0.5m * maxDia)) return "pesado";
-            if (total > mediaDia) return "medio";
-            return "leve";
-        }
-
-        var dias = Enumerable.Range(1, diasNoMes).Select(d =>
-        {
-            var total = totalPorDia.GetValueOrDefault(d, 0m);
-            return new { dia = d, total = Math.Round(total, 2), nivel = Nivel(total) };
-        }).ToList();
-
-        var diasEvitar = dias.Where(d => d.nivel == "pesado").Select(d => d.dia).ToList();
-        var diasLeves = dias.Where(d => d.nivel == "leve").Select(d => d.dia).ToList();
-
-        // Prazo médio dos fornecedores (emissão → vencimento), últimos 365 dias, para recomendar a compra.
+        // Prazo médio dos fornecedores (emissão → vencimento), últimos 365 dias.
         var desde = DateTime.Today.AddDays(-365);
         var prazos = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
@@ -116,16 +81,67 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         var prazoValidos = prazos.Where(p => p > 0 && p <= 120).ToList();
         var prazoMedio = prazoValidos.Count > 0 ? (int)Math.Round(prazoValidos.Average()) : 28;
 
-        // Melhor dia de compra = dia leve de vencimento menos o prazo médio (normalizado ao mês).
-        var melhoresDiasCompra = diasLeves
-            .Select(d => { var c = d - prazoMedio; while (c <= 0) c += diasNoMes; return c; })
-            .Distinct().OrderBy(x => x).ToList();
+        // MODELO DE PROJEÇÃO: cada dia de COMPRA deste mês projeta o vencimento (compra + prazo médio).
+        // A janela de vencimentos possíveis vai de (1º do mês + prazo) até (fim do mês + prazo).
+        var dueIni = ini.AddDays(prazoMedio).Date;
+        var dueFim = fim.AddDays(prazoMedio).Date;
+        var vencimentos = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && (l.Status == Domain.Financeiro.Entities.StatusLancamento.EmAberto
+                    || l.Status == Domain.Financeiro.Entities.StatusLancamento.PagoParcialmente)
+                && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)
+                && l.DataVencimento >= dueIni && l.DataVencimento <= dueFim)
+            .Select(l => new { Data = l.DataVencimento.Date, Saldo = l.ValorOriginal - l.ValorPago })
+            .ToListAsync(ct);
+        var totalPorData = vencimentos.GroupBy(v => v.Data)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Saldo));
+
+        var hoje = DateTime.Today;
+        var projecao = Enumerable.Range(1, diasNoMes).Select(d =>
+        {
+            var compra = new DateTime(ano, mes, d);
+            var venc = compra.AddDays(prazoMedio).Date;
+            return new
+            {
+                dia = d,
+                venc,
+                total = totalPorData.GetValueOrDefault(venc, 0m),
+                passado = compra.Date < hoje,
+            };
+        }).ToList();
+
+        // Limiares calculados só sobre dias de compra válidos (futuros) com vencimento carregado.
+        var valores = projecao.Where(p => !p.passado && p.total > 0).Select(p => p.total).ToList();
+        var maxV = valores.Count > 0 ? valores.Max() : 0m;
+        var mediaV = valores.Count > 0 ? valores.Average() : 0m;
+
+        string Nivel(decimal total, bool passado)
+        {
+            if (passado) return "passado";
+            if (total <= 0) return "leve";
+            if (total >= 15000m || (maxV > 0 && total >= 0.5m * maxV)) return "pesado";
+            if (total > mediaV) return "medio";
+            return "leve";
+        }
+
+        var dias = projecao.Select(p => new
+        {
+            dia = p.dia,
+            nivel = Nivel(p.total, p.passado),
+            vencDia = p.venc.Day,
+            vencMes = p.venc.Month,
+            total = Math.Round(p.total, 2),   // quanto já vence no dia projetado (saída concorrente)
+        }).ToList();
+
+        var melhoresDiasCompra = dias.Where(d => d.nivel == "leve").Select(d => d.dia).ToList();
+        var diasEvitarCompra = dias.Where(d => d.nivel == "pesado").Select(d => d.dia).ToList();
 
         return Ok(new
         {
-            ano, mes, nomeMes = NomesMes[mes - 1], diasNoMes,
-            dias, diasEvitar, diasLeves, prazoMedio, melhoresDiasCompra,
-            totalMes = Math.Round(totalPorDia.Values.Sum(), 2)
+            ano, mes, nomeMes = NomesMes[mes - 1], diasNoMes, prazoMedio,
+            dias, melhoresDiasCompra, diasEvitarCompra,
+            totalMes = Math.Round(totalPorData.Values.Sum(), 2)
         });
     }
 

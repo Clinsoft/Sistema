@@ -75,7 +75,10 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
         var msgs = await db.MensagensWhatsApp.AsNoTracking()
             .Where(m => m.LocalEstoqueId != null && lojas.Contains(m.LocalEstoqueId.Value)
                      && m.DataHora >= desde
-                     && m.Tipo != "reaction")   // reação (emoji) não é pergunta: não conta como turno sem resposta
+                     // Ignora o que não é pergunta de verdade: reação (emoji), tipo não suportado
+                     // e mensagem vazia sem mídia — nenhum conta como turno do cliente sem resposta.
+                     && m.Tipo != "reaction" && m.Tipo != "unsupported"
+                     && (m.MidiaUrl != null || (m.Texto != null && m.Texto.Trim() != "")))
             .Select(m => new { m.Id, m.EmpresaId, Loja = m.LocalEstoqueId!.Value, m.Telefone, m.Direcao, m.DataHora })
             .OrderBy(m => m.DataHora)
             .ToListAsync();

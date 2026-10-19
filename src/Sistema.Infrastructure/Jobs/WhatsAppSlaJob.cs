@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sistema.Domain.Desempenho.Entities;
@@ -54,6 +56,46 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
         return total;
     }
 
+    // Palavras de cortesia/fechamento (normalizadas: minúsculas, sem acento). Se a mensagem do
+    // cliente tiver só essas palavras (até 6) — ou só emoji —, é fechamento, não pergunta.
+    private static readonly HashSet<string> CortesiaPalavras = new(StringComparer.Ordinal)
+    {
+        "obrigada","obrigado","obrigadao","obrigadinha","obrigadinho","obg","obga","obgda","obgado",
+        "obrgd","obrgda","obrgado","obgd","brigada","brigado","brigadao","grata","grato","agradecida",
+        "agradecido","agradeco","vlw","valeu","valew","flw","falou","ok","oka","okk","okay","okey","okj",
+        "blz","beleza","certo","certinho","perfeito","perfeita","otimo","otima","show","showw","joia",
+        "massa","top","maravilha","maravilhosa","entendi","entendido","entendida","muito","mto","mt",
+        "tudo","bem","bom","boa","ta","tah","de","nada","isso","mesmo","demais","entao","amem","amen",
+        "abencoe","deus","por","graca","gracas","uhum","aham","combinado","fechado","fechou","beijos",
+        "bjs","bjos","bjus","abraco","abracos","otimaa","legal","maravilhoso","sucesso","obgado","vlww"
+    };
+
+    private static string Normalizar(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (var ch in s.ToLowerInvariant().Normalize(NormalizationForm.FormD))
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue; // remove acento
+            if (char.IsLetter(ch)) sb.Append(ch);
+            else if (char.IsWhiteSpace(ch)) sb.Append(' ');
+            // dígitos, pontuação e emoji são ignorados (viram separador implícito)
+        }
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>Mensagem do cliente que é só cortesia de fechamento (obrigada/ok/emoji), não pergunta.</summary>
+    private static bool EhCortesiaFechamento(string? texto)
+    {
+        if (texto == null) return false;
+        // Tem pergunta (?) ou número? Provável pedido real — NÃO é cortesia.
+        if (texto.Contains('?') || texto.Any(char.IsDigit)) return false;
+        var norm = Normalizar(texto);
+        var palavras = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (palavras.Length == 0) return true;             // só emoji/pontuação → fechamento
+        if (palavras.Length > 6) return false;             // frase longa → provável pergunta/pedido
+        return palavras.All(CortesiaPalavras.Contains);
+    }
+
     public async Task ExecutarAsync()
     {
         var agoraLocal = ParaLocal(DateTime.UtcNow);
@@ -79,7 +121,7 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
                      // e mensagem vazia sem mídia — nenhum conta como turno do cliente sem resposta.
                      && m.Tipo != "reaction" && m.Tipo != "unsupported"
                      && (m.MidiaUrl != null || (m.Texto != null && m.Texto.Trim() != "")))
-            .Select(m => new { m.Id, m.EmpresaId, Loja = m.LocalEstoqueId!.Value, m.Telefone, m.Direcao, m.DataHora })
+            .Select(m => new { m.Id, m.EmpresaId, Loja = m.LocalEstoqueId!.Value, m.Telefone, m.Direcao, m.DataHora, m.Texto, m.Tipo })
             .OrderBy(m => m.DataHora)
             .ToListAsync();
 
@@ -102,6 +144,10 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
                 // Só o INÍCIO de um turno do cliente (mensagem anterior foi enviada por nós, ou é a 1ª).
                 if (i > 0 && ordenadas[i - 1].Direcao == DirecaoMensagemWhatsApp.Recebida) continue;
                 if (jaPenalizadas.Contains(m.Id)) continue;
+                // Fechamento de cortesia (obrigada/ok/valeu/emoji) DEPOIS de já termos respondido:
+                // é o cliente encerrando, não uma pergunta. Não penaliza. (i>0 garante resposta nossa antes.)
+                // Só para texto: anexo (documento/imagem/áudio) é conteúdo real, mesmo com texto vazio.
+                if (i > 0 && m.Tipo == "text" && EhCortesiaFechamento(m.Texto)) continue;
 
                 var recebidaLocal = ParaLocal(m.DataHora);
                 // Primeira resposta nossa após esta mensagem.

@@ -689,10 +689,17 @@
               <v-progress-circular indeterminate size="20" color="success" />
             </div>
             <template v-else-if="calendario">
+              <div class="dash-cal-grid dash-cal-head-row">
+                <div v-for="(w, i) in ['dom','seg','ter','qua','qui','sex','sáb']" :key="i" class="dash-cal-head">{{ w }}</div>
+              </div>
               <div class="dash-cal-grid">
-                <div v-for="d in calendario.dias" :key="d.dia"
-                  class="dash-cal-cell" :class="'cal-'+d.nivel"
-                  :title="tipDia(d)">{{ d.dia }}</div>
+                <template v-for="(c, i) in calCells" :key="i">
+                  <div v-if="c.blank" class="dash-cal-blank"></div>
+                  <div v-else class="dash-cal-cell" :class="'cal-'+c.nivel" :title="tipDia(c)">
+                    <div class="dash-cal-num">{{ c.dia }}</div>
+                    <div class="dash-cal-val">{{ vk(c.total) }}</div>
+                  </div>
+                </template>
               </div>
               <div v-if="calendario.faixa" class="text-caption text-medium-emphasis d-flex align-start ga-1 mt-2">
                 <v-icon icon="mdi-information-outline" size="13" class="mt-1" />
@@ -1091,6 +1098,18 @@ function mudarMesCal(delta: number) {
   calMes.value = m; calAno.value = a
   carregarCalendario()
 }
+
+// Monta o calendário alinhado por dia da semana (células em branco antes do dia 1).
+const calCells = computed(() => {
+  const dias = calendario.value?.dias
+  if (!dias) return [] as any[]
+  const primeiroDiaSemana = new Date(calAno.value, calMes.value - 1, 1).getDay() // 0=domingo
+  return [...Array.from({ length: primeiroDiaSemana }, () => ({ blank: true })), ...dias]
+})
+// Valor curto por célula (R$ xk) — vazio quando não há boleto no dia.
+const vk = (v: number) => v >= 1000
+  ? 'R$' + (v / 1000).toFixed(1).replace('.', ',') + 'k'
+  : (v > 0 ? 'R$' + Math.round(v) : '')
 
 // Tooltip do dia: mostra o vencimento (dia único ou faixa, p/ fornecedor irregular).
 function tipDia(d: any) {
@@ -2021,12 +2040,17 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.dash-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-.dash-cal-cell { font-size: 0.7rem; font-weight: 600; text-align: center; padding: 3px 0; border-radius: 5px; }
+.dash-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dash-cal-head-row { margin-bottom: 2px; }
+.dash-cal-head { text-align: center; font-size: 0.62rem; text-transform: uppercase; color: rgba(var(--v-theme-on-surface), 0.5); }
+.dash-cal-blank { }
+.dash-cal-cell { min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 6px; }
+.dash-cal-num { font-size: 0.82rem; font-weight: 700; line-height: 1; }
+.dash-cal-val { font-size: 0.58rem; line-height: 1; margin-top: 2px; }
 .dash-cal-cell.cal-leve   { background: #E4F3D6; color: #2E5214; }
 .dash-cal-cell.cal-medio  { background: #FBECC6; color: #7A5A12; }
 .dash-cal-cell.cal-pesado { background: #F7D6D2; color: #8A2318; }
-.dash-cal-cell.cal-passado { background: #EEEEEE; color: #BDBDBD; }
+.dash-cal-cell.cal-passado { background: #F3F3F3; color: #C4C4C4; }
 .heat-scroll { overflow-x: auto; padding-bottom: 2px; }
 .heat { border-collapse: separate; border-spacing: 3px; font-size: 0.68rem; }
 .heat th {

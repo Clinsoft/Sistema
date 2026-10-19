@@ -692,12 +692,16 @@
               <div class="dash-cal-grid">
                 <div v-for="d in calendario.dias" :key="d.dia"
                   class="dash-cal-cell" :class="'cal-'+d.nivel"
-                  :title="d.nivel==='passado' ? 'já passou' : (d.total > 0 ? ('comprar dia '+d.dia+' → vence '+d.vencDia+'/'+d.vencMes+' ('+fmt(d.total)+' nesse dia)') : ('comprar dia '+d.dia+' → vence '+d.vencDia+'/'+d.vencMes+' (dia leve)'))">{{ d.dia }}</div>
+                  :title="tipDia(d)">{{ d.dia }}</div>
+              </div>
+              <div v-if="calendario.faixa" class="text-caption text-medium-emphasis d-flex align-start ga-1 mt-2">
+                <v-icon icon="mdi-information-outline" size="13" class="mt-1" />
+                <span>Fornecedor irregular: o boleto vence entre <b>~{{ calendario.prazoMin }}</b> e <b>~{{ calendario.prazoMax }}</b> dias após a compra — a cor usa o pior caso da faixa.</span>
               </div>
               <div class="text-caption mt-2 d-flex align-start ga-1">
                 <v-icon icon="mdi-cart-check" size="14" color="success" class="mt-1" />
                 <span>Comprar nos dias: <b class="text-success">{{ (calendario.melhoresDiasCompra || []).slice(0, 10).join(', ') || '—' }}</b>
-                  <span class="text-medium-emphasis">(boleto cai em dia leve · prazo ~{{ calendario.prazoMedio }}d)</span></span>
+                  <span class="text-medium-emphasis">({{ calendario.faixa ? 'boleto cai em dia leve · prazo ~'+calendario.prazoMin+'–'+calendario.prazoMax+'d' : 'boleto cai em dia leve · prazo ~'+calendario.prazoMedio+'d' }})</span></span>
               </div>
               <div class="text-caption d-flex align-start ga-1">
                 <v-icon icon="mdi-alert" size="14" color="error" class="mt-1" />
@@ -1086,6 +1090,17 @@ function mudarMesCal(delta: number) {
   if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
   calMes.value = m; calAno.value = a
   carregarCalendario()
+}
+
+// Tooltip do dia: mostra o vencimento (dia único ou faixa, p/ fornecedor irregular).
+function tipDia(d: any) {
+  if (d.nivel === 'passado') return 'já passou'
+  const venc = calendario.value?.faixa
+    ? `entre ${d.vencDia}/${d.vencMes} e ${d.vencFimDia}/${d.vencFimMes}`
+    : `${d.vencDia}/${d.vencMes}`
+  return d.total > 0
+    ? `comprar dia ${d.dia} → vence ${venc} (pior dia R$ ${fmtNum(d.total)})`
+    : `comprar dia ${d.dia} → vence ${venc} (dia leve)`
 }
 
 // Resumo de metas por loja (no ritmo / fora do ritmo) — só para gestor

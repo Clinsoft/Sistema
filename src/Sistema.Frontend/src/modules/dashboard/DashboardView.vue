@@ -689,16 +689,16 @@
               <div class="dash-cal-grid">
                 <div v-for="d in calendario.dias" :key="d.dia"
                   class="dash-cal-cell" :class="'cal-'+d.nivel"
-                  :title="d.total > 0 ? fmt(d.total) : 'dia leve'">{{ d.dia }}</div>
+                  :title="d.nivel==='passado' ? 'já passou' : (d.total > 0 ? ('comprar dia '+d.dia+' → vence '+d.vencDia+'/'+d.vencMes+' ('+fmt(d.total)+' nesse dia)') : ('comprar dia '+d.dia+' → vence '+d.vencDia+'/'+d.vencMes+' (dia leve)'))">{{ d.dia }}</div>
               </div>
               <div class="text-caption mt-2 d-flex align-start ga-1">
                 <v-icon icon="mdi-cart-check" size="14" color="success" class="mt-1" />
-                <span>Comprar por volta de: <b class="text-success">{{ (calendario.melhoresDiasCompra || []).slice(0, 8).join(', ') || '—' }}</b>
-                  <span class="text-medium-emphasis">(prazo ~{{ calendario.prazoMedio }}d)</span></span>
+                <span>Comprar nos dias: <b class="text-success">{{ (calendario.melhoresDiasCompra || []).slice(0, 10).join(', ') || '—' }}</b>
+                  <span class="text-medium-emphasis">(boleto cai em dia leve · prazo ~{{ calendario.prazoMedio }}d)</span></span>
               </div>
               <div class="text-caption d-flex align-start ga-1">
                 <v-icon icon="mdi-alert" size="14" color="error" class="mt-1" />
-                <span>Evitar vencer em: <b class="text-error">{{ (calendario.diasEvitar || []).length ? calendario.diasEvitar.join(', ') : 'nenhum pico' }}</b></span>
+                <span>Evitar comprar em: <b class="text-error">{{ (calendario.diasEvitarCompra || []).length ? calendario.diasEvitarCompra.join(', ') : 'nenhum dia crítico' }}</b></span>
               </div>
             </template>
           </div>
@@ -1988,6 +1988,7 @@ onMounted(async () => {
 .dash-cal-cell.cal-leve   { background: #E4F3D6; color: #2E5214; }
 .dash-cal-cell.cal-medio  { background: #FBECC6; color: #7A5A12; }
 .dash-cal-cell.cal-pesado { background: #F7D6D2; color: #8A2318; }
+.dash-cal-cell.cal-passado { background: #EEEEEE; color: #BDBDBD; }
 .heat-scroll { overflow-x: auto; padding-bottom: 2px; }
 .heat { border-collapse: separate; border-spacing: 3px; font-size: 0.68rem; }
 .heat th {

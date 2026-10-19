@@ -57,6 +57,78 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>Calendário de compras: para o mês pedido, mostra em que DIA os boletos a pagar se
+    /// concentram (dias a evitar) e os dias leves, além dos melhores dias para comprar — considerando
+    /// o prazo médio dos fornecedores — para o boleto cair num dia leve. Recalcula a cada mês.</summary>
+    [HttpGet("calendario-compras")]
+    public async Task<IActionResult> CalendarioCompras([FromQuery] Guid empresaId, [FromQuery] int ano,
+        [FromQuery] int mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
+    {
+        if (mes < 1 || mes > 12) return BadRequest("Mês inválido.");
+        var ini = new DateTime(ano, mes, 1);
+        var fim = ini.AddMonths(1);
+        var diasNoMes = DateTime.DaysInMonth(ano, mes);
+
+        // Boletos a pagar EM ABERTO (ou parcial) que vencem neste mês, por dia.
+        var boletos = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && (l.Status == Domain.Financeiro.Entities.StatusLancamento.EmAberto
+                    || l.Status == Domain.Financeiro.Entities.StatusLancamento.PagoParcialmente)
+                && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)
+                && l.DataVencimento >= ini && l.DataVencimento < fim)
+            .Select(l => new { l.DataVencimento.Day, Saldo = l.ValorOriginal - l.ValorPago })
+            .ToListAsync(ct);
+
+        var totalPorDia = boletos.GroupBy(b => b.Day)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Saldo));
+
+        var comBoleto = totalPorDia.Values.Where(v => v > 0).ToList();
+        var maxDia = comBoleto.Count > 0 ? comBoleto.Max() : 0m;
+        var mediaDia = comBoleto.Count > 0 ? comBoleto.Average() : 0m;
+
+        string Nivel(decimal total)
+        {
+            if (total <= 0) return "leve";
+            if (total >= 15000m || (maxDia > 0 && total >= 0.5m * maxDia)) return "pesado";
+            if (total > mediaDia) return "medio";
+            return "leve";
+        }
+
+        var dias = Enumerable.Range(1, diasNoMes).Select(d =>
+        {
+            var total = totalPorDia.GetValueOrDefault(d, 0m);
+            return new { dia = d, total = Math.Round(total, 2), nivel = Nivel(total) };
+        }).ToList();
+
+        var diasEvitar = dias.Where(d => d.nivel == "pesado").Select(d => d.dia).ToList();
+        var diasLeves = dias.Where(d => d.nivel == "leve").Select(d => d.dia).ToList();
+
+        // Prazo médio dos fornecedores (emissão → vencimento), últimos 365 dias, para recomendar a compra.
+        var desde = DateTime.Today.AddDays(-365);
+        var prazos = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.FornecedorId != null && l.DataEmissao >= desde)
+            .Select(l => EF.Functions.DateDiffDay(l.DataEmissao, l.DataVencimento))
+            .ToListAsync(ct);
+        var prazoValidos = prazos.Where(p => p > 0 && p <= 120).ToList();
+        var prazoMedio = prazoValidos.Count > 0 ? (int)Math.Round(prazoValidos.Average()) : 28;
+
+        // Melhor dia de compra = dia leve de vencimento menos o prazo médio (normalizado ao mês).
+        var melhoresDiasCompra = diasLeves
+            .Select(d => { var c = d - prazoMedio; while (c <= 0) c += diasNoMes; return c; })
+            .Distinct().OrderBy(x => x).ToList();
+
+        return Ok(new
+        {
+            ano, mes, nomeMes = NomesMes[mes - 1], diasNoMes,
+            dias, diasEvitar, diasLeves, prazoMedio, melhoresDiasCompra,
+            totalMes = Math.Round(totalPorDia.Values.Sum(), 2)
+        });
+    }
+
     /// <summary>Salva/atualiza as metas mensais do ano (upsert).</summary>
     [HttpPost]
     public async Task<IActionResult> Salvar([FromBody] SalvarPlanejamentoRequest req, CancellationToken ct)

@@ -682,6 +682,9 @@
               </span>
               <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMesCal(1)" />
             </div>
+            <v-select v-model="fornecedorId" :items="fornecedorOpcoes" item-title="nome" item-value="id"
+              label="Fornecedor" variant="outlined" density="compact" hide-details class="mb-2"
+              prepend-inner-icon="mdi-truck-outline" @update:model-value="carregarCalendario" />
             <div v-if="calLoading" class="text-center py-2">
               <v-progress-circular indeterminate size="20" color="success" />
             </div>
@@ -1046,12 +1049,32 @@ const calendario = ref<any>(null)
 const calLoading = ref(false)
 const calNomeMes = computed(() => MESES_PT[calMes.value - 1])
 
+// Fornecedores (com prazo de cada um) para o seletor — compra pelo fornecedor exato.
+const fornecedores = ref<any[]>([])
+const fornecedorId = ref<string | null>(null)
+const fornecedorOpcoes = computed(() => [
+  { id: null, nome: 'Média geral (todos)' },
+  ...fornecedores.value.map(f => ({ id: f.id, nome: `${f.nome} (~${f.prazoMedio}d)` })),
+])
+async function carregarFornecedores() {
+  if (!auth.empresaId) return
+  try {
+    const r = await api.get('/relatorios/planejamento-anual/fornecedores-prazo', {
+      params: { empresaId: auth.empresaId },
+    })
+    fornecedores.value = r.data ?? []
+  } catch { fornecedores.value = [] }
+}
+
 async function carregarCalendario() {
   if (!auth.empresaId) return
   calLoading.value = true
   try {
     const r = await api.get('/relatorios/planejamento-anual/calendario-compras', {
-      params: { empresaId: auth.empresaId, ano: calAno.value, mes: calMes.value },
+      params: {
+        empresaId: auth.empresaId, ano: calAno.value, mes: calMes.value,
+        fornecedorId: fornecedorId.value || undefined,
+      },
     })
     calendario.value = r.data
   } catch { calendario.value = null }
@@ -1962,6 +1985,7 @@ onMounted(async () => {
     carregarVendasColaborador(),
     carregarDre(),
     carregarPlanejamento(),
+    carregarFornecedores(),
     carregarCalendario(),
     carregarCurvaAbc(),
     carregarMetas(),

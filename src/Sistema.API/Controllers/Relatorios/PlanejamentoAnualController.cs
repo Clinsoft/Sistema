@@ -57,12 +57,50 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         });
     }
 
-    /// <summary>Calendário de compras: para o mês pedido, mostra em que DIA os boletos a pagar se
-    /// concentram (dias a evitar) e os dias leves, além dos melhores dias para comprar — considerando
-    /// o prazo médio dos fornecedores — para o boleto cair num dia leve. Recalcula a cada mês.</summary>
+    /// <summary>Lista os fornecedores com histórico de boletos (últimos 365 dias) e o prazo médio
+    /// de cada um (emissão → vencimento), para o seletor do calendário de compras.</summary>
+    [HttpGet("fornecedores-prazo")]
+    public async Task<IActionResult> FornecedoresPrazo([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var desde = DateTime.Today.AddDays(-365);
+        var dados = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.FornecedorId != null && l.DataEmissao >= desde)
+            .Select(l => new { Id = l.FornecedorId!.Value, Prazo = EF.Functions.DateDiffDay(l.DataEmissao, l.DataVencimento) })
+            .ToListAsync(ct);
+
+        var validos = dados.Where(x => x.Prazo > 0 && x.Prazo <= 120).ToList();
+        var ids = validos.Select(x => x.Id).Distinct().ToList();
+        var nomes = await db.Fornecedores.AsNoTracking()
+            .Where(f => ids.Contains(f.Id))
+            .Select(f => new { f.Id, Nome = f.NomeFantasia ?? f.RazaoSocial })
+            .ToDictionaryAsync(f => f.Id, f => f.Nome, ct);
+
+        var lista = validos.GroupBy(x => x.Id)
+            .Where(g => g.Count() >= 2)
+            .Select(g => new
+            {
+                id = g.Key,
+                nome = nomes.GetValueOrDefault(g.Key, "(sem nome)"),
+                prazoMedio = (int)Math.Round(g.Average(x => x.Prazo)),
+                prazoMin = g.Min(x => x.Prazo),
+                prazoMax = g.Max(x => x.Prazo),
+                qtd = g.Count(),
+            })
+            .OrderByDescending(x => x.qtd)
+            .ToList();
+
+        return Ok(lista);
+    }
+
+    /// <summary>Calendário de compras: para o mês pedido, mostra em que DIA comprar para o boleto
+    /// cair num dia leve (projeção = dia de compra + prazo do fornecedor). Se um fornecedor for
+    /// informado, usa o prazo REAL dele; senão, a média geral. Recalcula a cada mês.</summary>
     [HttpGet("calendario-compras")]
     public async Task<IActionResult> CalendarioCompras([FromQuery] Guid empresaId, [FromQuery] int ano,
-        [FromQuery] int mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
+        [FromQuery] int mes, [FromQuery] Guid? localEstoqueId, [FromQuery] Guid? fornecedorId, CancellationToken ct)
     {
         if (mes < 1 || mes > 12) return BadRequest("Mês inválido.");
         var ini = new DateTime(ano, mes, 1);
@@ -75,7 +113,8 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
-                && l.FornecedorId != null && l.DataEmissao >= desde)
+                && l.FornecedorId != null && l.DataEmissao >= desde
+                && (fornecedorId == null || l.FornecedorId == fornecedorId))
             .Select(l => EF.Functions.DateDiffDay(l.DataEmissao, l.DataVencimento))
             .ToListAsync(ct);
         var prazoValidos = prazos.Where(p => p > 0 && p <= 120).ToList();

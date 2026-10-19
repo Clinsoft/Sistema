@@ -1095,12 +1095,11 @@ function mudarMesCal(delta: number) {
 // Tooltip do dia: mostra o vencimento (dia único ou faixa, p/ fornecedor irregular).
 function tipDia(d: any) {
   if (d.nivel === 'passado') return 'já passou'
-  const venc = calendario.value?.faixa
-    ? `entre ${d.vencDia}/${d.vencMes} e ${d.vencFimDia}/${d.vencFimMes}`
-    : `${d.vencDia}/${d.vencMes}`
+  const faixa = calendario.value?.faixa
+    ? ` (pode variar ${d.vencIniDia}/${d.vencIniMes}–${d.vencFimDia}/${d.vencFimMes})` : ''
   return d.total > 0
-    ? `comprar dia ${d.dia} → vence ${venc} (pior dia R$ ${fmtNum(d.total)})`
-    : `comprar dia ${d.dia} → vence ${venc} (dia leve)`
+    ? `comprar dia ${d.dia} → vence ~${d.vencDia}/${d.vencMes}${faixa} · R$ ${fmtNum(d.total)} nesse dia`
+    : `comprar dia ${d.dia} → vence ~${d.vencDia}/${d.vencMes}${faixa} · dia leve`
 }
 
 // Resumo de metas por loja (no ritmo / fora do ritmo) — só para gestor

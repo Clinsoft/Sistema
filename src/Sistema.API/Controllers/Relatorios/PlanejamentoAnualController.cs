@@ -78,8 +78,14 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
             .Select(f => new { f.Id, Nome = f.NomeFantasia ?? f.RazaoSocial })
             .ToDictionaryAsync(f => f.Id, f => f.Nome, ct);
 
+        // Só fornecedores de COMPRA (que entraram NF-e de produto) — exclui aluguel, financiamento,
+        // impostos, serviços etc. que também geram conta a pagar mas não são compra de mercadoria.
+        var fornecedoresDeCompra = (await db.EntradasNFe.AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId && e.FornecedorId != null)
+            .Select(e => e.FornecedorId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
+
         var lista = validos.GroupBy(x => x.Id)
-            .Where(g => g.Count() >= 2)
+            .Where(g => g.Count() >= 2 && fornecedoresDeCompra.Contains(g.Key))
             .Select(g => new
             {
                 id = g.Key,
@@ -120,17 +126,19 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         var prazoValidos = prazos.Where(p => p > 0 && p <= 120).ToList();
         var prazoMedio = prazoValidos.Count > 0 ? (int)Math.Round(prazoValidos.Average()) : 28;
 
-        // Faixa de prazo do fornecedor. Só vira INTERVALO quando um fornecedor é escolhido e ele é
-        // irregular (diferença entre menor e maior prazo >= 8 dias). Senão, projeta um dia único.
-        var prazoMin = prazoValidos.Count > 0 ? prazoValidos.Min() : prazoMedio;
-        var prazoMax = prazoValidos.Count > 0 ? prazoValidos.Max() : prazoMedio;
-        var usarFaixa = fornecedorId != null && (prazoMax - prazoMin) >= 8;
-        var offIni = usarFaixa ? prazoMin : prazoMedio;
-        var offFim = usarFaixa ? prazoMax : prazoMedio;
+        // Prazo TÍPICO (mediana) + faixa provável (P20–P80), robustos a outliers. A COR usa só o
+        // prazo típico (1 dia) — senão, fornecedor irregular pintaria o mês todo. A faixa é informativa.
+        var ordenados = prazoValidos.OrderBy(p => p).ToList();
+        int Pct(double q) => ordenados.Count == 0 ? prazoMedio
+            : ordenados[Math.Min(ordenados.Count - 1, Math.Max(0, (int)Math.Round(q * (ordenados.Count - 1))))];
+        var prazoTipico = ordenados.Count > 0 ? Pct(0.5) : prazoMedio;
+        var faixaMin = Pct(0.2);
+        var faixaMax = Pct(0.8);
+        var usarFaixa = fornecedorId != null && (faixaMax - faixaMin) >= 5;
 
-        // MODELO DE PROJEÇÃO: dia de COMPRA + prazo = vencimento. Janela de (1º + menor offset) até (fim + maior offset).
-        var dueIni = ini.AddDays(offIni).Date;
-        var dueFim = fim.AddDays(offFim).Date;
+        // MODELO DE PROJEÇÃO: dia de COMPRA + prazo típico = vencimento (a cor sai deste dia).
+        var dueIni = ini.AddDays(prazoTipico).Date;
+        var dueFim = fim.AddDays(prazoTipico).Date;
         var vencimentos = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
@@ -147,13 +155,16 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         var projecao = Enumerable.Range(1, diasNoMes).Select(d =>
         {
             var compra = new DateTime(ano, mes, d);
-            var vIni = compra.AddDays(offIni).Date;
-            var vFim = compra.AddDays(offFim).Date;
-            // Pior caso: maior saída concorrente em qualquer dia dentro da faixa de vencimento.
-            decimal pico = 0m;
-            for (var off = offIni; off <= offFim; off++)
-                if (totalPorData.TryGetValue(compra.AddDays(off).Date, out var t) && t > pico) pico = t;
-            return new { dia = d, vIni, vFim, total = pico, passado = compra.Date < hoje };
+            var venc = compra.AddDays(prazoTipico).Date;
+            return new
+            {
+                dia = d,
+                venc,
+                vIni = compra.AddDays(faixaMin).Date,
+                vFim = compra.AddDays(faixaMax).Date,
+                total = totalPorData.GetValueOrDefault(venc, 0m),
+                passado = compra.Date < hoje,
+            };
         }).ToList();
 
         // Limiares calculados só sobre dias de compra válidos (futuros) com vencimento carregado.
@@ -174,9 +185,10 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         {
             dia = p.dia,
             nivel = Nivel(p.total, p.passado),
-            vencDia = p.vIni.Day, vencMes = p.vIni.Month,        // início da faixa (ou dia único)
-            vencFimDia = p.vFim.Day, vencFimMes = p.vFim.Month,  // fim da faixa (= início, se regular)
-            total = Math.Round(p.total, 2),   // pior saída concorrente dentro da faixa
+            vencDia = p.venc.Day, vencMes = p.venc.Month,        // vencimento típico (dirige a cor)
+            vencIniDia = p.vIni.Day, vencIniMes = p.vIni.Month,  // início da faixa provável
+            vencFimDia = p.vFim.Day, vencFimMes = p.vFim.Month,  // fim da faixa provável
+            total = Math.Round(p.total, 2),
         }).ToList();
 
         var melhoresDiasCompra = dias.Where(d => d.nivel == "leve").Select(d => d.dia).ToList();
@@ -185,7 +197,7 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         return Ok(new
         {
             ano, mes, nomeMes = NomesMes[mes - 1], diasNoMes,
-            prazoMedio, prazoMin, prazoMax, faixa = usarFaixa,
+            prazoMedio = prazoTipico, prazoMin = faixaMin, prazoMax = faixaMax, faixa = usarFaixa,
             dias, melhoresDiasCompra, diasEvitarCompra,
             totalMes = Math.Round(totalPorData.Values.Sum(), 2)
         });

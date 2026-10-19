@@ -668,6 +668,40 @@
               <span class="font-weight-bold text-blue-darken-2">{{ fmt(planejamento.totalRealizado) }}</span>
             </div>
           </div>
+
+          <!-- Mini calendário de compras (aproveita o espaço em branco) -->
+          <div class="px-3 pb-3 pt-1">
+            <v-divider class="mb-2" />
+            <div class="d-flex align-center mb-2">
+              <v-icon icon="mdi-calendar-check" size="16" color="success" class="mr-1" />
+              <span class="text-caption font-weight-bold">Melhores dias de compra</span>
+              <v-spacer />
+              <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" @click="mudarMesCal(-1)" />
+              <span class="text-caption font-weight-medium text-capitalize" style="min-width:74px;text-align:center">
+                {{ calNomeMes }}/{{ String(calAno).slice(2) }}
+              </span>
+              <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMesCal(1)" />
+            </div>
+            <div v-if="calLoading" class="text-center py-2">
+              <v-progress-circular indeterminate size="20" color="success" />
+            </div>
+            <template v-else-if="calendario">
+              <div class="dash-cal-grid">
+                <div v-for="d in calendario.dias" :key="d.dia"
+                  class="dash-cal-cell" :class="'cal-'+d.nivel"
+                  :title="d.total > 0 ? fmt(d.total) : 'dia leve'">{{ d.dia }}</div>
+              </div>
+              <div class="text-caption mt-2 d-flex align-start ga-1">
+                <v-icon icon="mdi-cart-check" size="14" color="success" class="mt-1" />
+                <span>Comprar por volta de: <b class="text-success">{{ (calendario.melhoresDiasCompra || []).slice(0, 8).join(', ') || '—' }}</b>
+                  <span class="text-medium-emphasis">(prazo ~{{ calendario.prazoMedio }}d)</span></span>
+              </div>
+              <div class="text-caption d-flex align-start ga-1">
+                <v-icon icon="mdi-alert" size="14" color="error" class="mt-1" />
+                <span>Evitar vencer em: <b class="text-error">{{ (calendario.diasEvitar || []).length ? calendario.diasEvitar.join(', ') : 'nenhum pico' }}</b></span>
+              </div>
+            </template>
+          </div>
         </v-card>
       </v-col>
       <v-col cols="12" md="6">
@@ -1004,6 +1038,32 @@ async function carregarPlanejamento() {
 
 const fmt = (v: number) => 'R$ ' + (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtNum = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// ── Mini calendário de compras (recalcula mês a mês) ───────────────────────────
+const calAno = ref(anoAtual)
+const calMes = ref(new Date().getMonth() + 1)
+const calendario = ref<any>(null)
+const calLoading = ref(false)
+const calNomeMes = computed(() => MESES_PT[calMes.value - 1])
+
+async function carregarCalendario() {
+  if (!auth.empresaId) return
+  calLoading.value = true
+  try {
+    const r = await api.get('/relatorios/planejamento-anual/calendario-compras', {
+      params: { empresaId: auth.empresaId, ano: calAno.value, mes: calMes.value },
+    })
+    calendario.value = r.data
+  } catch { calendario.value = null }
+  finally { calLoading.value = false }
+}
+
+function mudarMesCal(delta: number) {
+  let m = calMes.value + delta, a = calAno.value
+  if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
+  calMes.value = m; calAno.value = a
+  carregarCalendario()
+}
 
 // Resumo de metas por loja (no ritmo / fora do ritmo) — só para gestor
 const projLojas = ref<any>(null)
@@ -1902,6 +1962,7 @@ onMounted(async () => {
     carregarVendasColaborador(),
     carregarDre(),
     carregarPlanejamento(),
+    carregarCalendario(),
     carregarCurvaAbc(),
     carregarMetas(),
     carregarMargemCats(),
@@ -1922,6 +1983,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.dash-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.dash-cal-cell { font-size: 0.7rem; font-weight: 600; text-align: center; padding: 3px 0; border-radius: 5px; }
+.dash-cal-cell.cal-leve   { background: #E4F3D6; color: #2E5214; }
+.dash-cal-cell.cal-medio  { background: #FBECC6; color: #7A5A12; }
+.dash-cal-cell.cal-pesado { background: #F7D6D2; color: #8A2318; }
 .heat-scroll { overflow-x: auto; padding-bottom: 2px; }
 .heat { border-collapse: separate; border-spacing: 3px; font-size: 0.68rem; }
 .heat th {

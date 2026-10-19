@@ -267,67 +267,6 @@
         </tfoot>
       </v-table>
     </v-card>
-
-    <!-- Calendário de Compras — melhores dias (recalcula mês a mês) -->
-    <v-card rounded="xl" elevation="1" class="mt-4">
-      <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center flex-wrap ga-2">
-        <v-icon icon="mdi-calendar-check" class="mr-2" color="success" />
-        Calendário de Compras — melhores dias
-        <v-spacer />
-        <div class="d-flex align-center ga-1">
-          <v-btn icon="mdi-chevron-left" size="small" variant="text" @click="mudarMesCal(-1)" />
-          <span class="text-body-2 font-weight-medium text-capitalize" style="min-width:120px;text-align:center">
-            {{ calNomeMes }} {{ calAno }}
-          </span>
-          <v-btn icon="mdi-chevron-right" size="small" variant="text" @click="mudarMesCal(1)" />
-        </div>
-      </v-card-title>
-      <v-card-text>
-        <div class="text-caption text-medium-emphasis mb-3">
-          <v-icon icon="mdi-square-rounded" size="12" color="success" /> pode deixar vencer (dia leve) ·
-          <v-icon icon="mdi-square-rounded" size="12" color="amber-darken-2" /> atenção ·
-          <v-icon icon="mdi-square-rounded" size="12" color="error" /> evite (pico de boletos).
-          Baseado nas contas a pagar em aberto do mês.
-        </div>
-        <div v-if="calLoading" class="d-flex justify-center pa-6">
-          <v-progress-circular indeterminate color="success" />
-        </div>
-        <template v-else>
-          <div class="cal-grid">
-            <div v-for="d in calendario?.dias ?? []" :key="d.dia" class="cal-cell" :class="'cal-'+d.nivel">
-              <div class="cal-dia">{{ d.dia }}</div>
-              <div class="cal-val">{{ d.total > 0 ? fmtK(d.total) : 'livre' }}</div>
-            </div>
-          </div>
-          <v-row class="mt-3">
-            <v-col cols="12" md="6">
-              <div class="d-flex align-start ga-2">
-                <v-icon icon="mdi-cart-check" color="success" size="18" class="mt-1" />
-                <div class="text-body-2">
-                  <b>Melhores dias de compra:</b>
-                  {{ (calendario?.melhoresDiasCompra ?? []).join(', ') || '—' }}
-                  <div class="text-caption text-medium-emphasis">
-                    para o boleto cair num dia leve (prazo médio dos fornecedores ~{{ calendario?.prazoMedio ?? '—' }} dias)
-                  </div>
-                </div>
-              </div>
-            </v-col>
-            <v-col cols="12" md="6">
-              <div class="d-flex align-start ga-2">
-                <v-icon icon="mdi-alert" color="error" size="18" class="mt-1" />
-                <div class="text-body-2">
-                  <b>Evite deixar vencer em:</b>
-                  {{ (calendario?.diasEvitar ?? []).length ? (calendario?.diasEvitar ?? []).join(', ') : 'nenhum pico neste mês' }}
-                  <div class="text-caption text-medium-emphasis">
-                    total de boletos no mês: {{ fmtK(calendario?.totalMes ?? 0) }}
-                  </div>
-                </div>
-              </div>
-            </v-col>
-          </v-row>
-        </template>
-      </v-card-text>
-    </v-card>
   </div>
 </template>
 
@@ -685,39 +624,8 @@ function desenharGauge() {
   ctx.textAlign = 'right'; ctx.fillText('50%', cx + r + 4, cy + 16)
 }
 
-// ── Calendário de compras (recalcula mês a mês) ────────────────────────────────
-const MESES_NOME = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-const calAno = ref(anoAtual)
-const calMes = ref(mesAtual)
-const calendario = ref<any>(null)
-const calLoading = ref(false)
-const calNomeMes = computed(() => MESES_NOME[calMes.value - 1])
-
-async function carregarCalendario() {
-  if (!auth.empresaId) return
-  calLoading.value = true
-  try {
-    const r = await api.get('/relatorios/planejamento-anual/calendario-compras', {
-      params: {
-        empresaId: auth.empresaId, ano: calAno.value, mes: calMes.value,
-        localEstoqueId: localEstoqueId.value || undefined,
-      },
-    })
-    calendario.value = r.data
-  } catch { calendario.value = null }
-  finally { calLoading.value = false }
-}
-
-function mudarMesCal(delta: number) {
-  let m = calMes.value + delta, a = calAno.value
-  if (m < 1) { m = 12; a-- } else if (m > 12) { m = 1; a++ }
-  calMes.value = m; calAno.value = a
-  carregarCalendario()
-}
-
-onMounted(() => { carregarLojas(); carregar(); carregarCalendario() })
+onMounted(() => { carregarLojas(); carregar() })
 watch([ano, meta], () => carregar())
-watch(localEstoqueId, () => carregarCalendario())
 
 function imprimir() {
   window.print()
@@ -725,14 +633,6 @@ function imprimir() {
 </script>
 
 <style scoped>
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-@media (max-width: 600px) { .cal-grid { grid-template-columns: repeat(5, 1fr); } }
-.cal-cell { border-radius: 10px; padding: 8px 4px; text-align: center; border: 1px solid transparent; }
-.cal-dia { font-weight: 700; font-size: 1.05rem; line-height: 1.1; }
-.cal-val { font-size: 0.68rem; margin-top: 2px; }
-.cal-leve   { background: #E4F3D6; border-color: #9CC56A; color: #2E5214; }
-.cal-medio  { background: #FBECC6; border-color: #E3B657; color: #7A5A12; }
-.cal-pesado { background: #F7D6D2; border-color: #DC6B5E; color: #8A2318; }
 .dre-meta-input :deep(input) { text-align: right; font-weight: 700; color: rgb(var(--v-theme-teal, 0 137 123)); font-size: 0.875rem; }
 @media print {
   .v-btn, .v-select { display: none !important; }

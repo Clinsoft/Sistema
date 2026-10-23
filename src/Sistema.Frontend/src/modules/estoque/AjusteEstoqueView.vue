@@ -139,7 +139,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -203,7 +203,21 @@ function selecionarProduto(p: any) {
   unit.value.estoqueAtual = p.estoqueAtual ?? 0
   unit.value.quantidadeContada = p.estoqueAtual ?? 0
   produtosSugeridos.value = []
+  atualizarEstoqueLojaUnit()
 }
+
+// Busca o estoque DA LOJA selecionada (base correta do ajuste; não o global).
+async function atualizarEstoqueLojaUnit() {
+  if (!unit.value.produtoId || !unit.value.localEstoqueId) return
+  try {
+    const r = await api.get('/ajuste-estoque/estoque-loja', {
+      params: { empresaId: auth.empresaId, produtoId: unit.value.produtoId, localEstoqueId: unit.value.localEstoqueId },
+    })
+    unit.value.estoqueAtual = r.data?.estoque ?? 0
+    unit.value.quantidadeContada = r.data?.estoque ?? 0
+  } catch { /* mantém o que tinha */ }
+}
+watch(() => unit.value.localEstoqueId, atualizarEstoqueLojaUnit)
 
 async function ajustarUnitario() {
   if (!unit.value.produtoId || !unit.value.localEstoqueId) return
@@ -235,13 +249,13 @@ async function carregarProdutos() {
   if (!lote.value.localEstoqueId) { notif.aviso('Selecione um local de estoque.'); return }
   carregandoProdutos.value = true
   try {
-    const r = await api.get('/produtos', {
-      params: { empresaId: auth.empresaId, ativo: true, tamanhoPagina: 500 },
+    const r = await api.get('/ajuste-estoque/inventario-loja', {
+      params: { empresaId: auth.empresaId, localEstoqueId: lote.value.localEstoqueId },
     })
-    const lista = r.data?.itens ?? r.data ?? []
+    const lista = r.data ?? []
     itensInventario.value = lista.map((p: any) => ({
       ...p,
-      quantidadeContada: p.estoqueAtual ?? 0,
+      quantidadeContada: p.estoqueAtual ?? 0,   // estoque DA LOJA (vem reconstruído)
     }))
     notif.ok(`${itensInventario.value.length} produto(s) carregados.`)
   } finally { carregandoProdutos.value = false }

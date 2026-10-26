@@ -170,7 +170,13 @@
             density="comfortable" class="mb-3">
             <!-- Atendente: resumo simples (vai chegar / aguardando) -->
             <template v-if="conf.atendente">
+              <div v-if="conf.dataSolicitacao" class="text-caption text-medium-emphasis mb-1">
+                Solicitado em {{ fmtData(conf.dataSolicitacao) }}
+              </div>
               <b>{{ conf.chegaram }} já chegaram</b> · {{ conf.emTransito }} em trânsito (de {{ conf.totalItens }} itens).
+              <span v-if="conf.faltaLote" class="d-block mt-1" style="color:#E65100">
+                <b>📦 {{ conf.faltaLote }} chegaram mas faltam lançar o lote</b> — abra e lance o lote/validade.
+              </span>
               <span v-if="conf.faltaValidade" class="text-warning d-block mt-1">
                 <b>⚠ {{ conf.faltaValidade }} chegaram mas faltam o controle de validade</b> — abra e preencha a validade.
               </span>
@@ -195,7 +201,13 @@
               <tbody>
                 <tr v-for="l in conf.itens" :key="l.produtoId"
                   :class="ehGestor ? (l.situacao === 'PrecisaPedir' ? 'bg-red-lighten-5' : ((l.situacao === 'RecebidoEscriturar' || l.jaPedido) ? 'bg-amber-lighten-5' : '')) : ''">
-                  <td>{{ l.descricao }}</td>
+                  <td>
+                    {{ l.descricao }}
+                    <div v-if="l.escrituradoEm || l.loteEm" class="text-caption text-medium-emphasis" style="line-height:1.3">
+                      <span v-if="l.escrituradoEm"><v-icon size="11">mdi-file-document-outline</v-icon> NF: {{ fmtData(l.escrituradoEm) }}</span>
+                      <span v-if="l.loteEm" class="ml-2"><v-icon size="11">mdi-package-variant-closed</v-icon> Lote/val.: {{ fmtData(l.loteEm) }}</span>
+                    </div>
+                  </td>
                   <td class="text-center">{{ fmtQtd(l.requisitado) }}</td>
                   <td v-if="ehGestor" class="text-center">
                     <template v-if="l.estoquePorLoja && l.estoquePorLoja.length">
@@ -223,11 +235,15 @@
                         title="Chegou, mas falta lançar o controle de validade deste produto.">
                         <v-icon start size="14">mdi-calendar-alert</v-icon>Chegou — falta validade
                       </v-chip>
+                      <v-chip v-else-if="l.estado === 'ChegouFaltaLote'" size="small" color="orange-darken-2" variant="flat"
+                        title="A nota já chegou (outros itens dela já têm lote), mas este produto ainda está sem lote. Lance o lote/validade.">
+                        <v-icon start size="14">mdi-package-variant-closed</v-icon>Chegou — falta lançar o lote
+                      </v-chip>
                       <v-chip v-else-if="l.estado === 'Chegou'" size="small" color="success" variant="tonal">
                         <v-icon start size="14">mdi-check-circle-outline</v-icon>Chegou
                       </v-chip>
                       <v-chip v-else-if="l.estado === 'EmTransito'" size="small" color="info" variant="tonal"
-                        title="Pedido já emitido ao fornecedor — ainda não chegou na loja.">
+                        title="NF emitida (escriturada) — produto em trânsito, ainda não chegou na loja.">
                         <v-icon start size="14">mdi-truck-outline</v-icon>Em trânsito
                       </v-chip>
                       <v-chip v-else size="small" color="grey" variant="tonal">
@@ -245,8 +261,9 @@
                       title="O pedido chegou (Recebido), mas o estoque não subiu — falta escriturar a entrada da NF-e. Não peça de novo.">
                       <v-icon start size="14">mdi-file-import-outline</v-icon>Recebido — escriturar
                     </v-chip>
-                    <v-chip v-else-if="l.situacao === 'VaiChegar'" size="small" color="success" variant="tonal">
-                      <v-icon start size="14">mdi-truck-check-outline</v-icon>Chegou
+                    <v-chip v-else-if="l.situacao === 'VaiChegar'" size="small" color="info" variant="tonal"
+                      title="NF emitida (escriturada) — em trânsito / vai chegar.">
+                      <v-icon start size="14">mdi-truck-outline</v-icon>Em trânsito
                     </v-chip>
                     <v-chip v-else-if="l.situacao === 'JaPedido'" size="small" color="info" variant="tonal">
                       <v-icon start size="14">mdi-cart-check</v-icon>A caminho
@@ -435,6 +452,7 @@ const listaFiltrada = computed(() => {
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQtd = (v: number) => (v ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const fmtData = (v: string | null) => v ? new Date(v).toLocaleDateString('pt-BR') : '—'
 const corStatus = (s: string) => ({ Aberta: 'warning', Processada: 'success', Cancelada: 'error' } as any)[s] ?? 'default'
 
 async function carregar() {

@@ -316,18 +316,25 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Select(i => new { i.ProdutoId, i.Descricao, i.Quantidade })
             .ToListAsync(ct);
 
-        // "Vai chegar" = o produto DEU ENTRADA no estoque desta loja a partir da data da
-        // requisição (NF processada / recebimento). Independe de qual OC/requisição casou a NF,
-        // refletindo a chegada física real. O resto fica "aguardando fornecedor".
+        // ESCRITURAÇÃO = o produto DEU ENTRADA no estoque desta loja a partir da data da requisição
+        // (NF processada). Isso significa que a NF foi emitida (produto EM TRÂNSITO). Guardamos a
+        // DATA da escrituração e a NOTA (DocumentoOrigem) p/ o cruzamento por nota.
         var reqProdutoIds = itens.Select(i => i.ProdutoId).ToList();
-        var chegaram = await db.MovimentacoesEstoque.AsNoTracking()
+        var entradas = await db.MovimentacoesEstoque.AsNoTracking()
             .Where(m => m.EmpresaId == req.EmpresaId
                 && m.LocalEstoqueId == req.LocalEstoqueId
                 && m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
                 && m.CriadoEm >= req.CriadoEm
                 && reqProdutoIds.Contains(m.ProdutoId))
-            .Select(m => m.ProdutoId).Distinct().ToListAsync(ct);
-        var chegaramSet = chegaram.ToHashSet();
+            .Select(m => new { m.ProdutoId, m.CriadoEm, m.DocumentoOrigem })
+            .ToListAsync(ct);
+        var escrituradoPorProduto = entradas.GroupBy(e => e.ProdutoId)
+            .ToDictionary(g => g.Key, g => new
+            {
+                Em = g.Min(x => x.CriadoEm),
+                Nota = g.OrderBy(x => x.CriadoEm).First().DocumentoOrigem,
+            });
+        var chegaramSet = escrituradoPorProduto.Keys.ToHashSet();
 
         // Pedidos NÃO cancelados da MESMA loja. Só os EM ABERTO (Rascunho/Enviado) contam como
         // "a caminho" — pedido Recebido já chegou (é histórico) e NÃO cobre a necessidade atual.
@@ -391,12 +398,24 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         var lotesRecebidos = await db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
                 && reqProdutoIds.Contains(l.ProdutoId) && l.CriadoEm >= req.CriadoEm)
-            .Select(l => new { l.ProdutoId, l.DataValidade })
+            .Select(l => new { l.ProdutoId, l.DataValidade, l.CriadoEm })
             .ToListAsync(ct);
         var faltaValidadeSet = lotesRecebidos.Where(l => l.DataValidade == null)
             .Select(l => l.ProdutoId).Distinct().ToHashSet();
         var loteComValidadeSet = lotesRecebidos.Where(l => l.DataValidade != null)
             .Select(l => l.ProdutoId).Distinct().ToHashSet();
+        // Data em que a atendente lançou o lote (prefere o lote COM validade) — "chegou de verdade".
+        var loteDataPorProduto = lotesRecebidos.GroupBy(l => l.ProdutoId)
+            .ToDictionary(g => g.Key, g =>
+                (g.Where(x => x.DataValidade != null).Select(x => (DateTime?)x.CriadoEm).Min())
+                ?? g.Min(x => x.CriadoEm));
+        // CRUZAMENTO POR NOTA: uma NOTA "chegou" quando ALGUM produto dela já teve lote lançado.
+        // Assim, item escriturado SEM lote cuja nota já tem outros lotes = entrega chegou, falta só
+        // lançar o lote dele (não está mais em trânsito).
+        var produtosComLote = lotesRecebidos.Select(l => l.ProdutoId).ToHashSet();
+        var notasComLote = entradas
+            .Where(e => e.DocumentoOrigem != null && produtosComLote.Contains(e.ProdutoId))
+            .Select(e => e.DocumentoOrigem!).Distinct().ToHashSet();
 
         var linhas = itens.Select(it =>
         {
@@ -416,6 +435,12 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             var estoqueBaixo = estoqueLoja <= minimo;
             var temRecebido = pedidosDoItem.Any(p => p.status == "Recebido");
             var ativo = ativos.GetValueOrDefault(it.ProdutoId, true);
+
+            // Datas e cruzamento por nota.
+            escrituradoPorProduto.TryGetValue(it.ProdutoId, out var escr);
+            DateTime? escrituradoEm = escr?.Em;
+            var notaChegou = escr?.Nota != null && notasComLote.Contains(escr.Nota!);
+            DateTime? loteEm = loteDataPorProduto.TryGetValue(it.ProdutoId, out var le) ? le : null;
 
             // Prioridade (o que o usuário precisa fazer):
             //  0) produto INATIVO (descontinuado/duplicado) → não pedir (sai do alerta)
@@ -449,17 +474,21 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 pedidos = pedidosDoItem,
                 situacao,
                 coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar,
+                // Três datas: solicitação (req), escrituração da NF e lançamento do lote/validade.
+                escrituradoEm,
+                loteEm,
                 // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido). CHEGOU = a atendente
                 // lançou o LOTE (chegada física); NF escriturada sozinha = EM TRÂNSITO (vai chegar).
-                //  ChegouFaltaValidade = lote lançado mas SEM validade (ação dela: preencher validade)
+                //  ChegouFaltaValidade = lote lançado mas SEM validade (ação: preencher validade)
+                //  ChegouFaltaLote     = a NOTA já chegou (outros itens dela têm lote) mas ESTE ainda sem lote (ação: lançar o lote)
                 //  Chegou              = lote + validade lançados (ou produto que não controla validade, já escriturado)
-                //  EmTransito          = NF escriturada (entrada no estoque) mas lote ainda não lançado — vai chegar
-                //  AindaNaoPedido      = sem NF escriturada (nem chegou) — inclui pedido só "enviado" sem confirmação
+                //  EmTransito          = NF escriturada mas a nota ainda não teve nenhum lote — vai chegar
+                //  AindaNaoPedido      = sem NF escriturada — inclui pedido só "enviado" sem confirmação
                 estado =
                     controlaValidade.GetValueOrDefault(it.ProdutoId, false)
                       ? (faltaValidadeSet.Contains(it.ProdutoId) ? "ChegouFaltaValidade"
                          : loteComValidadeSet.Contains(it.ProdutoId) ? "Chegou"
-                         : vaiChegar ? "EmTransito"
+                         : vaiChegar ? (notaChegou ? "ChegouFaltaLote" : "EmTransito")
                          : "AindaNaoPedido")
                       : (vaiChegar ? "Chegou" : "AindaNaoPedido"),
             };
@@ -471,18 +500,21 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             return Ok(new
             {
                 requisicaoId = id,
+                dataSolicitacao = req.CriadoEm,
                 totalItens = linhas.Count,
-                chegaram = linhas.Count(l => l.estado is "Chegou" or "ChegouFaltaValidade"),
+                chegaram = linhas.Count(l => l.estado is "Chegou" or "ChegouFaltaValidade" or "ChegouFaltaLote"),
                 emTransito = linhas.Count(l => l.estado == "EmTransito"),
                 faltaValidade = linhas.Count(l => l.estado == "ChegouFaltaValidade"),
+                faltaLote = linhas.Count(l => l.estado == "ChegouFaltaLote"),
                 atendente = true,
-                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado }).ToList(),
+                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado, l.escrituradoEm, l.loteEm }).ToList(),
             });
         }
 
         return Ok(new
         {
             requisicaoId = id,
+            dataSolicitacao = req.CriadoEm,
             aproximado = false,
             totalItens = linhas.Count,
             jaEmPedido = linhas.Count(l => l.jaPedido),

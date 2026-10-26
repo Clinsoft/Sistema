@@ -385,13 +385,18 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         var ativos = prodInfo.ToDictionary(x => x.Id, x => x.Ativo);
         var controlaValidade = prodInfo.ToDictionary(x => x.Id, x => x.ControlarValidade);
 
-        // "Chegou mas falta validade": lote criado DESDE a requisição (nesta loja) ainda SEM
-        // data de validade — a atendente deu entrada mas não preencheu o controle de validade.
-        var faltaValidadeSet = (await db.Lotes.AsNoTracking()
+        // CHEGADA FÍSICA = a atendente lançou o LOTE (desde a requisição, nesta loja). A NF
+        // escriturada cria só a entrada no estoque (produto EM TRÂNSITO); o lote é lançado quando
+        // o produto chega de fato na loja. Com validade = chegou; sem validade = chegou falta validade.
+        var lotesRecebidos = await db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
-                && reqProdutoIds.Contains(l.ProdutoId)
-                && l.CriadoEm >= req.CriadoEm && l.DataValidade == null)
-            .Select(l => l.ProdutoId).Distinct().ToListAsync(ct)).ToHashSet();
+                && reqProdutoIds.Contains(l.ProdutoId) && l.CriadoEm >= req.CriadoEm)
+            .Select(l => new { l.ProdutoId, l.DataValidade })
+            .ToListAsync(ct);
+        var faltaValidadeSet = lotesRecebidos.Where(l => l.DataValidade == null)
+            .Select(l => l.ProdutoId).Distinct().ToHashSet();
+        var loteComValidadeSet = lotesRecebidos.Where(l => l.DataValidade != null)
+            .Select(l => l.ProdutoId).Distinct().ToHashSet();
 
         var linhas = itens.Select(it =>
         {
@@ -444,17 +449,19 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 pedidos = pedidosDoItem,
                 situacao,
                 coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar,
-                // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido):
-                //  ChegouFaltaValidade = deu entrada mas o lote está SEM validade (ação dela)
-                //  Chegou              = deu entrada e a validade já foi lançada (ou não controla)
-                //  EmTransito          = pedido ENVIADO ao fornecedor, ainda não chegou na loja
-                //  AindaNaoPedido      = ninguém pediu ainda (o gestor decide a compra)
+                // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido). CHEGOU = a atendente
+                // lançou o LOTE (chegada física); NF escriturada sozinha = EM TRÂNSITO (vai chegar).
+                //  ChegouFaltaValidade = lote lançado mas SEM validade (ação dela: preencher validade)
+                //  Chegou              = lote + validade lançados (ou produto que não controla validade, já escriturado)
+                //  EmTransito          = NF escriturada (entrada no estoque) mas lote ainda não lançado — vai chegar
+                //  AindaNaoPedido      = sem NF escriturada (nem chegou) — inclui pedido só "enviado" sem confirmação
                 estado =
-                    (controlaValidade.GetValueOrDefault(it.ProdutoId, false) && faltaValidadeSet.Contains(it.ProdutoId))
-                        ? "ChegouFaltaValidade"
-                  : vaiChegar ? "Chegou"
-                  : pedidosDoItem.Any(p => p.status == "Enviado") ? "EmTransito"
-                  : "AindaNaoPedido",
+                    controlaValidade.GetValueOrDefault(it.ProdutoId, false)
+                      ? (faltaValidadeSet.Contains(it.ProdutoId) ? "ChegouFaltaValidade"
+                         : loteComValidadeSet.Contains(it.ProdutoId) ? "Chegou"
+                         : vaiChegar ? "EmTransito"
+                         : "AindaNaoPedido")
+                      : (vaiChegar ? "Chegou" : "AindaNaoPedido"),
             };
         }).ToList();
 

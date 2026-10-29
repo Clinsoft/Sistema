@@ -73,7 +73,7 @@ public class WhatsAppDisparoJob(
     }
 
     // Variáveis comuns disponíveis em qualquer template.
-    private static string LinkCatalogo => Branding.BrandingRuntime.Atual.CatalogoUrl;
+    private const string LinkCatalogo = "https://ecogranel.com.br/produtos";
     private static Dictionary<string, string> VariaveisComuns(ClienteInfo c, string nomeEmpresa)
         => new()
         {
@@ -144,6 +144,12 @@ public class WhatsAppDisparoJob(
             logger.LogWarning("[WhatsApp] {Empresa}: sem template de Promoção configurado.", nomeEmpresa);
             return;
         }
+        // Template de 1 LINHA (variável ofertas_lista): usado quando há POUCAS ofertas, para
+        // não mandar as linhas vazias ("—") do template de 5 slots.
+        var templateUmaLinha = await db.TemplatesWhatsAppMensagem.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.EmpresaId == empresaId
+                && t.TipoDisparo == TipoDisparoWhatsApp.Promocao
+                && t.VariaveisJson != null && t.VariaveisJson.Contains("ofertas_lista"));
 
         // Ofertas de 30% (validade) DESTA loja — promoções automáticas "OFERTA —"
         // carimbadas com a LOJA (LocalEstoqueId). Uma única mensagem com a LISTA.
@@ -154,7 +160,7 @@ public class WhatsAppDisparoJob(
             from pr in db.Promocoes.AsNoTracking()
             join p in db.Produtos.AsNoTracking() on pr.ReferenciaId equals p.Id
             where pr.EmpresaId == empresaId && pr.Ativa
-               && pr.Nome.StartsWith("OFERTA —")
+               && (pr.Nome.StartsWith("OFERTA —") || pr.Nome.StartsWith("BLACK FRIDAY -"))
                && pr.AplicaEm == "Produto"
                && pr.DataInicio <= hoje && (pr.DataFim == null || pr.DataFim >= hoje)
                && (localEstoqueId == null || pr.LocalEstoqueId == localEstoqueId)
@@ -220,6 +226,9 @@ public class WhatsAppDisparoJob(
         clientes = clientes.Where(c => !EhColaborador(colaboradores, c.Telefone)).ToList();
         if (clientes.Count == 0) return;
 
+        // Lista curta (< 5 ofertas) → usa o template de 1 linha (sem "—"); senão, o de 5 slots cheio.
+        var templateEnvio = (ofertas.Count < 5 && templateUmaLinha != null) ? templateUmaLinha : template;
+
         int enviados = 0, falhas = 0;
         foreach (var c in clientes)
         {
@@ -228,12 +237,12 @@ public class WhatsAppDisparoJob(
             ctx["desconto"]      = descontoTxt;
             ctx["oferta_1"] = linhas[0]; ctx["oferta_2"] = linhas[1]; ctx["oferta_3"] = linhas[2];
             ctx["oferta_4"] = linhas[3]; ctx["oferta_5"] = linhas[4];
-            var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, template, ctx, cfg, localEstoqueId);
+            var (ok, _, _) = await Enviar(empresaId, c, TipoDisparoWhatsApp.Promocao, templateEnvio, ctx, cfg, localEstoqueId);
             if (ok) enviados++; else falhas++;
         }
 
         if (ehMatriz)
-            await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, template,
+            await EnviarCopiasAdminAsync(empresaId, nomeEmpresa, cfg, TipoDisparoWhatsApp.Promocao, templateEnvio,
                 new Dictionary<string, string>
                 {
                     ["ofertas_lista"] = listaTxt, ["desconto"] = descontoTxt,

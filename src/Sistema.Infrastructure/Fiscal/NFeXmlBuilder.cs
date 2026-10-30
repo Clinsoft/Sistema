@@ -323,6 +323,9 @@ public static class NFeXmlBuilder
 
             // imposto
             w.WriteStartElement("imposto");
+            // vTotTrib (valor aproximado dos tributos) — por item, para bater com o
+            // total (senão a SEFAZ rejeita 685). É o 1º filho de <imposto> no schema.
+            w.WriteElementString("vTotTrib", FormatarDecimal(item.ValorIcms + item.ValorPis + item.ValorCofins, 2));
             EscreverICMS(w, item, config);
             EscreverPIS(w, item);
             EscreverCOFINS(w, item);
@@ -490,7 +493,7 @@ public static class NFeXmlBuilder
         w.WriteElementString("vCOFINS",   FormatarDecimal(nota.TotalCofins, 2));
         w.WriteElementString("vOutro",    "0.00");
         w.WriteElementString("vNF",       FormatarDecimal(nota.TotalNota, 2));
-        w.WriteElementString("vTotTrib",  FormatarDecimal(totalVIcms + nota.TotalPis + nota.TotalCofins, 2));
+        w.WriteElementString("vTotTrib",  FormatarDecimal(nota.Itens.Sum(i => i.ValorIcms + i.ValorPis + i.ValorCofins), 2));
 
         w.WriteEndElement(); // ICMSTot
         w.WriteEndElement(); // total

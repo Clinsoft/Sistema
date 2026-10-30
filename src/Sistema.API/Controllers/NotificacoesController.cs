@@ -104,13 +104,60 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         // Concorrente mais barato que nós (gestão): produtos em que o menor preço de concorrente ganha.
         var concorrenteMaisBarato = ehAtendente ? 0 : await ContarConcorrenteMaisBaratoAsync(empresaId, ct);
 
+        // ── Detalhamento POR LOJA (só admin/sem loja): para cobrar a unidade certa. ──
+        List<object> etiquetaPorLoja = new(), validadePorLoja = new(), validadePendPorLoja = new();
+        if (!ehAtendente && lojaUsuario == null)
+        {
+            var lojas = await db.LocaisEstoque.Where(l => l.EmpresaId == empresaId)
+                .Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
+            string NomeLoja(Guid id) => lojas.FirstOrDefault(l => l.Id == id)?.Nome ?? "Sem loja";
+
+            // Etiqueta: pendente por loja (vende em 90d + ainda não reimprimiu desde a mudança).
+            var desat = await db.Produtos.Where(p => p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada)
+                .Select(p => new { p.Id, p.PrecoAtualizadoEm }).ToListAsync(ct);
+            if (desat.Count > 0)
+            {
+                var ids = desat.Select(x => x.Id).ToList();
+                var desde90 = hoje.AddDays(-90);
+                var vendas = (await (from iv in db.Set<ItemVenda>()
+                                     join v in db.Set<Venda>() on iv.VendaId equals v.Id
+                                     where ids.Contains(iv.ProdutoId) && v.DataHora >= desde90
+                                     select new { iv.ProdutoId, v.LocalEstoqueId }).Distinct().ToListAsync(ct))
+                             .ToLookup(x => x.LocalEstoqueId, x => x.ProdutoId);
+                var impr = await db.EtiquetasImpressasLoja.Where(e => ids.Contains(e.ProdutoId)).ToListAsync(ct);
+                foreach (var lj in lojas)
+                {
+                    var vendidosLj = vendas[lj.Id].ToHashSet();
+                    var impLj = impr.Where(e => e.LocalEstoqueId == lj.Id).ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
+                    var qt = desat.Count(x => vendidosLj.Contains(x.Id)
+                        && !(impLj.TryGetValue(x.Id, out var im) && (x.PrecoAtualizadoEm == null || im >= x.PrecoAtualizadoEm)));
+                    if (qt > 0) etiquetaPorLoja.Add(new { loja = lj.Nome, quantidade = qt });
+                }
+            }
+
+            // Validade próxima (lotes) por loja.
+            foreach (var g in await db.Lotes.Where(l => l.EmpresaId == empresaId && l.Quantidade > 0
+                        && l.DataValidade != null && l.DataValidade >= hoje && l.DataValidade <= limiteValidade)
+                    .GroupBy(l => l.LocalEstoqueId).Select(g => new { g.Key, Qtd = g.Count() }).ToListAsync(ct))
+                validadePorLoja.Add(new { loja = NomeLoja(g.Key), quantidade = g.Qtd });
+
+            // Validade/lote pendente de lançamento por loja.
+            foreach (var g in await db.EntradasNFe.Where(e => e.EmpresaId == empresaId
+                        && e.Status == StatusEntradaNFe.Processada && !e.ValidadePendenteIgnorada
+                        && e.DataEmissao >= corteValidade
+                        && e.Itens.Any(i => i.LoteId == null && i.ProdutoId != null
+                            && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)))
+                    .GroupBy(e => e.LocalEstoqueId).Select(g => new { g.Key, Qtd = g.Count() }).ToListAsync(ct))
+                validadePendPorLoja.Add(new { loja = NomeLoja(g.Key), quantidade = g.Qtd });
+        }
+
         var itens = new List<object>();
         if (etiquetas > 0) itens.Add(new
         {
             tipo = "etiqueta", quantidade = etiquetas, cor = "warning", icone = "mdi-tag-remove-outline",
             titulo = "Etiquetas desatualizadas",
             texto = $"{etiquetas} produto(s) com preço/validade alterado — reimprima a etiqueta.",
-            rota = "/estoque/produtos"
+            rota = "/estoque/produtos", porLoja = etiquetaPorLoja
         });
         if (estoqueBaixo > 0) itens.Add(new
         {
@@ -124,7 +171,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             tipo = "validade", quantidade = validadeProxima, cor = "orange", icone = "mdi-calendar-alert",
             titulo = "Validade próxima",
             texto = $"{validadeProxima} lote(s) vencendo em até 15 dias.",
-            rota = "/estoque/validade"
+            rota = "/estoque/validade", porLoja = validadePorLoja
         });
         if (contasVencidas > 0) itens.Add(new
         {
@@ -139,7 +186,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             tipo = "validade-pendente", quantidade = validadePendente, cor = "deep-orange", icone = "mdi-clipboard-alert-outline",
             titulo = "Validade/lote pendente",
             texto = $"{validadePendente} nota(s) recebida(s) sem validade/lote lançado.",
-            rota = "/estoque/validade?pendentes=1"
+            rota = "/estoque/validade?pendentes=1", porLoja = validadePendPorLoja
         });
         if (entradaSemOc > 0) itens.Add(new
         {

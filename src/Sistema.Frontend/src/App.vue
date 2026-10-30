@@ -347,6 +347,12 @@
                   <v-chip size="x-small" :color="n.cor" variant="tonal" class="ml-1">{{ n.quantidade }}</v-chip>
                 </v-list-item-title>
                 <v-list-item-subtitle class="text-caption">{{ n.texto }}</v-list-item-subtitle>
+                <div v-if="n.porLoja && n.porLoja.length" class="mt-1 d-flex flex-wrap">
+                  <v-chip v-for="l in n.porLoja" :key="l.loja" size="x-small" variant="tonal"
+                    :color="n.cor" class="mr-1 mb-1">
+                    <v-icon start size="12">mdi-store</v-icon>{{ l.loja }}: <b class="ml-1">{{ l.quantidade }}</b>
+                  </v-chip>
+                </div>
               </v-list-item>
               <v-divider v-if="notificacoes.length" />
               <v-list-item v-if="notificacoes.length" class="text-caption text-center text-medium-emphasis"

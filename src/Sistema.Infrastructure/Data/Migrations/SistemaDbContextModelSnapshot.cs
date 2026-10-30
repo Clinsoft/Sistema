@@ -1912,6 +1912,37 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.ToTable("ConfiguracoesValidade");
                 });
 
+            modelBuilder.Entity("Sistema.Domain.Estoque.Entities.EtiquetaImpressaLoja", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ImpressaEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("LocalEstoqueId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProdutoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProdutoId", "LocalEstoqueId")
+                        .IsUnique();
+
+                    b.ToTable("EtiquetasImpressasLoja");
+                });
+
             modelBuilder.Entity("Sistema.Domain.Estoque.Entities.LocalEstoque", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2487,6 +2518,9 @@ namespace Sistema.Infrastructure.Data.Migrations
 
                     b.Property<decimal?>("PrecoAtacado")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("PrecoAtualizadoEm")
+                        .HasColumnType("datetime2");
 
                     b.Property<decimal>("PrecoFornecedor")
                         .HasColumnType("decimal(18,2)");

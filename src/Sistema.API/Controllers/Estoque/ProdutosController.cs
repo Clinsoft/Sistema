@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sistema.Application.Estoque.Commands;
 using Sistema.Application.Estoque.Queries;
+using Sistema.Domain.Estoque.Entities;
+using Sistema.Domain.Vendas.Entities;
 using Sistema.Domain.Shared.Interfaces;
 using Sistema.Infrastructure.Data;
 using System.Net.Mime;
@@ -1262,15 +1264,87 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { unificados = origens.Count, destino = req.DestinoId, estoqueSomado = somaEstoque });
     }
 
-    /// <summary>Marca as etiquetas dos produtos informados como impressas/atualizadas (limpa o alerta de reimpressão).</summary>
+    /// <summary>Marca as etiquetas dos produtos informados como impressas/atualizadas.
+    /// Com LocalEstoqueId: registra a reimpressão NAQUELA loja (controle por unidade) e
+    /// só limpa o alerta global quando todas as lojas que vendem o produto reimprimiram.
+    /// Sem LocalEstoqueId: limpa o alerta global direto (comportamento antigo).</summary>
     [HttpPost("etiquetas-impressas")]
     public async Task<IActionResult> MarcarEtiquetasImpressas([FromBody] EtiquetasImpressasRequest req, CancellationToken ct)
     {
         if (req.Ids is null || req.Ids.Count == 0) return Ok(new { atualizados = 0 });
         var produtos = await db.Produtos.Where(p => req.Ids.Contains(p.Id)).ToListAsync(ct);
-        foreach (var p in produtos) p.MarcarEtiquetaImpressa();
+
+        if (req.LocalEstoqueId is not Guid loja)
+        {
+            foreach (var p in produtos) p.MarcarEtiquetaImpressa();
+            await uow.SalvarAsync(ct);
+            return Ok(new { atualizados = produtos.Count });
+        }
+
+        // Registra a reimpressão NESTA loja (upsert).
+        var regs = await db.EtiquetasImpressasLoja
+            .Where(e => e.LocalEstoqueId == loja && req.Ids.Contains(e.ProdutoId)).ToListAsync(ct);
+        foreach (var p in produtos)
+        {
+            var reg = regs.FirstOrDefault(e => e.ProdutoId == p.Id);
+            if (reg is null) db.EtiquetasImpressasLoja.Add(EtiquetaImpressaLoja.Criar(p.EmpresaId, p.Id, loja));
+            else reg.RegistrarImpressao();
+        }
+        await db.SaveChangesAsync(ct);
+
+        // Recalcula o flag global: limpa quando todas as lojas que VENDEM o produto (90d)
+        // já reimprimiram desde a última alteração de preço.
+        await RecomputarEtiquetaGlobalAsync(produtos, ct);
         await uow.SalvarAsync(ct);
         return Ok(new { atualizados = produtos.Count });
+    }
+
+    /// <summary>Lojas (LocalEstoqueId) que venderam cada produto nos últimos 90 dias.</summary>
+    private async Task<ILookup<Guid, Guid>> LojasQueVendemAsync(List<Guid> produtoIds, CancellationToken ct)
+    {
+        var desde = DateTime.Now.AddDays(-90);
+        var pares = await (from iv in db.Set<ItemVenda>()
+                           join v in db.Set<Venda>() on iv.VendaId equals v.Id
+                           where produtoIds.Contains(iv.ProdutoId) && v.DataHora >= desde
+                           select new { iv.ProdutoId, v.LocalEstoqueId })
+                          .Distinct().ToListAsync(ct);
+        return pares.ToLookup(x => x.ProdutoId, x => x.LocalEstoqueId);
+    }
+
+    private async Task RecomputarEtiquetaGlobalAsync(List<Produto> produtos, CancellationToken ct)
+    {
+        var ids = produtos.Select(p => p.Id).ToList();
+        var vendem = await LojasQueVendemAsync(ids, ct);
+        var impressoes = (await db.EtiquetasImpressasLoja.Where(e => ids.Contains(e.ProdutoId)).ToListAsync(ct))
+            .ToLookup(e => e.ProdutoId);
+        foreach (var p in produtos)
+        {
+            var corte = p.PrecoAtualizadoEm;
+            var lojas = vendem[p.Id].ToList();
+            var imp = impressoes[p.Id];
+            bool LojaOk(Guid l) => imp.Any(e => e.LocalEstoqueId == l && (corte == null || e.ImpressaEm >= corte));
+            var todas = lojas.Count == 0 || lojas.All(LojaOk);
+            if (todas) p.MarcarEtiquetaImpressa();
+        }
+    }
+
+    /// <summary>IDs dos produtos com etiqueta pendente PARA A LOJA informada: preço mudou
+    /// e esta loja ainda não reimprimiu desde a alteração.</summary>
+    [HttpGet("etiquetas-pendentes-loja")]
+    public async Task<IActionResult> EtiquetasPendentesLoja([FromQuery] Guid empresaId,
+        [FromQuery] Guid localEstoqueId, CancellationToken ct)
+    {
+        var desat = await db.Produtos
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada)
+            .Select(p => new { p.Id, p.PrecoAtualizadoEm }).ToListAsync(ct);
+        var ids = desat.Select(x => x.Id).ToList();
+        var imp = (await db.EtiquetasImpressasLoja
+                .Where(e => e.LocalEstoqueId == localEstoqueId && ids.Contains(e.ProdutoId)).ToListAsync(ct))
+            .ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
+        bool Reimprimiu(Guid id, DateTime? corte) =>
+            imp.TryGetValue(id, out var im) && (corte == null || im >= corte);
+        var pendentes = desat.Where(x => !Reimprimiu(x.Id, x.PrecoAtualizadoEm)).Select(x => x.Id).ToList();
+        return Ok(new { ids = pendentes });
     }
 
     /// <summary>
@@ -1548,7 +1622,7 @@ public record SalvarComposicaoRequest(decimal Rendimento, List<ComponenteComposi
 public record ProduzirRequest(Guid LocalEstoqueId, decimal Quantidade, bool Forcar = false, DateTime? Validade = null);
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 
-public record EtiquetasImpressasRequest(List<Guid> Ids);
+public record EtiquetasImpressasRequest(List<Guid> Ids, Guid? LocalEstoqueId = null);
 public record ImportarProdutoItem(string Descricao, string? Ncm, decimal PrecoVenda, decimal? CustoUnitario = null);
 public record ImportarProdutosRequest(
     Guid EmpresaId, Guid CategoriaId, Guid MarcaId, Guid UnidadeMedidaId, List<ImportarProdutoItem> Itens);

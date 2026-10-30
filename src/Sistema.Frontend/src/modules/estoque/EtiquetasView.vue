@@ -868,7 +868,8 @@ function escHtml(s: string): string {
 // e remove os produtos da lista.
 async function finalizarImpressao(ids: string[]) {
   if (!ids.length) return
-  try { await api.post('/produtos/etiquetas-impressas', { ids }) } catch { /* silencioso */ }
+  // Com loja selecionada, registra a reimpressão NAQUELA unidade (controle por loja).
+  try { await api.post('/produtos/etiquetas-impressas', { ids, localEstoqueId: auth.lojaAtualId ?? null }) } catch { /* silencioso */ }
   produtosSel.value = produtosSel.value.filter((p: any) => !ids.includes(p.id))
   ids.forEach(id => { delete marcados.value[id] })
   notif.ok(`${ids.length} etiqueta(s) impressa(s) — removida(s) da lista e do alerta.`)
@@ -968,9 +969,16 @@ async function carregarDesatualizadas() {
       params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
     })
     let desat = (r.data?.itens ?? r.data ?? []).filter((p: any) => p.etiquetaDesatualizada)
-    // Com uma LOJA selecionada, só traz etiquetas de produtos COM ESTOQUE naquela
-    // loja (evita etiquetas da RIO CLARO aparecendo na IPANEMA e vice-versa).
+    // Com uma LOJA selecionada: só traz as PENDENTES NAQUELA loja (que ela ainda não
+    // reimprimiu desde a mudança de preço) e que tenham ESTOQUE na loja.
     if (auth.lojaAtualId) {
+      try {
+        const pend = await api.get('/produtos/etiquetas-pendentes-loja', {
+          params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },
+        })
+        const idsPend = new Set((pend.data?.ids ?? []))
+        desat = desat.filter((p: any) => idsPend.has(p.id))
+      } catch { /* sem endpoint → mantém a lista pelo flag global */ }
       try {
         const pos = await api.get('/estoque/posicao-por-loja', {
           params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },

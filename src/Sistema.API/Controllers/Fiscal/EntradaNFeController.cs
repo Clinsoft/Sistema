@@ -1448,12 +1448,18 @@ public class EntradaNFeController(SistemaDbContext db,
         var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == entrada.EmpresaId, ct)
             ?? throw new KeyNotFoundException("Empresa não encontrada.");
 
-        // Destinatário = fornecedor (endereço/IE vêm do cadastro do fornecedor).
+        // Destinatário = fornecedor. Endereço/IE do XML da entrada (fonte completa), com
+        // fallback para o cadastro do fornecedor.
         var forn = entrada.FornecedorId is Guid fid
             ? await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
+        var ender = await ResolverEnderecoFornecedorAsync(entrada, forn, ct);
+
+        // Sem endereço do destinatário a SEFAZ rejeita (726). Bloqueia antes de consumir numeração.
+        if (string.IsNullOrWhiteSpace(ender.Logradouro) || string.IsNullOrWhiteSpace(ender.Uf))
+            return BadRequest(new { mensagem = "Endereço do fornecedor não encontrado (nem no XML da entrada, nem no cadastro). Preencha o endereço do fornecedor antes de emitir a devolução, senão a SEFAZ rejeita (726)." });
 
         // CFOP de devolução: mesma UF vs outra UF (padrões 5202/6202).
-        var mesmaUF = forn?.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
+        var mesmaUF = ender.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
         var cfop = mesmaUF ? (config.CfopDevolucaoDentroUF ?? "5202") : (config.CfopDevolucaoForaUF ?? "6202");
 
         // NF-e de devolução (mod 55, finNFe=4, refNFe da entrada), número sequenciado.
@@ -1463,8 +1469,8 @@ public class EntradaNFeController(SistemaDbContext db,
         nfeDev.DefinirDevolucao(entrada.ChaveAcesso, entrada.Id);
         nfeDev.DefinirDestinatarioContribuinte(
             (forn?.Cnpj ?? entrada.EmitenteCnpj), (forn?.RazaoSocial ?? entrada.EmitenteNome),
-            forn?.InscricaoEstadual, forn?.Logradouro, forn?.Numero, forn?.Bairro,
-            null, forn?.Cidade, forn?.Uf, null, forn?.Email);
+            ender.Ie, ender.Logradouro, ender.Numero, ender.Bairro,
+            ender.CodMunicipio, ender.Municipio, ender.Uf, ender.Cep, forn?.Email);
 
         var simples = config.Regime == RegimeTributario.SimplesNacional;
         var itensSel = entrada.Itens.Where(i => (req.Itens == null || req.Itens.Contains(i.Id)) && i.ProdutoId.HasValue).ToList();
@@ -1540,8 +1546,9 @@ public class EntradaNFeController(SistemaDbContext db,
             ?? throw new KeyNotFoundException("Empresa não encontrada.");
         var forn = entrada.FornecedorId is Guid fid
             ? await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
+        var ender = await ResolverEnderecoFornecedorAsync(entrada, forn, ct);
 
-        var mesmaUF = forn?.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
+        var mesmaUF = ender.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
         var cfop = mesmaUF ? (config.CfopDevolucaoDentroUF ?? "5202") : (config.CfopDevolucaoForaUF ?? "6202");
 
         // Nota EM MEMÓRIA (não salva, não consome numeração).
@@ -1550,8 +1557,8 @@ public class EntradaNFeController(SistemaDbContext db,
         nota.DefinirDevolucao(entrada.ChaveAcesso, entrada.Id);
         nota.DefinirDestinatarioContribuinte(
             (forn?.Cnpj ?? entrada.EmitenteCnpj), (forn?.RazaoSocial ?? entrada.EmitenteNome),
-            forn?.InscricaoEstadual, forn?.Logradouro, forn?.Numero, forn?.Bairro,
-            null, forn?.Cidade, forn?.Uf, null, forn?.Email);
+            ender.Ie, ender.Logradouro, ender.Numero, ender.Bairro,
+            ender.CodMunicipio, ender.Municipio, ender.Uf, ender.Cep, forn?.Email);
 
         var simples = config.Regime == RegimeTributario.SimplesNacional;
         var itensSel = entrada.Itens.Where(i => (req.Itens == null || req.Itens.Contains(i.Id)) && i.ProdutoId.HasValue).ToList();
@@ -1608,8 +1615,9 @@ public class EntradaNFeController(SistemaDbContext db,
             ?? throw new KeyNotFoundException("Empresa não encontrada.");
         var forn = entrada.FornecedorId is Guid fid
             ? await db.Fornecedores.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
+        var ender = await ResolverEnderecoFornecedorAsync(entrada, forn, ct);
 
-        var mesmaUF = forn?.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
+        var mesmaUF = ender.Uf is { } ufF && string.Equals(ufF, empresa.Uf, StringComparison.OrdinalIgnoreCase);
         var cfop = mesmaUF ? (config.CfopDevolucaoDentroUF ?? "5202") : (config.CfopDevolucaoForaUF ?? "6202");
 
         var nota = NotaFiscal.Criar(entrada.EmpresaId, ModeloNF.NFe, config.SerieNFe, config.ProximoNumerNFe,
@@ -1617,8 +1625,8 @@ public class EntradaNFeController(SistemaDbContext db,
         nota.DefinirDevolucao(entrada.ChaveAcesso, entrada.Id);
         nota.DefinirDestinatarioContribuinte(
             (forn?.Cnpj ?? entrada.EmitenteCnpj), (forn?.RazaoSocial ?? entrada.EmitenteNome),
-            forn?.InscricaoEstadual, forn?.Logradouro, forn?.Numero, forn?.Bairro,
-            null, forn?.Cidade, forn?.Uf, null, forn?.Email);
+            ender.Ie, ender.Logradouro, ender.Numero, ender.Bairro,
+            ender.CodMunicipio, ender.Municipio, ender.Uf, ender.Cep, forn?.Email);
 
         var simples = config.Regime == RegimeTributario.SimplesNacional;
         var itensSel = entrada.Itens.Where(i => (req.Itens == null || req.Itens.Contains(i.Id)) && i.ProdutoId.HasValue).ToList();
@@ -1655,6 +1663,55 @@ public class EntradaNFeController(SistemaDbContext db,
 
         var pdf = danfe.GerarDanfe(nota, empresa);
         return File(pdf, "application/pdf", $"previa-devolucao-{entrada.EmitenteNome}.pdf");
+    }
+
+    /// <summary>
+    /// Resolve o endereço do destinatário (fornecedor) da devolução. Prioriza o XML
+    /// original da entrada (enderEmit — completo: logradouro, nº, bairro, cMun, município,
+    /// UF, CEP e IE), com fallback para o cadastro do Fornecedor (que costuma vir vazio).
+    /// Sem endereço a SEFAZ rejeita com 726 ("NF-e sem a informação de endereço do destinatário").
+    /// </summary>
+    private async Task<(string? Logradouro, string? Numero, string? Bairro, string? CodMunicipio,
+        string? Municipio, string? Uf, string? Cep, string? Ie)> ResolverEnderecoFornecedorAsync(
+        EntradaNFe entrada, Fornecedor? forn, CancellationToken ct)
+    {
+        string? xLgr = forn?.Logradouro, nro = forn?.Numero, bairro = forn?.Bairro,
+                cMun = null, xMun = forn?.Cidade, uf = forn?.Uf, cep = forn?.Cep, ie = forn?.InscricaoEstadual;
+
+        var xml = await db.NotasFiscaisRecebidas.AsNoTracking()
+            .Where(n => n.EmpresaId == entrada.EmpresaId && n.ChaveAcesso == entrada.ChaveAcesso)
+            .Select(n => n.XmlNota)
+            .FirstOrDefaultAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(xml))
+        {
+            try
+            {
+                var doc = System.Xml.Linq.XDocument.Parse(xml);
+                var ns = doc.Root?.GetDefaultNamespace() ?? System.Xml.Linq.XNamespace.None;
+                var emit = doc.Descendants(ns + "emit").FirstOrDefault();
+                var ender = emit?.Element(ns + "enderEmit");
+                string? V(System.Xml.Linq.XElement? el, string nome)
+                {
+                    var v = el?.Element(ns + nome)?.Value;
+                    return string.IsNullOrWhiteSpace(v) ? null : v;
+                }
+                if (ender is not null)
+                {
+                    xLgr   = V(ender, "xLgr")    ?? xLgr;
+                    nro    = V(ender, "nro")     ?? nro;
+                    bairro = V(ender, "xBairro") ?? bairro;
+                    cMun   = V(ender, "cMun")    ?? cMun;
+                    xMun   = V(ender, "xMun")    ?? xMun;
+                    uf     = V(ender, "UF")      ?? uf;
+                    cep    = V(ender, "CEP")     ?? cep;
+                }
+                ie = V(emit, "IE") ?? ie;
+            }
+            catch { /* XML inválido/ausente: mantém o que veio do cadastro do fornecedor */ }
+        }
+
+        return (xLgr, nro, bairro, cMun, xMun, uf, cep, ie);
     }
 
     // ──────────────────────────────────────────────────────────────────

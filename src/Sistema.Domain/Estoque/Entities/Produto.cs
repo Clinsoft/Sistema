@@ -79,12 +79,18 @@ public class Produto : Entity
     // sinalizando que é preciso reimprimir a etiqueta antes da próxima venda.
     public bool EtiquetaDesatualizada { get; private set; }
 
+    /// <summary>Quando o preço mudou pela última vez — baliza o controle de
+    /// reimpressão por loja (etiqueta pendente para quem não reimprimiu depois disso).</summary>
+    public DateTime? PrecoAtualizadoEm { get; private set; }
+
     /// <summary>Produto vendido por peso (balança ou fracionado).</summary>
     public bool VendidoPorPeso => ProdutoBalanca || VendidoFracionado;
 
-    /// <summary>Marca que a etiqueta foi (re)impressa e está atualizada.</summary>
+    /// <summary>Marca que a etiqueta foi (re)impressa e está atualizada (flag global).</summary>
     public void MarcarEtiquetaImpressa() => EtiquetaDesatualizada = false;
     public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
+    /// <summary>Define o flag global de etiqueta desatualizada (recálculo por loja).</summary>
+    public void DefinirEtiquetaDesatualizada(bool v) => EtiquetaDesatualizada = v;
 
     // Balança: produto de peso fica "pendente" quando muda o preço ou quando vira produto
     // de balança/peso. Obriga reexportar o arquivo para a balança antes de vender no peso certo.
@@ -199,7 +205,7 @@ public class Produto : Entity
         decimal markupMinimo, decimal precoMinimo,
         decimal precoVenda, decimal? precoAtacado, decimal? markupAtacado)
     {
-        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; PrecoAtualizadoEm = DateTime.UtcNow; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoFornecedor = precoFornecedor;
         CustoUnitario = custoUnitario;
         MarkupMinimo = markupMinimo;
@@ -231,7 +237,7 @@ public class Produto : Entity
         if (manterMarkup && Markup > 0)
         {
             var novoPreco = Math.Round(novoCusto * Markup, 2);
-            if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
+            if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; PrecoAtualizadoEm = DateTime.UtcNow; if (VendidoPorPeso) BalancaDesatualizada = true; }
             PrecoVenda = novoPreco;
         }
         MargemLucro = PrecoVenda > 0 ? Math.Round((PrecoVenda - CustoUnitario) / PrecoVenda * 100, 2) : 0;
@@ -319,7 +325,7 @@ public class Produto : Entity
 
     public void AtualizarPreco(decimal novoCusto, decimal novoPreco)
     {
-        if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
+        if (novoPreco != PrecoVenda) { EtiquetaDesatualizada = true; PrecoAtualizadoEm = DateTime.UtcNow; if (VendidoPorPeso) BalancaDesatualizada = true; }
         CustoUnitario = novoCusto;
         PrecoVenda = novoPreco;
         Markup = novoCusto > 0 ? Math.Round(novoPreco / novoCusto, 4) : 0;
@@ -328,7 +334,7 @@ public class Produto : Entity
 
     public void AtualizarPrecoEMarkup(decimal precoVenda, decimal markup)
     {
-        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; if (VendidoPorPeso) BalancaDesatualizada = true; }
+        if (precoVenda != PrecoVenda) { EtiquetaDesatualizada = true; PrecoAtualizadoEm = DateTime.UtcNow; if (VendidoPorPeso) BalancaDesatualizada = true; }
         PrecoVenda = precoVenda;
         Markup = markup;
         MargemLucro = precoVenda > 0 ? Math.Round((precoVenda - CustoUnitario) / precoVenda * 100, 2) : 0;

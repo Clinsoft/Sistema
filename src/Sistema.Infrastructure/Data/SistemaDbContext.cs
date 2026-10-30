@@ -47,6 +47,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<AlimentoTaco> AlimentosTaco => Set<AlimentoTaco>();
     public DbSet<Lote> Lotes => Set<Lote>();
     public DbSet<MovimentacaoEstoque> MovimentacoesEstoque => Set<MovimentacaoEstoque>();
+    public DbSet<EtiquetaImpressaLoja> EtiquetasImpressasLoja => Set<EtiquetaImpressaLoja>();
     public DbSet<TabelaNutricional> TabelasNutricionais => Set<TabelaNutricional>();
     public DbSet<ReceitaProduto> ReceitasProduto => Set<ReceitaProduto>();
     public DbSet<SugestaoProduto> SugestoesProduto => Set<SugestaoProduto>();
@@ -142,6 +143,10 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        // Uma linha por produto+loja (upsert da reimpressão de etiqueta por unidade).
+        modelBuilder.Entity<EtiquetaImpressaLoja>()
+            .HasIndex(e => new { e.ProdutoId, e.LocalEstoqueId }).IsUnique();
 
         // Todas as entidades geram o Id no domínio (Entity: Id = Guid.NewGuid()).
         // Sem isto, o EF trata a chave Guid preenchida como "registro existente" e,

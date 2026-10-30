@@ -5,6 +5,7 @@ using Sistema.API.Extensions;
 using Sistema.Domain.Compras.Entities;
 using Sistema.Domain.Financeiro.Entities;
 using Sistema.Domain.Fiscal.Entities;
+using Sistema.Domain.Vendas.Entities;
 using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers;
@@ -34,7 +35,28 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         // vê os alertas por loja SÓ da sua unidade; sem vínculo (ex.: admin) vê de todas.
         var lojaUsuario = User.LojaClaim();
 
-        var etiquetas = ehAtendente ? 0 : await db.Produtos.CountAsync(p =>
+        // Etiquetas desatualizadas: por LOJA quando o usuário tem unidade (conta só as que
+        // ESTA loja vende e ainda não reimprimiu desde a mudança de preço); admin vê o total.
+        int etiquetas;
+        if (ehAtendente) etiquetas = 0;
+        else if (lojaUsuario is Guid lojaEtq)
+        {
+            var desde90 = hoje.AddDays(-90);
+            var desat = await db.Produtos
+                .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada)
+                .Select(p => new { p.Id, p.PrecoAtualizadoEm }).ToListAsync(ct);
+            var ids = desat.Select(x => x.Id).ToList();
+            var vendidos = (await (from iv in db.Set<ItemVenda>()
+                                   join v in db.Set<Venda>() on iv.VendaId equals v.Id
+                                   where v.LocalEstoqueId == lojaEtq && ids.Contains(iv.ProdutoId) && v.DataHora >= desde90
+                                   select iv.ProdutoId).Distinct().ToListAsync(ct)).ToHashSet();
+            var imp = (await db.EtiquetasImpressasLoja
+                    .Where(e => e.LocalEstoqueId == lojaEtq && ids.Contains(e.ProdutoId)).ToListAsync(ct))
+                .ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
+            etiquetas = desat.Count(x => vendidos.Contains(x.Id)
+                && !(imp.TryGetValue(x.Id, out var im) && (x.PrecoAtualizadoEm == null || im >= x.PrecoAtualizadoEm)));
+        }
+        else etiquetas = await db.Produtos.CountAsync(p =>
             p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada, ct);
 
         var estoqueBaixo = ehAtendente ? 0 : await db.Produtos.CountAsync(p =>

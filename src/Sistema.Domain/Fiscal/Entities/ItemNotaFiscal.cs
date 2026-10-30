@@ -96,6 +96,27 @@ public class ItemNotaFiscal : Entity
         ValorCofins = Math.Round(ValorTotal * aliqCofins / 100, 2);
     }
 
+    /// <summary>
+    /// Devolução (Simples Nacional, CSOSN 900): ICMS NÃO é recalculado — espelha os
+    /// valores da nota de entrada do fornecedor (base, alíquota e valor), para que ele
+    /// possa aproveitar o crédito. PIS/COFINS seguem a tributação informada.
+    /// </summary>
+    public void EspelharIcmsDevolucao(string csosn, decimal baseIcms, decimal aliqIcms,
+        decimal valorIcms, string? cstPis, decimal aliqPis, decimal aliqCofins)
+    {
+        CstIcms = null;
+        CsosnIcms = csosn;
+        BaseIcms = baseIcms;
+        AliquotaIcms = aliqIcms;
+        ValorIcms = valorIcms;
+
+        CstPisCofins = cstPis;
+        AliquotaPis = aliqPis;
+        AliquotaCofins = aliqCofins;
+        ValorPis = Math.Round(ValorTotal * aliqPis / 100, 2);
+        ValorCofins = Math.Round(ValorTotal * aliqCofins / 100, 2);
+    }
+
     // Chamado quando SEFAZ publicar NT com campos IBS/CBS/IS (previsto 2026).
     public void CalcularImpostosReforma(
         decimal aliqIbs, decimal aliqCbs, decimal aliqIs = 0)

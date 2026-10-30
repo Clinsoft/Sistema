@@ -109,10 +109,22 @@ public static class NFeXmlBuilder
             EscreverTransp(w);
             EscreverPag(w, pagamentos, nota.TotalNota);
 
-            if (!string.IsNullOrWhiteSpace(informacoesAdicionais))
+            // Dados adicionais: usa o texto informado; senão, para devolução (finNFe=4),
+            // gera automaticamente a referência à NF-e do fornecedor (nº, série e chave).
+            var infCpl = informacoesAdicionais;
+            if (string.IsNullOrWhiteSpace(infCpl) && nota.Finalidade == 4
+                && nota.ChaveReferenciada is { Length: 44 } chRef)
+            {
+                var serieRef = int.Parse(chRef[22..25]).ToString();
+                var numRef = long.Parse(chRef[25..34]).ToString();
+                var forn = string.IsNullOrWhiteSpace(nota.NomeDestinatario) ? "fornecedor" : nota.NomeDestinatario;
+                infCpl = $"Devolucao de mercadoria referente a NF-e no {numRef}, serie {serieRef}, "
+                       + $"chave de acesso {chRef}, emitida por {forn}.";
+            }
+            if (!string.IsNullOrWhiteSpace(infCpl))
             {
                 w.WriteStartElement("infAdic");
-                w.WriteElementString("infCpl", informacoesAdicionais[..Math.Min(5000, informacoesAdicionais.Length)]);
+                w.WriteElementString("infCpl", infCpl[..Math.Min(5000, infCpl.Length)]);
                 w.WriteEndElement();
             }
 
@@ -335,6 +347,20 @@ public static class NFeXmlBuilder
                     w.WriteElementString("vBCSTRet",      "0.00");
                     w.WriteElementString("pST",           "0.00");
                     w.WriteElementString("vICMSSTRet",    "0.00");
+                    w.WriteEndElement();
+                    break;
+                case "900":
+                    // Devolução ao fornecedor (Regime Normal): espelha o ICMS da entrada
+                    // (base, alíquota e valor vindos da nota do fornecedor) para ele creditar.
+                    w.WriteStartElement("ICMSSN900");
+                    w.WriteElementString("orig",  orig);
+                    w.WriteElementString("CSOSN", "900");
+                    w.WriteElementString("modBC", "3");
+                    w.WriteElementString("vBC",   FormatarDecimal(item.BaseIcms, 2));
+                    w.WriteElementString("pICMS", FormatarDecimal(item.AliquotaIcms, 2));
+                    w.WriteElementString("vICMS", FormatarDecimal(item.ValorIcms, 2));
+                    w.WriteElementString("pCredSN",     "0.00");
+                    w.WriteElementString("vCredICMSSN", "0.00");
                     w.WriteEndElement();
                     break;
                 default: // 102, 103, 300 e 400 → todos usam o grupo <ICMSSN102>

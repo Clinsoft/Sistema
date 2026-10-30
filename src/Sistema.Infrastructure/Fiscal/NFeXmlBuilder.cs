@@ -461,13 +461,15 @@ public static class NFeXmlBuilder
         w.WriteStartElement("total");
         w.WriteStartElement("ICMSTot");
 
-        // No Simples Nacional os itens usam CSOSN (ICMSSN102/500) e NÃO declaram
-        // vBC/vICMS, então o total precisa ser 0,00 — senão a SEFAZ rejeita com
-        // cStat 531 (Total da BC ICMS difere do somatório dos itens). No Regime
-        // Normal (grupos CST) o total soma a base/valor declarados nos itens.
+        // O total de ICMS precisa bater com a SOMA do que os itens DESTACAM no XML,
+        // senão a SEFAZ rejeita (531 vBC / 533 vICMS). Só destacam vBC/vICMS: CST 000
+        // (Regime Normal) e CSOSN 900 (ex.: devolução ao fornecedor no Simples). Os
+        // demais grupos do Simples (ICMSSN102/400/500) NÃO declaram → entram como 0.
         var simples = config.Regime == RegimeTributario.SimplesNacional;
-        var totalBcIcms = simples ? 0m : nota.Itens.Sum(i => i.BaseIcms);
-        var totalVIcms  = simples ? 0m : nota.Itens.Sum(i => i.ValorIcms);
+        bool DestacaIcms(ItemNotaFiscal i) =>
+            i.CsosnIcms == "900" || (!simples && (i.CstIcms ?? "040") == "000");
+        var totalBcIcms = nota.Itens.Where(DestacaIcms).Sum(i => i.BaseIcms);
+        var totalVIcms  = nota.Itens.Where(DestacaIcms).Sum(i => i.ValorIcms);
 
         w.WriteElementString("vBC",       FormatarDecimal(totalBcIcms, 2));
         w.WriteElementString("vICMS",     FormatarDecimal(totalVIcms, 2));

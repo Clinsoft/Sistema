@@ -107,7 +107,10 @@ public static class NFeXmlBuilder
             EscreverItens(w, nota, config);
             EscreverTotal(w, nota, config);
             EscreverTransp(w);
-            EscreverPag(w, pagamentos, nota.TotalNota);
+            // Devolução (finNFe=4): a SEFAZ exige "Sem Pagamento" (tPag=90, vPag=0,00) —
+            // senão rejeita 871. Ignora qualquer forma de pagamento informada.
+            var pags = nota.Finalidade == 4 ? System.Array.Empty<(string, decimal)>() : pagamentos;
+            EscreverPag(w, pags, nota.TotalNota);
 
             // Dados adicionais: usa o texto informado; senão, para devolução (finNFe=4),
             // gera automaticamente a referência à NF-e do fornecedor (nº, série e chave).

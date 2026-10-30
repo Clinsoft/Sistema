@@ -1525,11 +1525,12 @@ public class EntradaNFeController(SistemaDbContext db,
             nfeDev.AdicionarItem(itemNF);
 
             // Baixa de estoque (saída): a quantidade devolvida (estoque), ao custo de estoque.
+            // Tag com o Id da NF-e de devolução → o cancelamento estorna exatamente estas saídas.
             produto?.AjustarEstoque(-qtdEstoque);
             db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
                 entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
                 TipoMovimentacao.Saida, qtdEstoque, item.CustoUnitarioFinal,
-                documentoOrigem: "DEVOL-FORN",
+                documentoOrigem: $"DEVOL-FORN:{nfeDev.Id}",
                 observacao: $"Devolução ao fornecedor — {req.Motivo}"));
         }
 

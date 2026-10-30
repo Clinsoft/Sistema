@@ -120,6 +120,9 @@ public static class NFeXmlBuilder
                 var forn = string.IsNullOrWhiteSpace(nota.NomeDestinatario) ? "fornecedor" : nota.NomeDestinatario;
                 infCpl = $"Devolucao de mercadoria referente a NF-e no {numRef}, serie {serieRef}, "
                        + $"chave de acesso {chRef}, emitida por {forn}.";
+                if (config.Regime == RegimeTributario.SimplesNacional)
+                    infCpl += " Documento emitido por ME ou EPP optante pelo Simples Nacional."
+                            + " Nao gera direito a credito fiscal de IPI.";
             }
             if (!string.IsNullOrWhiteSpace(infCpl))
             {

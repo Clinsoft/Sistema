@@ -146,44 +146,44 @@ public class DanfeService : IDanfeService
                     // ═══ PRODUTOS / SERVIÇOS ═══
                     col.Item().Background("#F2F2F2").BorderVertical(0.6f).PaddingHorizontal(4).PaddingVertical(1)
                         .Text("DADOS DOS PRODUTOS / SERVIÇOS").Bold().FontSize(6.5f);
-                    col.Item().Table(table =>
+                    col.Item().PaddingRight(16).Table(table =>
                     {
                         table.ColumnsDefinition(cols =>
                         {
                             cols.ConstantColumn(14);   // #
                             cols.ConstantColumn(32);   // Código
-                            cols.RelativeColumn(4);    // Descrição
+                            cols.RelativeColumn(3);    // Descrição
                             cols.ConstantColumn(40);   // NCM
                             cols.ConstantColumn(34);   // CST/CSOSN
                             cols.ConstantColumn(24);   // CFOP
-                            cols.ConstantColumn(16);   // UN
-                            cols.ConstantColumn(32);   // Qtd
-                            cols.ConstantColumn(42);   // Vl Unit
-                            cols.ConstantColumn(42);   // BC ICMS
-                            cols.ConstantColumn(26);   // Alíq ICMS
-                            cols.ConstantColumn(40);   // Vl ICMS
-                            cols.ConstantColumn(46);   // Vl Total
+                            cols.ConstantColumn(18);   // UN
+                            cols.ConstantColumn(36);   // Qtd
+                            cols.ConstantColumn(44);   // Vl Unit
+                            cols.ConstantColumn(30);   // Alíq ICMS
+                            cols.ConstantColumn(44);   // Vl ICMS
+                            cols.ConstantColumn(48);   // Vl Total
                         });
 
-                        static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(2).DefaultTextStyle(t => t.FontSize(6));
+                        // Sem AlignRight: em Table o QuestPDF descarta silenciosamente o
+                        // conteúdo da célula alinhada à direita quando fica apertada.
+                        static IContainer HCell(IContainer c) => c.Background("#E6E6E6").Border(0.4f).PaddingVertical(2).PaddingHorizontal(2).DefaultTextStyle(t => t.FontSize(5.5f).Bold());
                         table.Header(h =>
                         {
-                            h.Cell().Element(HCell).Text("#").Bold();
-                            h.Cell().Element(HCell).Text("CÓDIGO").Bold();
-                            h.Cell().Element(HCell).Text("DESCRIÇÃO").Bold();
-                            h.Cell().Element(HCell).Text("NCM").Bold();
-                            h.Cell().Element(HCell).Text("CST/CSOSN").Bold();
-                            h.Cell().Element(HCell).Text("CFOP").Bold();
-                            h.Cell().Element(HCell).Text("UN").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("QTD").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("V.UNIT").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("BC ICMS").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("ALÍQ").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("V.ICMS").Bold();
-                            h.Cell().Element(HCell).AlignRight().Text("V.TOTAL").Bold();
+                            h.Cell().Element(HCell).Text("#");
+                            h.Cell().Element(HCell).Text("CÓDIGO");
+                            h.Cell().Element(HCell).Text("DESCRIÇÃO");
+                            h.Cell().Element(HCell).Text("NCM");
+                            h.Cell().Element(HCell).Text("CST/CSOSN");
+                            h.Cell().Element(HCell).Text("CFOP");
+                            h.Cell().Element(HCell).Text("UN");
+                            h.Cell().Element(HCell).Text("QTD");
+                            h.Cell().Element(HCell).Text("V.UNIT");
+                            h.Cell().Element(HCell).Text("ALÍQ");
+                            h.Cell().Element(HCell).Text("V.ICMS");
+                            h.Cell().Element(HCell).Text("V.TOTAL");
                         });
 
-                        static IContainer DCell(IContainer c) => c.BorderVertical(0.4f).BorderBottom(0.3f).PaddingVertical(2).PaddingHorizontal(2).DefaultTextStyle(t => t.FontSize(6));
+                        static IContainer DCell(IContainer c) => c.BorderVertical(0.4f).BorderBottom(0.3f).PaddingVertical(2).PaddingHorizontal(2).DefaultTextStyle(t => t.FontSize(5.5f));
                         foreach (var item in nota.Itens)
                         {
                             table.Cell().Element(DCell).Text(item.NumeroItem.ToString());
@@ -193,12 +193,11 @@ public class DanfeService : IDanfeService
                             table.Cell().Element(DCell).Text(item.CsosnIcms ?? item.CstIcms ?? "");
                             table.Cell().Element(DCell).Text(item.Cfop);
                             table.Cell().Element(DCell).Text(item.UnidadeMedida);
-                            table.Cell().Element(DCell).AlignRight().Text(item.Pesavel ? item.Quantidade.ToString("N3", br) : item.Quantidade.ToString("N0", br));
-                            table.Cell().Element(DCell).AlignRight().Text(item.ValorUnitario.ToString("N2", br));
-                            table.Cell().Element(DCell).AlignRight().Text(item.BaseIcms.ToString("N2", br));
-                            table.Cell().Element(DCell).AlignRight().Text(item.AliquotaIcms.ToString("N2", br));
-                            table.Cell().Element(DCell).AlignRight().Text(item.ValorIcms.ToString("N2", br));
-                            table.Cell().Element(DCell).AlignRight().Text(item.ValorTotal.ToString("N2", br));
+                            table.Cell().Element(DCell).Text(item.Pesavel ? item.Quantidade.ToString("N3", br) : item.Quantidade.ToString("N0", br));
+                            table.Cell().Element(DCell).Text(item.ValorUnitario.ToString("N2", br));
+                            table.Cell().Element(DCell).Text(item.AliquotaIcms.ToString("N2", br));
+                            table.Cell().Element(DCell).Text(item.ValorIcms.ToString("N2", br));
+                            table.Cell().Element(DCell).Text(item.ValorTotal.ToString("N2", br));
                         }
                     });
 
@@ -223,10 +222,11 @@ public class DanfeService : IDanfeService
                             {
                                 c.Item().Text("Nota de devolução de compra. Referência à NF-e de entrada informada no campo próprio.").FontSize(7);
                             }
-                            // ICMS destacado para o fornecedor creditar (CSOSN 900).
-                            if (vIcmsTot > 0)
-                                c.Item().Text($"ICMS destacado para crédito do destinatário: R$ {M(vIcmsTot)} "
-                                    + $"(base R$ {M(bcIcmsTot)}).").FontSize(7);
+                            // Legenda obrigatória do Simples Nacional (LC 123) — igual ao
+                            // modelo já usado pela empresa. Simples = itens com CSOSN.
+                            if (nota.Itens.Any(i => !string.IsNullOrWhiteSpace(i.CsosnIcms)))
+                                c.Item().Text("DOCUMENTO EMITIDO POR ME OU EPP OPTANTE PELO SIMPLES NACIONAL. "
+                                    + "NAO GERA DIREITO A CREDITO FISCAL DE IPI.").FontSize(7);
                         }
                         var emissor = !string.IsNullOrWhiteSpace(empresa.NomeFantasia) ? empresa.NomeFantasia
                             : (!string.IsNullOrWhiteSpace(empresa.RazaoSocial) ? empresa.RazaoSocial : Branding.BrandingRuntime.Atual.Nome);

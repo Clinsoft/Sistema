@@ -1477,26 +1477,38 @@ public class EntradaNFeController(SistemaDbContext db,
         var prodIds = itensSel.Select(i => i.ProdutoId!.Value).ToList();
         var produtos = await db.Produtos.Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
         var unidades = await db.UnidadesMedida.AsNoTracking().ToDictionaryAsync(u => u.Id, ct);
+        var tribEntrada = await ResolverTributacaoEntradaAsync(entrada, ct);
 
         foreach (var item in itensSel)
         {
             var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
-            var qtd = item.QuantidadeEstoque;
+            var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
+
+            // NF de devolução espelha a nota do fornecedor: unidade, quantidade e valor
+            // unitário comerciais vêm da entrada (fallback p/ os dados de estoque).
+            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
+            var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
+                ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
 
             var itemNF = ItemNotaFiscal.Criar(
                 nfeDev.Id, item.NumeroItem,
                 codigo: produto?.Codigo ?? item.CodigoFornecedor ?? item.NumeroItem.ToString(),
                 descricao: produto?.Descricao ?? item.DescricaoXml,
                 cfop: cfop,
-                unidade: um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml,
-                quantidade: qtd,
-                valorUnitario: item.CustoUnitarioFinal,
+                unidade: unidadeNF,
+                quantidade: qtdNF,
+                valorUnitario: valorUnitNF,
                 ncm: produto?.Ncm ?? item.NcmXml,
                 produtoId: item.ProdutoId,
                 pesavel: um?.Pesavel ?? false);
 
-            if (simples)
+            if (simples && temTrib)
+                // CSOSN 900 espelhando o ICMS da entrada (base/alíquota/valor do fornecedor).
+                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                    produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
+            else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
             else
                 itemNF.CalcularImpostos(produto?.CstIcms ?? "000", null, produto?.AliquotaIcms ?? 0,
@@ -1504,11 +1516,13 @@ public class EntradaNFeController(SistemaDbContext db,
 
             nfeDev.AdicionarItem(itemNF);
 
-            // Baixa de estoque (saída) da quantidade devolvida.
-            produto?.AjustarEstoque(-qtd);
+            // Baixa de estoque (saída): sempre na QUANTIDADE e CUSTO de estoque, independente
+            // da unidade comercial usada na NF.
+            var qtdEstoque = item.QuantidadeEstoque;
+            produto?.AjustarEstoque(-qtdEstoque);
             db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
                 entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
-                TipoMovimentacao.Saida, qtd, item.CustoUnitarioFinal,
+                TipoMovimentacao.Saida, qtdEstoque, item.CustoUnitarioFinal,
                 documentoOrigem: "DEVOL-FORN",
                 observacao: $"Devolução ao fornecedor — {req.Motivo}"));
         }
@@ -1565,19 +1579,27 @@ public class EntradaNFeController(SistemaDbContext db,
         var prodIds = itensSel.Select(i => i.ProdutoId!.Value).ToList();
         var produtos = await db.Produtos.AsNoTracking().Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
         var unidades = await db.UnidadesMedida.AsNoTracking().ToDictionaryAsync(u => u.Id, ct);
+        var tribEntrada = await ResolverTributacaoEntradaAsync(entrada, ct);
 
         foreach (var item in itensSel)
         {
             var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
+            var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
+            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
+            var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
+                ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
             var itemNF = ItemNotaFiscal.Criar(
                 nota.Id, item.NumeroItem,
                 produto?.Codigo ?? item.CodigoFornecedor ?? item.NumeroItem.ToString(),
                 produto?.Descricao ?? item.DescricaoXml, cfop,
-                um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml,
-                item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                unidadeNF, qtdNF, valorUnitNF,
                 ncm: produto?.Ncm ?? item.NcmXml, produtoId: item.ProdutoId, pesavel: um?.Pesavel ?? false);
-            if (simples)
+            if (simples && temTrib)
+                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                    produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
+            else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
             else
                 itemNF.CalcularImpostos(produto?.CstIcms ?? "000", null, produto?.AliquotaIcms ?? 0,
@@ -1633,19 +1655,27 @@ public class EntradaNFeController(SistemaDbContext db,
         var prodIds = itensSel.Select(i => i.ProdutoId!.Value).ToList();
         var produtos = await db.Produtos.AsNoTracking().Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
         var unidades = await db.UnidadesMedida.AsNoTracking().ToDictionaryAsync(u => u.Id, ct);
+        var tribEntrada = await ResolverTributacaoEntradaAsync(entrada, ct);
 
         foreach (var item in itensSel)
         {
             var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
+            var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
+            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
+            var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
+                ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
             var itemNF = ItemNotaFiscal.Criar(
                 nota.Id, item.NumeroItem,
                 produto?.Codigo ?? item.CodigoFornecedor ?? item.NumeroItem.ToString(),
                 produto?.Descricao ?? item.DescricaoXml, cfop,
-                um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml,
-                item.QuantidadeEstoque, item.CustoUnitarioFinal,
+                unidadeNF, qtdNF, valorUnitNF,
                 ncm: produto?.Ncm ?? item.NcmXml, produtoId: item.ProdutoId, pesavel: um?.Pesavel ?? false);
-            if (simples)
+            if (simples && temTrib)
+                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                    produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
+            else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
             else
                 itemNF.CalcularImpostos(produto?.CstIcms ?? "000", null, produto?.AliquotaIcms ?? 0,
@@ -1712,6 +1742,50 @@ public class EntradaNFeController(SistemaDbContext db,
         }
 
         return (xLgr, nro, bairro, cMun, xMun, uf, cep, ie);
+    }
+
+    /// <summary>
+    /// Lê a tributação por item do XML da entrada (por nItem): unidade, quantidade e valor
+    /// unitário comerciais + ICMS (base, alíquota e valor). A devolução ESPELHA esses valores
+    /// (CSOSN 900) para o fornecedor do Regime Normal poder creditar o ICMS.
+    /// </summary>
+    private async Task<Dictionary<int, (string Unidade, decimal Qtd, decimal ValorUnit,
+        decimal BaseIcms, decimal AliqIcms, decimal ValorIcms)>> ResolverTributacaoEntradaAsync(
+        EntradaNFe entrada, CancellationToken ct)
+    {
+        var map = new Dictionary<int, (string, decimal, decimal, decimal, decimal, decimal)>();
+        var xml = await db.NotasFiscaisRecebidas.AsNoTracking()
+            .Where(n => n.EmpresaId == entrada.EmpresaId && n.ChaveAcesso == entrada.ChaveAcesso)
+            .Select(n => n.XmlNota).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(xml)) return map;
+
+        try
+        {
+            var doc = System.Xml.Linq.XDocument.Parse(xml);
+            var ns = doc.Root?.GetDefaultNamespace() ?? System.Xml.Linq.XNamespace.None;
+            decimal D(System.Xml.Linq.XElement? e) => e != null && decimal.TryParse(
+                e.Value, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0m;
+
+            foreach (var det in doc.Descendants(ns + "det"))
+            {
+                if (!int.TryParse(det.Attribute("nItem")?.Value, out var n)) continue;
+                var prod = det.Element(ns + "prod");
+                if (prod is null) continue;
+                // Grupo ICMS do item (ICMS00/ICMS10/ICMS20/… ou ICMSSN…): pega o 1º filho.
+                var grp = det.Element(ns + "imposto")?.Element(ns + "ICMS")?.Elements().FirstOrDefault();
+                map[n] = (
+                    prod.Element(ns + "uCom")?.Value ?? "UN",
+                    D(prod.Element(ns + "qCom")),
+                    D(prod.Element(ns + "vUnCom")),
+                    D(grp?.Element(ns + "vBC")),
+                    D(grp?.Element(ns + "pICMS")),
+                    D(grp?.Element(ns + "vICMS")));
+            }
+        }
+        catch { /* XML inválido: devolve vazio e o chamador cai no cálculo padrão */ }
+
+        return map;
     }
 
     // ──────────────────────────────────────────────────────────────────

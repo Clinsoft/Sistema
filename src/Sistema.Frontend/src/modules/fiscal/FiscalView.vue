@@ -1465,10 +1465,17 @@ async function cancelar(nota: any) {
 }
 
 async function baixarXml(nota: any) {
-  if (!nota.xmlAutorizacao) return notif.aviso('XML não disponível.')
-  const blob = new Blob([nota.xmlAutorizacao], { type: 'application/xml' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href = url; a.download = `NFe_${nota.chaveAcesso}.xml`; a.click()
+  // Baixa do servidor: quando autorizada vem o nfeProc (NF-e + protocolo), que é o
+  // XML para enviar ao cliente/fornecedor.
+  try {
+    const r = await api.get(`/fiscal/notas/${nota.id}/xml`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `NFe_${nota.chaveAcesso || nota.id}.xml`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch { notif.erro('XML não disponível para esta nota.') }
 }
 
 async function baixarXmls() {

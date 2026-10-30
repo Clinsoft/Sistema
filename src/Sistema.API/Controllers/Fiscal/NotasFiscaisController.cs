@@ -46,14 +46,42 @@ public class NotasFiscaisController(
         return nota is null ? NotFound() : Ok(nota);
     }
 
-    /// <summary>Retorna o XML assinado da nota (enviado à SEFAZ).</summary>
+    /// <summary>Retorna o XML da nota para enviar ao cliente/fornecedor. Quando autorizada,
+    /// monta o <c>nfeProc</c> (NF-e assinada + protocolo de autorização) — o XML "completo"
+    /// que o destinatário importa. Caso contrário, devolve o XML assinado enviado.</summary>
     [HttpGet("{id:guid}/xml")]
     public async Task<IActionResult> ObterXml(Guid id, CancellationToken ct)
     {
         var nota = await repo.ObterPorIdAsync(id, ct);
         if (nota is null) return NotFound();
         if (nota.XmlEnvio is null) return NotFound(new { mensagem = "XML não disponível para esta nota." });
-        return Content(nota.XmlEnvio, "application/xml", System.Text.Encoding.UTF8);
+
+        var xml = MontarNfeProc(nota);
+        var nome = $"NFe_{new string((nota.ChaveAcesso ?? id.ToString()).Where(char.IsLetterOrDigit).ToArray())}.xml";
+        return File(System.Text.Encoding.UTF8.GetBytes(xml), "application/xml", nome);
+    }
+
+    /// <summary>Monta o nfeProc (NFe + protNFe) a partir do XML enviado e do retorno da SEFAZ.</summary>
+    private static string MontarNfeProc(Domain.Fiscal.Entities.NotaFiscal nota)
+    {
+        var nfe = ExtrairElemento(nota.XmlEnvio, "NFe");
+        var prot = nota.XmlRetorno is null ? null : ExtrairElemento(nota.XmlRetorno, "protNFe");
+        if (nfe is not null && prot is not null)
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                 + "<nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\">"
+                 + nfe + prot + "</nfeProc>";
+        return nota.XmlEnvio!;
+    }
+
+    /// <summary>Extrai "&lt;tag ...&gt;...&lt;/tag&gt;" de um XML (primeira ocorrência).</summary>
+    private static string? ExtrairElemento(string xml, string tag)
+    {
+        var ini = xml.IndexOf("<" + tag, StringComparison.Ordinal);
+        if (ini < 0) return null;
+        var fecha = "</" + tag + ">";
+        var fim = xml.IndexOf(fecha, ini, StringComparison.Ordinal);
+        if (fim < 0) return null;
+        return xml.Substring(ini, fim - ini + fecha.Length);
     }
 
     /// <summary>

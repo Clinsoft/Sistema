@@ -16,6 +16,7 @@ public class NotasFiscaisController(
     INotaFiscalRepository repo,
     IConfiguracaoFiscalRepository configRepo,
     INFeTransmissaoService transmissaoService,
+    IDanfeService danfe,
     SistemaDbContext db,
     IUnitOfWork uow) : ControllerBase
 {
@@ -84,16 +85,18 @@ public class NotasFiscaisController(
         return xml.Substring(ini, fim - ini + fecha.Length);
     }
 
-    /// <summary>
-    /// Retorna o DANFE em PDF.
-    /// TODO: implementar geração de DANFE com QuestPDF (Sistema.Infrastructure.Fiscal.DanfeBuilder).
-    /// </summary>
+    /// <summary>Retorna o DANFE (PDF) da nota — para imprimir/enviar junto com a mercadoria.</summary>
     [HttpGet("{id:guid}/danfe")]
-    public IActionResult ObterDanfe(Guid id)
+    public async Task<IActionResult> ObterDanfe(Guid id, CancellationToken ct)
     {
-        // TODO: implementar geração do DANFE com QuestPDF
-        return StatusCode(StatusCodes.Status501NotImplemented,
-            new { mensagem = "Geração de DANFE ainda não implementada. Em desenvolvimento." });
+        var nota = await repo.ObterComItensAsync(id, ct);
+        if (nota is null) return NotFound();
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == nota.EmpresaId, ct);
+        if (empresa is null) return NotFound(new { mensagem = "Empresa não encontrada." });
+
+        var pdf = danfe.GerarDanfe(nota, empresa);
+        var nome = $"DANFE_{new string((nota.ChaveAcesso ?? id.ToString()).Where(char.IsLetterOrDigit).ToArray())}.pdf";
+        return File(pdf, "application/pdf", nome);
     }
 
     /// <summary>

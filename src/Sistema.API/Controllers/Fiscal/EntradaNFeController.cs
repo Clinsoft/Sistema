@@ -1485,9 +1485,16 @@ public class EntradaNFeController(SistemaDbContext db,
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
             var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
 
-            // NF de devolução espelha a nota do fornecedor: unidade, quantidade e valor
-            // unitário comerciais vêm da entrada (fallback p/ os dados de estoque).
-            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            // Quantidade a devolver (parcial): a informada pelo usuário, limitada ao que
+            // foi comprado. ratio escala quantidade/valor/ICMS da NF e a baixa de estoque.
+            var qtdEstoque = QtdDevolver(req, item);
+            if (qtdEstoque <= 0) continue;
+            var ratio = item.QuantidadeEstoque > 0 ? qtdEstoque / item.QuantidadeEstoque : 1m;
+
+            // NF de devolução espelha a nota do fornecedor (valor unitário/unidade), com a
+            // quantidade proporcional ao que está sendo devolvido.
+            var qtdNFbase = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var qtdNF = Math.Round(qtdNFbase * ratio, 3);
             var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
             var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
                 ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
@@ -1505,8 +1512,9 @@ public class EntradaNFeController(SistemaDbContext db,
                 pesavel: um?.Pesavel ?? false);
 
             if (simples && temTrib)
-                // CSOSN 900 espelhando o ICMS da entrada (base/alíquota/valor do fornecedor).
-                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                // CSOSN 900 espelhando o ICMS da entrada (base/valor proporcionais à qtd devolvida).
+                itemNF.EspelharIcmsDevolucao("900", Math.Round(trib.BaseIcms * ratio, 2), trib.AliqIcms,
+                    Math.Round(trib.ValorIcms * ratio, 2),
                     produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
             else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
@@ -1516,9 +1524,7 @@ public class EntradaNFeController(SistemaDbContext db,
 
             nfeDev.AdicionarItem(itemNF);
 
-            // Baixa de estoque (saída): sempre na QUANTIDADE e CUSTO de estoque, independente
-            // da unidade comercial usada na NF.
-            var qtdEstoque = item.QuantidadeEstoque;
+            // Baixa de estoque (saída): a quantidade devolvida (estoque), ao custo de estoque.
             produto?.AjustarEstoque(-qtdEstoque);
             db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
                 entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
@@ -1586,7 +1592,11 @@ public class EntradaNFeController(SistemaDbContext db,
             var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
             var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
-            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var qtdEstoque = QtdDevolver(req, item);
+            if (qtdEstoque <= 0) continue;
+            var ratio = item.QuantidadeEstoque > 0 ? qtdEstoque / item.QuantidadeEstoque : 1m;
+            var qtdNFbase = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var qtdNF = Math.Round(qtdNFbase * ratio, 3);
             var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
             var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
                 ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
@@ -1597,7 +1607,8 @@ public class EntradaNFeController(SistemaDbContext db,
                 unidadeNF, qtdNF, valorUnitNF,
                 ncm: produto?.Ncm ?? item.NcmXml, produtoId: item.ProdutoId, pesavel: um?.Pesavel ?? false);
             if (simples && temTrib)
-                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                itemNF.EspelharIcmsDevolucao("900", Math.Round(trib.BaseIcms * ratio, 2), trib.AliqIcms,
+                    Math.Round(trib.ValorIcms * ratio, 2),
                     produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
             else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
@@ -1662,7 +1673,11 @@ public class EntradaNFeController(SistemaDbContext db,
             var produto = produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
             var um = produto is not null && unidades.TryGetValue(produto.UnidadeMedidaId, out var u) ? u : null;
             var temTrib = tribEntrada.TryGetValue(item.NumeroItem, out var trib);
-            var qtdNF = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var qtdEstoque = QtdDevolver(req, item);
+            if (qtdEstoque <= 0) continue;
+            var ratio = item.QuantidadeEstoque > 0 ? qtdEstoque / item.QuantidadeEstoque : 1m;
+            var qtdNFbase = temTrib && trib.Qtd > 0 ? trib.Qtd : item.QuantidadeEstoque;
+            var qtdNF = Math.Round(qtdNFbase * ratio, 3);
             var valorUnitNF = temTrib && trib.ValorUnit > 0 ? trib.ValorUnit : item.CustoUnitarioFinal;
             var unidadeNF = temTrib && !string.IsNullOrWhiteSpace(trib.Unidade)
                 ? trib.Unidade : (um?.Sigla ?? item.UnidadeEstoque ?? item.UnidadeXml);
@@ -1673,7 +1688,8 @@ public class EntradaNFeController(SistemaDbContext db,
                 unidadeNF, qtdNF, valorUnitNF,
                 ncm: produto?.Ncm ?? item.NcmXml, produtoId: item.ProdutoId, pesavel: um?.Pesavel ?? false);
             if (simples && temTrib)
-                itemNF.EspelharIcmsDevolucao("900", trib.BaseIcms, trib.AliqIcms, trib.ValorIcms,
+                itemNF.EspelharIcmsDevolucao("900", Math.Round(trib.BaseIcms * ratio, 2), trib.AliqIcms,
+                    Math.Round(trib.ValorIcms * ratio, 2),
                     produto?.CstPisCofins ?? "07", produto?.AliquotaPis ?? 0, produto?.AliquotaCofins ?? 0);
             else if (simples)
                 itemNF.CalcularImpostos(null, produto?.CsosnIcms ?? "400", 0, produto?.CstPisCofins ?? "07", 0, 0);
@@ -1786,6 +1802,16 @@ public class EntradaNFeController(SistemaDbContext db,
         catch { /* XML inválido: devolve vazio e o chamador cai no cálculo padrão */ }
 
         return map;
+    }
+
+    /// <summary>Quantidade a devolver de um item (parcial): a informada no request,
+    /// limitada ao que foi comprado. Sem informação → devolve tudo.</summary>
+    private static decimal QtdDevolver(DevolucaoEntradaRequest req, ItemEntradaNFe item)
+    {
+        var pedida = req.Quantidades?.FirstOrDefault(q => q.ItemId == item.Id)?.Quantidade;
+        var q = pedida ?? item.QuantidadeEstoque;
+        if (q <= 0) q = item.QuantidadeEstoque;
+        return Math.Min(q, item.QuantidadeEstoque);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -2369,4 +2395,6 @@ public record ProcessarEntradaRequest(
     string? FormaPagamento = null);  // forma de pagamento (informativo)
 public record EstornarRequest(string Motivo);
 public record CorrigirProdutoItemRequest(Guid ProdutoId, decimal? FatorConversao = null);
-public record DevolucaoEntradaRequest(List<Guid>? Itens, string? Motivo = null);
+public record DevolucaoEntradaRequest(List<Guid>? Itens, string? Motivo = null,
+    List<DevolucaoItemQtd>? Quantidades = null);
+public record DevolucaoItemQtd(Guid ItemId, decimal Quantidade);

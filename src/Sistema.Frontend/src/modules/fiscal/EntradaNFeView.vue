@@ -1079,12 +1079,17 @@
             Será gerada uma NF-e de devolução modelo 55. Após a devolução, acesse
             <strong>Documentos Fiscais → Emitidas</strong> para assinar e transmitir.
           </v-alert>
-          <div class="text-body-2 mb-2 font-weight-medium">Selecione os itens a devolver:</div>
-          <div style="max-height:260px;overflow-y:auto" class="mb-3">
-            <v-checkbox v-for="item in itensProdutoVinculado" :key="item.id"
-              v-model="itensDevolucao" :value="item.id"
-              :label="`${item.produtoDescricao} — ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`"
-              density="compact" hide-details />
+          <div class="text-body-2 mb-2 font-weight-medium">Selecione os itens e as quantidades a devolver:</div>
+          <div style="max-height:300px;overflow-y:auto" class="mb-3">
+            <div v-for="item in itensProdutoVinculado" :key="item.id" class="d-flex align-center">
+              <v-checkbox v-model="itensDevolucao" :value="item.id" density="compact" hide-details
+                class="flex-grow-1"
+                :label="`${item.produtoDescricao} — comprado: ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`" />
+              <v-text-field v-if="itensDevolucao.includes(item.id)"
+                v-model.number="qtdDevolucao[item.id]" type="number" :min="0" :max="item.quantidadeEstoque"
+                step="any" density="compact" hide-details variant="outlined" label="Devolver"
+                :suffix="item.unidadeEstoque ?? item.unidadeXml" style="max-width:130px" class="ml-2 flex-grow-0" />
+            </div>
           </div>
           <v-textarea v-model="motivoDevolucao" label="Motivo da devolução *"
             placeholder="Ex.: produto veio com validade errada" variant="outlined" density="compact"
@@ -1548,11 +1553,30 @@ const estornando = ref(false)
 const devolvendo = ref(false)
 const dlgDevolucao = ref(false)
 const itensDevolucao = ref<string[]>([])
+const qtdDevolucao = ref<Record<string, number>>({})
 const motivoDevolucao = ref('')
 const previendo = ref(false)
 const previendoPdf = ref(false)
 const itensProdutoVinculado = computed(() =>
   (entrada.value?.itens ?? []).filter((i: any) => i.produtoId))
+
+// Ao marcar um item, já preenche a quantidade com o total comprado (editável).
+watch(itensDevolucao, (sel) => {
+  for (const id of sel) {
+    if (qtdDevolucao.value[id] == null) {
+      const it = itensProdutoVinculado.value.find((x: any) => x.id === id)
+      if (it) qtdDevolucao.value[id] = it.quantidadeEstoque
+    }
+  }
+}, { deep: true })
+
+// Monta a lista {itemId, quantidade} dos itens marcados para enviar ao backend.
+function quantidadesPayload() {
+  return itensDevolucao.value.map(id => ({
+    itemId: id,
+    quantidade: Number(qtdDevolucao.value[id] ?? 0),
+  }))
+}
 
 // Configuração Fiscal da empresa (tributação padrão para novos produtos)
 const configFiscal = ref<any>(null)
@@ -2429,6 +2453,7 @@ async function previaDevolucao() {
     const r = await api.post(`/fiscal/entradas/${entradaId}/previa-devolucao`, {
       itens: itensDevolucao.value.length ? itensDevolucao.value : null,
       motivo: motivoDevolucao.value || null,
+      quantidades: quantidadesPayload(),
     })
     // Baixa o XML da prévia (não transmitido) para conferência com o contador.
     const blob = new Blob([r.data.xml], { type: 'application/xml' })
@@ -2448,6 +2473,7 @@ async function previaDevolucaoPdf() {
     const r = await api.post(`/fiscal/entradas/${entradaId}/previa-devolucao-pdf`, {
       itens: itensDevolucao.value.length ? itensDevolucao.value : null,
       motivo: motivoDevolucao.value || null,
+      quantidades: quantidadesPayload(),
     }, { responseType: 'blob' })
     const url = URL.createObjectURL(r.data)
     const a = document.createElement('a')
@@ -2465,6 +2491,7 @@ async function confirmarDevolucao() {
     const r = await api.post(`/fiscal/entradas/${entradaId}/devolver`, {
       itens: itensDevolucao.value.length ? itensDevolucao.value : null,
       motivo: motivoDevolucao.value || null,
+      quantidades: quantidadesPayload(),
     })
     notif.ok(r.data.mensagem)
     dlgDevolucao.value = false

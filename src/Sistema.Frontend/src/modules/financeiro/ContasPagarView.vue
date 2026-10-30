@@ -747,8 +747,17 @@ async function verComprovante(url: string) {
   try {
     const res = await api.get('/contas-pagar/comprovante-arquivo',
       { params: { nome }, responseType: 'blob' })
-    const blobUrl = URL.createObjectURL(res.data as Blob)
-    window.open(blobUrl, '_blank')
+    const tipo = (res.data as Blob).type || (nome?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '')
+    const blobUrl = URL.createObjectURL(new Blob([res.data as Blob], tipo ? { type: tipo } : undefined))
+    // Âncora com clique: abre em nova aba de forma confiável (window.open após await
+    // é bloqueado/lança em alguns contextos). Fallback: baixa o arquivo.
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.target = '_blank'
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
   } catch { notif.erro('Erro ao abrir o comprovante.') }
 }

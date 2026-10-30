@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.Domain.Estoque.Entities;
 using Sistema.Domain.Fiscal.Entities;
 using Sistema.Domain.Fiscal.Interfaces;
 using Sistema.Domain.Shared.Interfaces;
@@ -294,14 +295,59 @@ public class NotasFiscaisController(
 
         nota.Cancelar(resultado.Protocolo ?? "", justificativa);
         repo.Atualizar(nota);
+
+        // Devolução cancelada → devolve os itens ao estoque (estorna a baixa da emissão).
+        var estornou = nota.Finalidade == 4 && await EstornarEstoqueDevolucaoAsync(nota, ct);
+
         await uow.SalvarAsync(ct);
 
         return Ok(new
         {
             nota.Id, Status = nota.Status.ToString(),
             protocoloCancelamento = resultado.Protocolo,
-            mensagem = "NFC-e cancelada na SEFAZ com sucesso."
+            estoqueEstornado = estornou,
+            mensagem = "Nota cancelada na SEFAZ com sucesso."
+                + (estornou ? " Itens devolvidos ao estoque." : "")
         });
+    }
+
+    /// <summary>Estorna a baixa de estoque de uma devolução cancelada (devolve os itens).
+    /// Usa as movimentações marcadas com o Id da nota; para notas antigas (sem marca),
+    /// cai nos itens da nota, no local da entrada de origem.</summary>
+    private async Task<bool> EstornarEstoqueDevolucaoAsync(NotaFiscal nota, CancellationToken ct)
+    {
+        var tag = $"DEVOL-FORN:{nota.Id}";
+        var movs = await db.MovimentacoesEstoque
+            .Where(m => m.DocumentoOrigem == tag && m.Tipo == TipoMovimentacao.Saida).ToListAsync(ct);
+
+        List<(Guid ProdutoId, Guid Local, decimal Qtd, decimal Custo)> aEstornar;
+        if (movs.Count > 0)
+            aEstornar = movs.Select(m => (m.ProdutoId, m.LocalEstoqueId, m.Quantidade, m.CustoUnitario)).ToList();
+        else
+        {
+            // Legado (movimento sem marca): estorna pelos itens da nota, no local da entrada.
+            var comItens = await repo.ObterComItensAsync(nota.Id, ct);
+            Guid? local = nota.EntradaNFeId is Guid eid
+                ? await db.EntradasNFe.Where(e => e.Id == eid).Select(e => (Guid?)e.LocalEstoqueId).FirstOrDefaultAsync(ct)
+                : null;
+            if (comItens is null || local is null) return false;
+            aEstornar = comItens.Itens.Where(i => i.ProdutoId.HasValue)
+                .Select(i => (i.ProdutoId!.Value, local.Value, i.Quantidade, 0m)).ToList();
+        }
+        if (aEstornar.Count == 0) return false;
+
+        var prodIds = aEstornar.Select(x => x.ProdutoId).Distinct().ToList();
+        var produtos = await db.Produtos.Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
+        foreach (var e in aEstornar)
+        {
+            produtos.FirstOrDefault(p => p.Id == e.ProdutoId)?.AjustarEstoque(e.Qtd);
+            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+                nota.EmpresaId, e.ProdutoId, e.Local, TipoMovimentacao.Entrada, e.Qtd, e.Custo,
+                documentoOrigem: $"ESTORNO-DEVOL:{nota.Id}",
+                observacao: "Estorno de estoque — devolução cancelada"));
+        }
+        await db.SaveChangesAsync(ct);
+        return true;
     }
     /// <summary>
     /// Inutiliza faixa de numeração não utilizada na SEFAZ.

@@ -319,7 +319,7 @@ public class DanfeService : IDanfeService
     {
         try
         {
-            var p = System.IO.Path.Combine("wwwroot", Branding.BrandingRuntime.Atual.LogoArquivo);
+            var p = System.IO.Path.Combine("wwwroot", "logo-ecogranel.png");
             return System.IO.File.Exists(p) ? System.IO.File.ReadAllBytes(p) : null;
         }
         catch { return null; }

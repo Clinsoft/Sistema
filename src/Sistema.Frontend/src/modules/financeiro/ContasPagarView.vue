@@ -717,6 +717,27 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Visualizador de comprovante (dentro do sistema; evita aba em branco) -->
+    <v-dialog v-model="dlgVerComp" max-width="900" @update:model-value="v => { if (!v) fecharVerComp() }">
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-3">
+          <v-icon start>mdi-file-document-outline</v-icon>
+          Comprovante
+          <v-spacer />
+          <v-btn variant="tonal" color="primary" rounded="lg" size="small" prepend-icon="mdi-download"
+            class="mr-2" @click="baixarComprovanteAtual">Baixar</v-btn>
+          <v-btn icon="mdi-close" variant="text" size="small" @click="fecharVerComp" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-0" style="height:80vh">
+          <iframe v-if="verCompEhPdf" :src="verCompSrc" style="width:100%;height:100%;border:0" />
+          <div v-else class="d-flex justify-center align-center pa-4" style="height:100%;overflow:auto">
+            <img :src="verCompSrc" style="max-width:100%;max-height:100%;object-fit:contain" />
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -743,23 +764,35 @@ const lojasFiltro = computed(() => [{ id: null, nome: 'Todas as lojas' }, ...loj
 // baixa o arquivo com o token e abre num blob, em vez de linkar a URL pública.
 async function verComprovante(url: string) {
   if (!url) return
-  const nome = url.split('/').pop()
+  const nome = url.split('/').pop() ?? 'comprovante'
   try {
     const res = await api.get('/contas-pagar/comprovante-arquivo',
       { params: { nome }, responseType: 'blob' })
-    const tipo = (res.data as Blob).type || (nome?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '')
-    const blobUrl = URL.createObjectURL(new Blob([res.data as Blob], tipo ? { type: tipo } : undefined))
-    // Âncora com clique: abre em nova aba de forma confiável (window.open após await
-    // é bloqueado/lança em alguns contextos). Fallback: baixa o arquivo.
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.target = '_blank'
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+    const ehPdf = (nome.toLowerCase().endsWith('.pdf')) || (res.data as Blob).type === 'application/pdf'
+    const tipo = (res.data as Blob).type || (ehPdf ? 'application/pdf' : 'application/octet-stream')
+    if (verCompSrc.value) { try { URL.revokeObjectURL(verCompSrc.value) } catch {} }
+    verCompSrc.value = URL.createObjectURL(new Blob([res.data as Blob], { type: tipo }))
+    verCompEhPdf.value = ehPdf
+    verCompNome.value = nome
+    // Mostra DENTRO do sistema (iframe/img): aba nova com blob fica em branco em
+    // vários navegadores. O botão "Baixar" usa o mesmo blob.
+    dlgVerComp.value = true
   } catch { notif.erro('Erro ao abrir o comprovante.') }
+}
+
+function baixarComprovanteAtual() {
+  if (!verCompSrc.value) return
+  const a = document.createElement('a')
+  a.href = verCompSrc.value
+  a.download = verCompNome.value || 'comprovante'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
+function fecharVerComp() {
+  dlgVerComp.value = false
+  if (verCompSrc.value) { try { URL.revokeObjectURL(verCompSrc.value) } catch {} ; verCompSrc.value = '' }
 }
 
 // Anexar comprovante (imagem/PDF) direto na linha — só guarda, não lê nada.
@@ -804,6 +837,11 @@ interface ResultadoComp {
 }
 const NOVA = '__nova__'
 const dlgComp = ref(false)
+// Visualizador de comprovante (dentro do sistema)
+const dlgVerComp = ref(false)
+const verCompSrc = ref('')
+const verCompEhPdf = ref(false)
+const verCompNome = ref('')
 const arquivosComp = ref<File[]>([])
 const analisando = ref(false)
 const confirmandoComp = ref(false)

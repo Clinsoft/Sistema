@@ -1523,15 +1523,9 @@ public class EntradaNFeController(SistemaDbContext db,
                     produto?.CstPisCofins ?? "01", produto?.AliquotaPis ?? 0.65m, produto?.AliquotaCofins ?? 3m);
 
             nfeDev.AdicionarItem(itemNF);
-
-            // Baixa de estoque (saída): a quantidade devolvida (estoque), ao custo de estoque.
-            // Tag com o Id da NF-e de devolução → o cancelamento estorna exatamente estas saídas.
-            produto?.AjustarEstoque(-qtdEstoque);
-            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
-                entrada.EmpresaId, item.ProdutoId!.Value, entrada.LocalEstoqueId,
-                TipoMovimentacao.Saida, qtdEstoque, item.CustoUnitarioFinal,
-                documentoOrigem: $"DEVOL-FORN:{nfeDev.Id}",
-                observacao: $"Devolução ao fornecedor — {req.Motivo}"));
+            // NÃO baixa estoque aqui: a baixa acontece só quando a SEFAZ AUTORIZAR a nota
+            // (NotasFiscaisController.Transmitir). Assim, nota rejeitada ou em digitação não
+            // mexe no estoque, e o cancelamento estorna a baixa.
         }
 
         if (nfeDev.Itens.Count == 0)

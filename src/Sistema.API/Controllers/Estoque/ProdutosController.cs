@@ -242,8 +242,26 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         var baseEnc = db.Produtos.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0 && p.PrecoVenda > 0
                 && !jaVendidos.Contains(p.Id));
-        var semEtiqueta = await baseEnc.Where(p => p.EtiquetaImpressaEm == null).Select(p => p.Id).ToListAsync(ct);
+        var semTodos = await baseEnc.Where(p => p.EtiquetaImpressaEm == null).Select(p => p.Id).ToListAsync(ct);
         var comEtiqueta = await baseEnc.Where(p => p.EtiquetaImpressaEm != null).Select(p => p.Id).ToListAsync(ct);
+        // Opção B: "sem etiqueta" só os ATRIBUÍVEIS a alguma loja (saldo reconstruído > 0),
+        // pra bater com o número do sininho (não conta estoque global sem movimentação por loja).
+        var comSaldo = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && semTodos.Contains(m.ProdutoId))
+            .GroupBy(m => m.ProdutoId)
+            .Select(g => new
+            {
+                ProdutoId = g.Key,
+                Saldo = g.Sum(m =>
+                    m.Tipo == TipoMovimentacao.Entrada || m.Tipo == TipoMovimentacao.AjustePositivo
+                    || m.Tipo == TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Saida || m.Tipo == TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia ? -m.Quantidade : 0m)
+            }).ToListAsync(ct))
+            .Where(x => x.Saldo > 0).Select(x => x.ProdutoId).ToHashSet();
+        var semEtiqueta = semTodos.Where(comSaldo.Contains).ToList();
         return Ok(new { semEtiqueta, comEtiqueta });
     }
 

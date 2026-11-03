@@ -2471,6 +2471,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<bool>("EtiquetaDesatualizada")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("EtiquetaImpressaEm")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FichaTecnicaUrl")
                         .HasColumnType("nvarchar(max)");
 

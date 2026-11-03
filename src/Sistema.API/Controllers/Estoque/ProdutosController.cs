@@ -1291,6 +1291,9 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         if (req.Ids is null || req.Ids.Count == 0) return Ok(new { atualizados = 0 });
         var produtos = await db.Produtos.Where(p => req.Ids.Contains(p.Id)).ToListAsync(ct);
 
+        // Rastreia a 1ª impressão de etiqueta (qualquer loja) — distingue encalhado com/sem etiqueta.
+        foreach (var p in produtos) p.RegistrarImpressaoEtiqueta();
+
         if (req.LocalEstoqueId is not Guid loja)
         {
             foreach (var p in produtos) p.MarcarEtiquetaImpressa();

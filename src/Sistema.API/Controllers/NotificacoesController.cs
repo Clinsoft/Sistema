@@ -71,9 +71,11 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             .Join(db.Set<Venda>(), iv => iv.VendaId, v => v.Id, (iv, v) => new { iv.ProdutoId, v.EmpresaId })
             .Where(x => x.EmpresaId == empresaId)
             .Select(x => x.ProdutoId);
-        var nuncaVendidoComEtiqueta = await db.Produtos.CountAsync(p =>
-            p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0 && p.PrecoVenda > 0
-            && !jaVendidos.Contains(p.Id), ct);
+        var baseEncalhado = db.Produtos.Where(p => p.EmpresaId == empresaId && p.Ativo
+            && p.EstoqueAtual > 0 && p.PrecoVenda > 0 && !jaVendidos.Contains(p.Id));
+        // SEM etiqueta (nunca impressa) x COM etiqueta (já impressa mas não girou).
+        var encalhadoSemEtiqueta = await baseEncalhado.CountAsync(p => p.EtiquetaImpressaEm == null, ct);
+        var encalhadoComEtiqueta = await baseEncalhado.CountAsync(p => p.EtiquetaImpressaEm != null, ct);
 
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
@@ -178,12 +180,19 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             texto = $"{estoqueBaixo} produto(s) no ou abaixo do estoque mínimo.",
             rota = "/estoque/posicao"
         });
-        if (nuncaVendidoComEtiqueta > 0) itens.Add(new
+        if (encalhadoSemEtiqueta > 0) itens.Add(new
         {
-            tipo = "nunca-vendido", quantidade = nuncaVendidoComEtiqueta, cor = "blue-grey", icone = "mdi-tag-off-outline",
-            titulo = "Nunca vendidos (com etiqueta)",
-            texto = $"{nuncaVendidoComEtiqueta} produto(s) à venda que nunca venderam — encalhados.",
-            rota = "/estoque/produtos?encalhados=1"
+            tipo = "encalhado-sem-etiqueta", quantidade = encalhadoSemEtiqueta, cor = "red-darken-2", icone = "mdi-tag-off-outline",
+            titulo = "Encalhados SEM etiqueta",
+            texto = $"{encalhadoSemEtiqueta} produto(s) que nunca venderam e nunca tiveram etiqueta impressa — etiquetar/expor.",
+            rota = "/estoque/produtos?encalhados=sem"
+        });
+        if (encalhadoComEtiqueta > 0) itens.Add(new
+        {
+            tipo = "encalhado-com-etiqueta", quantidade = encalhadoComEtiqueta, cor = "blue-grey", icone = "mdi-tag-outline",
+            titulo = "Encalhados COM etiqueta",
+            texto = $"{encalhadoComEtiqueta} produto(s) etiquetados que nunca venderam — promover/liquidar.",
+            rota = "/estoque/produtos?encalhados=com"
         });
         if (validadeProxima > 0) itens.Add(new
         {

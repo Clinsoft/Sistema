@@ -74,6 +74,7 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
         "blz","beleza","certo","certinho","perfeito","perfeita","otimo","otima","show","showw","joia",
         "massa","top","maravilha","maravilhosa","entendi","entendido","entendida","muito","mto","mt",
         "tudo","bem","ta","tah","de","nada","isso","mesmo","demais","entao","amem","amen",
+        "ja","passei","ai","aqui","vim","volto","voltei","depois","amanha","logo","mais","tarde",
         "abencoe","deus","por","graca","gracas","uhum","aham","combinado","fechado","fechou","beijos",
         "bjs","bjos","bjus","abraco","abracos","otimaa","legal","maravilhoso","sucesso","vlww",
         // saudação / abertura (sem pergunta)
@@ -87,8 +88,9 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
     private static readonly string[] PadroesAutoResposta =
     {
         "agradeco seu contato","obrigado pelo seu contato","obrigada pelo seu contato",
-        "agradecemos seu contato","agradeco o seu contato","obrigado pelo contato",
-        "no momento nao posso","nao posso responder","nao posso atender","retornarei",
+        "agradecemos seu contato","agradecemos pelo seu contato","agradeco o seu contato",
+        "obrigado pelo contato","no momento nao posso","nao posso responder","nao posso atender",
+        "no momento ainda nao","nao estamos trabalhando","estamos fora do","retornarei",
         "breve eu retorno","breve retorno","retorno o mais breve","assim que possivel",
         "mensagem automatica","resposta automatica","horario de atendimento","retornaremos"
     };

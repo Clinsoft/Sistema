@@ -245,6 +245,21 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             .Select(v => (decimal?)v.Total).AverageAsync(ct) ?? 25m;
         if (ticketRef <= 0) ticketRef = 25m;
 
+        // Meta mensal com TRAVA: nunca abaixo do mês anterior (a meta não pode cair no ano).
+        // Pré-calcula de jan→dez aplicando running max sobre a meta sazonal (realizado base × fator).
+        var fatorMeta = 1 + crescimentoMeta / 100;
+        var metaPorMes = new Dictionary<int, decimal>();
+        decimal metaAcumuladaPiso = 0m;
+        for (var mes = 1; mes <= 12; mes++)
+        {
+            var vAno = vendas.Where(v => v.DataHora.Year == ano && v.DataHora.Month == mes).Sum(v => v.Total);
+            var totalMes = Math.Max(vAno, hist.GetValueOrDefault((ano, mes), 0m));
+            var metaSazonal = Math.Round(totalMes * fatorMeta, 2);
+            var metaFinal = Math.Max(metaSazonal, metaAcumuladaPiso); // trava: >= mês anterior
+            metaPorMes[mes] = metaFinal;
+            metaAcumuladaPiso = metaFinal;
+        }
+
         var meses = Enumerable.Range(1, 12).Select(mes =>
         {
             var realizadoAno     = vendas.Where(v => v.DataHora.Year == ano     && v.DataHora.Month == mes).ToList();
@@ -265,8 +280,9 @@ public class RelatoriosVendasController(SistemaDbContext db) : ControllerBase
             var qtdAno      = qtdEstimada ? (int)Math.Round(totalAno / ticketRef) : realizadoAno.Count;
             var qtdAnoAnt   = realizadoAnoAnt.Count;
 
-            // Meta do próximo exercício = realizado do ano base × (1 + crescimento%)
-            var meta = Math.Round(totalAno * (1 + crescimentoMeta / 100), 2);
+            // Meta do próximo exercício = realizado base × (1 + crescimento%), com TRAVA de
+            // não cair mês a mês (pré-calculada em metaPorMes).
+            var meta = metaPorMes[mes];
 
             // Variação YoY (ano atual vs anterior)
             var variacaoYoy = totalAnoAnt > 0

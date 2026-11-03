@@ -541,6 +541,28 @@ public class ContasPagarController(
     {
         var t = (texto ?? "").Replace('\n', ' ').Replace('\r', ' ');
 
+        // ─── Itaú ("Comprovante de pagamento de boleto" via Sispag) ───────────────
+        // Layout em tabela: com as quebras viradas em espaço, o CNPJ do beneficiário
+        // fica logo ANTES do vencimento + "Valor do boleto" (assim não pega o CNPJ do
+        // pagador/EcoGranel), e a data de pagamento vem rotulada. Afinado com comprovantes reais.
+        if (Regex.IsMatch(t, @"Valor do boleto\s*\(R\$\)", RegexOptions.IgnoreCase))
+        {
+            var vIt = ParseMoeda(Campo(t, @"Valor do boleto\s*\(R\$\)\s*;?\s*([\d\.]+,\d{2})"))
+                   ?? ParseMoeda(Campo(t, @"([\d\.]+,\d{2})\s*Data de pagamento"));
+            var vencIt = ParseData(Campo(t, @"(\d{2}/\d{2}/\d{4})\s*Valor do boleto"));
+            var dataIt = ParseData(Campo(t, @"Data de pagamento\s*:?\s*(\d{2}/\d{2}/\d{4})")
+                                ?? Campo(t, @"Opera[cç][aã]o efetuada em\s*(\d{2}/\d{2}/\d{4})"));
+            var nomesIt = new List<string>();
+            var nomeIt = Campo(t, @"Benefici[aá]rio:\s*(.{3,40}?)\s*CPF/CNPJ")
+                      ?? Campo(t, @"Raz[aã]o Social:\s*(.{3,40}?)\s*\d{2}\.?\d{3}");
+            if (!string.IsNullOrWhiteSpace(nomeIt)) nomesIt.Add(nomeIt!);
+            var docsIt = new List<string>();
+            var docIt = SomenteDigitos(Campo(t, @"(\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2})\s+\d{2}/\d{2}/\d{4}\s+Valor do boleto"));
+            if (docIt.Length is 11 or 14) docsIt.Add(docIt);
+            if (vIt.HasValue || nomesIt.Count > 0 || docsIt.Count > 0)
+                return (vIt, dataIt, vencIt, nomesIt, docsIt);
+        }
+
         var valor = ParseMoeda(Campo(t, @"Valor Pago\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
                  ?? ParseMoeda(Campo(t, @"Valor do T[ií]tulo\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"))
                  ?? ParseMoeda(Campo(t, @"Valor Total\s*\(R\$\)\s*:?\s*([\d\.]+,\d{2})"));   // tributos Sicredi (DARE/DAS)

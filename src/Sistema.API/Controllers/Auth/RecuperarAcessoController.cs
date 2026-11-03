@@ -20,10 +20,11 @@ public class RecuperarAcessoController(SistemaDbContext db, IEmailService email,
         var cnpjLimpo = new string(req.Cnpj.ToUpperInvariant()
             .Where(c => char.IsLetterOrDigit(c)).ToArray());
 
-        var empresa = await db.Empresas.AsNoTracking()
-            .FirstOrDefaultAsync(e =>
-                e.Cnpj == cnpjLimpo ||
-                new string(e.Cnpj.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray()) == cnpjLimpo, ct);
+        // Normaliza o CNPJ do banco EM MEMÓRIA (não dentro da query — o EF não traduz
+        // Where(char) sobre a coluna e estoura). Empresas é uma tabela minúscula.
+        var empresa = (await db.Empresas.AsNoTracking().ToListAsync(ct))
+            .FirstOrDefault(e => e.Cnpj == cnpjLimpo ||
+                new string((e.Cnpj ?? "").ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray()) == cnpjLimpo);
 
         if (empresa is null)
             // Resposta genérica para não revelar se CNPJ existe

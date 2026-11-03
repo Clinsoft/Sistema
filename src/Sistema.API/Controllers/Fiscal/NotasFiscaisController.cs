@@ -234,6 +234,12 @@ public class NotasFiscaisController(
                 resultado.XmlRetorno ?? "");
 
         repo.Atualizar(nota);
+
+        // Devolução ao fornecedor: a baixa de estoque acontece SÓ agora, na autorização
+        // (não na criação) — assim nota rejeitada/em digitação não mexe no estoque.
+        if (resultado.Autorizada && nota.Finalidade == 4)
+            await BaixarEstoqueDevolucaoAsync(nota, ct);
+
         await uow.SalvarAsync(ct);
 
         return Ok(new
@@ -245,6 +251,34 @@ public class NotasFiscaisController(
                 ? "Nota autorizada pela SEFAZ."
                 : $"Nota rejeitada: {resultado.MotivoRejeicao}"
         });
+    }
+
+    /// <summary>Baixa o estoque de uma devolução ao fornecedor na AUTORIZAÇÃO (saída dos
+    /// itens no local da entrada de origem). Idempotente: não repete se já baixou.</summary>
+    private async Task<bool> BaixarEstoqueDevolucaoAsync(NotaFiscal nota, CancellationToken ct)
+    {
+        var tag = $"DEVOL-FORN:{nota.Id}";
+        if (await db.MovimentacoesEstoque.AnyAsync(m => m.DocumentoOrigem == tag, ct)) return false;
+
+        Guid? local = nota.EntradaNFeId is Guid eid
+            ? await db.EntradasNFe.Where(e => e.Id == eid).Select(e => (Guid?)e.LocalEstoqueId).FirstOrDefaultAsync(ct)
+            : null;
+        var itens = nota.Itens.Where(i => i.ProdutoId.HasValue).ToList();
+        if (local is null || itens.Count == 0) return false;
+
+        var prodIds = itens.Select(i => i.ProdutoId!.Value).Distinct().ToList();
+        var produtos = await db.Produtos.Where(p => prodIds.Contains(p.Id)).ToListAsync(ct);
+        foreach (var it in itens)
+        {
+            produtos.FirstOrDefault(p => p.Id == it.ProdutoId)?.AjustarEstoque(-it.Quantidade);
+            db.MovimentacoesEstoque.Add(MovimentacaoEstoque.Criar(
+                nota.EmpresaId, it.ProdutoId!.Value, local.Value,
+                TipoMovimentacao.Saida, it.Quantidade, it.ValorUnitario,
+                documentoOrigem: tag,
+                observacao: "Devolução ao fornecedor (baixa na autorização)"));
+        }
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>Cancelar nota autorizada.</summary>

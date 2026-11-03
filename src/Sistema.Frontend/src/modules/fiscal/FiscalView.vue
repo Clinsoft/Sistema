@@ -16,16 +16,32 @@
       ]"
     />
 
-    <v-tabs v-model="aba" bg-color="transparent" class="mb-4">
-      <v-tab value="emitidas" prepend-icon="mdi-file-send-outline">NF-e Emitidas</v-tab>
-      <v-tab value="recebidas" prepend-icon="mdi-file-download-outline">
-        NF-e Recebidas
-        <v-chip v-if="resumoRecebidas.semManifestacao > 0" color="warning" size="x-small" class="ml-2">
-          {{ resumoRecebidas.semManifestacao }} pendente(s)
-        </v-chip>
-      </v-tab>
-      <v-tab value="entradas" prepend-icon="mdi-file-import-outline">Entradas / Escrituração</v-tab>
-    </v-tabs>
+    <div class="d-flex align-center flex-wrap mb-4" style="gap:8px">
+      <v-tabs v-model="aba" bg-color="transparent" class="flex-grow-1">
+        <v-tab value="emitidas" prepend-icon="mdi-file-send-outline">NF-e Emitidas</v-tab>
+        <v-tab value="recebidas" prepend-icon="mdi-file-download-outline">
+          NF-e Recebidas
+          <v-chip v-if="resumoRecebidas.semManifestacao > 0" color="warning" size="x-small" class="ml-2">
+            {{ resumoRecebidas.semManifestacao }} pendente(s)
+          </v-chip>
+        </v-tab>
+        <v-tab value="entradas" prepend-icon="mdi-file-import-outline">Entradas / Escrituração</v-tab>
+      </v-tabs>
+
+      <!-- Ações fiscais: botão visível (substitui o FAB flutuante que cobria o menu lateral) -->
+      <v-menu location="bottom end">
+        <template #activator="{ props }">
+          <v-btn v-bind="props" color="primary" variant="tonal" rounded="lg"
+            prepend-icon="mdi-tune-variant" append-icon="mdi-menu-down">Ações fiscais</v-btn>
+        </template>
+        <v-list density="compact" min-width="220">
+          <v-list-item prepend-icon="mdi-file-send-outline" title="Nova NF-e" @click="abrirNovaNFe" />
+          <v-list-item prepend-icon="mdi-close-box-outline" title="Inutilizar numeração" @click="dlgInutilizar = true" />
+          <v-list-item prepend-icon="mdi-file-export-outline" title="SPED EFD" @click="dialogSped = true" />
+          <v-list-item prepend-icon="mdi-zip-box-outline" title="XMLs do período" @click="baixarXmls" />
+        </v-list>
+      </v-menu>
+    </div>
 
     <!-- ─────────────── ABA: EMITIDAS ─────────────── -->
     <div v-if="aba === 'emitidas'">
@@ -1094,20 +1110,6 @@
       </v-card>
     </v-dialog>
 
-    <v-speed-dial v-if="aba === 'emitidas' || aba === 'entradas'" location="bottom right"
-      transition="fade-transition" class="fixed-fab">
-      <template #activator="{ props }">
-        <v-fab v-bind="props" icon="mdi-plus" color="primary" size="large" />
-      </template>
-      <v-btn key="nfe" prepend-icon="mdi-file-send-outline" text="Nova NF-e"
-        color="primary" variant="flat" @click="abrirNovaNFe" />
-      <v-btn key="inut" prepend-icon="mdi-close-box-outline" text="Inutilizar numeração"
-        color="surface" variant="flat" @click="dlgInutilizar = true" />
-      <v-btn key="sped" prepend-icon="mdi-file-export-outline" text="SPED EFD"
-        color="surface" variant="flat" @click="dialogSped = true" />
-      <v-btn key="xmls" prepend-icon="mdi-zip-box-outline" text="XMLs do período"
-        color="surface" variant="flat" @click="baixarXmls" />
-    </v-speed-dial>
   </div>
 </template>
 

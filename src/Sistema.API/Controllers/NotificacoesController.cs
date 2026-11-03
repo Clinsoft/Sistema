@@ -183,7 +183,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             tipo = "nunca-vendido", quantidade = nuncaVendidoComEtiqueta, cor = "blue-grey", icone = "mdi-tag-off-outline",
             titulo = "Nunca vendidos (com etiqueta)",
             texto = $"{nuncaVendidoComEtiqueta} produto(s) à venda que nunca venderam — encalhados.",
-            rota = "/estoque/produtos"
+            rota = "/estoque/produtos?encalhados=1"
         });
         if (validadeProxima > 0) itens.Add(new
         {

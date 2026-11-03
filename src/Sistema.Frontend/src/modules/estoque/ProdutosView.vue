@@ -364,6 +364,13 @@
         <v-col cols="auto">
           <v-btn color="primary" variant="tonal" @click="listar">Filtrar</v-btn>
         </v-col>
+        <v-col cols="auto">
+          <v-btn :color="filtroEncalhado ? 'blue-grey' : undefined"
+            :variant="filtroEncalhado ? 'flat' : 'outlined'"
+            prepend-icon="mdi-tag-off-outline" @click="filtroEncalhado = !filtroEncalhado">
+            Só encalhados<span v-if="encalhadoIds.size"> ({{ encalhadoIds.size }})</span>
+          </v-btn>
+        </v-col>
       </v-row>
     </v-card>
 
@@ -1735,12 +1742,23 @@ const fornecedoresComProduto = computed(() => {
 const filtroEtiqueta = ref(false)
 const qtdEtiquetaDesatualizada = computed(() =>
   produtos.value.filter((p: any) => p.etiquetaDesatualizada).length)
+// "Encalhados": IDs de produtos que nunca venderam (vem do backend, mesmo critério do sininho).
+const filtroEncalhado = ref(false)
+const encalhadoIds = ref<Set<string>>(new Set())
+async function carregarEncalhados() {
+  try {
+    const { data } = await api.get('/produtos/encalhados', { params: { empresaId: auth.empresaId } })
+    encalhadoIds.value = new Set(data ?? [])
+  } catch { encalhadoIds.value = new Set() }
+}
 const produtosFiltrados = computed(() => {
   let l = produtos.value
   if (filtroFornecedor.value?.length)
     l = l.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
   if (filtroEtiqueta.value)
     l = l.filter((p: any) => p.etiquetaDesatualizada)
+  if (filtroEncalhado.value)
+    l = l.filter((p: any) => encalhadoIds.value.has(p.id))
   return l
 })
 
@@ -2951,6 +2969,9 @@ onMounted(() => {
   carregarCatalogo()
   carregarEncargos()
   carregarConfigFiscal()
+  carregarEncalhados()
+  // Clique no sininho ("Nunca vendidos") abre já filtrado.
+  if (router.currentRoute.value.query.encalhados) filtroEncalhado.value = true
 })
 </script>
 

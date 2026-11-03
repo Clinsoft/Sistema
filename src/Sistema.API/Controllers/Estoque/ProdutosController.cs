@@ -230,6 +230,23 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(itens);
     }
 
+    /// <summary>IDs dos produtos "encalhados": ativos, com estoque e preço, que NUNCA venderam.
+    /// Usado pelo filtro "Só encalhados" na tela de produtos (mesmo critério do alerta do sininho).</summary>
+    [HttpGet("encalhados")]
+    public async Task<IActionResult> Encalhados([FromQuery] Guid empresaId, CancellationToken ct)
+    {
+        var jaVendidos = db.Set<ItemVenda>()
+            .Join(db.Set<Venda>(), iv => iv.VendaId, v => v.Id, (iv, v) => new { iv.ProdutoId, v.EmpresaId })
+            .Where(x => x.EmpresaId == empresaId)
+            .Select(x => x.ProdutoId);
+        var ids = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0 && p.PrecoVenda > 0
+                && !jaVendidos.Contains(p.Id))
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+        return Ok(ids);
+    }
+
     /// <summary>Opções de imagem (Pexels/Openverse) para um termo — o usuário escolhe a certa.</summary>
     [HttpGet("imagens-candidatas")]
     [Authorize(Roles = "Administrador")]

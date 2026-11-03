@@ -70,6 +70,18 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         return NoContent();
     }
 
+    /// <summary>Reprocessa as penalidades de WhatsApp de um mês fechado com as regras atuais de SLA
+    /// (apaga as do mês e reavalia — ignora saudação/cortesia, auto-resposta, link, figurinha e mídia
+    /// sem legenda). O job horário só olha os últimos 10 dias; isto corrige meses passados.</summary>
+    [HttpPost("reprocessar-sla-whatsapp")]
+    [Authorize(Roles = "Administrador")]
+    public async Task<IActionResult> ReprocessarSlaWhatsApp([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, [FromServices] WhatsAppSlaJob job)
+    {
+        var (removidas, criadas) = await job.ReprocessarMesAsync(empresaId, ano, mes);
+        return Ok(new { removidas, criadas });
+    }
+
     /// <summary>Override manual da meta de uma loja para uma competência (ano/mês).</summary>
     [HttpPut("metas")]
     [Authorize(Roles = "Administrador")]

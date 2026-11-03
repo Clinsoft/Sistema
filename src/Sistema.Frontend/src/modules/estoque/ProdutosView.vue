@@ -364,12 +364,10 @@
         <v-col cols="auto">
           <v-btn color="primary" variant="tonal" @click="listar">Filtrar</v-btn>
         </v-col>
-        <v-col cols="auto">
-          <v-btn :color="filtroEncalhado ? 'blue-grey' : undefined"
-            :variant="filtroEncalhado ? 'flat' : 'outlined'"
-            prepend-icon="mdi-tag-off-outline" @click="filtroEncalhado = !filtroEncalhado">
-            Só encalhados<span v-if="encalhadoIds.size"> ({{ encalhadoIds.size }})</span>
-          </v-btn>
+        <v-col cols="12" md="3">
+          <v-select v-model="filtroEncalhado" :items="opcoesEncalhado" item-title="title" item-value="value"
+            label="Encalhados (nunca vendidos)" variant="outlined" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-tag-off-outline" />
         </v-col>
       </v-row>
     </v-card>
@@ -1742,14 +1740,21 @@ const fornecedoresComProduto = computed(() => {
 const filtroEtiqueta = ref(false)
 const qtdEtiquetaDesatualizada = computed(() =>
   produtos.value.filter((p: any) => p.etiquetaDesatualizada).length)
-// "Encalhados": IDs de produtos que nunca venderam (vem do backend, mesmo critério do sininho).
-const filtroEncalhado = ref(false)
-const encalhadoIds = ref<Set<string>>(new Set())
+// "Encalhados": nunca vendidos, separados em SEM etiqueta (nunca impressa) x COM etiqueta.
+const filtroEncalhado = ref<string | null>(null)   // 'sem' | 'com' | 'todos'
+const encalhadoSem = ref<Set<string>>(new Set())
+const encalhadoCom = ref<Set<string>>(new Set())
+const opcoesEncalhado = computed(() => [
+  { title: `Sem etiqueta (${encalhadoSem.value.size})`, value: 'sem' },
+  { title: `Com etiqueta (${encalhadoCom.value.size})`, value: 'com' },
+  { title: `Todos (${encalhadoSem.value.size + encalhadoCom.value.size})`, value: 'todos' },
+])
 async function carregarEncalhados() {
   try {
     const { data } = await api.get('/produtos/encalhados', { params: { empresaId: auth.empresaId } })
-    encalhadoIds.value = new Set(data ?? [])
-  } catch { encalhadoIds.value = new Set() }
+    encalhadoSem.value = new Set(data?.semEtiqueta ?? [])
+    encalhadoCom.value = new Set(data?.comEtiqueta ?? [])
+  } catch { encalhadoSem.value = new Set(); encalhadoCom.value = new Set() }
 }
 const produtosFiltrados = computed(() => {
   let l = produtos.value
@@ -1757,8 +1762,12 @@ const produtosFiltrados = computed(() => {
     l = l.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
   if (filtroEtiqueta.value)
     l = l.filter((p: any) => p.etiquetaDesatualizada)
-  if (filtroEncalhado.value)
-    l = l.filter((p: any) => encalhadoIds.value.has(p.id))
+  if (filtroEncalhado.value === 'sem')
+    l = l.filter((p: any) => encalhadoSem.value.has(p.id))
+  else if (filtroEncalhado.value === 'com')
+    l = l.filter((p: any) => encalhadoCom.value.has(p.id))
+  else if (filtroEncalhado.value === 'todos')
+    l = l.filter((p: any) => encalhadoSem.value.has(p.id) || encalhadoCom.value.has(p.id))
   return l
 })
 
@@ -2970,8 +2979,9 @@ onMounted(() => {
   carregarEncargos()
   carregarConfigFiscal()
   carregarEncalhados()
-  // Clique no sininho ("Nunca vendidos") abre já filtrado.
-  if (router.currentRoute.value.query.encalhados) filtroEncalhado.value = true
+  // Clique no sininho abre já filtrado (?encalhados=sem | com | 1).
+  const q = router.currentRoute.value.query.encalhados as string | undefined
+  if (q) filtroEncalhado.value = (q === 'sem' || q === 'com') ? q : 'todos'
 })
 </script>
 

@@ -100,10 +100,11 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             }).ToListAsync(ct))
             .Where(x => x.Saldo > 0).ToList();
 
-        // Contagem do card: usuário de loja vê só os com saldo na SUA loja; admin vê o total global.
+        // Contagem do card (Opção B): só os ATRIBUÍVEIS a alguma loja (saldo reconstruído > 0).
+        // Usuário de loja vê a sua loja; admin vê a soma das lojas (produtos distintos com saldo).
         var encalhadoSemEtiqueta = lojaUsuario is Guid ljEnc
             ? encalhadoSaldoLoja.Where(x => x.LocalEstoqueId == ljEnc).Select(x => x.ProdutoId).Distinct().Count()
-            : encalhadoSemIds.Count;
+            : encalhadoSaldoLoja.Select(x => x.ProdutoId).Distinct().Count();
 
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar

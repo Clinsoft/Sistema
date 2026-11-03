@@ -14,7 +14,7 @@ public record PremiacaoLinha(ResultadoPremio Res, string LojaNome, Guid LocalEst
 
 /// <summary>Núcleo de cálculo do prêmio e geração do demonstrativo em PDF
 /// (compartilhado entre o controller e o job de arquivamento).</summary>
-public class PremiacaoCalculoService(SistemaDbContext db)
+public class PremiacaoCalculoService(SistemaDbContext db, MetaEfetivaService metaEfetiva)
 {
     public async Task<Dictionary<Guid, MetaResolvida>> ResolverMetasAsync(
         Guid empresaId, int ano, int mes, ConfiguracaoPremiacao cfg, CancellationToken ct = default)
@@ -52,6 +52,10 @@ public class PremiacaoCalculoService(SistemaDbContext db)
             .GroupBy(x => x.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Last().Valor);
 
+        // Reajuste dinâmico "sobe se bater": se meses anteriores fecharam acima da meta,
+        // a meta do mês sobe proporcionalmente (plano intocado, calculado na hora).
+        var fatoresReajuste = await metaEfetiva.FatoresAsync(empresaId, ano, mes, ct);
+
         var lojas = await db.LocaisEstoque.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId).Select(l => l.Id).ToListAsync(ct);
 
@@ -66,9 +70,12 @@ public class PremiacaoCalculoService(SistemaDbContext db)
                 dict[loja] = new MetaResolvida(ov.MetaLoja, ov.MetaIndividual, media, vend, true);
             else if (planejamento.TryGetValue(loja, out var metaPlan) && metaPlan > 0m)
             {
-                // Puxa a meta do planejamento anual; individual = meta ÷ colaboradores ativos.
-                var metaInd = Math.Round(metaPlan / Math.Max(1, vend), 2);
-                dict[loja] = new MetaResolvida(metaPlan, metaInd, media, vend, false);
+                // Puxa a meta do planejamento anual, aplica o reajuste "sobe se bater"
+                // (nunca abaixo do plano); individual = meta ÷ colaboradores ativos.
+                var fator = fatoresReajuste.GetValueOrDefault(loja, 1m);
+                var metaEfet = MetaEfetivaService.Aplicar(metaPlan, fator);
+                var metaInd = Math.Round(metaEfet / Math.Max(1, vend), 2);
+                dict[loja] = new MetaResolvida(metaEfet, metaInd, media, vend, false);
             }
             else
             {

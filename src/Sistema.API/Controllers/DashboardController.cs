@@ -11,7 +11,8 @@ namespace Sistema.API.Controllers;
 [ApiController]
 [Route("api/dashboard")]
 [Authorize]
-public class DashboardController(SistemaDbContext db) : ControllerBase
+public class DashboardController(SistemaDbContext db,
+    Sistema.Infrastructure.Desempenho.MetaEfetivaService metaEfetiva) : ControllerBase
 {
     /// <summary>Indicadores dos 4 cards do topo do dashboard.</summary>
     [HttpGet("resumo")]
@@ -227,11 +228,18 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
             .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
 
         // Meta: da loja informada, ou soma das lojas (rede) quando não informada
-        var metasMes = await db.MetasVendaMensal.AsNoTracking()
-            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m
+        // Meta: da loja informada, ou soma das lojas (rede). Aplica o reajuste "sobe se bater"
+        // POR LOJA (sobre o plano) antes de somar a rede.
+        var metasMesLoja = await db.MetasVendaMensal.AsNoTracking()
+            .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m && x.LocalEstoqueId != null
                 && (localEstoqueId == null || x.LocalEstoqueId == localEstoqueId))
-            .Select(x => x.Valor).ToListAsync(ct);
-        var meta = metasMes.Count > 0 ? (decimal?)metasMes.Sum() : null;
+            .Select(x => new { Loja = x.LocalEstoqueId!.Value, x.Valor })
+            .ToListAsync(ct);
+        var fatores = await metaEfetiva.FatoresAsync(empresaId, a, m, ct);
+        var meta = metasMesLoja.Count > 0
+            ? (decimal?)metasMesLoja.Sum(x => Sistema.Infrastructure.Desempenho.MetaEfetivaService
+                .Aplicar(x.Valor, fatores.GetValueOrDefault(x.Loja, 1m)))
+            : null;
 
         var mediaDia = diasDecorridos > 0 ? realizado / diasDecorridos : 0m;
         var projecao = Math.Round(mediaDia * diasNoMes, 2);
@@ -279,11 +287,14 @@ public class DashboardController(SistemaDbContext db) : ControllerBase
             .Select(g => new { Loja = g.Key, Total = g.Sum(x => x.Total) })
             .ToListAsync(ct)).ToDictionary(x => x.Loja, x => x.Total);
 
+        var fatoresLoja = await metaEfetiva.FatoresAsync(empresaId, a, m, ct);
         var metaPorLoja = (await db.MetasVendaMensal.AsNoTracking()
             .Where(x => x.EmpresaId == empresaId && x.Ano == a && x.Mes == m && x.LocalEstoqueId != null)
             .GroupBy(x => x.LocalEstoqueId!.Value)
             .Select(g => new { Loja = g.Key, Meta = g.Sum(x => x.Valor) })
-            .ToListAsync(ct)).ToDictionary(x => x.Loja, x => x.Meta);
+            .ToListAsync(ct))
+            .ToDictionary(x => x.Loja, x => Sistema.Infrastructure.Desempenho.MetaEfetivaService
+                .Aplicar(x.Meta, fatoresLoja.GetValueOrDefault(x.Loja, 1m)));
 
         var itens = lojas.Select(l =>
         {

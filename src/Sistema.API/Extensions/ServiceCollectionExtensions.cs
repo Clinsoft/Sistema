@@ -84,6 +84,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IClienteRepository, ClienteRepository>();
         services.AddScoped<Sistema.Domain.Marketing.Interfaces.IClubeRepository, Sistema.Infrastructure.Repositories.Marketing.ClubeRepository>();
+        services.AddScoped<Sistema.Infrastructure.Desempenho.MetaEfetivaService>();
         services.AddScoped<Sistema.Infrastructure.Desempenho.PremiacaoCalculoService>();
         services.AddScoped<Sistema.Infrastructure.Jobs.ArquivarDemonstrativosJob>();
         services.AddScoped<IFornecedorRepository, FornecedorRepository>();

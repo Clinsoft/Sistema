@@ -74,8 +74,36 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var baseEncalhado = db.Produtos.Where(p => p.EmpresaId == empresaId && p.Ativo
             && p.EstoqueAtual > 0 && p.PrecoVenda > 0 && !jaVendidos.Contains(p.Id));
         // SEM etiqueta (nunca impressa) x COM etiqueta (já impressa mas não girou).
-        var encalhadoSemEtiqueta = await baseEncalhado.CountAsync(p => p.EtiquetaImpressaEm == null, ct);
         var encalhadoComEtiqueta = await baseEncalhado.CountAsync(p => p.EtiquetaImpressaEm != null, ct);
+        var encalhadoSemIds = await baseEncalhado.Where(p => p.EtiquetaImpressaEm == null)
+            .Select(p => p.Id).ToListAsync(ct);
+
+        // Saldo POR LOJA desses encalhados sem etiqueta (reconstruído das movimentações, como
+        // o posicao-por-loja) → permite quebrar o alerta por loja. Só saldo > 0 conta.
+        var encalhadoSaldoLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && encalhadoSemIds.Contains(m.ProdutoId))
+            .GroupBy(m => new { m.LocalEstoqueId, m.ProdutoId })
+            .Select(g => new
+            {
+                g.Key.LocalEstoqueId,
+                g.Key.ProdutoId,
+                Saldo = g.Sum(m =>
+                    m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            }).ToListAsync(ct))
+            .Where(x => x.Saldo > 0).ToList();
+
+        // Contagem do card: usuário de loja vê só os com saldo na SUA loja; admin vê o total global.
+        var encalhadoSemEtiqueta = lojaUsuario is Guid ljEnc
+            ? encalhadoSaldoLoja.Where(x => x.LocalEstoqueId == ljEnc).Select(x => x.ProdutoId).Distinct().Count()
+            : encalhadoSemIds.Count;
 
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
@@ -119,7 +147,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var concorrenteMaisBarato = ehAtendente ? 0 : await ContarConcorrenteMaisBaratoAsync(empresaId, ct);
 
         // ── Detalhamento POR LOJA (só admin/sem loja): para cobrar a unidade certa. ──
-        List<object> etiquetaPorLoja = new(), validadePorLoja = new(), validadePendPorLoja = new();
+        List<object> etiquetaPorLoja = new(), validadePorLoja = new(), validadePendPorLoja = new(), encalhadoSemPorLoja = new();
         if (!ehAtendente && lojaUsuario == null)
         {
             var lojas = await db.LocaisEstoque.Where(l => l.EmpresaId == empresaId)
@@ -163,6 +191,11 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
                             && db.Produtos.Any(p => p.Id == i.ProdutoId && p.ControlarValidade)))
                     .GroupBy(e => e.LocalEstoqueId).Select(g => new { g.Key, Qtd = g.Count() }).ToListAsync(ct))
                 validadePendPorLoja.Add(new { loja = NomeLoja(g.Key), quantidade = g.Qtd });
+
+            // Encalhados SEM etiqueta por loja (pela loja onde o produto tem saldo).
+            foreach (var g in encalhadoSaldoLoja.GroupBy(x => x.LocalEstoqueId)
+                        .Select(g => new { Loja = g.Key, Qtd = g.Select(x => x.ProdutoId).Distinct().Count() }))
+                encalhadoSemPorLoja.Add(new { loja = NomeLoja(g.Loja), quantidade = g.Qtd });
         }
 
         var itens = new List<object>();
@@ -185,7 +218,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             tipo = "encalhado-sem-etiqueta", quantidade = encalhadoSemEtiqueta, cor = "red-darken-2", icone = "mdi-tag-off-outline",
             titulo = "Encalhados SEM etiqueta",
             texto = $"{encalhadoSemEtiqueta} produto(s) que nunca venderam e nunca tiveram etiqueta impressa — etiquetar/expor.",
-            rota = "/estoque/produtos?encalhados=sem"
+            rota = "/estoque/produtos?encalhados=sem", porLoja = encalhadoSemPorLoja
         });
         if (encalhadoComEtiqueta > 0) itens.Add(new
         {

@@ -83,11 +83,17 @@ public class Produto : Entity
     /// reimpressão por loja (etiqueta pendente para quem não reimprimiu depois disso).</summary>
     public DateTime? PrecoAtualizadoEm { get; private set; }
 
+    /// <summary>Quando a etiqueta foi impressa pela PRIMEIRA vez (null = nunca impressa).
+    /// Permite distinguir "encalhado sem etiqueta" de "encalhado com etiqueta".</summary>
+    public DateTime? EtiquetaImpressaEm { get; private set; }
+
     /// <summary>Produto vendido por peso (balança ou fracionado).</summary>
     public bool VendidoPorPeso => ProdutoBalanca || VendidoFracionado;
 
     /// <summary>Marca que a etiqueta foi (re)impressa e está atualizada (flag global).</summary>
     public void MarcarEtiquetaImpressa() => EtiquetaDesatualizada = false;
+    /// <summary>Registra a 1ª impressão de etiqueta (só na primeira vez).</summary>
+    public void RegistrarImpressaoEtiqueta() => EtiquetaImpressaEm ??= DateTime.UtcNow;
     public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
     /// <summary>Define o flag global de etiqueta desatualizada (recálculo por loja).</summary>
     public void DefinirEtiquetaDesatualizada(bool v) => EtiquetaDesatualizada = v;

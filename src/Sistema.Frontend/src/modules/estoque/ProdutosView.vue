@@ -369,6 +369,12 @@
             label="Encalhados (nunca vendidos)" variant="outlined" density="compact" hide-details clearable
             prepend-inner-icon="mdi-tag-off-outline" />
         </v-col>
+        <v-col cols="auto" v-if="filtroEncalhado">
+          <v-btn color="blue-grey" variant="flat" prepend-icon="mdi-printer"
+            @click="router.push('/estoque/etiquetas?encalhados=' + filtroEncalhado)">
+            Imprimir etiquetas ({{ produtosFiltrados.length }})
+          </v-btn>
+        </v-col>
       </v-row>
     </v-card>
 

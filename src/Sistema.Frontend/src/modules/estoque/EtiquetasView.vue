@@ -252,6 +252,10 @@
               :loading="carregandoDesat" @click="carregarDesatualizadas">
               Adicionar etiquetas desatualizadas
             </v-btn>
+            <v-btn size="small" color="blue-grey" variant="tonal" prepend-icon="mdi-tag-off-outline"
+              :loading="carregandoEnc" @click="carregarEncalhados('sem')">
+              Adicionar encalhados sem etiqueta
+            </v-btn>
             <v-btn v-if="produtosSel.length" size="small" variant="text" color="error"
               prepend-icon="mdi-close" @click="produtosSel = []">
               Limpar ({{ produtosSel.length }})
@@ -481,8 +485,12 @@ const auth = useAuthStore()
 const notif = useNotifStore()
 const route = useRoute()
 
-// Atalho vindo da tela de Produtos: já carrega as etiquetas desatualizadas.
-onMounted(() => { if (route.query.desatualizadas) carregarDesatualizadas() })
+// Atalho vindo da tela de Produtos: já carrega as etiquetas desatualizadas ou os encalhados.
+onMounted(() => {
+  if (route.query.desatualizadas) carregarDesatualizadas()
+  const enc = route.query.encalhados as string | undefined
+  if (enc) carregarEncalhados(enc === 'com' ? 'com' : enc === 'todos' ? 'todos' : 'sem')
+})
 // Atendente pode imprimir etiquetas de produto, mas não editar/salvar o template.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const buscaProdutoTexto = ref('')
@@ -996,6 +1004,29 @@ async function carregarDesatualizadas() {
     else notif.ok(`${novos.length} produto(s) com etiqueta desatualizada${escopo} adicionado(s).`)
   } catch { notif.erro('Erro ao carregar as etiquetas desatualizadas.') }
   finally { carregandoDesat.value = false }
+}
+
+// Carrega os ENCALHADOS (nunca vendidos) para imprimir etiqueta em lote. grupo: 'sem' | 'com' | 'todos'.
+const carregandoEnc = ref(false)
+async function carregarEncalhados(grupo: string = 'sem') {
+  carregandoEnc.value = true
+  try {
+    const { data } = await api.get('/produtos/encalhados', { params: { empresaId: auth.empresaId } })
+    const ids = new Set<string>([
+      ...(grupo !== 'com' ? (data?.semEtiqueta ?? []) : []),
+      ...(grupo !== 'sem' ? (data?.comEtiqueta ?? []) : []),
+    ])
+    if (!ids.size) { notif.aviso('Nenhum produto encalhado para etiquetar.'); return }
+    const r = await api.get('/produtos', {
+      params: { empresaId: auth.empresaId, ativo: true, pagina: 1, tamanhoPagina: 5000 },
+    })
+    const todos = (r.data?.itens ?? r.data ?? [])
+    const novos = todos.filter((p: any) => ids.has(p.id) && !produtosSel.value.find(x => x.id === p.id))
+    await Promise.all(novos.map((p: any) => enriquecerValidadeRegistrada(p)))
+    novos.forEach((p: any) => produtosSel.value.push(p))
+    notif.ok(`${novos.length} produto(s) encalhado(s) adicionado(s) para etiquetar.`)
+  } catch { notif.erro('Erro ao carregar os encalhados.') }
+  finally { carregandoEnc.value = false }
 }
 
 let timer: any

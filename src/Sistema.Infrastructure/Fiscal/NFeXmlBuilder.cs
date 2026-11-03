@@ -623,6 +623,42 @@ public static class NFeXmlBuilder
         return AssinarComReferencia(sb.ToString(), id, config);
     }
 
+    /// <summary>Monta e assina o inutNFe (inutilização de faixa de numeração) para o
+    /// webservice NFeInutilizacao4. Id = "ID"+cUF+ano(2)+CNPJ(14)+mod(2)+serie(3)+nIni(9)+nFin(9).</summary>
+    public static string GerarInutilizacaoAssinado(
+        string cnpj, string cUF, string tpAmb, int modelo, int serie,
+        long nIni, long nFin, string justificativa, ConfiguracaoFiscal config)
+    {
+        var cnpj14 = new string((cnpj ?? "").Where(char.IsDigit).ToArray()).PadLeft(14, '0')[..14];
+        var ano = DateTime.Now.ToString("yy");
+        var id = $"ID{cUF}{ano}{cnpj14}{modelo:00}{serie:000}{nIni:000000000}{nFin:000000000}";
+
+        var sb = new StringBuilder();
+        using (var w = XmlWriter.Create(sb, new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true, Indent = false, Encoding = new UTF8Encoding(false)
+        }))
+        {
+            w.WriteStartElement("inutNFe", NsNfe);
+            w.WriteAttributeString("versao", "4.00");
+            w.WriteStartElement("infInut");
+            w.WriteAttributeString("Id", id);
+            w.WriteElementString("tpAmb", tpAmb);
+            w.WriteElementString("xServ", "INUTILIZAR");
+            w.WriteElementString("cUF", cUF);
+            w.WriteElementString("ano", ano);
+            w.WriteElementString("CNPJ", cnpj14);
+            w.WriteElementString("mod", modelo.ToString());
+            w.WriteElementString("serie", serie.ToString());
+            w.WriteElementString("nNFIni", nIni.ToString());
+            w.WriteElementString("nNFFin", nFin.ToString());
+            w.WriteElementString("xJust", justificativa);
+            w.WriteEndElement(); // infInut
+            w.WriteEndElement(); // inutNFe
+        }
+        return AssinarComReferencia(sb.ToString(), id, config);
+    }
+
     /// <summary>Assina um XML referenciando um Id arbitrário (usado por eventos).</summary>
     private static string AssinarComReferencia(string xml, string referenceId, ConfiguracaoFiscal config)
     {

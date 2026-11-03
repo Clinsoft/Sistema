@@ -36,6 +36,12 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
     private const string ActionEvento = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento";
     private const string WsdlNsEvento = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4";
 
+    // ── Inutilização de numeração (NFeInutilizacao4) SP ─────────────────────────
+    private const string UrlInutProducao    = "https://nfe.fazenda.sp.gov.br/ws/nfeinutilizacao4.asmx";
+    private const string UrlInutHomologacao = "https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeinutilizacao4.asmx";
+    private const string ActionInut = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4/nfeInutilizacaoNF";
+    private const string WsdlNsInut = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4";
+
     public async Task<ResultadoTransmissao> TransmitirAsync(
         string xmlAssinado,
         ConfiguracaoFiscal config,
@@ -133,6 +139,85 @@ public class NFeTransmissaoService(ILogger<NFeTransmissaoService> logger) : INFe
         {
             logger.LogError(ex, "Erro ao cancelar NF-e/NFC-e na SEFAZ");
             return new ResultadoTransmissao(false, null, $"Erro de comunicação: {ex.Message}", null);
+        }
+    }
+
+    public async Task<ResultadoTransmissao> InutilizarAsync(
+        string inutXmlAssinado, ConfiguracaoFiscal config, CancellationToken ct = default)
+    {
+        var url = config.Ambiente == AmbienteFiscal.Producao ? UrlInutProducao : UrlInutHomologacao;
+        try
+        {
+            var cert = CarregarCertificado(config);
+            if (cert is null)
+                return new ResultadoTransmissao(false, null, "Certificado digital não configurado.", null);
+
+            var cUF = "35";
+            var mCUF = System.Text.RegularExpressions.Regex.Match(inutXmlAssinado, @"<cUF>(\d+)</cUF>");
+            if (mCUF.Success) cUF = mCUF.Groups[1].Value;
+
+            var envelope = $"""
+                <?xml version="1.0" encoding="utf-8"?>
+                <soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+                  <soap12:Header>
+                    <nfeCabecMsg xmlns="{WsdlNsInut}">
+                      <cUF>{cUF}</cUF>
+                      <versaoDados>4.00</versaoDados>
+                    </nfeCabecMsg>
+                  </soap12:Header>
+                  <soap12:Body>
+                    <nfeDadosMsg xmlns="{WsdlNsInut}">{inutXmlAssinado}</nfeDadosMsg>
+                  </soap12:Body>
+                </soap12:Envelope>
+                """;
+            envelope = System.Text.RegularExpressions.Regex.Replace(envelope, @">\s+<", "><").Trim();
+
+            logger.LogInformation("Transmitindo inutilização para SEFAZ: {Url}", url);
+            var responseXml = await EnviarSOAPAsync(url, ActionInut, envelope, cert, ct);
+            logger.LogInformation("Resposta inutilização SEFAZ: {Response}",
+                responseXml[..Math.Min(600, responseXml.Length)]);
+
+            return ParsearRespostaInutilizacao(responseXml);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao inutilizar numeração na SEFAZ");
+            return new ResultadoTransmissao(false, null, $"Erro de comunicação: {ex.Message}", null);
+        }
+    }
+
+    private static ResultadoTransmissao ParsearRespostaInutilizacao(string xml)
+    {
+        try
+        {
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var ns = new XmlNamespaceManager(doc.NameTable);
+            ns.AddNamespace("nfe", "http://www.portalfiscal.inf.br/nfe");
+
+            var fault = doc.SelectSingleNode("//*[local-name()='Fault']");
+            if (fault != null)
+            {
+                var m = fault.SelectSingleNode("*[local-name()='Text']")?.InnerText ?? "Erro SOAP SEFAZ";
+                return new ResultadoTransmissao(false, null, m, xml);
+            }
+
+            var inf = doc.SelectSingleNode("//nfe:retInutNFe/nfe:infInut", ns);
+            var cStat = inf?.SelectSingleNode("nfe:cStat", ns)?.InnerText
+                     ?? doc.SelectSingleNode("//nfe:cStat", ns)?.InnerText ?? "";
+            var xMot  = inf?.SelectSingleNode("nfe:xMotivo", ns)?.InnerText
+                     ?? doc.SelectSingleNode("//nfe:xMotivo", ns)?.InnerText ?? "";
+            var nProt = inf?.SelectSingleNode("nfe:nProt", ns)?.InnerText;
+
+            // 102 = Inutilização de número homologada.
+            var ok = cStat == "102";
+            return ok
+                ? new ResultadoTransmissao(true, nProt, null, xml)
+                : new ResultadoTransmissao(false, null, $"SEFAZ {cStat}: {xMot}", xml);
+        }
+        catch (Exception ex)
+        {
+            return new ResultadoTransmissao(false, null, $"Erro ao parsear resposta: {ex.Message}", xml);
         }
     }
 

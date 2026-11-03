@@ -22,6 +22,13 @@ public interface INFeTransmissaoService
         ConfiguracaoFiscal config,
         bool isNFCe,
         CancellationToken ct = default);
+
+    /// <summary>Transmite a inutilização de faixa de numeração (inutNFe já assinado) ao
+    /// webservice NFeInutilizacao4 da SEFAZ. Homologada = cStat 102.</summary>
+    Task<ResultadoTransmissao> InutilizarAsync(
+        string inutXmlAssinado,
+        ConfiguracaoFiscal config,
+        CancellationToken ct = default);
 }
 
 /// <param name="Autorizada">true quando cStat == 100 ou 150.</param>

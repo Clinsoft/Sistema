@@ -63,6 +63,18 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             p.EmpresaId == empresaId && p.Ativo && p.EstoqueMinimo > 0
             && p.EstoqueAtual <= p.EstoqueMinimo, ct);
 
+        // Produtos NUNCA vendidos que estão à venda (encalhados na prateleira): ativo, com
+        // estoque e PREÇO cadastrado (= tem etiqueta de preço) e SEM nenhuma venda registrada
+        // na empresa. Alerta global (produto/estoque é global). Mostrado TAMBÉM para a atendente
+        // (ela está no balcão e pode conferir/etiquetar/empurrar esses produtos).
+        var jaVendidos = db.Set<ItemVenda>()
+            .Join(db.Set<Venda>(), iv => iv.VendaId, v => v.Id, (iv, v) => new { iv.ProdutoId, v.EmpresaId })
+            .Where(x => x.EmpresaId == empresaId)
+            .Select(x => x.ProdutoId);
+        var nuncaVendidoComEtiqueta = await db.Produtos.CountAsync(p =>
+            p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0 && p.PrecoVenda > 0
+            && !jaVendidos.Contains(p.Id), ct);
+
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
             && l.Status == StatusLancamento.EmAberto && l.DataVencimento < hoje, ct) : 0;
@@ -165,6 +177,13 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             titulo = "Estoque abaixo do mínimo",
             texto = $"{estoqueBaixo} produto(s) no ou abaixo do estoque mínimo.",
             rota = "/estoque/posicao"
+        });
+        if (nuncaVendidoComEtiqueta > 0) itens.Add(new
+        {
+            tipo = "nunca-vendido", quantidade = nuncaVendidoComEtiqueta, cor = "blue-grey", icone = "mdi-tag-off-outline",
+            titulo = "Nunca vendidos (com etiqueta)",
+            texto = $"{nuncaVendidoComEtiqueta} produto(s) à venda que nunca venderam — encalhados.",
+            rota = "/estoque/produtos"
         });
         if (validadeProxima > 0) itens.Add(new
         {

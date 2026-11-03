@@ -190,7 +190,10 @@ public class PremiacaoCalculoService(SistemaDbContext db, MetaEfetivaService met
             var apu = apuracoes.TryGetValue(u.Id, out var ap) ? ap : null;
 
             // Desconto por conversas do WhatsApp não respondidas em 6h úteis.
-            var descWhats = penalidadesWhats.TryGetValue(u.Id, out var dw) ? dw : 0m;
+            // Política: no prêmio conta NO MÁXIMO 10 pts (teto), mesmo com várias ocorrências.
+            // As ocorrências seguem TODAS visíveis na tela de penalidades (conscientização);
+            // só o desconto efetivo da performance é limitado a 10.
+            var descWhats = Math.Min(penalidadesWhats.TryGetValue(u.Id, out var dw) ? dw : 0m, 10m);
             if (descWhats > 0) perf = Math.Max(0, perf - descWhats);
 
             // Desconto por validade/lote não lançado em 7 dias (por loja da nota).

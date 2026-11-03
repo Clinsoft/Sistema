@@ -384,49 +384,73 @@ public class NotasFiscaisController(
         return true;
     }
     /// <summary>
-    /// Inutiliza faixa de numeração não utilizada na SEFAZ.
-    /// Obrigatório quando números foram pulados e não há documento emitido.
+    /// Inutiliza faixa de numeração na SEFAZ (NFeInutilizacao4) e registra o resultado.
+    /// Só vale para números NUNCA autorizados — a faixa não pode conter nota Autorizada
+    /// ou Cancelada (essas "usaram" o número). Rejeitadas/em digitação podem ser inutilizadas.
     /// </summary>
     [HttpPost("inutilizar")]
     [Authorize(Roles = "Administrador,Contador")]
     public async Task<IActionResult> Inutilizar(
         [FromBody] InutilizarRequest req, CancellationToken ct)
     {
-        // Validações básicas
         if (req.NumeroInicial > req.NumeroFinal)
             return BadRequest(new { mensagem = "Número inicial não pode ser maior que o final." });
         if (req.NumeroFinal - req.NumeroInicial > 999)
             return BadRequest(new { mensagem = "Limite de 1000 números por inutilização." });
+        var just = (req.Justificativa ?? "").Trim();
+        if (just.Length < 15 || just.Length > 255)
+            return BadRequest(new { mensagem = "A justificativa deve ter entre 15 e 255 caracteres." });
 
-        // Verificar se não há notas emitidas na faixa
-        var notasNaFaixa = await db.NotasFiscais.AnyAsync(n =>
-            n.EmpresaId == req.EmpresaId &&
-            n.Modelo == (req.Modelo == 55 ? ModeloNF.NFe : ModeloNF.NFCe) &&
-            n.Serie == req.Serie &&
-            n.Numero >= req.NumeroInicial &&
-            n.Numero <= req.NumeroFinal, ct);
+        var modelo = req.Modelo == 55 ? ModeloNF.NFe : ModeloNF.NFCe;
 
-        if (notasNaFaixa)
-            return Conflict(new { mensagem = "Existem notas emitidas nesta faixa. Verifique os números." });
+        // Na faixa não pode haver número já USADO na SEFAZ (Autorizada/Cancelada).
+        var notasFaixa = await db.NotasFiscais.Where(n =>
+            n.EmpresaId == req.EmpresaId && n.Modelo == modelo && n.Serie == req.Serie &&
+            n.Numero >= req.NumeroInicial && n.Numero <= req.NumeroFinal).ToListAsync(ct);
+        if (notasFaixa.Any(n => n.Status is StatusNF.Autorizada or StatusNF.Cancelada))
+            return Conflict(new { mensagem = "A faixa contém nota Autorizada ou Cancelada — essas não podem ser inutilizadas." });
 
-        // Registrar inutilização como NF com status Inutilizada
+        var config = await configRepo.ObterPorEmpresaAsync(req.EmpresaId, ct)
+            ?? throw new InvalidOperationException("Configuração fiscal não encontrada.");
+        if (config.CertificadoPfxBase64 is null)
+            return BadRequest(new { mensagem = "Certificado digital A1 não configurado." });
+        var empresa = await db.Empresas.AsNoTracking().FirstOrDefaultAsync(e => e.Id == req.EmpresaId, ct)
+            ?? throw new KeyNotFoundException("Empresa não encontrada.");
+
+        var cUF = (empresa.CodMunicipio ?? "").Length >= 2 ? empresa.CodMunicipio![..2] : "35";
+        var tpAmb = config.Ambiente == Domain.Fiscal.Entities.AmbienteFiscal.Producao ? "1" : "2";
+        var cnpj = new string((empresa.Cnpj ?? "").Where(char.IsDigit).ToArray());
+
+        // 1. Monta/assina o inutNFe e transmite à SEFAZ.
+        var inut = NFeXmlBuilder.GerarInutilizacaoAssinado(
+            cnpj, cUF, tpAmb, req.Modelo, req.Serie, req.NumeroInicial, req.NumeroFinal, just, config);
+        var resultado = await transmissaoService.InutilizarAsync(inut, config, ct);
+
+        if (!resultado.Autorizada)
+            return UnprocessableEntity(new
+            {
+                mensagem = $"Inutilização não homologada pela SEFAZ: {resultado.MotivoRejeicao}",
+                sefaz = resultado.MotivoRejeicao
+            });
+
+        // 2. Homologada: marca cada número da faixa como Inutilizada (reaproveita registros
+        // rejeitados/em digitação que já existam; cria os que faltarem).
         for (var num = req.NumeroInicial; num <= req.NumeroFinal; num++)
         {
-            var nf = NotaFiscal.Criar(
-                req.EmpresaId,
-                req.Modelo == 55 ? ModeloNF.NFe : ModeloNF.NFCe,
-                req.Serie, num,
-                NaturezaOperacao.VendaProduto);
-            // TODO Fase 2: transmitir evento de inutilização à SEFAZ (NFeInutilizacao)
-            nf.Inutilizar(req.Justificativa);
-            db.NotasFiscais.Add(nf);
+            var nf = notasFaixa.FirstOrDefault(n => n.Numero == num);
+            if (nf is null)
+            {
+                nf = NotaFiscal.Criar(req.EmpresaId, modelo, req.Serie, num, NaturezaOperacao.VendaProduto);
+                db.NotasFiscais.Add(nf);
+            }
+            nf.Inutilizar(just);
         }
-
         await db.SaveChangesAsync(ct);
 
         return Ok(new
         {
-            mensagem = $"Faixa {req.NumeroInicial}–{req.NumeroFinal} da série {req.Serie} inutilizada.",
+            mensagem = $"Faixa {req.NumeroInicial}–{req.NumeroFinal} da série {req.Serie} inutilizada na SEFAZ.",
+            protocolo = resultado.Protocolo,
             totalInutilizado = req.NumeroFinal - req.NumeroInicial + 1,
         });
     }

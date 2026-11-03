@@ -1080,15 +1080,19 @@
             <strong>Documentos Fiscais → Emitidas</strong> para assinar e transmitir.
           </v-alert>
           <div class="text-body-2 mb-2 font-weight-medium">Selecione os itens e as quantidades a devolver:</div>
-          <div style="max-height:300px;overflow-y:auto" class="mb-3">
-            <div v-for="item in itensProdutoVinculado" :key="item.id" class="d-flex align-center">
+          <div style="max-height:320px;overflow-y:auto" class="mb-3">
+            <div v-for="item in itensProdutoVinculado" :key="item.id" class="pb-1 mb-1"
+              style="border-bottom:1px solid rgba(128,128,128,0.15)">
               <v-checkbox v-model="itensDevolucao" :value="item.id" density="compact" hide-details
-                class="flex-grow-1"
                 :label="`${item.produtoDescricao} — comprado: ${item.quantidadeEstoque} ${item.unidadeEstoque ?? item.unidadeXml}`" />
-              <v-text-field v-if="itensDevolucao.includes(item.id)"
-                v-model.number="qtdDevolucao[item.id]" type="number" :min="0" :max="item.quantidadeEstoque"
-                step="any" density="compact" hide-details variant="outlined" label="Devolver"
-                :suffix="item.unidadeEstoque ?? item.unidadeXml" style="max-width:130px" class="ml-2 flex-grow-0" />
+              <div v-if="itensDevolucao.includes(item.id)" class="d-flex align-center ml-8 mt-1 mb-2">
+                <span class="text-body-2 mr-2 font-weight-medium">Devolver:</span>
+                <v-text-field v-model.number="qtdDevolucao[item.id]" type="number" :min="0"
+                  :max="item.quantidadeEstoque" step="any" density="compact" hide-details
+                  variant="outlined" style="max-width:130px"
+                  :suffix="item.unidadeEstoque ?? item.unidadeXml" />
+                <span class="text-caption ml-2 text-medium-emphasis">de {{ item.quantidadeEstoque }}</span>
+              </div>
             </div>
           </div>
           <v-textarea v-model="motivoDevolucao" label="Motivo da devolução *"

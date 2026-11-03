@@ -192,8 +192,11 @@ public static class NFeXmlBuilder
         w.WriteElementString("indIntermed", "0");
         w.WriteElementString("procEmi",  "0"); // 0=app contribuinte
         w.WriteElementString("verProc",  Branding.BrandingRuntime.Atual.VerProc);
-        // Devolução: referência à NF-e de entrada do fornecedor (obrigatório em finNFe=4).
-        if (!string.IsNullOrWhiteSpace(nota.ChaveReferenciada) && nota.ChaveReferenciada.Length == 44)
+        // Documento referenciado no cabeçalho (NFref) — NÃO usar em devolução (finNFe=4):
+        // a NT 2025.002 (regra VC02-14) exige a referência POR ITEM (det/DFeReferenciado) e
+        // PROÍBE o refNFe no ide. Mantido só para outras finalidades que referenciem documento.
+        if (nota.Finalidade != 4 && !string.IsNullOrWhiteSpace(nota.ChaveReferenciada)
+            && nota.ChaveReferenciada.Length == 44)
         {
             w.WriteStartElement("NFref");
             w.WriteElementString("refNFe", nota.ChaveReferenciada);
@@ -291,11 +294,15 @@ public static class NFeXmlBuilder
     {
         var homologacao = config.Ambiente == AmbienteFiscal.Homologacao;
         var primeiro = true;
+        var nItemSeq = 0;
 
         foreach (var item in nota.Itens)
         {
+            // nItem do det SEMPRE sequencial (1..N). Em venda já coincide com NumeroItem;
+            // na devolução o NumeroItem guarda o item da nota ORIGINAL (vai no DFeReferenciado).
+            nItemSeq++;
             w.WriteStartElement("det");
-            w.WriteAttributeString("nItem", item.NumeroItem.ToString());
+            w.WriteAttributeString("nItem", nItemSeq.ToString());
 
             // prod
             w.WriteStartElement("prod");
@@ -333,6 +340,17 @@ public static class NFeXmlBuilder
             EscreverPIS(w, item);
             EscreverCOFINS(w, item);
             w.WriteEndElement(); // imposto
+
+            // Devolução (finNFe=4): referência à nota ORIGINAL POR ITEM (regra VC02-14 da
+            // NT 2025.002). nItem = item na nota de origem (guardado em NumeroItem). O refNFe
+            // no cabeçalho (ide) é PROIBIDO na devolução — removido no EscreverIde.
+            if (nota.Finalidade == 4 && nota.ChaveReferenciada is { Length: 44 } chRef)
+            {
+                w.WriteStartElement("DFeReferenciado");
+                w.WriteElementString("chaveAcesso", chRef);
+                w.WriteElementString("nItem", item.NumeroItem.ToString());
+                w.WriteEndElement();
+            }
 
             w.WriteEndElement(); // det
         }

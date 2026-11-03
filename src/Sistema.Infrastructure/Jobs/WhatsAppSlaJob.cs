@@ -110,7 +110,9 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
     private static bool EhCortesiaOuSaudacao(string? texto)
     {
         if (texto == null) return false;
-        if (texto.Contains('?') || texto.Any(char.IsDigit)) return false;  // pergunta/número → conteúdo real
+        if (texto.Any(char.IsDigit)) return false;  // número → provável pedido/quantidade/valor
+        // NÃO corta por "?": "boa tarde, tudo bem? muito obrigada!" é cortesia, não pergunta.
+        // O "?" é removido no Normalizar; o que decide é o conjunto de palavras ser todo de cortesia.
         var norm = Normalizar(texto);
         var palavras = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (palavras.Length == 0) return true;             // só emoji/pontuação → fechamento
@@ -138,12 +140,15 @@ public class WhatsAppSlaJob(SistemaDbContext db, ILogger<WhatsAppSlaJob> logger)
         var t = (texto ?? "").Trim();
         if (t.Length == 0)
             return tipo != "audio";   // áudio (voz) sem texto = pergunta real; outra mídia sem legenda = sem contexto
-        if (t.Contains('?')) return false;                       // pergunta explícita → conteúdo real
         var norm = Normalizar(t);
         if (norm.Length == 0) return true;                       // só emoji/pontuação
-        if (PadroesAutoResposta.Any(p => norm.Contains(p))) return true;  // auto-resposta do contato
-        if (EhSomenteLink(t)) return true;                       // link compartilhado sem pergunta
-        return EhCortesiaOuSaudacao(t);                          // saudação/cortesia pura
+        // IMPORTANTE: estas checagens rodam ANTES de considerar "?" como pergunta real.
+        // Bot/auto-resposta e link vêm com "?" (ex.: "...é nova por aqui?", "youtube.com/shorts/..?is=..")
+        // e antes escapavam porque o "?" era avaliado primeiro.
+        if (PadroesAutoResposta.Any(p => norm.Contains(p))) return true;  // auto-resposta do contato (mesmo com "?")
+        if (EhSomenteLink(t)) return true;                       // link compartilhado (mesmo com query "?is=")
+        if (EhCortesiaOuSaudacao(t)) return true;                // saudação/cortesia pura (mesmo "tudo bem?")
+        return false;                                            // sobrou pergunta/pedido real → penaliza
     }
 
     private sealed record Msg(Guid Id, Guid EmpresaId, Guid Loja, string Telefone,

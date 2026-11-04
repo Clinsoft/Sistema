@@ -37,9 +37,9 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
 
         // Etiquetas desatualizadas: por LOJA quando o usuário tem unidade (conta só as que
         // ESTA loja vende e ainda não reimprimiu desde a mudança de preço); admin vê o total.
+        // Atendente vinculada a uma loja TAMBÉM vê (só as da unidade dela, pra reimprimir).
         int etiquetas;
-        if (ehAtendente) etiquetas = 0;
-        else if (lojaUsuario is Guid lojaEtq)
+        if (lojaUsuario is Guid lojaEtq)
         {
             var desde90 = hoje.AddDays(-90);
             var desat = await db.Produtos
@@ -50,10 +50,24 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
                                    join v in db.Set<Venda>() on iv.VendaId equals v.Id
                                    where v.LocalEstoqueId == lojaEtq && ids.Contains(iv.ProdutoId) && v.DataHora >= desde90
                                    select iv.ProdutoId).Distinct().ToListAsync(ct)).ToHashSet();
+            // Também conta se a loja TEM saldo do produto (mesmo sem venda em 90d).
+            var comSaldoEtq = (await db.MovimentacoesEstoque.AsNoTracking()
+                .Where(m => m.EmpresaId == empresaId && m.LocalEstoqueId == lojaEtq && ids.Contains(m.ProdutoId))
+                .GroupBy(m => m.ProdutoId)
+                .Select(g => new { ProdutoId = g.Key, Saldo = g.Sum(m =>
+                    m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida
+                    || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade : 0m) })
+                .ToListAsync(ct)).Where(x => x.Saldo > 0).Select(x => x.ProdutoId).ToHashSet();
             var imp = (await db.EtiquetasImpressasLoja
                     .Where(e => e.LocalEstoqueId == lojaEtq && ids.Contains(e.ProdutoId)).ToListAsync(ct))
                 .ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
-            etiquetas = desat.Count(x => vendidos.Contains(x.Id)
+            etiquetas = desat.Count(x => (vendidos.Contains(x.Id) || comSaldoEtq.Contains(x.Id))
                 && !(imp.TryGetValue(x.Id, out var im) && (x.PrecoAtualizadoEm == null || im >= x.PrecoAtualizadoEm)));
         }
         else etiquetas = await db.Produtos.CountAsync(p =>
@@ -74,14 +88,16 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var baseEncalhado = db.Produtos.Where(p => p.EmpresaId == empresaId && p.Ativo
             && p.EstoqueAtual > 0 && p.PrecoVenda > 0 && !jaVendidos.Contains(p.Id));
         // SEM etiqueta (nunca impressa) x COM etiqueta (já impressa mas não girou).
-        var encalhadoComEtiqueta = await baseEncalhado.CountAsync(p => p.EtiquetaImpressaEm != null, ct);
         var encalhadoSemIds = await baseEncalhado.Where(p => p.EtiquetaImpressaEm == null)
             .Select(p => p.Id).ToListAsync(ct);
+        var encalhadoComIds = await baseEncalhado.Where(p => p.EtiquetaImpressaEm != null)
+            .Select(p => p.Id).ToListAsync(ct);
 
-        // Saldo POR LOJA desses encalhados sem etiqueta (reconstruído das movimentações, como
-        // o posicao-por-loja) → permite quebrar o alerta por loja. Só saldo > 0 conta.
-        var encalhadoSaldoLoja = (await db.MovimentacoesEstoque.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId && encalhadoSemIds.Contains(m.ProdutoId))
+        // Saldo POR LOJA desses encalhados (reconstruído das movimentações, como o posicao-por-loja)
+        // → permite atribuir/quebrar por loja. Só saldo > 0 conta.
+        var encalhadoTodosIds = encalhadoSemIds.Concat(encalhadoComIds).ToList();
+        var encalhadoSaldoTodos = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && encalhadoTodosIds.Contains(m.ProdutoId))
             .GroupBy(m => new { m.LocalEstoqueId, m.ProdutoId })
             .Select(g => new
             {
@@ -99,12 +115,20 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
                   : 0m)
             }).ToListAsync(ct))
             .Where(x => x.Saldo > 0).ToList();
+        var encalhadoSemSet = encalhadoSemIds.ToHashSet();
+        var encalhadoComSet = encalhadoComIds.ToHashSet();
+        // SEM etiqueta atribuível (usado no card e na quebra por loja abaixo).
+        var encalhadoSaldoLoja = encalhadoSaldoTodos.Where(x => encalhadoSemSet.Contains(x.ProdutoId)).ToList();
 
-        // Contagem do card (Opção B): só os ATRIBUÍVEIS a alguma loja (saldo reconstruído > 0).
+        // Contagem dos cards (Opção B): só os ATRIBUÍVEIS a alguma loja (saldo reconstruído > 0).
         // Usuário de loja vê a sua loja; admin vê a soma das lojas (produtos distintos com saldo).
         var encalhadoSemEtiqueta = lojaUsuario is Guid ljEnc
             ? encalhadoSaldoLoja.Where(x => x.LocalEstoqueId == ljEnc).Select(x => x.ProdutoId).Distinct().Count()
             : encalhadoSaldoLoja.Select(x => x.ProdutoId).Distinct().Count();
+        var encalhadoComEtiqueta = (lojaUsuario is Guid ljC
+            ? encalhadoSaldoTodos.Where(x => x.LocalEstoqueId == ljC)
+            : encalhadoSaldoTodos).Where(x => encalhadoComSet.Contains(x.ProdutoId))
+            .Select(x => x.ProdutoId).Distinct().Count();
 
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
@@ -167,12 +191,28 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
                                      where ids.Contains(iv.ProdutoId) && v.DataHora >= desde90
                                      select new { iv.ProdutoId, v.LocalEstoqueId }).Distinct().ToListAsync(ct))
                              .ToLookup(x => x.LocalEstoqueId, x => x.ProdutoId);
+                // Saldo por (loja, produto) desses desatualizados → loja que TEM o produto também conta.
+                var saldoDesat = (await db.MovimentacoesEstoque.AsNoTracking()
+                    .Where(m => m.EmpresaId == empresaId && ids.Contains(m.ProdutoId))
+                    .GroupBy(m => new { m.LocalEstoqueId, m.ProdutoId })
+                    .Select(g => new { g.Key.LocalEstoqueId, g.Key.ProdutoId, Saldo = g.Sum(m =>
+                        m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                        || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjustePositivo
+                        || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Devolucao ? m.Quantidade
+                      : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Saida
+                        || m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                      : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia
+                        && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                      : m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Transferencia ? -m.Quantidade : 0m) })
+                    .ToListAsync(ct)).Where(x => x.Saldo > 0)
+                    .ToLookup(x => x.LocalEstoqueId, x => x.ProdutoId);
                 var impr = await db.EtiquetasImpressasLoja.Where(e => ids.Contains(e.ProdutoId)).ToListAsync(ct);
                 foreach (var lj in lojas)
                 {
                     var vendidosLj = vendas[lj.Id].ToHashSet();
+                    var comSaldoLj = saldoDesat[lj.Id].ToHashSet();
                     var impLj = impr.Where(e => e.LocalEstoqueId == lj.Id).ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
-                    var qt = desat.Count(x => vendidosLj.Contains(x.Id)
+                    var qt = desat.Count(x => (vendidosLj.Contains(x.Id) || comSaldoLj.Contains(x.Id))
                         && !(impLj.TryGetValue(x.Id, out var im) && (x.PrecoAtualizadoEm == null || im >= x.PrecoAtualizadoEm)));
                     if (qt > 0) etiquetaPorLoja.Add(new { loja = lj.Nome, quantidade = qt });
                 }

@@ -603,7 +603,10 @@ async function carregarConferencia() {
   if (!det.value?.id) return
   try {
     const r = await api.get(`/requisicoes-compra/${det.value.id}/conferencia`)
-    conf.value = r.data
+    const data = r.data
+    if (Array.isArray(data?.itens))
+      data.itens = [...data.itens].sort((a: any, b: any) => (a.descricao ?? '').localeCompare(b.descricao ?? '', 'pt-BR'))
+    conf.value = data
   } catch { conf.value = null }
 }
 

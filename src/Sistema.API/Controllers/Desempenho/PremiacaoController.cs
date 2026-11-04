@@ -260,6 +260,42 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         return Ok(Dto(meu.Res, incluirSemanas: true, avaliacoes: meu.Avaliacoes, projecao: projecao));
     }
 
+    /// <summary>Conversas do WhatsApp que geraram penalidade de SLA (sem resposta em 6h úteis)
+    /// para o COLABORADOR LOGADO no mês: data/hora, contato e a mensagem que ficou sem resposta.</summary>
+    [HttpGet("minhas-penalidades-whatsapp")]
+    public async Task<IActionResult> MinhasPenalidadesWhatsApp([FromQuery] Guid empresaId,
+        [FromQuery] int ano, [FromQuery] int mes, CancellationToken ct)
+    {
+        if (UsuarioId == Guid.Empty) return Unauthorized();
+        var pen = await db.PenalidadesAtendimentoWhatsApp.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ano == ano && p.Mes == mes && p.ColaboradorId == UsuarioId)
+            .OrderBy(p => p.DataOcorrencia)
+            .Select(p => new { p.DataOcorrencia, p.Telefone, p.MensagemId, p.Pontos })
+            .ToListAsync(ct);
+
+        var ids = pen.Select(p => p.MensagemId).ToList();
+        var msgs = await db.MensagensWhatsApp.AsNoTracking()
+            .Where(m => ids.Contains(m.Id))
+            .Select(m => new { m.Id, m.Texto, m.Tipo, m.NomeContato })
+            .ToDictionaryAsync(m => m.Id, ct);
+
+        var itens = pen.Select(p =>
+        {
+            msgs.TryGetValue(p.MensagemId, out var m);
+            return new
+            {
+                data = p.DataOcorrencia,
+                telefone = p.Telefone,
+                contato = m?.NomeContato,
+                tipo = m?.Tipo ?? "text",
+                mensagem = m?.Texto,
+                pontos = p.Pontos,
+            };
+        }).ToList();
+
+        return Ok(new { total = itens.Count, pontos = itens.Sum(x => x.pontos), itens });
+    }
+
     // ── Termo de Aceite (assinatura digital) ─────────────────────────────
     [HttpGet("meu-aceite")]
     public async Task<IActionResult> MeuAceite([FromQuery] Guid empresaId, CancellationToken ct)

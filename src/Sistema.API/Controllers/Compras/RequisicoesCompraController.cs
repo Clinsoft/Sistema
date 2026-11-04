@@ -489,8 +489,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                       ? (faltaValidadeSet.Contains(it.ProdutoId) ? "ChegouFaltaValidade"
                          : loteComValidadeSet.Contains(it.ProdutoId) ? "Chegou"
                          : vaiChegar ? (notaChegou ? "ChegouFaltaLote" : "EmTransito")
+                         : jaPedido ? "JaPedido"
                          : "AindaNaoPedido")
-                      : (vaiChegar ? "Chegou" : "AindaNaoPedido"),
+                      : (vaiChegar ? "Chegou" : jaPedido ? "JaPedido" : "AindaNaoPedido"),
             };
         }).ToList();
 
@@ -504,6 +505,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 totalItens = linhas.Count,
                 chegaram = linhas.Count(l => l.estado is "Chegou" or "ChegouFaltaValidade" or "ChegouFaltaLote"),
                 emTransito = linhas.Count(l => l.estado == "EmTransito"),
+                aCaminho = linhas.Count(l => l.estado == "JaPedido"),
                 faltaValidade = linhas.Count(l => l.estado == "ChegouFaltaValidade"),
                 faltaLote = linhas.Count(l => l.estado == "ChegouFaltaLote"),
                 atendente = true,

@@ -65,6 +65,8 @@ public class PedidosCompraController(IMediator mediator, IPedidoCompraRepository
     {
         var pedido = await repo.ObterComItensAsync(id, ct);
         if (pedido is null) return NotFound();
+        if (pedido.Status == StatusPedidoCompra.Recebido)
+            return BadRequest(new { mensagem = "Pedido já recebido — não é possível trocar o fornecedor." });
         pedido.DefinirFornecedor(req.FornecedorId);
         repo.Atualizar(pedido);
         await uow.SalvarAsync(ct);

@@ -355,7 +355,8 @@
           <div class="d-flex flex-wrap ga-4 mb-3 text-body-2 align-center">
             <div class="d-flex align-center ga-2">
               <span class="text-medium-emphasis">Fornecedor:</span>
-              <v-autocomplete :model-value="det.fornecedorId" @update:model-value="definirFornecedorPedido"
+              <b v-if="det.status==='Recebido'">{{ det.fornecedorNome || '—' }}</b>
+              <v-autocomplete v-else :model-value="det.fornecedorId" @update:model-value="definirFornecedorPedido"
                 :items="forns" item-title="razaoSocial" item-value="id"
                 density="compact" variant="outlined" hide-details
                 placeholder="Definir fornecedor" style="min-width:260px" />

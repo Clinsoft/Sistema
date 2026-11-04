@@ -1,0 +1,7 @@
+Fichas SEM produto no cadastro — anexar ficha + gravar nutricional QUANDO o produto for criado.
+Formato nutricional: Porcao=100 g | Calorias(kcal) | Carboidratos(g) | Acucares(g) | Proteinas(g) | GordTotais(g) | GordSat(g) | GordTrans(g) | Fibras(g) | Sodio(mg)
+
+Maca Peruana Vermelha        : 375 | 75  | 0  | 13 | 0   | 0 | 0 | 25 | 0
+Quebra-Pedra Folhas          : 240 | 45  | 10 | 22 | 1.2 | 0 | 0 | 10 | 10
+Salsaparrilha Rasurada       : 0   | 0   | 0  | 0  | 0   | 0 | 0 | 0  | 0   (ficha declara tudo zero)
+Semente de Sucupira Grauda   : 0   | 0   | 0  | 0  | 0   | 0 | 0 | 0  | 0   (ficha declara tudo zero)

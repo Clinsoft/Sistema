@@ -21,6 +21,17 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         Guid.TryParse(User.FindFirst("sub")?.Value
             ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : Guid.Empty;
 
+    // Fuso de Brasília p/ decidir o mês do aceite (DataAceite é gravada em UTC).
+    private static readonly TimeZoneInfo TzBrt = ResolverTzBrt();
+    private static TimeZoneInfo ResolverTzBrt()
+    {
+        foreach (var tzid in new[] { "America/Sao_Paulo", "E. South America Standard Time" })
+            try { return TimeZoneInfo.FindSystemTimeZoneById(tzid); } catch { }
+        return TimeZoneInfo.CreateCustomTimeZone("BRT", TimeSpan.FromHours(-3), "BRT", "BRT");
+    }
+    private static DateTime ParaBrt(DateTime utc)
+        => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), TzBrt);
+
     // ── Configuração geral ────────────────────────────────────────────────
     [HttpGet("config")]
     [Authorize(Roles = "Administrador,Financeiro")]
@@ -302,7 +313,12 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
         var a = await db.AceitesTermoPremiacao.AsNoTracking()
             .Where(x => x.EmpresaId == empresaId && x.ColaboradorId == UsuarioId)
             .OrderByDescending(x => x.DataAceite).FirstOrDefaultAsync(ct);
-        return Ok(new { aceito = a != null, dataAceite = a?.DataAceite, termoVersao = a?.TermoVersao });
+        // O aceite vale APENAS para o mês corrente — cada colaborador reassina o termo todo mês.
+        var hojeBrt = ParaBrt(DateTime.UtcNow);
+        var aceito = a != null
+            && ParaBrt(a.DataAceite) is { } quando
+            && quando.Year == hojeBrt.Year && quando.Month == hojeBrt.Month;
+        return Ok(new { aceito, dataAceite = a?.DataAceite, termoVersao = a?.TermoVersao });
     }
 
     /// <summary>Texto do Regulamento (com as metas da loja do colaborador) para leitura/assinatura.</summary>

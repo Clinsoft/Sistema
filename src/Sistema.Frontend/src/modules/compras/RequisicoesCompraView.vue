@@ -173,7 +173,7 @@
               <div v-if="conf.dataSolicitacao" class="text-caption text-medium-emphasis mb-1">
                 Solicitado em {{ fmtData(conf.dataSolicitacao) }}
               </div>
-              <b>{{ conf.chegaram }} já chegaram</b> · {{ conf.emTransito }} em trânsito (de {{ conf.totalItens }} itens).
+              <b>{{ conf.chegaram }} já chegaram</b> · {{ conf.emTransito }} em trânsito<span v-if="conf.aCaminho"> · {{ conf.aCaminho }} pedido(s) feito(s)</span> (de {{ conf.totalItens }} itens).
               <span v-if="conf.faltaLote" class="d-block mt-1" style="color:#E65100">
                 <b>📦 {{ conf.faltaLote }} chegaram mas faltam lançar o lote</b> — abra e lance o lote/validade.
               </span>
@@ -245,6 +245,10 @@
                       <v-chip v-else-if="l.estado === 'EmTransito'" size="small" color="info" variant="tonal"
                         title="NF emitida (escriturada) — produto em trânsito, ainda não chegou na loja.">
                         <v-icon start size="14">mdi-truck-outline</v-icon>Em trânsito
+                      </v-chip>
+                      <v-chip v-else-if="l.estado === 'JaPedido'" size="small" color="info" variant="tonal"
+                        title="O pedido de compra já foi feito ao fornecedor — aguardando a mercadoria.">
+                        <v-icon start size="14">mdi-cart-check</v-icon>Pedido feito
                       </v-chip>
                       <v-chip v-else size="small" color="grey" variant="tonal">
                         <v-icon start size="14">mdi-clock-outline</v-icon>Ainda não pedido

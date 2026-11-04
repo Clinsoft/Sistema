@@ -64,7 +64,11 @@
             <div class="text-caption text-medium-emphasis">{{ d.semanasAvaliadas }} semana(s) avaliada(s)</div>
             <v-progress-linear :model-value="d.performancePercent" height="8" rounded class="mt-2" color="amber-darken-2" />
             <div v-if="d.descontoValidade > 0" class="text-caption mt-1 text-error">−{{ d.descontoValidade }} pts: produto vencido na loja</div>
-            <div v-if="d.descontoAtendimentoWhatsapp > 0" class="text-caption mt-1 text-error">−{{ d.descontoAtendimentoWhatsapp }} pts: conversas do WhatsApp sem resposta em 6h</div>
+            <div v-if="d.descontoAtendimentoWhatsapp > 0" class="text-caption mt-1 text-error" style="cursor:pointer;text-decoration:underline"
+              @click="abrirConversasWhats" title="Ver quais conversas ficaram sem resposta">
+              −{{ d.descontoAtendimentoWhatsapp }} pts: conversas do WhatsApp sem resposta em 6h
+              <v-icon size="13" icon="mdi-open-in-new" />
+            </div>
             <div v-if="d.descontoValidadeLancamento > 0" class="text-caption mt-1 text-error">−{{ d.descontoValidadeLancamento }} pts: validade/lote não lançado em 7 dias (NF-e da loja)</div>
             <div v-else class="text-caption mt-1 text-medium-emphasis">multiplica o valor base</div>
           </v-card>
@@ -144,6 +148,50 @@
 
     <v-alert v-else type="info" variant="tonal">Ainda não há dados de desempenho para você neste período.</v-alert>
     </div>
+
+    <!-- Conversas que estouraram o SLA de 6h -->
+    <v-dialog v-model="dialogWhats" max-width="620">
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 d-flex align-center">
+          <v-icon icon="mdi-whatsapp" color="green" class="mr-2" />
+          <span>Conversas sem resposta em 6h</span>
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" @click="dialogWhats = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-4">
+          <div v-if="carregandoWhats" class="text-center py-6">
+            <v-progress-circular indeterminate color="green" />
+          </div>
+          <template v-else>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Cada conversa abaixo ficou sem resposta por mais de 6h de horário de funcionamento e
+              descontou <b>{{ whatsPontosPorOcorrencia }} pts</b> da performance. O desconto é da <b>loja</b>
+              (vale para todas as atendentes), não individual.
+            </div>
+            <v-table v-if="conversasWhats.length" density="compact">
+              <thead><tr>
+                <th>Quando</th><th>Contato</th><th>Mensagem sem resposta</th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="(c, i) in conversasWhats" :key="i">
+                  <td class="text-no-wrap">{{ fmtDataHora(c.data) }}</td>
+                  <td class="text-no-wrap">
+                    {{ c.contato || telFormatado(c.telefone) }}
+                    <div v-if="c.contato" class="text-caption text-medium-emphasis">{{ telFormatado(c.telefone) }}</div>
+                  </td>
+                  <td class="text-body-2">
+                    <span v-if="c.mensagem">{{ c.mensagem }}</span>
+                    <i v-else class="text-medium-emphasis">({{ rotuloTipo(c.tipo) }})</i>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+            <v-alert v-else type="success" variant="tonal">Nenhuma conversa sem resposta neste mês. 🎉</v-alert>
+          </template>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -169,6 +217,29 @@ const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDig
 const pct = (v: number) => (v ?? 0).toFixed(1)
 const corPct = (v: number) => v >= 100 ? 'text-success' : v >= 90 ? 'text-amber-darken-2' : 'text-error'
 const fmtData = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
+const fmtDataHora = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const telFormatado = (t: string) => {
+  const d2 = (t || '').replace(/\D/g, '')
+  const n = d2.startsWith('55') ? d2.slice(2) : d2
+  if (n.length === 11) return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`
+  if (n.length === 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`
+  return t
+}
+const rotuloTipo = (t: string) => ({ audio: 'áudio', image: 'imagem', video: 'vídeo', document: 'documento' } as any)[t] || 'mensagem'
+
+const dialogWhats = ref(false)
+const carregandoWhats = ref(false)
+const conversasWhats = ref<any[]>([])
+const whatsPontosPorOcorrencia = ref(10)
+async function abrirConversasWhats() {
+  dialogWhats.value = true
+  carregandoWhats.value = true
+  try {
+    const r = await api.get('/premiacao/minhas-penalidades-whatsapp', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } })
+    conversasWhats.value = r.data?.itens ?? []
+  } catch { conversasWhats.value = [] }
+  finally { carregandoWhats.value = false }
+}
 
 async function carregar() {
   const r = await api.get('/premiacao/meu-desempenho', { params: { empresaId: auth.empresaId, ano: ano.value, mes: mes.value } }).catch(() => ({ data: { semDados: true } }))

@@ -22,7 +22,7 @@ public class AsaasService(HttpClient http, IConfiguration config)
 
     private HttpClient Cliente()
     {
-        var baseUrl = (config["Asaas:BaseUrl"] ?? "https://sandbox.asaas.com/api/v3").TrimEnd('/') + "/";
+        var baseUrl = (config["Asaas:BaseUrl"] ?? "https://api-sandbox.asaas.com/v3").TrimEnd('/') + "/";
         if (http.BaseAddress is null) http.BaseAddress = new Uri(baseUrl);
         if (!http.DefaultRequestHeaders.Contains("access_token"))
             http.DefaultRequestHeaders.Add("access_token", config["Asaas:ApiKey"] ?? "");
@@ -69,9 +69,11 @@ public class AsaasService(HttpClient http, IConfiguration config)
         return null;
     }
 
+    /// <summary>Cancela a recorrência. O Asaas apaga junto as cobranças pendentes dela (conferido no sandbox).</summary>
     public async Task CancelarAssinaturaAsync(string subscriptionId, CancellationToken ct = default)
     {
         using var resp = await Cliente().DeleteAsync($"subscriptions/{subscriptionId}", ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return;   // já não existe: o objetivo está cumprido
         resp.EnsureSuccessStatusCode();
     }
 

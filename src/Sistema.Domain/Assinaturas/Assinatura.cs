@@ -77,6 +77,25 @@ public class Assinatura : Entity
         AsaasSubscriptionId = subscriptionId;
     }
 
+    /// <summary>A assinatura do gateway foi cancelada: o cliente continua, a recorrência não.</summary>
+    public void DesvincularAssinaturaAsaas() => AsaasSubscriptionId = null;
+
+    /// <summary>Até quando vale o acesso pago por uma cobrança com este vencimento.</summary>
+    public DateTime ValidoAte(DateTime vencimentoDaCobranca)
+        => Ciclo == CicloCobranca.Anual ? vencimentoDaCobranca.AddYears(1) : vencimentoDaCobranca.AddMonths(1);
+
+    /// <summary>
+    /// Estorno ou contestação: o período que aquela cobrança pagou deixa de valer e volta a contar a
+    /// tolerância a partir do vencimento dela. Se já existe pagamento mais novo, ou se já foi desfeito, nada muda.
+    /// </summary>
+    public bool DesfazerPagamento(DateTime vencimentoDaCobranca)
+    {
+        if (ProximoVencimento is not DateTime atual) return false;
+        if (atual.Date <= vencimentoDaCobranca.Date || atual.Date > ValidoAte(vencimentoDaCobranca).Date) return false;
+        ProximoVencimento = vencimentoDaCobranca;
+        return true;
+    }
+
     public void DefinirCiclo(CicloCobranca ciclo) => Ciclo = ciclo;
     public void DefinirLojasContratadas(int lojas) => LojasContratadas = Math.Max(1, lojas);
     public void EstenderTrial(int dias) { TrialAte = (TrialAte ?? DateTime.UtcNow).AddDays(dias); Status = StatusAssinatura.Trial; }

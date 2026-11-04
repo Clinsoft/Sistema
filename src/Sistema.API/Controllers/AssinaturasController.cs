@@ -45,6 +45,15 @@ public class AssinaturasController(SistemaDbContext db, AsaasService asaas, IMem
                 return Ok(new { link = linkExistente, jaExistia = true });
             }
 
+            // Trocou de plano ou ciclo: a recorrência antiga sai ANTES de criar a nova. Se cancelar falhar, para aqui
+            // e nada muda; se criar falhar, o cliente fica sem recorrência e tenta de novo. Nunca com duas cobrando.
+            if (!string.IsNullOrWhiteSpace(assin.AsaasSubscriptionId))
+            {
+                await asaas.CancelarAssinaturaAsync(assin.AsaasSubscriptionId!, ct);
+                assin.DesvincularAssinaturaAsaas();
+                await db.SaveChangesAsync(CancellationToken.None);   // já cancelou lá: grava mesmo se a tela desistir
+            }
+
             var customerId = assin.AsaasCustomerId
                 ?? await asaas.CriarClienteAsync(empresa.NomeFantasia, empresa.Cnpj, empresa.Email, empresa.Telefone, ct);
 

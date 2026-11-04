@@ -231,7 +231,7 @@
                   <td class="text-center">
                     <!-- Atendente: só "vai chegar / ainda não" (sem revelar estoque) -->
                     <template v-if="!ehGestor">
-                      <v-chip v-if="l.estado === 'ChegouFaltaValidade'" size="small" color="warning" variant="flat"
+                      <v-chip v-if="l.estado === 'ChegouFaltaValidade'" size="small" color="deep-purple" variant="flat"
                         title="Chegou, mas falta lançar o controle de validade deste produto.">
                         <v-icon start size="14">mdi-calendar-alert</v-icon>Chegou — falta validade
                       </v-chip>
@@ -246,9 +246,9 @@
                         title="NF emitida (escriturada) — produto em trânsito, ainda não chegou na loja.">
                         <v-icon start size="14">mdi-truck-outline</v-icon>Em trânsito
                       </v-chip>
-                      <v-chip v-else-if="l.estado === 'JaPedido'" size="small" color="info" variant="tonal"
+                      <v-chip v-else-if="l.estado === 'JaPedido'" size="small" color="warning" variant="flat"
                         title="O pedido de compra já foi feito ao fornecedor — aguardando a mercadoria.">
-                        <v-icon start size="14">mdi-cart-check</v-icon>Pedido feito
+                        <v-icon start size="14">mdi-cart-check</v-icon>Já pedido
                       </v-chip>
                       <v-chip v-else size="small" color="grey" variant="tonal">
                         <v-icon start size="14">mdi-clock-outline</v-icon>Ainda não pedido

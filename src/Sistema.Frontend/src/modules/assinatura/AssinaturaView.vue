@@ -38,7 +38,7 @@
     <!-- Assinar / pagar -->
     <v-card rounded="xl" elevation="1" class="pa-6 mb-4">
       <div class="text-overline text-medium-emphasis">Assinar / regularizar</div>
-      <div class="text-body-2 text-medium-emphasis mb-3">Pague por Pix, boleto ou cartão. No plano anual você paga 10 meses e ganha 2.</div>
+      <div class="text-body-2 text-medium-emphasis mb-3">Pague por Pix, boleto ou cartão. No plano anual você paga 10 meses e ganha 2. Em dia e subindo de plano, você paga só a diferença dos dias que faltam, junto da próxima cobrança.</div>
       <v-row dense align="center">
         <v-col cols="12" sm="5">
           <v-select v-model="planoSel" :items="planos" label="Plano" density="comfortable" variant="outlined" hide-details />
@@ -103,18 +103,28 @@ const notif = useNotifStore()
 const planos = ['Micro', 'Essencial', 'Profissional', 'Rede']
 const PRECO_MENSAL: Record<string, number> = { Micro: 79, Essencial: 119, Profissional: 229, Rede: 379 }
 const planoSel = ref(['Micro', 'Essencial', 'Profissional', 'Rede'].includes(ass.plano) ? ass.plano : 'Profissional')
-const cicloSel = ref<'Mensal' | 'Anual'>('Mensal')
+const cicloSel = ref<'Mensal' | 'Anual'>(ass.info.ciclo === 'Anual' ? 'Anual' : 'Mensal')
 const gerando = ref(false)
 const preco = computed(() => {
   const m = PRECO_MENSAL[planoSel.value] ?? 0
   return (cicloSel.value === 'Anual' ? m * 10 : m).toLocaleString('pt-BR')
 })
 
+const moeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+function mensagemTroca(d: { plano: string; vencimento: string; diferenca: number; proximaCobranca: number }) {
+  const data = d.vencimento.split('-').reverse().join('/')
+  const detalhe = d.diferenca > 0 ? `, com ${moeda(d.diferenca)} da diferença dos dias que faltam` : ''
+  return `Plano ${d.plano} confirmado. Próxima cobrança em ${data}: ${moeda(d.proximaCobranca)}${detalhe}.`
+}
+
 async function assinar() {
   gerando.value = true
   try {
     const { data } = await api.post('/minha-assinatura/checkout', { plano: planoSel.value, ciclo: cicloSel.value }, { _quiet: true } as any)
-    if (data?.link) window.open(data.link, '_blank')
+    await ass.carregar()
+    if (data?.emDia) notif.ok(mensagemTroca(data))   // já pagou este período: nada a pagar agora
+    else if (data?.link) window.open(data.link, '_blank')
     else notif.aviso('Cobrança gerada, mas sem link de fatura. Fale com o suporte.')
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Não foi possível gerar o pagamento.')

@@ -67,6 +67,52 @@ public class AssinaturaPagamentoTests
     }
 
     [Fact]
+    public void Diferenca_AoSubirDePlano_CobraSoOsDiasQueFaltam()
+    {
+        var a = Paga(new DateTime(2026, 12, 10));   // período de 30 dias, faltam 20
+
+        a.DiferencaProporcional(PlanoAssinatura.Profissional, new DateTime(2026, 11, 20)).Should().Be(73.33m);   // (229 - 119) * 20 / 30
+    }
+
+    [Fact]
+    public void Diferenca_NoAnual_UsaOPrecoEOPeriodoDoAno()
+    {
+        var a = Paga(new DateTime(2027, 11, 10), CicloCobranca.Anual);   // ano de 365 dias, faltam 182
+
+        a.DiferencaProporcional(PlanoAssinatura.Profissional, new DateTime(2027, 5, 12)).Should().Be(548.49m);   // (2290 - 1190) * 182 / 365
+    }
+
+    [Theory]
+    [InlineData(PlanoAssinatura.Micro)]        // desceu: sem crédito
+    [InlineData(PlanoAssinatura.Essencial)]    // mesmo plano
+    public void Diferenca_SemSubirDePlano_EZero(PlanoAssinatura novo)
+    {
+        var a = Paga(new DateTime(2026, 12, 10));
+
+        a.DiferencaProporcional(novo, new DateTime(2026, 11, 20)).Should().Be(0m);
+    }
+
+    [Theory]
+    [InlineData(2026, 12, 10)]   // vence hoje: a cobrança de hoje já vem com o valor novo
+    [InlineData(2026, 12, 20)]   // vencido: não há dias pagos pela frente
+    public void Diferenca_SemDiasPagosPelaFrente_EZero(int ano, int mes, int dia)
+    {
+        var a = Paga(new DateTime(2026, 12, 10));
+        var hoje = new DateTime(ano, mes, dia);
+
+        a.PagoAte(hoje).Should().BeNull();
+        a.DiferencaProporcional(PlanoAssinatura.Profissional, hoje).Should().Be(0m);
+    }
+
+    [Fact]
+    public void Diferenca_NoTesteGratis_EZero()
+    {
+        var a = Assinatura.CriarTrial(Guid.NewGuid(), PlanoAssinatura.Essencial);
+
+        a.DiferencaProporcional(PlanoAssinatura.Profissional, DateTime.Today).Should().Be(0m);
+    }
+
+    [Fact]
     public void Pagar_DepoisDoEstorno_LiberaDeNovo()
     {
         var a = Paga(Vencimento.AddMonths(1));

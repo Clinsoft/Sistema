@@ -96,6 +96,25 @@ public class Assinatura : Entity
         return true;
     }
 
+    /// <summary>Até quando o cliente já pagou, se ainda tem dias pagos pela frente. Vencendo hoje, não está mais à frente.</summary>
+    public DateTime? PagoAte(DateTime hoje)
+        => Status == StatusAssinatura.Ativa && ProximoVencimento is DateTime ate && ate.Date > hoje.Date ? ate.Date : null;
+
+    /// <summary>
+    /// Subiu de plano com dias já pagos: a diferença de preço só dos dias que faltam, no ciclo que ele pagou.
+    /// Descer de plano não gera crédito; só mudar o ciclo não custa nada agora.
+    /// </summary>
+    public decimal DiferencaProporcional(PlanoAssinatura novoPlano, DateTime hoje)
+    {
+        if (PagoAte(hoje) is not DateTime ate) return 0m;
+        var acrescimo = PlanoCatalogo.Preco(novoPlano, Ciclo) - PlanoCatalogo.Preco(Plano, Ciclo);
+        if (acrescimo <= 0) return 0m;
+        var inicio = Ciclo == CicloCobranca.Anual ? ate.AddYears(-1) : ate.AddMonths(-1);
+        var total = Math.Max(1, (ate - inicio).Days);
+        var dias = Math.Min(total, (ate - hoje.Date).Days);
+        return Math.Round(acrescimo * dias / total, 2, MidpointRounding.AwayFromZero);
+    }
+
     public void DefinirCiclo(CicloCobranca ciclo) => Ciclo = ciclo;
     public void DefinirLojasContratadas(int lojas) => LojasContratadas = Math.Max(1, lojas);
     public void EstenderTrial(int dias) { TrialAte = (TrialAte ?? DateTime.UtcNow).AddDays(dias); Status = StatusAssinatura.Trial; }

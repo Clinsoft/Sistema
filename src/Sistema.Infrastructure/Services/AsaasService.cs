@@ -12,6 +12,8 @@ namespace Sistema.Infrastructure.Services;
 /// </summary>
 public class AsaasService(HttpClient http, IConfiguration config)
 {
+    private const int TentativasMudarCobranca = 3;
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -67,6 +69,39 @@ public class AsaasService(HttpClient http, IConfiguration config)
         if (doc.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array && data.GetArrayLength() > 0)
             return data[0].TryGetProperty("invoiceUrl", out var url) ? url.GetString() : null;
         return null;
+    }
+
+    /// <summary>
+    /// Soma um valor só na primeira cobrança da assinatura; as seguintes continuam com o valor normal (conferido no sandbox).
+    /// O sandbox às vezes responde 500 ou demora e na repetição funciona, por isso até 3 tentativas.
+    /// </summary>
+    public async Task SomarNaPrimeiraCobrancaAsync(string subscriptionId, decimal acrescimo, string descricao, CancellationToken ct = default)
+    {
+        using var lista = await Cliente().GetAsync($"subscriptions/{subscriptionId}/payments", ct);
+        var doc = await LerAsync(lista, ct);
+        if (!doc.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+            throw new InvalidOperationException("Asaas: a assinatura ainda não tem cobrança.");
+        var id = data[0].GetProperty("id").GetString()!;
+        var body = new { value = data[0].GetProperty("value").GetDecimal() + acrescimo, description = descricao };
+
+        for (var tentativa = 1; ; tentativa++)
+        {
+            try
+            {
+                using var resp = await Cliente().PutAsJsonAsync($"payments/{id}", body, Json, ct);
+                if ((int)resp.StatusCode < 500 || tentativa == TentativasMudarCobranca)
+                {
+                    await LerAsync(resp, ct);
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                && tentativa < TentativasMudarCobranca && !ct.IsCancellationRequested)
+            {
+                // sem resposta: tenta de novo
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
     }
 
     /// <summary>Cancela a recorrência. O Asaas apaga junto as cobranças pendentes dela (conferido no sandbox).</summary>

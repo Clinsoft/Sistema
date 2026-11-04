@@ -14,6 +14,7 @@ export interface AssinaturaInfo {
   plano: string
   planoEfetivo: string
   status: string
+  ciclo?: string              // Mensal | Anual
   recursos: string[]          // nomes de Recurso liberados (ex.: 'Pdv','Fiscal','Whatsapp')
   limites: { maxUsuarios: number; maxLojas: number }
   trialAte: string | null

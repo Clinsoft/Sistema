@@ -57,21 +57,50 @@ public class AssinaturasController(SistemaDbContext db, AsaasService asaas, IMem
             var customerId = assin.AsaasCustomerId
                 ?? await asaas.CriarClienteAsync(empresa.NomeFantasia, empresa.Cnpj, empresa.Email, empresa.Telefone, ct);
 
-            // Primeira cobrança ao fim do trial (se ainda em trial), senão hoje.
-            var venc = assin.TrialAte is DateTime t && t > DateTime.UtcNow ? DateOnly.FromDateTime(t) : DateOnly.FromDateTime(DateTime.Today);
+            // Em dia: mantém o vencimento já pago e a diferença dos dias que faltam entra uma vez na próxima cobrança.
+            // Senão, primeira cobrança ao fim do trial (se ainda em trial) ou hoje.
+            var hoje = DateTime.Today;
+            var pagoAte = assin.PagoAte(hoje);
+            var diferenca = assin.DiferencaProporcional(plano, hoje);
+            var venc = pagoAte is DateTime ate ? DateOnly.FromDateTime(ate)
+                : assin.TrialAte is DateTime t && t > DateTime.UtcNow ? DateOnly.FromDateTime(t) : DateOnly.FromDateTime(hoje);
             var valor = PlanoCatalogo.Preco(plano, ciclo);
             var subId = await asaas.CriarAssinaturaAsync(customerId, valor, venc,
                 ciclo == CicloCobranca.Anual ? "YEARLY" : "MONTHLY",
                 $"Assinatura {PlanoCatalogo.Nome(plano)} — Natural Sistemas", ct);
 
+            // Grava antes de mexer na cobrança: se cair aqui, a próxima tentativa cancela esta e recomeça.
+            assin.VincularAsaas(customerId, subId);
+            await db.SaveChangesAsync(CancellationToken.None);
+
+            if (diferenca > 0)
+            {
+                try
+                {
+                    await asaas.SomarNaPrimeiraCobrancaAsync(subId, diferenca,
+                        $"Assinatura {PlanoCatalogo.Nome(plano)} + diferença proporcional — Natural Sistemas", CancellationToken.None);
+                }
+                catch
+                {
+                    // Sem a diferença na cobrança a troca não vale: o plano fica como estava e o cliente tenta de novo.
+                    await asaas.CancelarAssinaturaAsync(subId, CancellationToken.None);
+                    assin.DesvincularAssinaturaAsaas();
+                    await db.SaveChangesAsync(CancellationToken.None);
+                    throw;
+                }
+            }
+
             assin.TrocarPlano(plano, dto.LojasContratadas);
             assin.DefinirCiclo(ciclo);
-            assin.VincularAsaas(customerId, subId);
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
             cache.Remove($"assinatura:{empresaId.Value}");
 
             var link = await asaas.ObterLinkFaturaAsync(subId, ct);
-            return Ok(new { link, valor, plano = plano.ToString(), ciclo = ciclo.ToString() });
+            return Ok(new
+            {
+                link, valor, plano = plano.ToString(), ciclo = ciclo.ToString(),
+                emDia = pagoAte is not null, vencimento = venc, diferenca, proximaCobranca = valor + diferenca,
+            });
         }
         catch (Exception ex)
         {

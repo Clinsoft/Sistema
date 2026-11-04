@@ -1,10 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Sistema.Domain.Assinaturas;
-using Sistema.Infrastructure.Data;
 
 namespace Sistema.API.Controllers;
 
@@ -18,7 +15,7 @@ namespace Sistema.API.Controllers;
 [Route("api/admin")]
 [Authorize]
 [Sistema.API.Auth.PermitirBloqueado]
-public class AdminController(SistemaDbContext db, IConfiguration config, IMemoryCache cache) : ControllerBase
+public class AdminController(GestaoAssinaturas gestao, IConfiguration config) : ControllerBase
 {
     private bool EhSuperAdmin()
     {
@@ -47,48 +44,7 @@ public class AdminController(SistemaDbContext db, IConfiguration config, IMemory
     public async Task<IActionResult> Empresas(CancellationToken ct)
     {
         if (!EhSuperAdmin()) return Forbid();
-
-        // Empresas dos próprios super-admins não são "clientes" — não entram na lista.
-        var emailsAdmin = (config["SuperAdmin:Emails"] ?? "")
-            .Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var empresasAdmin = await db.Usuarios.AsNoTracking()
-            .Where(u => u.Email != null && emailsAdmin.Contains(u.Email))
-            .Select(u => u.EmpresaId).Distinct().ToListAsync(ct);
-
-        var rows = await (from a in db.Assinaturas.AsNoTracking()
-                          join e in db.Empresas.AsNoTracking() on a.EmpresaId equals e.Id
-                          where !empresasAdmin.Contains(a.EmpresaId)
-                          select new { a, e.NomeFantasia, e.Cnpj, e.Email, e.CriadoEm }).ToListAsync(ct);
-
-        var usuarios = await db.Usuarios.AsNoTracking()
-            .Where(u => u.Email != null && u.SenhaHash != null && u.Ativo)
-            .GroupBy(u => u.EmpresaId).Select(g => new { g.Key, C = g.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.C, ct);
-        var lojas = await db.LocaisEstoque.AsNoTracking().Where(l => l.Ativo)
-            .GroupBy(l => l.EmpresaId).Select(g => new { g.Key, C = g.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.C, ct);
-
-        var agora = DateTime.UtcNow;
-        var lista = rows.Select(r => new
-        {
-            empresaId = r.a.EmpresaId,
-            nome = r.NomeFantasia,
-            cnpj = r.Cnpj,
-            email = r.Email,
-            criadoEm = r.CriadoEm,
-            plano = r.a.Plano.ToString(),
-            status = r.a.Status.ToString(),
-            situacao = r.a.Situacao(agora).ToString(),
-            ciclo = r.a.Ciclo.ToString(),
-            trialAte = r.a.TrialAte,
-            proximoVencimento = r.a.ProximoVencimento,
-            lojasContratadas = r.a.LojasContratadas,
-            usuarios = usuarios.GetValueOrDefault(r.a.EmpresaId),
-            lojas = lojas.GetValueOrDefault(r.a.EmpresaId),
-        })
-        .OrderByDescending(x => x.criadoEm)
-        .ToList();
-
+        var lista = await gestao.ListarAsync(ct);
         return Ok(new { total = lista.Count, empresas = lista });
     }
 
@@ -128,17 +84,16 @@ public class AdminController(SistemaDbContext db, IConfiguration config, IMemory
             a.DefinirCiclo(c);
         });
 
-    // Carrega a assinatura, aplica a mutação, salva e invalida o cache do gate.
     private async Task<IActionResult> Aplicar(Guid empresaId, CancellationToken ct, Action<Assinatura> acao)
     {
         if (!EhSuperAdmin()) return Forbid();
-        var a = await db.Assinaturas.FirstOrDefaultAsync(x => x.EmpresaId == empresaId, ct);
-        if (a is null) return NotFound(new { mensagem = "Empresa sem assinatura." });
-        try { acao(a); }
+        try
+        {
+            var a = await gestao.AplicarAsync(empresaId, acao, ct);
+            if (a is null) return NotFound(new { mensagem = "Empresa sem assinatura." });
+            return Ok(new { ok = true, status = a.Status.ToString(), situacao = a.Situacao().ToString(), plano = a.Plano.ToString() });
+        }
         catch (ArgumentException ex) { return BadRequest(new { mensagem = ex.Message }); }
-        await db.SaveChangesAsync(ct);
-        cache.Remove($"assinatura:{empresaId}");   // reflete na hora no gate
-        return Ok(new { ok = true, status = a.Status.ToString(), situacao = a.Situacao().ToString(), plano = a.Plano.ToString() });
     }
 }
 

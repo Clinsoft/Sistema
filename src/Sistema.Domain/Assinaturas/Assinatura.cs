@@ -117,7 +117,13 @@ public class Assinatura : Entity
 
     public void DefinirCiclo(CicloCobranca ciclo) => Ciclo = ciclo;
     public void DefinirLojasContratadas(int lojas) => LojasContratadas = Math.Max(1, lojas);
-    public void EstenderTrial(int dias) { TrialAte = (TrialAte ?? DateTime.UtcNow).AddDays(dias); Status = StatusAssinatura.Trial; }
+    /// <summary>Estende a partir do fim do teste ou, se já venceu, de agora: senão continuaria vencido.</summary>
+    public void EstenderTrial(int dias)
+    {
+        var agora = DateTime.UtcNow;
+        TrialAte = (TrialAte is DateTime ate && ate > agora ? ate : agora).AddDays(dias);
+        Status = StatusAssinatura.Trial;
+    }
     public void Bloquear(string? motivo = null) { Status = StatusAssinatura.Bloqueada; Observacao = motivo; }
     public void Reativar() { Status = StatusAssinatura.Ativa; }
     public void Cancelar(string? motivo = null) { Status = StatusAssinatura.Cancelada; Observacao = motivo; }

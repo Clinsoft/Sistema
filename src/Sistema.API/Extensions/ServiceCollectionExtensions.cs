@@ -82,6 +82,7 @@ public static class ServiceCollectionExtensions
 
         // Repositórios
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<Sistema.API.Controllers.GestaoAssinaturas>();
         services.AddScoped<IClienteRepository, ClienteRepository>();
         services.AddScoped<Sistema.Domain.Marketing.Interfaces.IClubeRepository, Sistema.Infrastructure.Repositories.Marketing.ClubeRepository>();
         services.AddScoped<Sistema.Infrastructure.Desempenho.MetaEfetivaService>();

@@ -692,6 +692,8 @@ async function verPedido(item: any) {
     const r = await api.get(`/pedidos-compra/${item.id}`)
     det.value = {
       ...r.data, id: item.id,
+      itens: [...(r.data.itens ?? [])].sort((a: any, b: any) =>
+        (a.descricao ?? a.produtoNome ?? '').localeCompare(b.descricao ?? b.produtoNome ?? '', 'pt-BR')),
       fornecedorId: item.fornecedorId,
       fornecedorNome: item.fornecedorNome,
       status: r.data.status ?? item.status,

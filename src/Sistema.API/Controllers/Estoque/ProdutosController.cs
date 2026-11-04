@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sistema.API.Extensions;
 using Sistema.Application.Estoque.Commands;
 using Sistema.Application.Estoque.Queries;
 using Sistema.Domain.Estoque.Entities;
@@ -235,6 +236,9 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
     [HttpGet("encalhados")]
     public async Task<IActionResult> Encalhados([FromQuery] Guid empresaId, CancellationToken ct)
     {
+        // Usuário vinculado a uma loja vê SÓ a dele (bate com o sininho); admin vê de todas.
+        var loja = User.LojaClaim();
+        var hoje = DateTime.Today;
         var jaVendidos = db.Set<ItemVenda>()
             .Join(db.Set<Venda>(), iv => iv.VendaId, v => v.Id, (iv, v) => new { iv.ProdutoId, v.EmpresaId })
             .Where(x => x.EmpresaId == empresaId)
@@ -243,15 +247,15 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
             .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EstoqueAtual > 0 && p.PrecoVenda > 0
                 && !jaVendidos.Contains(p.Id));
         var semTodos = await baseEnc.Where(p => p.EtiquetaImpressaEm == null).Select(p => p.Id).ToListAsync(ct);
-        var comEtiqueta = await baseEnc.Where(p => p.EtiquetaImpressaEm != null).Select(p => p.Id).ToListAsync(ct);
-        // Opção B: "sem etiqueta" só os ATRIBUÍVEIS a alguma loja (saldo reconstruído > 0),
-        // pra bater com o número do sininho (não conta estoque global sem movimentação por loja).
-        var comSaldo = (await db.MovimentacoesEstoque.AsNoTracking()
-            .Where(m => m.EmpresaId == empresaId && semTodos.Contains(m.ProdutoId))
-            .GroupBy(m => m.ProdutoId)
+        var comTodos = await baseEnc.Where(p => p.EtiquetaImpressaEm != null).Select(p => p.Id).ToListAsync(ct);
+        // Saldo reconstruído por (loja, produto) — Opção B. Usuário de loja: só a dele; admin: qualquer loja.
+        var todos = semTodos.Concat(comTodos).ToList();
+        var saldo = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && todos.Contains(m.ProdutoId))
+            .GroupBy(m => new { m.LocalEstoqueId, m.ProdutoId })
             .Select(g => new
             {
-                ProdutoId = g.Key,
+                g.Key.LocalEstoqueId, g.Key.ProdutoId,
                 Saldo = g.Sum(m =>
                     m.Tipo == TipoMovimentacao.Entrada || m.Tipo == TipoMovimentacao.AjustePositivo
                     || m.Tipo == TipoMovimentacao.Devolucao ? m.Quantidade
@@ -260,9 +264,47 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
                     && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
                   : m.Tipo == TipoMovimentacao.Transferencia ? -m.Quantidade : 0m)
             }).ToListAsync(ct))
-            .Where(x => x.Saldo > 0).Select(x => x.ProdutoId).ToHashSet();
+            .Where(x => x.Saldo > 0).ToList();
+        var comSaldo = (loja is Guid lj ? saldo.Where(x => x.LocalEstoqueId == lj) : saldo)
+            .Select(x => x.ProdutoId).ToHashSet();
         var semEtiqueta = semTodos.Where(comSaldo.Contains).ToList();
-        return Ok(new { semEtiqueta, comEtiqueta });
+        var comEtiqueta = comTodos.Where(comSaldo.Contains).ToList();
+
+        // Etiquetas desatualizadas (preço/validade mudou): por loja do usuário — a loja VENDEU em 90d
+        // OU TEM saldo do produto (reconstruído) e ainda não reimprimiu; global p/ admin.
+        var desatBase = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && p.EtiquetaDesatualizada)
+            .Select(p => new { p.Id, p.PrecoAtualizadoEm }).ToListAsync(ct);
+        List<Guid> desatualizadas;
+        if (loja is Guid ljD)
+        {
+            var dids = desatBase.Select(x => x.Id).ToList();
+            var desde90 = hoje.AddDays(-90);
+            var vendidosLj = (await (from iv in db.Set<ItemVenda>()
+                                     join v in db.Set<Venda>() on iv.VendaId equals v.Id
+                                     where v.LocalEstoqueId == ljD && dids.Contains(iv.ProdutoId) && v.DataHora >= desde90
+                                     select iv.ProdutoId).Distinct().ToListAsync(ct)).ToHashSet();
+            var comSaldoLj = (await db.MovimentacoesEstoque.AsNoTracking()
+                .Where(m => m.EmpresaId == empresaId && m.LocalEstoqueId == ljD && dids.Contains(m.ProdutoId))
+                .GroupBy(m => m.ProdutoId)
+                .Select(g => new { ProdutoId = g.Key, Saldo = g.Sum(m =>
+                    m.Tipo == TipoMovimentacao.Entrada || m.Tipo == TipoMovimentacao.AjustePositivo
+                    || m.Tipo == TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Saida || m.Tipo == TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia ? -m.Quantidade : 0m) })
+                .ToListAsync(ct)).Where(x => x.Saldo > 0).Select(x => x.ProdutoId).ToHashSet();
+            var imp = (await db.EtiquetasImpressasLoja
+                    .Where(e => e.LocalEstoqueId == ljD && dids.Contains(e.ProdutoId)).ToListAsync(ct))
+                .ToDictionary(e => e.ProdutoId, e => e.ImpressaEm);
+            desatualizadas = desatBase.Where(x => (vendidosLj.Contains(x.Id) || comSaldoLj.Contains(x.Id))
+                && !(imp.TryGetValue(x.Id, out var im) && (x.PrecoAtualizadoEm == null || im >= x.PrecoAtualizadoEm)))
+                .Select(x => x.Id).ToList();
+        }
+        else desatualizadas = desatBase.Select(x => x.Id).ToList();
+
+        return Ok(new { semEtiqueta, comEtiqueta, desatualizadas });
     }
 
     /// <summary>Opções de imagem (Pexels/Openverse) para um termo — o usuário escolhe a certa.</summary>

@@ -344,6 +344,7 @@
           <div>
             Pedido Nº {{ det.numero }}
             <v-chip size="x-small" :color="corStatus(det.status)" class="ml-2">{{ det.status }}</v-chip>
+            <v-chip size="x-small" variant="tonal" class="ml-2">{{ det.itens?.length || 0 }} {{ (det.itens?.length || 0) === 1 ? 'item' : 'itens' }}</v-chip>
           </div>
           <v-spacer />
           <v-btn icon="mdi-close" variant="text" @click="dialogDet = false" />
@@ -497,6 +498,7 @@ const headers = computed(() => [
   { title:'Nº', key:'numero' }, { title:'Fornecedor', key:'fornecedorNome', sortable:true },
   { title:'Unidade', key:'lojaNome', sortable:true },
   { title:'Data', key:'criadoEm' },
+  { title:'Itens', key:'qtdItens', sortable:true, align:'center' as const },
   ...(podeVerValor.value ? [{ title:'Total', key:'totalPedido', sortable:true }] : []),
   { title:'Status', key:'status' }, { title:'Ações', key:'actions', sortable:false },
 ])

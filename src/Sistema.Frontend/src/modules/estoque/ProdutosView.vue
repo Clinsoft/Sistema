@@ -1744,8 +1744,9 @@ const fornecedoresComProduto = computed(() => {
 
 // Filtros aplicados no cliente (a lista já traz todos os produtos)
 const filtroEtiqueta = ref(false)
-const qtdEtiquetaDesatualizada = computed(() =>
-  produtos.value.filter((p: any) => p.etiquetaDesatualizada).length)
+// Etiquetas desatualizadas atribuíveis à loja do usuário (admin = global) — vem do endpoint.
+const etiquetaDesatSet = ref<Set<string>>(new Set())
+const qtdEtiquetaDesatualizada = computed(() => etiquetaDesatSet.value.size)
 // "Encalhados": nunca vendidos, separados em SEM etiqueta (nunca impressa) x COM etiqueta.
 const filtroEncalhado = ref<string | null>(null)   // 'sem' | 'com' | 'todos'
 const encalhadoSem = ref<Set<string>>(new Set())
@@ -1760,14 +1761,15 @@ async function carregarEncalhados() {
     const { data } = await api.get('/produtos/encalhados', { params: { empresaId: auth.empresaId } })
     encalhadoSem.value = new Set(data?.semEtiqueta ?? [])
     encalhadoCom.value = new Set(data?.comEtiqueta ?? [])
-  } catch { encalhadoSem.value = new Set(); encalhadoCom.value = new Set() }
+    etiquetaDesatSet.value = new Set(data?.desatualizadas ?? [])
+  } catch { encalhadoSem.value = new Set(); encalhadoCom.value = new Set(); etiquetaDesatSet.value = new Set() }
 }
 const produtosFiltrados = computed(() => {
   let l = produtos.value
   if (filtroFornecedor.value?.length)
     l = l.filter((p: any) => filtroFornecedor.value.includes(p.fornecedorPrincipalId))
   if (filtroEtiqueta.value)
-    l = l.filter((p: any) => p.etiquetaDesatualizada)
+    l = l.filter((p: any) => etiquetaDesatSet.value.has(p.id))
   if (filtroEncalhado.value === 'sem')
     l = l.filter((p: any) => encalhadoSem.value.has(p.id))
   else if (filtroEncalhado.value === 'com')
@@ -2988,6 +2990,12 @@ onMounted(() => {
   // Clique no sininho abre já filtrado (?encalhados=sem | com | 1).
   const q = router.currentRoute.value.query.encalhados as string | undefined
   if (q) filtroEncalhado.value = (q === 'sem' || q === 'com') ? q : 'todos'
+})
+// Clicar em outra notificação já estando na tela só muda a query (o componente não remonta):
+// reage à mudança pra trocar o filtro sem precisar de F5.
+watch(() => router.currentRoute.value.query.encalhados, (q) => {
+  const v = q as string | undefined
+  filtroEncalhado.value = v ? (v === 'sem' || v === 'com' ? v : 'todos') : null
 })
 </script>
 

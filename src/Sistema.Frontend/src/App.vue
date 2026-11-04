@@ -310,7 +310,7 @@
 
           <v-btn :icon="tema === 'clinsoftLight' ? 'mdi-weather-night' : 'mdi-weather-sunny'"
             variant="text" @click="alternarTema" />
-          <v-menu offset-y :close-on-content-click="false">
+          <v-menu offset-y :close-on-content-click="false" @update:model-value="v => v && carregarNotificacoes()">
             <template #activator="{ props }">
               <v-btn v-bind="props" variant="text" icon>
                 <v-badge :content="totalNotif" :model-value="totalNotif > 0" color="error" max="99">
@@ -454,6 +454,8 @@ watch(() => auth.lojaAtualId, carregarPendenciasBalanca)
 
 onMounted(() => {
   carregarNotificacoes()
+  // Atualiza ao voltar o foco pra aba (a atendente fica o dia todo na mesma tela).
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) carregarNotificacoes() })
   carregarPendenciasBalanca()
   setInterval(carregarNotificacoes, 5 * 60 * 1000)  // atualiza a cada 5 min
   setInterval(carregarPendenciasBalanca, 5 * 60 * 1000)

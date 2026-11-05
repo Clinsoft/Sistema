@@ -66,14 +66,41 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
             }
         ).AsNoTracking().ToListAsync();
 
+        // ── Estoque REAL por (produto, loja) ──────────────────────────────
+        // A Lote.Quantidade NÃO é baixada nas vendas (fica congelada no valor
+        // da entrada), então não serve para saber se ainda há produto. Usamos o
+        // saldo reconstruído das MovimentacoesEstoque (mesma fórmula da Posição
+        // de Estoque). Assim, quando o produto acaba, a oferta encerra sozinha.
+        var produtosDosLotes = lotes.Select(l => l.ProdutoId).Distinct().ToList();
+        var saldoPorProdLoja = (await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && m.LocalEstoqueId != Guid.Empty
+                     && produtosDosLotes.Contains(m.ProdutoId))
+            .GroupBy(m => new { m.ProdutoId, LojaId = m.LocalEstoqueId })
+            .Select(g => new
+            {
+                g.Key.ProdutoId, g.Key.LojaId,
+                Saldo = g.Sum(m =>
+                    m.Tipo == TipoMovimentacao.Entrada || m.Tipo == TipoMovimentacao.AjustePositivo
+                        || m.Tipo == TipoMovimentacao.Devolucao ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Saida || m.Tipo == TipoMovimentacao.AjusteNegativo ? -m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia
+                    && m.DocumentoOrigem != null && m.DocumentoOrigem.StartsWith("TRANSF<-") ? m.Quantidade
+                  : m.Tipo == TipoMovimentacao.Transferencia ? -m.Quantidade
+                  : 0m)
+            }).ToListAsync())
+            .ToDictionary(x => (x.ProdutoId, (Guid?)x.LojaId), x => x.Saldo);
+        decimal SaldoLoja(Guid produto, Guid? loja)
+            => loja != null && saldoPorProdLoja.TryGetValue((produto, loja), out var s) ? s : 0m;
+
         // ── Limpeza: desativa ofertas automáticas que não valem mais ──
-        // (produto inativo, validade já passou, ou não há mais lote qualificado
-        //  naquela loja dentro da janela). Evita "produto que não existe mais"
-        //  e ofertas vazando entre lojas.
+        // (produto inativo, validade já passou, não há mais lote qualificado
+        //  naquela loja dentro da janela, ou o estoque REAL acabou). Evita
+        //  "produto que não existe mais" e ofertas vazando entre lojas.
         var lotesValidosPorLoja = lotes
             .Where(l => l.DataValidade.HasValue)
             .Select(l => new { l.ProdutoId, l.LocalEstoqueId, Dias = (l.DataValidade!.Value.Date - hoje).Days })
-            .Where(l => l.Dias >= PromoDiasMin && l.Dias <= PromoDiasMax)
+            .Where(l => l.Dias >= PromoDiasMin && l.Dias <= PromoDiasMax
+                     && SaldoLoja(l.ProdutoId, l.LocalEstoqueId) > 0)
             .Select(l => (l.ProdutoId, l.LocalEstoqueId))
             .ToHashSet();
 
@@ -117,6 +144,7 @@ public class ValidadeJob(SistemaDbContext db, ILogger<ValidadeJob> logger)
             // a critério do administrador.
             if (dias >= PromoDiasMin && dias <= PromoDiasMax
                 && cfg.PromoAutomatica && !cfg.ExigeAprovacao
+                && SaldoLoja(lote.ProdutoId, lote.LocalEstoqueId) > 0
                 && !promoPorProdutoLoja.ContainsKey((lote.ProdutoId, lote.LocalEstoqueId)))
             {
                 // Evita duplicar: só cria se ainda não há promoção ativa vigente

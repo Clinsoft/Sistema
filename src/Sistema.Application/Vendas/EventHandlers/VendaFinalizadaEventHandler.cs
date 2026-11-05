@@ -13,6 +13,7 @@ namespace Sistema.Application.Vendas.EventHandlers;
 public class VendaFinalizadaEventHandler(
     IProdutoRepository produtoRepo,
     IMovimentacaoEstoqueRepository movRepo,
+    ILoteRepository loteRepo,
     IClienteRepository clienteRepo,
     IClubeRepository clubeRepo,
     IUnitOfWork uow)
@@ -86,7 +87,34 @@ public class VendaFinalizadaEventHandler(
             produto.AjustarEstoque(-item.Quantidade);
             await movRepo.AdicionarAsync(mov, ct);
             produtoRepo.Atualizar(produto);
+
+            await BaixarLotesFefo(evt.EmpresaId, item.ProdutoId, evt.LocalEstoqueId, item.Quantidade, ct);
         }
+    }
+
+    /// <summary>Consome os lotes da loja por FEFO (vence primeiro, sai primeiro) na quantidade
+    /// vendida. Sem isso, Lotes.Quantidade ficaria congelada no valor da entrada — o lote antigo
+    /// apareceria "cheio no papel" mesmo já vendido, gerando validade/oferta erradas.</summary>
+    private async Task BaixarLotesFefo(Guid empresaId, Guid produtoId, Guid lojaId, decimal quantidade, CancellationToken ct)
+    {
+        if (quantidade <= 0) return;
+        var lotes = (await loteRepo.ListarPorProdutoAsync(empresaId, produtoId, ct))
+            .Where(l => l.LocalEstoqueId == lojaId && l.Quantidade > 0)
+            .OrderBy(l => l.DataValidade ?? DateTime.MaxValue)
+            .ThenBy(l => l.CriadoEm)
+            .ToList();
+
+        var restante = quantidade;
+        foreach (var lote in lotes)
+        {
+            if (restante <= 0) break;
+            var baixa = Math.Min(lote.Quantidade, restante);
+            lote.Baixar(baixa);
+            restante -= baixa;
+            loteRepo.Atualizar(lote);
+        }
+        // Se sobrou (restante > 0) a loja vendeu sem lote cadastrado — não força nada;
+        // o EstoqueAtual/movimentação já refletem a venda.
     }
 
     private async Task AdicionarPontosFidelidade(VendaFinalizadaEvent evt, CancellationToken ct)

@@ -330,7 +330,7 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
                     tipo = "premiacao", quantidade = 1, cor = "amber-darken-2", icone = "mdi-medal-outline",
                     titulo = "Premiação disponível",
                     texto = $"A apuração de {meses[mesRef.Month]}/{mesRef.Year} fechou — confira seu desempenho e prêmio.",
-                    rota = "/desempenho/meu"
+                    rota = $"/desempenho/meu?ano={mesRef.Year}&mes={mesRef.Month}"
                 });
             }
         }

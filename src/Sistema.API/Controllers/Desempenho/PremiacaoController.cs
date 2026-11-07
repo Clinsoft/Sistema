@@ -630,9 +630,40 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
             descontoValidadeLancamento = r.DescontoValidadeLancamento,
             projecao,
             avaliacoes = incluirSemanas && avaliacoes != null
-                ? avaliacoes.OrderBy(a => a.InicioSemana).Select(a => new { inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"), pontos = a.Pontos }).ToList<object>()
+                ? avaliacoes.OrderBy(a => a.InicioSemana).Select(AvaliacaoDetalhe).ToList<object>()
                 : null
         };
+
+    /// <summary>Detalhe de uma avaliação semanal: os 11 itens (grupo, nível e pontos) + total.</summary>
+    private static object AvaliacaoDetalhe(AvaliacaoDesempenhoSemanal a)
+    {
+        static string Lbl(NivelItem n) => n == NivelItem.Consistente ? "Consistente"
+            : n == NivelItem.Parcial ? "Parcial" : "Não realizado";
+        static object It(string grupo, string nome, NivelItem n, int max) => new
+        {
+            grupo, nome, nivel = Lbl(n), valor = (int)n, pts = Math.Round(max * (int)n / 100m, 1), max
+        };
+        return new
+        {
+            inicioSemana = a.InicioSemana.ToString("yyyy-MM-dd"),
+            pontos = a.Pontos,
+            observacao = a.Observacao,
+            itens = new[]
+            {
+                It("Processo de Venda", "Abordagem", a.Abordagem, 8),
+                It("Processo de Venda", "Diagnóstico", a.Diagnostico, 8),
+                It("Processo de Venda", "Conexão com o produto", a.ConexaoProduto, 8),
+                It("Processo de Venda", "Sugestão complementar", a.SugestaoComplementar, 8),
+                It("Processo de Venda", "Fechamento", a.Fechamento, 8),
+                It("Execução Operacional", "Abastecimento", a.Abastecimento, 10),
+                It("Execução Operacional", "Organização", a.Organizacao, 10),
+                It("Execução Operacional", "Rotina", a.Rotina, 10),
+                It("Qualidade da Operação", "Validade", a.Validade, 10),
+                It("Qualidade da Operação", "Perdas", a.Perdas, 10),
+                It("Qualidade da Operação", "Armazenamento", a.Armazenamento, 10),
+            }
+        };
+    }
 }
 
 public record ConfigPremiacaoRequest(Guid EmpresaId, decimal ValorBase, decimal RedutorPercent,

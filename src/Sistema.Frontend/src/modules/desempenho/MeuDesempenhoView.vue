@@ -137,12 +137,32 @@
       <!-- Semanas -->
       <v-card v-if="d.avaliacoes && d.avaliacoes.length" rounded="lg" class="pa-4">
         <div class="text-subtitle-2 font-weight-bold mb-2">Avaliações da semana</div>
-        <div class="d-flex flex-wrap ga-2">
-          <v-chip v-for="a in d.avaliacoes" :key="a.inicioSemana" variant="tonal"
-            :color="a.pontos >= 70 ? 'success' : 'amber-darken-2'">
-            {{ fmtData(a.inicioSemana) }}: {{ a.pontos }} pts
-          </v-chip>
-        </div>
+        <div class="text-caption text-medium-emphasis mb-2">Clique na semana para ver a nota de cada item avaliado.</div>
+        <v-expansion-panels variant="accordion" multiple>
+          <v-expansion-panel v-for="a in d.avaliacoes" :key="a.inicioSemana">
+            <v-expansion-panel-title>
+              <div class="d-flex align-center ga-2 flex-wrap">
+                <v-icon size="18" :color="a.pontos >= 70 ? 'success' : 'amber-darken-2'">mdi-clipboard-check-outline</v-icon>
+                <span class="font-weight-medium">Semana de {{ fmtData(a.inicioSemana) }}</span>
+                <v-chip size="small" variant="flat" :color="a.pontos >= 70 ? 'success' : 'amber-darken-2'">{{ a.pontos }} / 100 pts</v-chip>
+              </div>
+            </v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <div v-for="g in grupos(a)" :key="g.grupo" class="mb-3">
+                <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-1">
+                  {{ g.grupo }} <span class="text-medium-emphasis">· {{ g.subtotal }}/{{ g.max }} pts</span>
+                </div>
+                <div v-for="it in g.itens" :key="it.nome" class="d-flex align-center ga-2 py-1"
+                  style="border-bottom:1px solid rgba(128,128,128,.12)">
+                  <span class="text-body-2 flex-grow-1">{{ it.nome }}</span>
+                  <v-chip size="x-small" variant="tonal" :color="corNivel(it.nivel)">{{ it.nivel }}</v-chip>
+                  <span class="text-caption text-medium-emphasis" style="min-width:56px;text-align:right">{{ it.pts }} / {{ it.max }}</span>
+                </div>
+              </div>
+              <div v-if="a.observacao" class="text-caption mt-2"><b>Observação:</b> {{ a.observacao }}</div>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
       </v-card>
     </div>
 
@@ -217,6 +237,16 @@ const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDig
 const pct = (v: number) => (v ?? 0).toFixed(1)
 const corPct = (v: number) => v >= 100 ? 'text-success' : v >= 90 ? 'text-amber-darken-2' : 'text-error'
 const fmtData = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR')
+const corNivel = (n: string) => n === 'Consistente' ? 'success' : n === 'Parcial' ? 'amber-darken-2' : 'grey'
+function grupos(a: any) {
+  const m: Record<string, any[]> = {}
+  for (const it of (a?.itens ?? [])) { (m[it.grupo] ||= []).push(it) }
+  return Object.entries(m).map(([grupo, itens]) => ({
+    grupo, itens,
+    subtotal: (itens as any[]).reduce((s, x) => s + Number(x.pts || 0), 0),
+    max: (itens as any[]).reduce((s, x) => s + Number(x.max || 0), 0),
+  }))
+}
 const fmtDataHora = (s: string) => new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const telFormatado = (t: string) => {
   const d2 = (t || '').replace(/\D/g, '')

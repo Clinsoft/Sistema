@@ -172,18 +172,37 @@ public class PremiacaoController(SistemaDbContext db, PremiacaoCalculoService ca
     public async Task<IActionResult> SalvarAvaliacao([FromBody] AvaliacaoRequest req, CancellationToken ct)
     {
         var inicio = DateTime.Parse(req.InicioSemana).Date;
-        var a = await db.AvaliacoesDesempenho
-            .FirstOrDefaultAsync(x => x.ColaboradorId == req.ColaboradorId && x.InicioSemana == inicio, ct);
-        if (a is null)
-        {
-            a = AvaliacaoDesempenhoSemanal.Criar(req.EmpresaId, req.LocalEstoqueId, req.ColaboradorId, inicio);
-            db.AvaliacoesDesempenho.Add(a);
-        }
         NivelItem N(int v) => v >= 100 ? NivelItem.Consistente : v >= 50 ? NivelItem.Parcial : NivelItem.NaoRealizado;
-        a.Definir(N(req.Abordagem), N(req.Diagnostico), N(req.ConexaoProduto), N(req.SugestaoComplementar), N(req.Fechamento),
-            N(req.Abastecimento), N(req.Organizacao), N(req.Rotina), N(req.Validade), N(req.Perdas), N(req.Armazenamento), req.Observacao);
+
+        // A avaliação é MENSAL: uma nota lançada vale para TODAS as semanas (segundas-feiras)
+        // do mês. Cria/atualiza uma linha por semana com os mesmos pontos.
+        var semanas = SegundasDoMes(inicio.Year, inicio.Month);
+        decimal pontos = 0;
+        foreach (var seg in semanas)
+        {
+            var a = await db.AvaliacoesDesempenho
+                .FirstOrDefaultAsync(x => x.ColaboradorId == req.ColaboradorId && x.InicioSemana == seg, ct);
+            if (a is null)
+            {
+                a = AvaliacaoDesempenhoSemanal.Criar(req.EmpresaId, req.LocalEstoqueId, req.ColaboradorId, seg);
+                db.AvaliacoesDesempenho.Add(a);
+            }
+            a.Definir(N(req.Abordagem), N(req.Diagnostico), N(req.ConexaoProduto), N(req.SugestaoComplementar), N(req.Fechamento),
+                N(req.Abastecimento), N(req.Organizacao), N(req.Rotina), N(req.Validade), N(req.Perdas), N(req.Armazenamento), req.Observacao);
+            pontos = a.Pontos;
+        }
         await db.SaveChangesAsync(ct);
-        return Ok(new { a.Id, pontos = a.Pontos });
+        return Ok(new { pontos, semanas = semanas.Count });
+    }
+
+    /// <summary>Segundas-feiras de um mês (semanas que o mês contém).</summary>
+    private static List<DateTime> SegundasDoMes(int ano, int mes)
+    {
+        var d = new DateTime(ano, mes, 1);
+        while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
+        var lista = new List<DateTime>();
+        for (; d.Month == mes; d = d.AddDays(7)) lista.Add(d);
+        return lista;
     }
 
     // ── Apuração mensal (elegibilidade + cortes) ──────────────────────────

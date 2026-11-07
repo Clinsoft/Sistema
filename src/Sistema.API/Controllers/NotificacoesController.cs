@@ -312,6 +312,29 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             rota = "/concorrencia"
         });
 
+        // Premiação do mês passado disponível (para o colaborador avaliado): avisa que a apuração
+        // fechou e ele já pode conferir o próprio desempenho e prêmio em "Meu Desempenho".
+        var usuarioId = Guid.TryParse(User.FindFirst("sub")?.Value
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var uid) ? uid : Guid.Empty;
+        if (usuarioId != Guid.Empty)
+        {
+            var mesRef = new DateTime(hoje.Year, hoje.Month, 1).AddMonths(-1);
+            var temPremiacao = await db.ApuracoesPremiacao.AnyAsync(a => a.EmpresaId == empresaId
+                && a.ColaboradorId == usuarioId && a.Ano == mesRef.Year && a.Mes == mesRef.Month, ct);
+            if (temPremiacao)
+            {
+                string[] meses = { "", "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro" };
+                itens.Add(new
+                {
+                    tipo = "premiacao", quantidade = 1, cor = "amber-darken-2", icone = "mdi-medal-outline",
+                    titulo = "Premiação disponível",
+                    texto = $"A apuração de {meses[mesRef.Month]}/{mesRef.Year} fechou — confira seu desempenho e prêmio.",
+                    rota = "/desempenho/meu"
+                });
+            }
+        }
+
         return Ok(new { total = itens.Count, itens });
     }
 

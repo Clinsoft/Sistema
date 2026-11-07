@@ -217,13 +217,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
 import TermoAceiteAssinatura from './TermoAceiteAssinatura.vue'
 
 const auth = useAuthStore()
-const mes = ref(new Date().getMonth() + 1)
-const ano = ref(new Date().getFullYear())
+const route = useRoute()
+// Abre no mês/ano da URL (ex.: vindo do aviso de premiação no sininho); senão, mês atual.
+const qMes = Number(route.query.mes), qAno = Number(route.query.ano)
+const mes = ref(qMes >= 1 && qMes <= 12 ? qMes : new Date().getMonth() + 1)
+const ano = ref(qAno >= 2000 ? qAno : new Date().getFullYear())
 const d = ref<any>(null)
 const aceiteVerificado = ref(false)
 const aceito = ref(false)

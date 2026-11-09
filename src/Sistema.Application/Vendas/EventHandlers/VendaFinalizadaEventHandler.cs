@@ -71,24 +71,33 @@ public class VendaFinalizadaEventHandler(
 
     private async Task BaixarEstoque(VendaFinalizadaEvent evt, CancellationToken ct)
     {
-        foreach (var item in evt.Itens)
+        // Um MESMO produto pode vir em VÁRIOS itens da venda (ex.: granel pesado 2x).
+        // Agrupamos por produto para carregar o produto e consumir os lotes UMA vez por produto —
+        // senão o mesmo produto/lote seria anexado duas vezes e o EF lança
+        // "another instance with the same key value is already being tracked".
+        foreach (var grupo in evt.Itens.GroupBy(i => i.ProdutoId))
         {
-            var produto = await produtoRepo.ObterPorIdAsync(item.ProdutoId, ct);
+            var produto = await produtoRepo.ObterPorIdAsync(grupo.Key, ct);
             if (produto is null) continue;
 
-            var mov = MovimentacaoEstoque.Criar(
-                evt.EmpresaId, item.ProdutoId,
-                localEstoqueId: evt.LocalEstoqueId,
-                TipoMovimentacao.Saida,
-                item.Quantidade,
-                produto.CustoUnitario,
-                documentoOrigem: evt.VendaId.ToString());
+            decimal qtdProduto = 0;
+            foreach (var item in grupo)
+            {
+                var mov = MovimentacaoEstoque.Criar(
+                    evt.EmpresaId, grupo.Key,
+                    localEstoqueId: evt.LocalEstoqueId,
+                    TipoMovimentacao.Saida,
+                    item.Quantidade,
+                    produto.CustoUnitario,
+                    documentoOrigem: evt.VendaId.ToString());
+                await movRepo.AdicionarAsync(mov, ct);
+                qtdProduto += item.Quantidade;
+            }
 
-            produto.AjustarEstoque(-item.Quantidade);
-            await movRepo.AdicionarAsync(mov, ct);
+            produto.AjustarEstoque(-qtdProduto);
             produtoRepo.Atualizar(produto);
 
-            await BaixarLotesFefo(evt.EmpresaId, item.ProdutoId, evt.LocalEstoqueId, item.Quantidade, ct);
+            await BaixarLotesFefo(evt.EmpresaId, grupo.Key, evt.LocalEstoqueId, qtdProduto, ct);
         }
     }
 

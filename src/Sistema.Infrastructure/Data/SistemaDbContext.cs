@@ -178,8 +178,43 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
         base.OnModelCreating(modelBuilder);
     }
 
+    // Enquanto despacha domain events, os handlers chamam SaveChanges de novo (re-entrante).
+    // Nesse caso NÃO persistimos ainda: as mudanças ficam no ChangeTracker e são gravadas
+    // pelo SaveChanges EXTERNO, na MESMA operação atômica do agregado que gerou o evento.
+    private bool _despachandoEventos;
+
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        // Chamada re-entrante (de dentro de um event handler): adia o commit para o save externo.
+        // Assim a baixa de estoque (e demais efeitos) fica ATÔMICA com a venda — se qualquer
+        // handler falhar, NADA é gravado (não sobra venda sem baixa, nem duplicata).
+        if (_despachandoEventos)
+            return 0;
+
+        // Coleta os domain events e despacha ANTES de salvar: os handlers acrescentam suas
+        // mudanças ao ChangeTracker, que serão persistidas no mesmo SaveChanges abaixo.
+        var entitiesWithEvents = ChangeTracker.Entries<Entity>()
+            .Select(e => e.Entity)
+            .Where(e => e.DomainEvents.Count > 0)
+            .ToList();
+
+        if (mediator is not null && entitiesWithEvents.Count > 0)
+        {
+            _despachandoEventos = true;
+            try
+            {
+                foreach (var entity in entitiesWithEvents)
+                {
+                    var events = entity.DomainEvents.ToList();
+                    entity.ClearDomainEvents();
+                    foreach (var domainEvent in events)
+                        await mediator.Publish(domainEvent, cancellationToken);
+                }
+            }
+            finally { _despachandoEventos = false; }
+        }
+
+        // AtualizadoEm (cobre também as entidades modificadas pelos handlers)
         foreach (var entry in ChangeTracker.Entries<Entity>())
         {
             if (entry.State == EntityState.Modified)
@@ -187,15 +222,11 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
                     ?.SetValue(entry.Entity, DateTime.UtcNow);
         }
 
-        // Coleta domain events antes de salvar
-        var entitiesWithEvents = ChangeTracker.Entries<Entity>()
-            .Select(e => e.Entity)
-            .Where(e => e.DomainEvents.Count > 0)
-            .ToList();
-
         // Coleta auditoria ANTES de salvar (para capturar também os excluídos)
         var auditorias = CapturarAuditoria();
 
+        // UM único commit: agregado + efeitos dos handlers juntos (transação implícita do EF,
+        // compatível com EnableRetryOnFailure).
         var result = await base.SaveChangesAsync(cancellationToken);
 
         // Persiste a auditoria num segundo save (não re-audita a própria AuditLog).
@@ -213,18 +244,6 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
                 Console.Error.WriteLine($"[AUDIT-ERRO] {ex.GetType().Name}: {ex.Message} | inner: {ex.InnerException?.Message}");
                 foreach (var entry in ChangeTracker.Entries<AuditLog>().ToList())
                     entry.State = EntityState.Detached;
-            }
-        }
-
-        // Despacha domain events após persistência
-        if (mediator is not null)
-        {
-            foreach (var entity in entitiesWithEvents)
-            {
-                var events = entity.DomainEvents.ToList();
-                entity.ClearDomainEvents();
-                foreach (var domainEvent in events)
-                    await mediator.Publish(domainEvent, cancellationToken);
             }
         }
 

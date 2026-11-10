@@ -342,10 +342,26 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             .Where(p => p.EmpresaId == req.EmpresaId
                 && p.LocalEstoqueId == req.LocalEstoqueId
                 && p.Status != StatusPedidoCompra.Cancelado)
-            .Select(p => new { p.Id, p.Numero, p.Status }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Numero, p.Status, p.FornecedorId, p.NotaFiscalRecebimento }).ToListAsync(ct);
 
         var pedidoIds = pedidosLoja.Select(p => p.Id).ToList();
-        var infoPorId = pedidosLoja.ToDictionary(p => p.Id, p => new { p.Numero, Status = p.Status.ToString(), Aberto = p.Status != StatusPedidoCompra.Recebido });
+        var fornIds = pedidosLoja.Where(p => p.FornecedorId != null).Select(p => p.FornecedorId!.Value).Distinct().ToList();
+        var fornNomes = fornIds.Count > 0
+            ? await db.Fornecedores.AsNoTracking().Where(f => fornIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.RazaoSocial, ct)
+            : new Dictionary<Guid, string>();
+        var infoPorId = pedidosLoja.ToDictionary(p => p.Id, p => new
+        {
+            p.Numero, Status = p.Status.ToString(), Aberto = p.Status != StatusPedidoCompra.Recebido,
+            Fornecedor = p.FornecedorId != null ? fornNomes.GetValueOrDefault(p.FornecedorId.Value, "") : "",
+            NotaRecebida = p.NotaFiscalRecebimento,
+        });
+
+        // NF escriturada de cada produto: mapeia a CHAVE (DocumentoOrigem da entrada) para número + emitente.
+        var chavesEscr = escrituradoPorProduto.Values.Where(x => x.Nota != null).Select(x => x.Nota!).Distinct().ToList();
+        var notaPorChave = (await db.NotasFiscaisRecebidas.AsNoTracking()
+            .Where(n => n.EmpresaId == req.EmpresaId && chavesEscr.Contains(n.ChaveAcesso))
+            .Select(n => new { n.ChaveAcesso, n.Numero, n.EmitenteNome }).ToListAsync(ct))
+            .ToDictionary(n => n.ChaveAcesso, n => new { n.Numero, n.EmitenteNome });
 
         var itensPedido = await db.ItensPedidoCompra.AsNoTracking()
             .Where(i => pedidoIds.Contains(i.PedidoCompraId))
@@ -424,7 +440,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 .Select(c => infoPorId.GetValueOrDefault(c.PedidoCompraId))
                 .Where(x => x is not null)
                 .GroupBy(x => x!.Numero)
-                .Select(gg => new { numero = gg.Key, status = gg.First()!.Status, aberto = gg.First()!.Aberto })
+                .Select(gg => new { numero = gg.Key, status = gg.First()!.Status, aberto = gg.First()!.Aberto,
+                    fornecedor = gg.First()!.Fornecedor, notaRecebida = gg.First()!.NotaRecebida })
                 .OrderBy(x => x.numero).ToList();
             // "Coberto" só por pedido EM ABERTO (não recebido).
             var pedidoAberto = casados.Where(c => infoPorId.TryGetValue(c.PedidoCompraId, out var i2) && i2.Aberto).Sum(c => c.Quantidade);
@@ -441,6 +458,27 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             DateTime? escrituradoEm = escr?.Em;
             var notaChegou = escr?.Nota != null && notasComLote.Contains(escr.Nota!);
             DateTime? loteEm = loteDataPorProduto.TryGetValue(it.ProdutoId, out var le) ? le : null;
+
+            // ORIGEM (de onde vem): NF escriturada (em trânsito/chegou), ou o pedido — com o
+            // fornecedor — para o usuário saber a procedência direto na conferência.
+            string? origemTipo = null, origemNota = null, origemFornecedor = null, origemPedido = null;
+            if (escr?.Nota != null && notaPorChave.TryGetValue(escr.Nota, out var niOrig))
+            {
+                origemTipo = "NF"; origemNota = niOrig.Numero.ToString(); origemFornecedor = niOrig.EmitenteNome;
+            }
+            else
+            {
+                var pedAb = pedidosDoItem.FirstOrDefault(p => p.aberto);
+                var pedRec = pedidosDoItem.FirstOrDefault(p => p.status == "Recebido");
+                var pedRef = pedAb ?? pedRec;
+                if (pedRef != null)
+                {
+                    origemTipo = "Pedido"; origemPedido = pedRef.numero; origemFornecedor = pedRef.fornecedor;
+                    // pedido recebido com a nota anotada no recebimento → mostra a NF a escriturar.
+                    if (pedRef == pedRec && !string.IsNullOrWhiteSpace(pedRef.notaRecebida))
+                    { origemTipo = "NF"; origemNota = pedRef.notaRecebida; }
+                }
+            }
 
             // Prioridade (o que o usuário precisa fazer):
             //  0) produto INATIVO (descontinuado/duplicado) → não pedir (sai do alerta)
@@ -477,6 +515,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 // Três datas: solicitação (req), escrituração da NF e lançamento do lote/validade.
                 escrituradoEm,
                 loteEm,
+                // Procedência: de qual NF/pedido e fornecedor o item está vindo.
+                origemTipo, origemNota, origemFornecedor, origemPedido,
                 // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido). CHEGOU = a atendente
                 // lançou o LOTE (chegada física); NF escriturada sozinha = EM TRÂNSITO (vai chegar).
                 //  ChegouFaltaValidade = lote lançado mas SEM validade (ação: preencher validade)
@@ -509,7 +549,8 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 faltaValidade = linhas.Count(l => l.estado == "ChegouFaltaValidade"),
                 faltaLote = linhas.Count(l => l.estado == "ChegouFaltaLote"),
                 atendente = true,
-                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado, l.escrituradoEm, l.loteEm }).ToList(),
+                itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado, l.escrituradoEm, l.loteEm,
+                    l.origemTipo, l.origemNota, l.origemFornecedor, l.origemPedido }).ToList(),
             });
         }
 

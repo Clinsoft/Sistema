@@ -1427,6 +1427,36 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { ids = pendentes });
     }
 
+    /// <summary>Reabre a ÚLTIMA remessa de etiquetas impressas desta loja (ex.: a impressora
+    /// estava desligada e as etiquetas "sumiram"). Apaga as marcas de impressão do dia mais
+    /// recente e reativa o flag para os produtos voltarem à lista de desatualizadas da loja.</summary>
+    [HttpPost("etiquetas-reabrir-ultima")]
+    public async Task<IActionResult> ReabrirUltimaImpressao([FromBody] ReabrirEtiquetasRequest req, CancellationToken ct)
+    {
+        if (req.LocalEstoqueId is not Guid loja) return BadRequest(new { erro = "Selecione uma loja." });
+
+        var marcas = await db.EtiquetasImpressasLoja
+            .Where(e => e.LocalEstoqueId == loja).ToListAsync(ct);
+        if (marcas.Count == 0) return Ok(new { reabertos = 0, produtos = Array.Empty<object>() });
+
+        // "Última remessa" = marcas do dia mais recente de impressão nesta loja.
+        var ultimoDia = marcas.Max(e => e.ImpressaEm).Date;
+        var doLote = marcas.Where(e => e.ImpressaEm.Date == ultimoDia).ToList();
+        var produtoIds = doLote.Select(e => e.ProdutoId).Distinct().ToList();
+
+        db.EtiquetasImpressasLoja.RemoveRange(doLote);
+        var produtos = await db.Produtos.Where(p => produtoIds.Contains(p.Id)).ToListAsync(ct);
+        foreach (var p in produtos) p.MarcarEtiquetaDesatualizada();
+        await uow.SalvarAsync(ct);
+
+        return Ok(new
+        {
+            reabertos = produtos.Count,
+            dia = ultimoDia,
+            produtos = produtos.Select(p => new { p.Id, p.Descricao }).ToList()
+        });
+    }
+
     /// <summary>
     /// Limpa as descrições dos produtos: apara espaços no início/fim e colapsa espaços
     /// repetidos. Espaço no fim do nome quebra a NFC-e (cStat 225 "Falha no Schema XML").
@@ -1703,6 +1733,7 @@ public record ProduzirRequest(Guid LocalEstoqueId, decimal Quantidade, bool Forc
 public record DefinirFornecedorRequest(Guid? FornecedorId);
 
 public record EtiquetasImpressasRequest(List<Guid> Ids, Guid? LocalEstoqueId = null);
+public record ReabrirEtiquetasRequest(Guid? LocalEstoqueId = null);
 public record ImportarProdutoItem(string Descricao, string? Ncm, decimal PrecoVenda, decimal? CustoUnitario = null);
 public record ImportarProdutosRequest(
     Guid EmpresaId, Guid CategoriaId, Guid MarcaId, Guid UnidadeMedidaId, List<ImportarProdutoItem> Itens);

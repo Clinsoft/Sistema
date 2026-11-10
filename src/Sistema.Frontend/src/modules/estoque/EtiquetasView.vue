@@ -256,6 +256,10 @@
               :loading="carregandoEnc" @click="carregarEncalhados('sem')">
               Adicionar encalhados sem etiqueta
             </v-btn>
+            <v-btn v-if="auth.lojaAtualId" size="small" color="deep-orange" variant="tonal"
+              prepend-icon="mdi-printer-alert" :loading="reabrindo" @click="reabrirUltimaImpressao">
+              Reimprimir — perdi a última impressão
+            </v-btn>
             <v-btn v-if="produtosSel.length" size="small" variant="text" color="error"
               prepend-icon="mdi-close" @click="produtosSel = []">
               Limpar ({{ produtosSel.length }})
@@ -874,6 +878,18 @@ function escHtml(s: string): string {
 // impressora). Layout em grade: por padrão 2 produtos por linha (gondolaColunas).
 // Após imprimir: marca as etiquetas como impressas (limpa o alerta/sininho)
 // e remove os produtos da lista.
+// Após mandar imprimir, confirma COM A ATENDENTE se as etiquetas realmente saíram antes
+// de marcá-las como impressas. Se ela disser que NÃO saiu (impressora desligada, travou),
+// os produtos continuam na lista para reimprimir — evita "mandei imprimir e sumiu".
+function confirmarImpressao(ids: string[]) {
+  if (!ids.length) return
+  setTimeout(() => {
+    const ok = confirm('As etiquetas saíram corretamente na impressora?\n\n• OK = saiu tudo (tira da lista)\n• Cancelar = não saiu (mantém na lista para reimprimir)')
+    if (ok) finalizarImpressao(ids)
+    else notif.aviso('Impressão não confirmada — as etiquetas continuam na lista para você tentar de novo.')
+  }, 700)
+}
+
 async function finalizarImpressao(ids: string[]) {
   if (!ids.length) return
   // Com loja selecionada, registra a reimpressão NAQUELA unidade (controle por loja).
@@ -927,7 +943,7 @@ function imprimirGondola() {
     <script>window.onload=function(){window.print();window.onafterprint=function(){window.close()}}<\/script>
     </body></html>`)
   win.document.close()
-  finalizarImpressao(idsImpressos)
+  confirmarImpressao(idsImpressos)
 }
 
 function baixarZpl() {
@@ -941,7 +957,7 @@ function baixarZpl() {
   a.click()
   URL.revokeObjectURL(url)
   enviarZebraDialog.value = false
-  finalizarImpressao(idsImpressos)
+  confirmarImpressao(idsImpressos)
 }
 
 // ── Busca de produtos ────────────────────────────────────────────────────────
@@ -1003,6 +1019,24 @@ async function carregarDesatualizadas() {
     else notif.ok(`${novos.length} produto(s) com etiqueta desatualizada${escopo} adicionado(s).`)
   } catch { notif.erro('Erro ao carregar as etiquetas desatualizadas.') }
   finally { carregandoDesat.value = false }
+}
+
+// Reabre a ÚLTIMA remessa de etiquetas impressas desta loja — pra quando a impressão
+// se perdeu (impressora desligada, travou, papel acabou) e as etiquetas "sumiram" da lista.
+const reabrindo = ref(false)
+async function reabrirUltimaImpressao() {
+  if (!auth.lojaAtualId) { notif.aviso('Selecione uma loja para reabrir a última impressão.'); return }
+  const escopo = auth.lojaAtual ? ` de ${auth.lojaAtual.nome}` : ''
+  if (!confirm(`Reabrir a ÚLTIMA remessa de etiquetas impressas${escopo}?\n\nUse quando a impressão se perdeu (impressora desligada, travou). Os produtos voltam para a lista para você reimprimir.`)) return
+  reabrindo.value = true
+  try {
+    const r = await api.post('/produtos/etiquetas-reabrir-ultima', { localEstoqueId: auth.lojaAtualId })
+    const n = r.data?.reabertos ?? 0
+    if (!n) { notif.aviso('Nenhuma impressão recente para reabrir nesta loja.'); return }
+    await carregarDesatualizadas()
+    notif.ok(`${n} etiqueta(s) reaberta(s) para reimpressão. Confira a lista e mande imprimir de novo.`)
+  } catch { notif.erro('Erro ao reabrir a última impressão.') }
+  finally { reabrindo.value = false }
 }
 
 // Carrega os ENCALHADOS (nunca vendidos) para imprimir etiqueta em lote. grupo: 'sem' | 'com' | 'todos'.
@@ -1152,7 +1186,7 @@ function imprimir() {
         escalaPreco: ecoCfg.value.escalaPreco,
       }
     )
-    finalizarImpressao(idsImpressos)
+    confirmarImpressao(idsImpressos)
     return
   }
 
@@ -1239,7 +1273,7 @@ function imprimir() {
     </body></html>
   `)
   w.document.close()
-  finalizarImpressao(idsImpressos)
+  confirmarImpressao(idsImpressos)
 }
 </script>
 

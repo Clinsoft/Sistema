@@ -203,8 +203,18 @@
                   :class="ehGestor ? (l.situacao === 'PrecisaPedir' ? 'bg-red-lighten-5' : ((l.situacao === 'RecebidoEscriturar' || l.jaPedido) ? 'bg-amber-lighten-5' : '')) : ''">
                   <td>
                     {{ l.descricao }}
+                    <div v-if="l.origemFornecedor || l.origemNota || l.origemPedido" class="text-caption" style="line-height:1.3">
+                      <v-icon size="12" :color="l.origemTipo === 'NF' ? 'indigo' : 'teal-darken-1'">
+                        {{ l.origemTipo === 'NF' ? 'mdi-file-document-outline' : 'mdi-cart-outline' }}
+                      </v-icon>
+                      <span class="text-medium-emphasis">
+                        <template v-if="l.origemTipo === 'NF'">Vindo da <b>NF {{ l.origemNota }}</b></template>
+                        <template v-else>Pedido <b>{{ l.origemPedido }}</b></template>
+                        <template v-if="l.origemFornecedor"> · {{ l.origemFornecedor }}</template>
+                      </span>
+                    </div>
                     <div v-if="l.escrituradoEm || l.loteEm" class="text-caption text-medium-emphasis" style="line-height:1.3">
-                      <span v-if="l.escrituradoEm"><v-icon size="11">mdi-file-document-outline</v-icon> NF: {{ fmtData(l.escrituradoEm) }}</span>
+                      <span v-if="l.escrituradoEm"><v-icon size="11">mdi-calendar-check</v-icon> Escriturada: {{ fmtData(l.escrituradoEm) }}</span>
                       <span v-if="l.loteEm" class="ml-2"><v-icon size="11">mdi-package-variant-closed</v-icon> Lote/val.: {{ fmtData(l.loteEm) }}</span>
                     </div>
                   </td>

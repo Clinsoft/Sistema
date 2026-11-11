@@ -48,6 +48,7 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
     public DbSet<Lote> Lotes => Set<Lote>();
     public DbSet<MovimentacaoEstoque> MovimentacoesEstoque => Set<MovimentacaoEstoque>();
     public DbSet<EtiquetaImpressaLoja> EtiquetasImpressasLoja => Set<EtiquetaImpressaLoja>();
+    public DbSet<Sistema.Domain.Compras.Entities.RecebimentoMercadoria> RecebimentosMercadoria => Set<Sistema.Domain.Compras.Entities.RecebimentoMercadoria>();
     public DbSet<TabelaNutricional> TabelasNutricionais => Set<TabelaNutricional>();
     public DbSet<ReceitaProduto> ReceitasProduto => Set<ReceitaProduto>();
     public DbSet<SugestaoProduto> SugestoesProduto => Set<SugestaoProduto>();
@@ -146,6 +147,10 @@ public class SistemaDbContext(DbContextOptions<SistemaDbContext> options, IMedia
 
         // Uma linha por produto+loja (upsert da reimpressão de etiqueta por unidade).
         modelBuilder.Entity<EtiquetaImpressaLoja>()
+            .HasIndex(e => new { e.ProdutoId, e.LocalEstoqueId }).IsUnique();
+
+        // Confirmação de recebimento físico: 1 linha por produto+loja (upsert no "Recebi").
+        modelBuilder.Entity<Sistema.Domain.Compras.Entities.RecebimentoMercadoria>()
             .HasIndex(e => new { e.ProdutoId, e.LocalEstoqueId }).IsUnique();
 
         // Todas as entidades geram o Id no domínio (Entity: Id = Guid.NewGuid()).

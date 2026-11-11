@@ -740,6 +740,43 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.ToTable("PedidosCompra", (string)null);
                 });
 
+            modelBuilder.Entity("Sistema.Domain.Compras.Entities.RecebimentoMercadoria", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AtualizadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ChaveNota")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("EmpresaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LocalEstoqueId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProdutoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RecebidoEm")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RecebidoPorUsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProdutoId", "LocalEstoqueId")
+                        .IsUnique();
+
+                    b.ToTable("RecebimentosMercadoria");
+                });
+
             modelBuilder.Entity("Sistema.Domain.Compras.Entities.RequisicaoCompra", b =>
                 {
                     b.Property<Guid>("Id")

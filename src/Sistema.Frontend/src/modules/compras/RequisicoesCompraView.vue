@@ -285,6 +285,16 @@
                     <v-chip v-else size="small" color="success" variant="tonal">
                       <v-icon start size="14">mdi-check-circle-outline</v-icon>Estoque OK
                     </v-chip>
+                    <!-- Confirmação de chegada física: tira de "Em trânsito" e marca "Chegou". -->
+                    <div v-if="l.emTransito && det.status !== 'Cancelada'" class="mt-1">
+                      <v-btn size="x-small" color="success" variant="flat" prepend-icon="mdi-check-bold"
+                        :loading="recebendo===l.produtoId" @click="confirmarRecebimento(l)">Recebi — chegou</v-btn>
+                    </div>
+                    <div v-else-if="l.recebidoEm" class="text-caption text-success mt-1">
+                      <v-icon size="11">mdi-check</v-icon> Recebido {{ fmtData(l.recebidoEm) }}
+                      <a class="ml-1 text-caption text-medium-emphasis" style="cursor:pointer"
+                        @click="desfazerRecebimento(l)">desfazer</a>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -618,6 +628,32 @@ async function carregarConferencia() {
       data.itens = [...data.itens].sort((a: any, b: any) => (a.descricao ?? '').localeCompare(b.descricao ?? '', 'pt-BR'))
     conf.value = data
   } catch { conf.value = null }
+}
+
+// Confirma a chegada física do produto (botão "Recebi"): tira de "Em trânsito" → "Chegou".
+const recebendo = ref<string | null>(null)
+function lojaDaConferencia() { return det.value?.localEstoqueId ?? lojaAtual.value }
+async function confirmarRecebimento(l: any) {
+  const loja = lojaDaConferencia()
+  if (!loja) { notif.aviso('Sem loja definida para confirmar o recebimento.'); return }
+  recebendo.value = l.produtoId
+  try {
+    await api.post('/requisicoes-compra/conferencia/receber', {
+      produtoId: l.produtoId, localEstoqueId: loja, usuarioId: auth.usuario?.id ?? null,
+    })
+    await carregarConferencia()
+    notif.ok(`${l.descricao} marcado como recebido.`)
+  } catch { notif.erro('Erro ao confirmar o recebimento.') }
+  finally { recebendo.value = null }
+}
+async function desfazerRecebimento(l: any) {
+  const loja = lojaDaConferencia()
+  if (!loja) return
+  try {
+    await api.delete('/requisicoes-compra/conferencia/receber', { params: { produtoId: l.produtoId, localEstoqueId: loja } })
+    await carregarConferencia()
+    notif.ok(`${l.descricao} voltou para "em trânsito".`)
+  } catch { notif.erro('Erro ao desfazer o recebimento.') }
 }
 
 const porFornecedor = computed(() => {

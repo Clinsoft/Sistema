@@ -336,6 +336,31 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             });
         var chegaramSet = escrituradoPorProduto.Keys.ToHashSet();
 
+        // === EM TRÂNSITO x CHEGOU (confirmação de recebimento físico) ===
+        // Fornecedores que mandam o XML já com lote e validade (ex.: Vida em Grãos) criam
+        // entrada + lote na IMPORTAÇÃO, antes de a mercadoria chegar. Então a chegada física
+        // é confirmada pela atendente ("Recebi"), não pela presença do lote. Janela ampliada
+        // (30 dias antes da requisição) p/ pegar a NF emitida pouco antes de abrir a requisição.
+        var transitoDesde = req.CriadoEm.AddDays(-30);
+        var entradasAmplas = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.EmpresaId == req.EmpresaId && m.LocalEstoqueId == req.LocalEstoqueId
+                && m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada
+                && m.CriadoEm >= transitoDesde && reqProdutoIds.Contains(m.ProdutoId))
+            .Select(m => new { m.ProdutoId, m.CriadoEm, m.DocumentoOrigem }).ToListAsync(ct);
+        var ultEntradaPorProduto = entradasAmplas.GroupBy(e => e.ProdutoId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CriadoEm).First());
+        var recebidoPorProduto = (await db.Set<Sistema.Domain.Compras.Entities.RecebimentoMercadoria>().AsNoTracking()
+                .Where(x => x.EmpresaId == req.EmpresaId && x.LocalEstoqueId == req.LocalEstoqueId
+                    && reqProdutoIds.Contains(x.ProdutoId))
+                .Select(x => new { x.ProdutoId, x.RecebidoEm }).ToListAsync(ct))
+            .ToDictionary(x => x.ProdutoId, x => x.RecebidoEm);
+        // Em trânsito = tem escrituração recente e ainda NÃO foi recebida fisicamente
+        // (sem "Recebi", ou o "Recebi" é anterior a esta escrituração — nota nova chegando).
+        bool EmTransito(Guid pid) =>
+            ultEntradaPorProduto.TryGetValue(pid, out var ent)
+            && (!recebidoPorProduto.TryGetValue(pid, out var rec) || rec < ent.CriadoEm);
+        var emTransitoSet = reqProdutoIds.Where(EmTransito).ToHashSet();
+
         // Pedidos NÃO cancelados da MESMA loja. Só os EM ABERTO (Rascunho/Enviado) contam como
         // "a caminho" — pedido Recebido já chegou (é histórico) e NÃO cobre a necessidade atual.
         var pedidosLoja = await db.PedidosCompra.AsNoTracking()
@@ -357,7 +382,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         });
 
         // NF escriturada de cada produto: mapeia a CHAVE (DocumentoOrigem da entrada) para número + emitente.
-        var chavesEscr = escrituradoPorProduto.Values.Where(x => x.Nota != null).Select(x => x.Nota!).Distinct().ToList();
+        var chavesEscr = escrituradoPorProduto.Values.Where(x => x.Nota != null).Select(x => x.Nota!)
+            .Concat(ultEntradaPorProduto.Values.Where(x => x.DocumentoOrigem != null).Select(x => x.DocumentoOrigem!))
+            .Distinct().ToList();
         var notaPorChave = (await db.NotasFiscaisRecebidas.AsNoTracking()
             .Where(n => n.EmpresaId == req.EmpresaId && chavesEscr.Contains(n.ChaveAcesso))
             .Select(n => new { n.ChaveAcesso, n.Numero, n.EmitenteNome }).ToListAsync(ct))
@@ -446,7 +473,11 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             // "Coberto" só por pedido EM ABERTO (não recebido).
             var pedidoAberto = casados.Where(c => infoPorId.TryGetValue(c.PedidoCompraId, out var i2) && i2.Aberto).Sum(c => c.Quantidade);
             var jaPedido = pedidoAberto > 0;
-            var vaiChegar = chegaramSet.Contains(it.ProdutoId);
+            // Escrituração recente (NF importada) + confirmação de recebimento físico ("Recebi").
+            var temEscrRecente = ultEntradaPorProduto.ContainsKey(it.ProdutoId);
+            var emTransito = emTransitoSet.Contains(it.ProdutoId);
+            var recebidoFisico = temEscrRecente && !emTransito;     // escriturada E já recebida
+            var vaiChegar = chegaramSet.Contains(it.ProdutoId) || temEscrRecente;
             var estoqueLoja = saldos.GetValueOrDefault(it.ProdutoId, 0m);
             var minimo = minimos.GetValueOrDefault(it.ProdutoId, 0m);
             var estoqueBaixo = estoqueLoja <= minimo;
@@ -455,14 +486,17 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
 
             // Datas e cruzamento por nota.
             escrituradoPorProduto.TryGetValue(it.ProdutoId, out var escr);
-            DateTime? escrituradoEm = escr?.Em;
-            var notaChegou = escr?.Nota != null && notasComLote.Contains(escr.Nota!);
+            ultEntradaPorProduto.TryGetValue(it.ProdutoId, out var ultEnt);
+            // Mostra a escrituração mais recente (a nota que está chegando), mesmo anterior à requisição.
+            DateTime? escrituradoEm = ultEnt?.CriadoEm ?? escr?.Em;
+            var chaveOrigem = ultEnt?.DocumentoOrigem ?? escr?.Nota;
             DateTime? loteEm = loteDataPorProduto.TryGetValue(it.ProdutoId, out var le) ? le : null;
+            DateTime? recebidoEm = recebidoPorProduto.TryGetValue(it.ProdutoId, out var rdt) ? rdt : null;
 
             // ORIGEM (de onde vem): NF escriturada (em trânsito/chegou), ou o pedido — com o
             // fornecedor — para o usuário saber a procedência direto na conferência.
             string? origemTipo = null, origemNota = null, origemFornecedor = null, origemPedido = null;
-            if (escr?.Nota != null && notaPorChave.TryGetValue(escr.Nota, out var niOrig))
+            if (chaveOrigem != null && notaPorChave.TryGetValue(chaveOrigem, out var niOrig))
             {
                 origemTipo = "NF"; origemNota = niOrig.Numero.ToString(); origemFornecedor = niOrig.EmitenteNome;
             }
@@ -490,8 +524,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             //  5) resto → Estoque OK
             string situacao;
             if (!ativo) situacao = "Inativo";
+            else if (emTransito) situacao = "VaiChegar";          // comprada/escriturada, aguardando chegar
+            else if (recebidoFisico) situacao = "Aguardando";     // chegou e já entrou no estoque
             else if (jaPedido) situacao = "JaPedido";
-            else if (vaiChegar) situacao = "VaiChegar";
             else if (estoqueBaixo && temRecebido) situacao = "RecebidoEscriturar";
             else if (estoqueBaixo) situacao = "PrecisaPedir";
             else situacao = "Aguardando";
@@ -517,21 +552,28 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 loteEm,
                 // Procedência: de qual NF/pedido e fornecedor o item está vindo.
                 origemTipo, origemNota, origemFornecedor, origemPedido,
+                // Recebimento físico: em trânsito (aguarda "Recebi") e quando foi recebido.
+                emTransito, recebidoEm,
                 // Estado p/ a ATENDENTE (sem revelar estoque/custo/pedido). CHEGOU = a atendente
                 // lançou o LOTE (chegada física); NF escriturada sozinha = EM TRÂNSITO (vai chegar).
                 //  ChegouFaltaValidade = lote lançado mas SEM validade (ação: preencher validade)
                 //  ChegouFaltaLote     = a NOTA já chegou (outros itens dela têm lote) mas ESTE ainda sem lote (ação: lançar o lote)
-                //  Chegou              = lote + validade lançados (ou produto que não controla validade, já escriturado)
-                //  EmTransito          = NF escriturada mas a nota ainda não teve nenhum lote — vai chegar
+                //  Chegou              = recebimento confirmado ("Recebi") — chegou de verdade na loja
+                //  EmTransito          = NF escriturada/importada mas ainda não confirmada o recebimento
                 //  AindaNaoPedido      = sem NF escriturada — inclui pedido só "enviado" sem confirmação
+                // A chegada é confirmada pela atendente ("Recebi"), não pela presença do lote — alguns
+                // fornecedores mandam o XML já com lote/validade antes de a mercadoria chegar.
                 estado =
-                    controlaValidade.GetValueOrDefault(it.ProdutoId, false)
+                    emTransito ? "EmTransito"
+                  : recebidoFisico
+                      ? ((controlaValidade.GetValueOrDefault(it.ProdutoId, false) && faltaValidadeSet.Contains(it.ProdutoId))
+                            ? "ChegouFaltaValidade" : "Chegou")
+                  : controlaValidade.GetValueOrDefault(it.ProdutoId, false)
                       ? (faltaValidadeSet.Contains(it.ProdutoId) ? "ChegouFaltaValidade"
                          : loteComValidadeSet.Contains(it.ProdutoId) ? "Chegou"
-                         : vaiChegar ? (notaChegou ? "ChegouFaltaLote" : "EmTransito")
                          : jaPedido ? "JaPedido"
                          : "AindaNaoPedido")
-                      : (vaiChegar ? "Chegou" : jaPedido ? "JaPedido" : "AindaNaoPedido"),
+                      : (jaPedido ? "JaPedido" : "AindaNaoPedido"),
             };
         }).ToList();
 
@@ -550,7 +592,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 faltaLote = linhas.Count(l => l.estado == "ChegouFaltaLote"),
                 atendente = true,
                 itens = linhas.Select(l => new { l.produtoId, l.descricao, l.requisitado, l.estado, l.escrituradoEm, l.loteEm,
-                    l.origemTipo, l.origemNota, l.origemFornecedor, l.origemPedido }).ToList(),
+                    l.origemTipo, l.origemNota, l.origemFornecedor, l.origemPedido, l.emTransito, l.recebidoEm }).ToList(),
             });
         }
 
@@ -570,6 +612,43 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             completo = linhas.All(l => l.situacao is "VaiChegar" or "JaPedido" or "RecebidoEscriturar" or "Aguardando" or "Inativo"),
             itens = linhas,
         });
+    }
+
+    /// <summary>Confirma o RECEBIMENTO FÍSICO de um produto na loja (botão "Recebi" da conferência).
+    /// Tira o item de "Em trânsito" e marca "Chegou". Necessário porque alguns fornecedores mandam
+    /// o XML já com lote/validade — a presença do lote não garante que a mercadoria chegou.</summary>
+    [HttpPost("conferencia/receber")]
+    public async Task<IActionResult> ConfirmarRecebimento([FromBody] ReceberMercadoriaRequest req, CancellationToken ct)
+    {
+        if (req.ProdutoId == Guid.Empty || req.LocalEstoqueId == Guid.Empty)
+            return BadRequest(new { erro = "Produto e loja são obrigatórios." });
+        var empresaId = await db.Produtos.Where(p => p.Id == req.ProdutoId).Select(p => p.EmpresaId).FirstOrDefaultAsync(ct);
+        if (empresaId == Guid.Empty) return NotFound();
+        // Chave da última NF escriturada dessa loja (apenas rastro do que estava chegando).
+        var chave = await db.MovimentacoesEstoque.AsNoTracking()
+            .Where(m => m.ProdutoId == req.ProdutoId && m.LocalEstoqueId == req.LocalEstoqueId
+                && m.Tipo == Sistema.Domain.Estoque.Entities.TipoMovimentacao.Entrada)
+            .OrderByDescending(m => m.CriadoEm).Select(m => m.DocumentoOrigem).FirstOrDefaultAsync(ct);
+        var existente = await db.RecebimentosMercadoria
+            .FirstOrDefaultAsync(x => x.ProdutoId == req.ProdutoId && x.LocalEstoqueId == req.LocalEstoqueId, ct);
+        if (existente is null)
+            db.RecebimentosMercadoria.Add(Sistema.Domain.Compras.Entities.RecebimentoMercadoria.Criar(
+                empresaId, req.LocalEstoqueId, req.ProdutoId, chave, req.UsuarioId));
+        else
+            existente.Reconfirmar(chave, req.UsuarioId);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Desfaz a confirmação de recebimento (volta o item para "Em trânsito").</summary>
+    [HttpDelete("conferencia/receber")]
+    public async Task<IActionResult> DesfazerRecebimento([FromQuery] Guid produtoId,
+        [FromQuery] Guid localEstoqueId, CancellationToken ct)
+    {
+        var existente = await db.RecebimentosMercadoria
+            .FirstOrDefaultAsync(x => x.ProdutoId == produtoId && x.LocalEstoqueId == localEstoqueId, ct);
+        if (existente != null) { db.RecebimentosMercadoria.Remove(existente); await db.SaveChangesAsync(ct); }
+        return Ok(new { ok = true });
     }
 
     /// <summary>Move um item da requisição para outro fornecedor (override do fornecedor
@@ -645,3 +724,4 @@ public record AdicionarItensRequisicaoRequest(List<ItemRequisicaoRequest> Itens)
 public record ConsolidarRequest(Guid EmpresaId, Guid UsuarioId);
 
 public record MoverItemFornecedorRequest(Guid? FornecedorId);
+public record ReceberMercadoriaRequest(Guid ProdutoId, Guid LocalEstoqueId, Guid? UsuarioId = null);

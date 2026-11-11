@@ -563,6 +563,17 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
             item?.DefinirLote(lote.NumeroLote, req.DataValidade, lote.Id);
         }
 
+        // Registrar a validade/lote = a secretária CONFERIU o produto fisicamente na loja.
+        // Isso marca a CHEGADA (tira de "Em trânsito" na conferência de compras) — a confirmação
+        // acontece aqui, na conferência da nota, não na tela de compras.
+        var receb = await db.RecebimentosMercadoria
+            .FirstOrDefaultAsync(x => x.ProdutoId == lote.ProdutoId && x.LocalEstoqueId == lote.LocalEstoqueId, ct);
+        if (receb is null)
+            db.RecebimentosMercadoria.Add(Sistema.Domain.Compras.Entities.RecebimentoMercadoria.Criar(
+                req.EmpresaId, lote.LocalEstoqueId, lote.ProdutoId, null, null));
+        else
+            receb.Reconfirmar(null, null);
+
         await uow.SalvarAsync(ct);
         return Ok(new { lote.Id, mensagem, imagemUrl = lote.ImagemUrl });
     }

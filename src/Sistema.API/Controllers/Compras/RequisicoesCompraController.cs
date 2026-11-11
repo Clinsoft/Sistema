@@ -354,12 +354,19 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                     && reqProdutoIds.Contains(x.ProdutoId))
                 .Select(x => new { x.ProdutoId, x.RecebidoEm }).ToListAsync(ct))
             .ToDictionary(x => x.ProdutoId, x => x.RecebidoEm);
-        // Em trânsito = tem escrituração recente e ainda NÃO foi recebida fisicamente
-        // (sem "Recebi", ou o "Recebi" é anterior a esta escrituração — nota nova chegando).
-        bool EmTransito(Guid pid) =>
+        // Só escrituração RECENTE (últimos 10 dias) pede confirmação de recebimento — o que
+        // chegou há semanas já está no estoque e não deve reaparecer como "em trânsito".
+        var recenteDesde = DateTime.UtcNow.AddDays(-10);
+        bool EscrRecente(Guid pid) =>
+            ultEntradaPorProduto.TryGetValue(pid, out var ent) && ent.CriadoEm >= recenteDesde;
+        bool Recebido(Guid pid) =>
             ultEntradaPorProduto.TryGetValue(pid, out var ent)
-            && (!recebidoPorProduto.TryGetValue(pid, out var rec) || rec < ent.CriadoEm);
-        var emTransitoSet = reqProdutoIds.Where(EmTransito).ToHashSet();
+            && recebidoPorProduto.TryGetValue(pid, out var rec) && rec >= ent.CriadoEm;
+        // Em trânsito = escriturado há pouco e ainda sem "Recebi". Recebido = escriturado há
+        // pouco e com "Recebi" confirmado. Produtos escriturados há mais de 10 dias caem na
+        // lógica original (sem pedir confirmação).
+        var emTransitoSet = reqProdutoIds.Where(p => EscrRecente(p) && !Recebido(p)).ToHashSet();
+        var recebidoFisicoSet = reqProdutoIds.Where(p => EscrRecente(p) && Recebido(p)).ToHashSet();
 
         // Pedidos NÃO cancelados da MESMA loja. Só os EM ABERTO (Rascunho/Enviado) contam como
         // "a caminho" — pedido Recebido já chegou (é histórico) e NÃO cobre a necessidade atual.
@@ -474,10 +481,9 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             var pedidoAberto = casados.Where(c => infoPorId.TryGetValue(c.PedidoCompraId, out var i2) && i2.Aberto).Sum(c => c.Quantidade);
             var jaPedido = pedidoAberto > 0;
             // Escrituração recente (NF importada) + confirmação de recebimento físico ("Recebi").
-            var temEscrRecente = ultEntradaPorProduto.ContainsKey(it.ProdutoId);
             var emTransito = emTransitoSet.Contains(it.ProdutoId);
-            var recebidoFisico = temEscrRecente && !emTransito;     // escriturada E já recebida
-            var vaiChegar = chegaramSet.Contains(it.ProdutoId) || temEscrRecente;
+            var recebidoFisico = recebidoFisicoSet.Contains(it.ProdutoId);
+            var vaiChegar = chegaramSet.Contains(it.ProdutoId);
             var estoqueLoja = saldos.GetValueOrDefault(it.ProdutoId, 0m);
             var minimo = minimos.GetValueOrDefault(it.ProdutoId, 0m);
             var estoqueBaixo = estoqueLoja <= minimo;
@@ -490,6 +496,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             // Mostra a escrituração mais recente (a nota que está chegando), mesmo anterior à requisição.
             DateTime? escrituradoEm = ultEnt?.CriadoEm ?? escr?.Em;
             var chaveOrigem = ultEnt?.DocumentoOrigem ?? escr?.Nota;
+            var notaChegou = escr?.Nota != null && notasComLote.Contains(escr.Nota!);
             DateTime? loteEm = loteDataPorProduto.TryGetValue(it.ProdutoId, out var le) ? le : null;
             DateTime? recebidoEm = recebidoPorProduto.TryGetValue(it.ProdutoId, out var rdt) ? rdt : null;
 
@@ -527,6 +534,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
             else if (emTransito) situacao = "VaiChegar";          // comprada/escriturada, aguardando chegar
             else if (recebidoFisico) situacao = "Aguardando";     // chegou e já entrou no estoque
             else if (jaPedido) situacao = "JaPedido";
+            else if (vaiChegar) situacao = "VaiChegar";           // escriturada desde a requisição
             else if (estoqueBaixo && temRecebido) situacao = "RecebidoEscriturar";
             else if (estoqueBaixo) situacao = "PrecisaPedir";
             else situacao = "Aguardando";
@@ -546,7 +554,7 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                 estoquePorLoja = saldoPorLoja.GetValueOrDefault(it.ProdutoId),
                 pedidos = pedidosDoItem,
                 situacao,
-                coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar,
+                coberto = pedidosDoItem.Any(p => p.status == "Enviado") || vaiChegar || emTransito || recebidoFisico,
                 // Três datas: solicitação (req), escrituração da NF e lançamento do lote/validade.
                 escrituradoEm,
                 loteEm,
@@ -571,9 +579,10 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
                   : controlaValidade.GetValueOrDefault(it.ProdutoId, false)
                       ? (faltaValidadeSet.Contains(it.ProdutoId) ? "ChegouFaltaValidade"
                          : loteComValidadeSet.Contains(it.ProdutoId) ? "Chegou"
+                         : vaiChegar ? (notaChegou ? "ChegouFaltaLote" : "EmTransito")
                          : jaPedido ? "JaPedido"
                          : "AindaNaoPedido")
-                      : (jaPedido ? "JaPedido" : "AindaNaoPedido"),
+                      : (vaiChegar ? "Chegou" : jaPedido ? "JaPedido" : "AindaNaoPedido"),
             };
         }).ToList();
 

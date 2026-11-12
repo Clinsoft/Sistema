@@ -19,7 +19,7 @@
       titulo="Como usar o Controle de Validade"
       :passos="[
         '<b>Monitoramento</b>: veja os lotes que estão vencidos ou próximos do vencimento, agrupados por status (Vencido, Urgente, Vermelho, Amarelo). Clique nos cards/chips para filtrar e acompanhe o <b>valor em risco</b>.',
-        '<b>Registrar Validade</b>: dois modos. <b>Por código de barras</b> — escaneie (ou digite) o código, informe a data e clique em Registrar. <b>Por nota fiscal</b> — digite o número da NF de entrada para listar os produtos e registre a validade de cada um; você pode <b>tirar foto da etiqueta</b> com o celular para o sistema ler a data automaticamente.',
+        '<b>Registrar Validade</b>: dois modos. <b>Por código de barras</b> — escaneie (ou digite) o código, informe a data e clique em Registrar. <b>Por nota fiscal</b> — digite o número da NF de entrada para listar os produtos (vem tudo preenchido do XML) e registre a validade de cada um; você pode <b>tirar foto da etiqueta</b> com o celular para o sistema ler a data automaticamente. <b>Importante:</b> ao registrar a validade da nota você está <b>conferindo o produto fisicamente na loja</b> — com isso o sistema marca que a mercadoria <b>chegou</b> (ela sai de \"Em trânsito\" na conferência de compras).',
         '<b>Lotes</b>: cadastre um <b>Novo Lote</b> (produto, local, número, quantidade, custo, validade e fabricação). Na tabela você pode <b>editar</b> (✏️), <b>excluir</b> (🗑️) ou <b>transferir</b> (⇄) o lote para outra filial.',
         'Em <b>Configurações</b> defina os prazos de alerta (amarelo/vermelho/urgente) e o desconto automático. Os prazos alimentam os status do painel de monitoramento.',
       ]"

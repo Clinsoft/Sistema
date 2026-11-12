@@ -45,6 +45,7 @@ public class ProdutoRepository(SistemaDbContext db) : BaseRepository<Produto>(db
                 p.Descricao.Contains(termo) ||
                 p.Codigo.Contains(termo) ||
                 (p.CodigoBarras != null && p.CodigoBarras.Contains(termo)) ||
+                (p.CodigoFornecedorPrincipal != null && p.CodigoFornecedorPrincipal.Contains(termo)) ||
                 (p.CodigoPlu != null && p.CodigoPlu.ToString() == termo));
 
         if (categoriaId.HasValue) query = query.Where(p => p.CategoriaId == categoriaId);
@@ -83,6 +84,8 @@ public class ProdutoRepository(SistemaDbContext db) : BaseRepository<Produto>(db
         var query = _set.Where(p => p.EmpresaId == empresaId);
         if (!string.IsNullOrEmpty(termo))
             query = query.Where(p => p.Descricao.Contains(termo) || p.Codigo.Contains(termo)
+                || (p.CodigoBarras != null && p.CodigoBarras.Contains(termo))
+                || (p.CodigoFornecedorPrincipal != null && p.CodigoFornecedorPrincipal.Contains(termo))
                 || (p.CodigoPlu != null && p.CodigoPlu.ToString() == termo));
         if (categoriaId.HasValue) query = query.Where(p => p.CategoriaId == categoriaId);
         if (ativo.HasValue) query = query.Where(p => p.Ativo == ativo);

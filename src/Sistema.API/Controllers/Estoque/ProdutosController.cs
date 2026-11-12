@@ -968,8 +968,10 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         [FromQuery] Guid empresaId, [FromQuery] string? q,
         CancellationToken ct = default)
     {
+        // Limite alto: a busca do PDV precisa trazer TODOS os produtos de uma marca/termo
+        // (ex.: "da fazenda" tem dezenas) para o operador escolher na lista, senão corta.
         var resultado = await mediator.Send(
-            new ListarProdutosQuery(empresaId, q, null, null, true, 1, 20), ct);
+            new ListarProdutosQuery(empresaId, q, null, null, true, 1, 200), ct);
         return Ok(resultado.Itens);
     }
 

@@ -324,6 +324,12 @@ public class Produto : Entity
         CategoriaId = categoriaId;
         MarcaId = marcaId;
         UnidadeMedidaId = unidadeMedidaId;
+        // Só grava o código de barras quando vier preenchido. O fluxo de criação
+        // (o POST já define o EAN) faz um PUT depois SEM o EAN (nulo) — tratar nulo
+        // como "não mexer" evita apagar o código recém-gravado; a tela de edição, ao
+        // enviar o EAN, passa a atualizá-lo (antes era ignorado = bug de EAN sumido).
+        if (!string.IsNullOrWhiteSpace(codigoBarras))
+            CodigoBarras = codigoBarras.Trim();
         Ncm = ncm;
         EstoqueMinimo = estoqueMinimo;
         Ativo = ativo;

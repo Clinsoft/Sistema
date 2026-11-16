@@ -169,20 +169,40 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var mc90Loja = hist90.ToDictionary(x => x.Loja,
             x => x.Rec > 0 ? Math.Round((x.Rec - x.Cus) / x.Rec * 100, 2) : 0m);
 
-        // Custos fixos = TODAS as contas a pagar do mês (igual ao consolidado), separando
-        // as que têm loja (diretas) das sem loja (rateadas pelo faturamento).
+        // Custos fixos = TODAS as contas a pagar do mês (igual ao consolidado), separando:
+        //  • DIRETAS   = lançamento com loja marcada (ex.: salário já leva a loja do colaborador);
+        //  • FOLHA     = agregados da folha SEM loja (FGTS/INSS/provisões — DocumentoOrigem "FOLHA yyyy-MM"
+        //                e sem ColaboradorId) → rateados por Nº DE FUNCIONÁRIOS de cada loja;
+        //  • DEMAIS    = os outros compartilhados (financiamento, contador, pró-labore) → por faturamento.
         var contas = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
-            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId })
+            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem, l.ColaboradorId })
             .ToListAsync(ct);
 
         var diretaLoja = contas.Where(c => c.LocalEstoqueId != null)
             .GroupBy(c => c.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
-        var custoCompartilhado = contas.Where(c => c.LocalEstoqueId == null).Sum(c => c.ValorOriginal);
+
+        bool EhFolhaAgregada(string? doc, Guid? colab) =>
+            colab == null && doc != null && doc.StartsWith("FOLHA ");
+        var custoFolha = contas.Where(c => c.LocalEstoqueId == null
+            && EhFolhaAgregada(c.DocumentoOrigem, c.ColaboradorId)).Sum(c => c.ValorOriginal);
+        var custoDemaisComp = contas.Where(c => c.LocalEstoqueId == null
+            && !EhFolhaAgregada(c.DocumentoOrigem, c.ColaboradorId)).Sum(c => c.ValorOriginal);
+
+        // Nº de funcionários CLT por loja (fonte: usuários com salário, excluindo sócios).
+        var funcs = await db.Usuarios.AsNoTracking()
+            .Where(u => u.EmpresaId == empresaId && u.Ativo
+                && u.Salario != null && u.LocalEstoqueId != null)
+            .Select(u => new { u.Cargo, u.LocalEstoqueId })
+            .ToListAsync(ct);
+        var headPorLoja = funcs.Where(f => !EhSocio(f.Cargo))
+            .GroupBy(f => f.LocalEstoqueId!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+        var headTotal = headPorLoja.Values.Sum();
 
         var receitaTotal = receitaLoja.Values.Sum();
         var nLojas = Math.Max(lojas.Count, 1);
@@ -202,11 +222,16 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 estimada = true;
             }
 
-            // Rateio das despesas sem loja: pela participação no faturamento; se o mês
-            // ainda não tem faturamento, divide igualmente entre as lojas.
-            var share = receitaTotal > 0 ? receita / receitaTotal : 1m / nLojas;
+            // Rateio: FOLHA pela participação de funcionários; DEMAIS pelo faturamento.
+            // Se faltar a base (sem funcionário / sem faturamento), cai no outro critério
+            // (e, não havendo nenhum, divide igualmente entre as lojas).
+            var shareFat = receitaTotal > 0 ? receita / receitaTotal : 1m / nLojas;
+            var shareHead = headTotal > 0
+                ? (headPorLoja.TryGetValue(loja.Id, out var h) ? (decimal)h / headTotal : 0m)
+                : shareFat;
             var direta = diretaLoja.TryGetValue(loja.Id, out var d) ? d : 0m;
-            var custosFixos = Math.Round(direta + custoCompartilhado * share, 2);
+            var rateada = custoFolha * shareHead + custoDemaisComp * shareFat;
+            var custosFixos = Math.Round(direta + rateada, 2);
 
             var pe = percMC > 0 ? Math.Round(custosFixos / (percMC / 100m), 2) : 0m;
             var percAtingido = pe > 0 ? Math.Round(receita / pe * 100, 2) : 0m;
@@ -223,8 +248,9 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 margemEstimada = estimada,
                 custosFixos,
                 custosFixosDiretos = Math.Round(direta, 2),
-                custosFixosRateados = Math.Round(custoCompartilhado * share, 2),
-                participacaoReceita = Math.Round(share * 100, 1),
+                custosFixosRateados = Math.Round(rateada, 2),
+                funcionarios = headPorLoja.TryGetValue(loja.Id, out var hc) ? hc : 0,
+                participacaoReceita = Math.Round(shareFat * 100, 1),
                 pontoEquilibrio = pe,
                 percentualAtingido = percAtingido,
                 peAtingido = atingido,
@@ -237,7 +263,10 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         {
             periodo = new { ano = anoRef, mes = mesRef },
             totalCustosFixos = Math.Round(contas.Sum(c => c.ValorOriginal), 2),
-            custoCompartilhado = Math.Round(custoCompartilhado, 2),
+            custoCompartilhado = Math.Round(custoFolha + custoDemaisComp, 2),
+            custoFolhaRateada = Math.Round(custoFolha, 2),
+            custoDemaisRateado = Math.Round(custoDemaisComp, 2),
+            totalFuncionarios = headTotal,
             lojas = resultado,
             totais = new
             {
@@ -245,8 +274,17 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 custosFixos = Math.Round(resultado.Sum(x => x.custosFixos), 2),
                 pontoEquilibrio = Math.Round(resultado.Sum(x => x.pontoEquilibrio), 2),
             },
-            observacao = "Custos fixos sem loja definida são rateados entre as lojas pela participação no faturamento."
+            observacao = "Folha sem loja (FGTS/INSS/provisões) rateada por nº de funcionários de cada loja; demais custos sem loja, pela participação no faturamento."
         });
+    }
+
+    /// <summary>Sócio/proprietário (pró-labore, sem FGTS) — excluído da contagem de funcionários CLT.</summary>
+    private static bool EhSocio(string? cargo)
+    {
+        var c = (cargo ?? string.Empty).ToLowerInvariant();
+        return c.Contains("sócio") || c.Contains("socio")
+            || c.Contains("proprietár") || c.Contains("proprietar")
+            || c.Contains("pró-labore") || c.Contains("pro-labore");
     }
 
     /// <summary>Meta de venda POR DIA para cobrir (a) as despesas operacionais e (b) os

@@ -1647,17 +1647,27 @@ async function carregarDreLojas() {
     dreLojas.value = res.data
   } catch { dreLojas.value = null }
 }
-// DRE exibido: loja selecionada → DRE DELA (com rateio das despesas); senão, consolidado.
+// DRE exibido — SEMPRE por competência (base do por-lojas), para "Todas" bater com a
+// soma das lojas: loja selecionada → DRE dela; "Todas" → soma de todas as lojas.
+// (O /financeiro/dre consolidado é regime caixa; fica só como fallback se o por-lojas falhar.)
 const dreView = computed<DreData | null>(() => {
   const loja = auth.lojaAtualId
-  if (loja && dreLojas.value) {
-    const l = dreLojas.value.lojas.find(x => x.lojaId === loja)
-    if (l) return {
-      receitaBruta: l.receita, descontos: 0, receitaLiquida: l.receita,
-      cmv: l.cmv, lucroBruto: l.lucroBruto, margemBruta: l.margemBruta,
-      despesasOperacionais: (l.perdas || 0) + l.despesasTotal,
-      despesasPorCategoria: [],
-      resultadoOperacional: l.resultado, margemOperacional: l.margemLiquida,
+  const todas = dreLojas.value?.lojas ?? []
+  const pick = loja ? todas.filter(x => x.lojaId === loja) : todas
+  if (pick.length) {
+    const soma = (f: (x: DreLoja) => number) => pick.reduce((a, x) => a + (f(x) || 0), 0)
+    const receita = soma(x => x.receita)
+    const cmv = soma(x => x.cmv)
+    const lucroBruto = soma(x => x.lucroBruto)
+    const despesas = soma(x => (x.perdas || 0) + x.despesasTotal)
+    const resultado = soma(x => x.resultado)
+    return {
+      receitaBruta: receita, descontos: 0, receitaLiquida: receita,
+      cmv, lucroBruto,
+      margemBruta: receita > 0 ? Math.round(lucroBruto / receita * 1000) / 10 : 0,
+      despesasOperacionais: despesas, despesasPorCategoria: [],
+      resultadoOperacional: resultado,
+      margemOperacional: receita > 0 ? Math.round(resultado / receita * 1000) / 10 : 0,
     }
   }
   return dre.value

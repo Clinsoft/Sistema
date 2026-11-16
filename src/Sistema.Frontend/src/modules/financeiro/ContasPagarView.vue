@@ -745,7 +745,7 @@
 import { rotuloStatus } from '@/utils/status'
 import FiltroMes from '@/components/FiltroMes.vue'
 import GuiaPassos from '@/components/GuiaPassos.vue'
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import api from '@/composables/useApi'
@@ -1062,9 +1062,12 @@ const filtros = ref({
   categoria: 'Todas',
   status: 'Todos',
   fornecedor: null as string | null,
-  loja: null as string | null,
+  loja: (auth.lojaAtualId ?? null) as string | null,   // inicia na loja do topo
   tudo: false,
 })
+
+// O seletor de loja do topo (ao lado das notificações) também filtra esta tela.
+watch(() => auth.lojaAtualId, (v) => { filtros.value.loja = v ?? null })
 
 const hoje = () => new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00')
 

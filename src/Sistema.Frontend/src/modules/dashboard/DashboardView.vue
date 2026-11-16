@@ -31,6 +31,9 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-chart-donut" class="mr-2" color="deep-purple" />
             Ponto de Equilíbrio — {{ calMesLabel }}
+            <v-chip v-if="lojaAtualNome" size="x-small" color="deep-purple" variant="tonal" label class="ml-2">
+              {{ lojaAtualNome }}
+            </v-chip>
             <v-btn icon size="x-small" variant="text" color="deep-purple"
               @click="analisarCard('Ponto de Equilíbrio', dadosPe)">
               <v-icon>mdi-lightbulb-on-outline</v-icon>
@@ -39,8 +42,8 @@
             <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
             <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
-            <v-chip v-if="pe" :color="pe.peAtingido ? 'success' : 'warning'" size="small" label>
-              {{ pe.peAtingido ? 'Atingido ✓' : pe.percentualAtingido + '% do PE' }}
+            <v-chip v-if="peView" :color="peView.peAtingido ? 'success' : 'warning'" size="small" label>
+              {{ peView.peAtingido ? 'Atingido ✓' : peView.percentualAtingido + '% do PE' }}
             </v-chip>
           </v-card-title>
 
@@ -48,9 +51,9 @@
             <v-progress-circular indeterminate color="deep-purple" />
           </v-card-text>
 
-          <v-card-text v-else-if="!pe || pe.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
+          <v-card-text v-else-if="!peView || peView.pontoEquilibrio === 0" class="text-center text-medium-emphasis pa-6">
             <v-icon icon="mdi-information-outline" class="mb-2" size="32" />
-            <div v-if="!pe || pe.totalCustosFixos === 0" class="text-body-2">
+            <div v-if="!peView || peView.totalCustosFixos === 0" class="text-body-2">
               Cadastre <strong>contas a pagar</strong> do mês para calcular o ponto de equilíbrio.
             </div>
             <div v-else class="text-body-2">
@@ -58,23 +61,23 @@
               (ou tenha histórico dos últimos 90 dias) para projetar o ponto de equilíbrio.
             </div>
             <v-btn class="mt-3" size="small" variant="tonal" color="deep-purple"
-              :to="!pe || pe.totalCustosFixos === 0 ? '/financeiro/contas-pagar' : '/pdv'">
-              {{ !pe || pe.totalCustosFixos === 0 ? 'Ver contas a pagar' : 'Ir para o PDV' }}
+              :to="!peView || peView.totalCustosFixos === 0 ? '/financeiro/contas-pagar' : '/pdv'">
+              {{ !peView || peView.totalCustosFixos === 0 ? 'Ver contas a pagar' : 'Ir para o PDV' }}
             </v-btn>
           </v-card-text>
 
           <v-card-text v-else class="pb-2">
             <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
               <span>Faturamento acumulado</span>
-              <span class="font-weight-bold">{{ fmt(pe.faturamentoMes) }} / {{ fmt(pe.pontoEquilibrio) }}</span>
+              <span class="font-weight-bold">{{ fmt(peView.faturamentoMes) }} / {{ fmt(peView.pontoEquilibrio) }}</span>
             </div>
             <v-progress-linear
-              :model-value="Math.min(pe.percentualAtingido, 100)"
-              :color="pe.peAtingido ? 'success' : pe.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
+              :model-value="Math.min(peView.percentualAtingido, 100)"
+              :color="peView.peAtingido ? 'success' : peView.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
               height="22" rounded class="mb-4"
             >
               <template #default>
-                <span class="text-caption font-weight-bold" style="color:white">{{ pe.percentualAtingido }}%</span>
+                <span class="text-caption font-weight-bold" style="color:white">{{ peView.percentualAtingido }}%</span>
               </template>
             </v-progress-linear>
 
@@ -82,18 +85,18 @@
             <v-row dense class="mb-3">
               <v-col cols="6">
                 <div class="pe-stat">
-                  <div class="pe-stat-lbl">Contas a pagar (mês)</div>
-                  <div class="pe-stat-val text-error">{{ fmt(pe.totalCustosFixos) }}</div>
+                  <div class="pe-stat-lbl">{{ lojaAtualNome ? 'Custos fixos (loja)' : 'Contas a pagar (mês)' }}</div>
+                  <div class="pe-stat-val text-error">{{ fmt(peView.totalCustosFixos) }}</div>
                 </div>
               </v-col>
               <v-col cols="6">
                 <div class="pe-stat">
                   <div class="pe-stat-lbl">
                     Margem de contribuição
-                    <span v-if="pe.margemEstimada" class="text-warning" title="Estimada pelos últimos 90 dias (mês sem vendas)">*</span>
+                    <span v-if="peView.margemEstimada" class="text-warning" title="Estimada pelos últimos 90 dias (mês sem vendas)">*</span>
                   </div>
-                  <div class="pe-stat-val text-deep-purple">{{ pe.percentualMargemContribuicao }}%</div>
-                  <div v-if="pe.margemEstimada" class="text-caption text-warning" style="font-size:.6rem;line-height:1">
+                  <div class="pe-stat-val text-deep-purple">{{ peView.percentualMargemContribuicao }}%</div>
+                  <div v-if="peView.margemEstimada" class="text-caption text-warning" style="font-size:.6rem;line-height:1">
                     estimada (90 dias)
                   </div>
                 </div>
@@ -101,14 +104,14 @@
               <v-col cols="6">
                 <div class="pe-stat">
                   <div class="pe-stat-lbl">PE calculado</div>
-                  <div class="pe-stat-val">{{ fmt(pe.pontoEquilibrio) }}</div>
+                  <div class="pe-stat-val">{{ fmt(peView.pontoEquilibrio) }}</div>
                 </div>
               </v-col>
               <v-col cols="6">
-                <div class="pe-stat" :class="pe.peAtingido ? 'pe-stat--ok' : 'pe-stat--warn'">
-                  <div class="pe-stat-lbl">{{ pe.peAtingido ? 'Lucro acima do PE' : 'Falta atingir' }}</div>
-                  <div class="pe-stat-val" :class="pe.peAtingido ? 'text-success' : 'text-warning'">
-                    {{ pe.peAtingido ? '+' + fmt(pe.lucroAcimaPE) : fmt(pe.pontoEquilibrio - pe.faturamentoMes) }}
+                <div class="pe-stat" :class="peView.peAtingido ? 'pe-stat--ok' : 'pe-stat--warn'">
+                  <div class="pe-stat-lbl">{{ peView.peAtingido ? 'Lucro acima do PE' : 'Falta atingir' }}</div>
+                  <div class="pe-stat-val" :class="peView.peAtingido ? 'text-success' : 'text-warning'">
+                    {{ peView.peAtingido ? '+' + fmt(peView.lucroAcimaPE) : fmt(peView.pontoEquilibrio - peView.faturamentoMes) }}
                   </div>
                 </div>
               </v-col>
@@ -1325,10 +1328,38 @@ async function carregarPeLojas() {
   } catch { peLojas.value = null }
 }
 
+// Nome da loja selecionada no topo (null = Todas as lojas)
+const lojaAtualNome = computed(() =>
+  (auth.lojas ?? []).find((l: any) => l.id === auth.lojaAtualId)?.nome ?? null)
+
+// PE exibido no card principal: se há loja selecionada no topo, mostra o PE DELA
+// (vindo do por-lojas); em "Todas as lojas", o consolidado.
+const peView = computed<PeData | null>(() => {
+  const loja = auth.lojaAtualId
+  if (loja && peLojas.value) {
+    const l = peLojas.value.lojas.find(x => x.lojaId === loja)
+    if (l) return {
+      totalCustosFixos: l.custosFixos,
+      receitaTotal: l.faturamentoMes,
+      margemContribuicao: 0,
+      percentualMargemContribuicao: l.percentualMargemContribuicao,
+      margemEstimada: l.margemEstimada,
+      pontoEquilibrio: l.pontoEquilibrio,
+      faturamentoMes: l.faturamentoMes,
+      percentualAtingido: l.percentualAtingido,
+      peAtingido: l.peAtingido,
+      lucroAcimaPE: l.lucroAcimaPE,
+      detalhesCustosFixos: [{ categoria: 'Custos fixos', total: l.custosFixos }],
+    }
+  }
+  return pe.value
+})
+watch(peView, async () => { await nextTick(); renderizarGraficoPe() })
+
 let _peTry = 0
 function renderizarGraficoPe() {
   const canvas = peCanvas.value
-  if (!canvas || !pe.value) return
+  if (!canvas || !peView.value) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   // No load inicial o layout ainda não fluiu e offsetWidth=0; re-tenta no próximo frame.
@@ -1337,7 +1368,7 @@ function renderizarGraficoPe() {
     return
   }
   _peTry = 0
-  const d = pe.value
+  const d = peView.value
   const cats = d.detalhesCustosFixos.length ? d.detalhesCustosFixos : [{ categoria: 'Custos Fixos', total: d.totalCustosFixos }]
   const labels = ['Faturamento', 'PE', ...cats.map(c => c.categoria)]
   const valores = [d.faturamentoMes, d.pontoEquilibrio, ...cats.map(c => c.total)]

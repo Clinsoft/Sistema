@@ -111,6 +111,143 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Ponto de equilíbrio POR LOJA. Mesmos custos fixos do cálculo consolidado
+    /// (todas as contas a pagar do mês), mas distribuídos como no DRE por loja:
+    /// despesas DIRETAS (lançamento com a loja marcada) + rateio das despesas SEM loja
+    /// pela participação de cada loja no faturamento. A margem de contribuição é a da
+    /// PRÓPRIA loja (vendas da loja no mês; se não houver, estima pelos últimos 90 dias).
+    /// </summary>
+    [HttpGet("por-lojas")]
+    public async Task<IActionResult> PorLojas([FromQuery] Guid empresaId,
+        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+    {
+        var anoRef = ano ?? DateTime.Today.Year;
+        var mesRef = mes ?? DateTime.Today.Month;
+        var inicio = new DateTime(anoRef, mesRef, 1);
+        var fimExcl = inicio.AddMonths(1);
+        var vFinalizada = Domain.Vendas.Entities.StatusVenda.Finalizada;
+
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .Select(l => new { l.Id, l.Nome }).ToListAsync(ct);
+
+        // Receita do mês por loja (vendas finalizadas).
+        var receitaGrp = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == vFinalizada
+                && v.DataHora >= inicio && v.DataHora < fimExcl)
+            .GroupBy(v => v.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Receita = g.Sum(v => v.Total) })
+            .ToListAsync(ct);
+        var receitaLoja = receitaGrp.ToDictionary(x => x.Loja, x => x.Receita);
+
+        // CMV (custo variável) do mês por loja = custo do produto × qtd vendida.
+        var cmvGrp = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId && x.v.Status == vFinalizada
+                && x.v.DataHora >= inicio && x.v.DataHora < fimExcl)
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                (x, p) => new { x.v.LocalEstoqueId, Custo = x.i.Quantidade * p.CustoUnitario })
+            .GroupBy(x => x.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Custo = g.Sum(x => x.Custo) })
+            .ToListAsync(ct);
+        var cmvLoja = cmvGrp.ToDictionary(x => x.Loja, x => x.Custo);
+
+        // Margem de contribuição % dos últimos 90 dias por loja (fallback p/ loja sem venda no mês).
+        var de90 = DateTime.Today.AddDays(-90);
+        var hist90 = await db.ItensVenda.AsNoTracking()
+            .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
+            .Where(x => x.v.EmpresaId == empresaId && x.v.Status == vFinalizada
+                && x.v.DataHora >= de90 && x.v.DataHora < DateTime.Today.AddDays(1))
+            .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
+                (x, p) => new { x.v.LocalEstoqueId,
+                    rec = x.i.PrecoUnitario * x.i.Quantidade, cus = p.CustoUnitario * x.i.Quantidade })
+            .GroupBy(x => x.LocalEstoqueId)
+            .Select(g => new { Loja = g.Key, Rec = g.Sum(x => x.rec), Cus = g.Sum(x => x.cus) })
+            .ToListAsync(ct);
+        var mc90Loja = hist90.ToDictionary(x => x.Loja,
+            x => x.Rec > 0 ? Math.Round((x.Rec - x.Cus) / x.Rec * 100, 2) : 0m);
+
+        // Custos fixos = TODAS as contas a pagar do mês (igual ao consolidado), separando
+        // as que têm loja (diretas) das sem loja (rateadas pelo faturamento).
+        var contas = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId
+                && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
+                && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
+            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId })
+            .ToListAsync(ct);
+
+        var diretaLoja = contas.Where(c => c.LocalEstoqueId != null)
+            .GroupBy(c => c.LocalEstoqueId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
+        var custoCompartilhado = contas.Where(c => c.LocalEstoqueId == null).Sum(c => c.ValorOriginal);
+
+        var receitaTotal = receitaLoja.Values.Sum();
+        var nLojas = Math.Max(lojas.Count, 1);
+
+        var resultado = lojas.Select(loja =>
+        {
+            var receita = receitaLoja.TryGetValue(loja.Id, out var r) ? r : 0m;
+            var custoVar = cmvLoja.TryGetValue(loja.Id, out var c) ? c : 0m;
+            var margem = receita - custoVar;
+            var percMC = receita > 0 ? Math.Round(margem / receita * 100, 2) : 0m;
+
+            // Sem vendas no mês → estima a margem pelos últimos 90 dias da loja.
+            var estimada = false;
+            if (percMC <= 0 && mc90Loja.TryGetValue(loja.Id, out var mc90) && mc90 > 0)
+            {
+                percMC = mc90;
+                estimada = true;
+            }
+
+            // Rateio das despesas sem loja: pela participação no faturamento; se o mês
+            // ainda não tem faturamento, divide igualmente entre as lojas.
+            var share = receitaTotal > 0 ? receita / receitaTotal : 1m / nLojas;
+            var direta = diretaLoja.TryGetValue(loja.Id, out var d) ? d : 0m;
+            var custosFixos = Math.Round(direta + custoCompartilhado * share, 2);
+
+            var pe = percMC > 0 ? Math.Round(custosFixos / (percMC / 100m), 2) : 0m;
+            var percAtingido = pe > 0 ? Math.Round(receita / pe * 100, 2) : 0m;
+            var atingido = pe > 0 && receita >= pe;
+
+            return new
+            {
+                lojaId = loja.Id,
+                loja = loja.Nome,
+                faturamentoMes = Math.Round(receita, 2),
+                custoVariavel = Math.Round(custoVar, 2),
+                margemContribuicao = Math.Round(margem, 2),
+                percentualMargemContribuicao = percMC,
+                margemEstimada = estimada,
+                custosFixos,
+                custosFixosDiretos = Math.Round(direta, 2),
+                custosFixosRateados = Math.Round(custoCompartilhado * share, 2),
+                participacaoReceita = Math.Round(share * 100, 1),
+                pontoEquilibrio = pe,
+                percentualAtingido = percAtingido,
+                peAtingido = atingido,
+                lucroAcimaPE = atingido ? Math.Round(receita - pe, 2) : 0m,
+                faltaAtingir = !atingido && pe > 0 ? Math.Round(pe - receita, 2) : 0m,
+            };
+        }).OrderByDescending(x => x.faturamentoMes).ToList();
+
+        return Ok(new
+        {
+            periodo = new { ano = anoRef, mes = mesRef },
+            totalCustosFixos = Math.Round(contas.Sum(c => c.ValorOriginal), 2),
+            custoCompartilhado = Math.Round(custoCompartilhado, 2),
+            lojas = resultado,
+            totais = new
+            {
+                faturamentoMes = Math.Round(resultado.Sum(x => x.faturamentoMes), 2),
+                custosFixos = Math.Round(resultado.Sum(x => x.custosFixos), 2),
+                pontoEquilibrio = Math.Round(resultado.Sum(x => x.pontoEquilibrio), 2),
+            },
+            observacao = "Custos fixos sem loja definida são rateados entre as lojas pela participação no faturamento."
+        });
+    }
+
     /// <summary>Meta de venda POR DIA para cobrir (a) as despesas operacionais e (b) os
     /// financiamentos do mês — cada uma dividida pela margem de contribuição e pelos dias do mês.</summary>
     [HttpGet("metas-diarias")]

@@ -56,7 +56,7 @@ public class DashboardController(SistemaDbContext db,
     /// (para descobrir os horários/dias de pico).</summary>
     [HttpGet("movimento")]
     public async Task<IActionResult> Movimento([FromQuery] Guid empresaId,
-        [FromQuery] int dias = 90, CancellationToken ct = default)
+        [FromQuery] int dias = 90, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
         if (dias < 7) dias = 7;
         if (dias > 365) dias = 365;
@@ -66,6 +66,7 @@ public class DashboardController(SistemaDbContext db,
         var vendas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.DataHora >= inicio)
             .Select(v => new { v.LocalEstoqueId, v.DataHora, v.Total })
             .ToListAsync(ct);

@@ -88,6 +88,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var pontoEquilibrio = percentualMC > 0
             ? Math.Round(totalCustosFixos / (percentualMC / 100), 2) : 0m;
 
+        // PE OPERACIONAL = tira o financiamento (dívida/capital de giro) dos custos fixos —
+        // é o quanto a loja precisa vender só para manter a operação, sem a dívida.
+        var financiamentoMes = contasPagar.Where(c => c.Categoria == "Financiamentos").Sum(c => c.ValorOriginal);
+        var custosOperacionais = totalCustosFixos - financiamentoMes;
+        var pontoEquilibrioOperacional = percentualMC > 0
+            ? Math.Round(custosOperacionais / (percentualMC / 100), 2) : 0m;
+
         // Progresso do mês atual
         var faturamentoMes = receitaTotal;
         var percentualAtingido = pontoEquilibrio > 0
@@ -106,6 +113,9 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             percentualMargemContribuicao = percentualMC,
             margemEstimada,
             pontoEquilibrio,
+            financiamentoMes,
+            custosOperacionais,
+            pontoEquilibrioOperacional,
             faturamentoMes,
             percentualAtingido,
             peAtingido,
@@ -183,12 +193,19 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
                 && l.Categoria != "Custo (CMV)"   // compra de estoque é variável (já na margem)
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
-            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem })
+            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem, l.Categoria })
             .ToListAsync(ct);
 
         var diretaLoja = contas.Where(c => c.LocalEstoqueId != null)
             .GroupBy(c => c.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
+
+        // Financiamento (dívida/capital de giro) — para o PE OPERACIONAL (sem dívida).
+        var financDiretaLoja = contas.Where(c => c.LocalEstoqueId != null && c.Categoria == "Financiamentos")
+            .GroupBy(c => c.LocalEstoqueId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
+        var financSemLoja = contas.Where(c => c.LocalEstoqueId == null && c.Categoria == "Financiamentos")
+            .Sum(c => c.ValorOriginal);
 
         bool EhFolha(string? doc) => doc != null && doc.StartsWith("FOLHA ");
         var custoFolha = contas.Where(c => c.LocalEstoqueId == null
@@ -236,7 +253,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             var rateada = custoFolha * shareHead + custoDemaisComp * shareFat;
             var custosFixos = Math.Round(direta + rateada, 2);
 
+            // Financiamento da loja = direto (com loja) + rateio do sem-loja pelo faturamento.
+            var financLoja = Math.Round(
+                (financDiretaLoja.TryGetValue(loja.Id, out var fd) ? fd : 0m) + financSemLoja * shareFat, 2);
+            var custosOperacionais = Math.Round(custosFixos - financLoja, 2);
+
             var pe = percMC > 0 ? Math.Round(custosFixos / (percMC / 100m), 2) : 0m;
+            var peOperacional = percMC > 0 ? Math.Round(custosOperacionais / (percMC / 100m), 2) : 0m;
             var percAtingido = pe > 0 ? Math.Round(receita / pe * 100, 2) : 0m;
             var atingido = pe > 0 && receita >= pe;
 
@@ -252,9 +275,12 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 custosFixos,
                 custosFixosDiretos = Math.Round(direta, 2),
                 custosFixosRateados = Math.Round(rateada, 2),
+                financiamentoMes = financLoja,
+                custosOperacionais,
                 funcionarios = headPorLoja.TryGetValue(loja.Id, out var hc) ? hc : 0,
                 participacaoReceita = Math.Round(shareFat * 100, 1),
                 pontoEquilibrio = pe,
+                pontoEquilibrioOperacional = peOperacional,
                 percentualAtingido = percAtingido,
                 peAtingido = atingido,
                 lucroAcimaPE = atingido ? Math.Round(receita - pe, 2) : 0m,

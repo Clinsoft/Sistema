@@ -117,6 +117,18 @@
               </v-col>
             </v-row>
 
+            <!-- PE operacional (sem o financiamento/dívida) -->
+            <div v-if="peView.pontoEquilibrioOperacional != null && (peView.financiamentoMes ?? 0) > 0"
+              class="d-flex justify-space-between align-center px-2 py-1 mb-2 rounded"
+              style="background:rgba(103,58,183,.06);font-size:.7rem">
+              <span class="text-medium-emphasis">
+                <v-icon size="13" color="deep-purple">mdi-store-cog-outline</v-icon>
+                PE operacional <span class="text-medium-emphasis" title="Sem o financiamento/dívida do mês">(sem financiamento)</span>
+              </span>
+              <span class="font-weight-bold text-deep-purple">{{ fmt(peView.pontoEquilibrioOperacional) }}</span>
+              <span class="text-medium-emphasis">financiamento {{ fmt(peView.financiamentoMes || 0) }}</span>
+            </div>
+
             <canvas ref="peCanvas" height="90" style="width:100%" />
 
             <!-- Ponto de equilíbrio por loja -->
@@ -1210,6 +1222,8 @@ interface PeData {
   percentualMargemContribuicao: number
   margemEstimada?: boolean
   pontoEquilibrio: number
+  financiamentoMes?: number
+  pontoEquilibrioOperacional?: number
   faturamentoMes: number
   percentualAtingido: number
   peAtingido: boolean
@@ -1302,6 +1316,8 @@ interface PeLoja {
   percentualMargemContribuicao: number
   margemEstimada?: boolean
   pontoEquilibrio: number
+  pontoEquilibrioOperacional: number
+  financiamentoMes: number
   percentualAtingido: number
   peAtingido: boolean
   lucroAcimaPE: number
@@ -1345,6 +1361,8 @@ const peView = computed<PeData | null>(() => {
       percentualMargemContribuicao: l.percentualMargemContribuicao,
       margemEstimada: l.margemEstimada,
       pontoEquilibrio: l.pontoEquilibrio,
+      pontoEquilibrioOperacional: l.pontoEquilibrioOperacional,
+      financiamentoMes: l.financiamentoMes,
       faturamentoMes: l.faturamentoMes,
       percentualAtingido: l.percentualAtingido,
       peAtingido: l.peAtingido,

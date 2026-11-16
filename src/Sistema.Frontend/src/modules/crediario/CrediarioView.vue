@@ -577,6 +577,7 @@ async function salvarNovo() {
       dataPrimeiraParcela: novoForm.value.dataPrimeiraParcela,
       diaVencimento: novoForm.value.diaPagamento,
       observacao: novoForm.value.observacao || null,
+      localEstoqueId: auth.lojaAtualId,   // loja ativa → título com a loja
     })
     notif.ok('Crediário criado!')
     dlgNovo.value = false

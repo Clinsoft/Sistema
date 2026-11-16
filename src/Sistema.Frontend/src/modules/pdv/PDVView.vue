@@ -1980,6 +1980,7 @@ async function finalizar() {
           numeroParcelas: pagCrediario.crediarioParcelas ?? 1,
           taxaJurosMensal: 0,
           vendaId,
+          localEstoqueId: auth.lojaAtualId,   // loja da venda → título nasce com a loja
         })
       } catch {
         notif.erro('Venda finalizada, mas houve erro ao abrir o crediário. Registre-o manualmente na tela Crediário.')

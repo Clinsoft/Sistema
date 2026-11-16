@@ -14,7 +14,8 @@ public record AbrirCrediarioCommand(
     decimal ValorTotal, decimal ValorEntrada,
     int NumeroParcelas, decimal TaxaJurosMensal,
     Guid? VendaId = null, DateTime? DataPrimeiraParcela = null,
-    int? DiaVencimento = null, string? Observacao = null) : IRequest<AbrirCrediarioResult>;
+    int? DiaVencimento = null, string? Observacao = null,
+    Guid? LocalEstoqueId = null) : IRequest<AbrirCrediarioResult>;
 
 public record AbrirCrediarioResult(Guid Id, string Numero, int NumeroParcelas, decimal ValorParcela);
 
@@ -49,7 +50,11 @@ public class AbrirCrediarioHandler(
 
         // Cada parcela do crediário vira um título em Contas a Receber, vinculado à
         // parcela — assim o Contas a Receber vira o painel único do que entra a prazo.
-        var clienteNome = (await clienteRepo.ObterPorIdAsync(cmd.ClienteId, ct))?.Nome;
+        var cliente = await clienteRepo.ObterPorIdAsync(cmd.ClienteId, ct);
+        var clienteNome = cliente?.Nome;
+        // Loja do título = a enviada (loja da venda) ou, se não vier, a loja do cliente.
+        // Sem isso o Contas a Receber nasce sem loja e some ao filtrar o Dashboard por loja.
+        var lojaTitulo = cmd.LocalEstoqueId ?? cliente?.LocalEstoqueId;
         foreach (var parcela in crediario.Parcelas)
         {
             var lanc = LancamentoFinanceiro.Criar(cmd.EmpresaId, TipoLancamento.ContaReceber,
@@ -58,7 +63,8 @@ public class AbrirCrediarioHandler(
                 clienteId: cmd.ClienteId,
                 documentoOrigem: $"Crediário {numero}",
                 parcela: parcela.Numero, totalParcelas: cmd.NumeroParcelas,
-                grupoParcelamento: crediario.Id.ToString());
+                grupoParcelamento: crediario.Id.ToString(),
+                localEstoqueId: lojaTitulo);
             lanc.DefinirClassificacao("Crediário", clienteNome, cmd.Observacao);
 
             await lancRepo.AdicionarAsync(lanc, ct);

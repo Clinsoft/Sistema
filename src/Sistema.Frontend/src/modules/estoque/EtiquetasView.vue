@@ -205,6 +205,21 @@
             <v-checkbox v-model="camposPote.frase" label='Frase "Natural como deve ser!"' density="compact" hide-details />
           </template>
 
+          <!-- ── Black Friday (10×10cm, igual EcoGranel) ── -->
+          <template v-else-if="template === 'blackfriday'">
+            <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+              Etiqueta <b>Black Friday</b> (10×10cm, tamanho do EcoGranel). Mostra o <b>preço já com o
+              desconto</b> da promoção e só os produtos que estão <b>em promoção Black Friday</b>.
+            </v-alert>
+            <v-btn color="black" prepend-icon="mdi-tag-multiple" :loading="carregandoBf"
+              @click="adicionarBlackFriday" block class="mb-2">
+              Carregar produtos da Black Friday
+            </v-btn>
+            <div class="text-caption text-medium-emphasis">
+              Puxa os produtos das promoções "BLACK FRIDAY". O preço é por 100g já com desconto.
+            </div>
+          </template>
+
           <!-- ── Templates padrão ── -->
           <template v-else>
             <v-alert v-if="template === 'plaquinha'" type="info" variant="tonal" density="compact" class="mb-3">
@@ -393,6 +408,45 @@
             </div>
           </div>
 
+          <!-- Preview Black Friday (10×10cm) -->
+          <div v-else-if="template === 'blackfriday'" id="area-impressao" class="etiquetas-grid">
+            <div v-for="p in etiquetasExpandidas" :key="p._key"
+              :style="{ width:'10cm', height:'10cm', background:'#0a0a0a', color:'#fff', display:'flex',
+                flexDirection:'column', alignItems:'center', position:'relative', overflow:'hidden',
+                pageBreakInside:'avoid', fontFamily:'Arial, Helvetica, sans-serif', boxSizing:'border-box' }">
+              <!-- Cabeçalho BLACK FRIDAY -->
+              <div :style="{ textAlign:'center', paddingTop:'7mm' }">
+                <div :style="{ fontSize:'13pt', letterSpacing:'6px', fontWeight:700 }">BLACK</div>
+                <div :style="{ fontSize:'34pt', fontWeight:900, lineHeight:'0.85', letterSpacing:'1px',
+                  background:'linear-gradient(180deg,#fff 0%,#9e9e9e 100%)', WebkitBackgroundClip:'text',
+                  WebkitTextFillColor:'transparent', backgroundClip:'text' }">FRIDAY</div>
+              </div>
+              <!-- Produto + código -->
+              <div :style="{ fontSize:'14pt', fontWeight:800, textAlign:'center', padding:'4mm 6mm 0',
+                textTransform:'uppercase', lineHeight:'1.1' }">{{ p.descricao }}</div>
+              <div :style="{ fontSize:'10pt', color:'#bdbdbd', margin:'1mm 0 1mm' }">-{{ p.codigo || codigoEtiqueta(p) }}-</div>
+              <!-- Preço -->
+              <div :style="{ textAlign:'center' }">
+                <span :style="{ fontSize:'56pt', fontWeight:900, lineHeight:'1', letterSpacing:'-2px' }">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</span>
+                <div :style="{ fontSize:'11pt', color:'#e0e0e0', marginTop:'-1mm' }">cada 100g</div>
+              </div>
+              <!-- Validade -->
+              <div v-if="validadeProduto(p)" :style="{ fontSize:'11pt', margin:'3mm 0',
+                borderTop:'1px solid #555', borderBottom:'1px solid #555', padding:'1.5mm 10mm' }">
+                Validade: <b>{{ fmtData(validadeProduto(p)) }}</b>
+              </div>
+              <div :style="{ flex:'1 1 auto' }"></div>
+              <!-- Rodapé: QR + frase -->
+              <div :style="{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                width:'100%', padding:'0 7mm 6mm', boxSizing:'border-box' }">
+                <canvas :ref="el => registrarQr(el, p)" :style="{ width:'20mm', height:'20mm' }" />
+                <div :style="{ fontWeight:900, fontSize:'12pt', textAlign:'right', lineHeight:'1.15' }">
+                  APROVEITE A<br />BLACK FRIDAY!
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Preview pote 9×9cm -->
           <div v-else-if="template === 'pote9x9'" id="area-impressao" class="etiquetas-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
@@ -507,7 +561,8 @@ const qtdEtiquetas = ref(1)
 const marcados = ref<Record<string, boolean>>({})
 function ehKg(p: any) { return !!p?.produtoBalanca || String(p?.unidadeSigla || '').toUpperCase() === 'KG' }
 function elegivel(p: any) {
-  if (template.value === 'ecogranel') return ehKg(p)   // EcoGranel: só produtos por peso
+  // EcoGranel e Black Friday são etiqueta de pote (preço por 100g) → só produtos por peso.
+  if (template.value === 'ecogranel' || template.value === 'blackfriday') return ehKg(p)
   if (template.value === 'plaquinha') return !ehKg(p)  // Plaquinha: só produtos por unidade (UN)
   return true
 }
@@ -661,6 +716,7 @@ const campos = ref({
 
 const templates = [
   { id: 'ecogranel', nome: 'EcoGranel - Potes' },
+  { id: 'blackfriday', nome: 'Black Friday 🖤' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },
   { id: 'plaquinha', nome: 'Plaquinha (UN)' },
   { id: 'pote9x9', nome: 'Pote 9×9cm' },
@@ -722,6 +778,8 @@ const OPTS_2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const
 function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
 function fmtData(d: string) { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
 function preco100g(precoKg: number) { return Math.round(((precoKg ?? 0) / 10) * 100) / 100 }
+// Preço usado na etiqueta Black Friday: o já com desconto da promoção (se veio), senão o normal.
+function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
 
 // Formato especial: "7,69" (sem R$ e com vírgula)
 function fmtPrecoDisplay(v: number) {
@@ -770,7 +828,8 @@ async function renderizarQr(canvas: HTMLCanvasElement, p: any) {
     await QRCode.toCanvas(canvas, url, {
       width: 100,
       margin: 1,
-      color: { dark: '#000000', light: '#ffffff00' },
+      // Black Friday tem fundo preto → QR branco; demais, QR preto.
+      color: { dark: template.value === 'blackfriday' ? '#ffffff' : '#000000', light: '#ffffff00' },
     })
   } catch { /* silencia erros de canvas */ }
 }
@@ -785,7 +844,7 @@ watch(qrBaseUrl, async () => {
 })
 
 watch(etiquetasExpandidas, async () => {
-  if (template.value !== 'ecogranel') return
+  if (template.value !== 'ecogranel' && template.value !== 'blackfriday') return
   await nextTick()
   for (const [key, canvas] of qrCanvasMap.entries()) {
     const p = etiquetasExpandidas.value.find(e => e._key === key)
@@ -962,6 +1021,29 @@ function baixarZpl() {
 
 // ── Busca de produtos ────────────────────────────────────────────────────────
 const adicionandoKg = ref(false)
+
+// Carrega SÓ os produtos em promoção Black Friday (com o preço já descontado).
+const carregandoBf = ref(false)
+async function adicionarBlackFriday() {
+  carregandoBf.value = true
+  try {
+    const r = await api.get('/promocoes/produtos-etiqueta', {
+      params: { empresaId: auth.empresaId, termo: 'BLACK FRIDAY' },
+    })
+    const prods = (r.data ?? []) as any[]
+    produtosSel.value = []   // a etiqueta BF é só dos produtos da campanha
+    await Promise.all(prods.map((p: any) => enriquecerValidadeRegistrada(p)))
+    prods.forEach((p: any) => produtosSel.value.push(p))
+    if (!prods.length) notif.aviso('Nenhum produto em promoção Black Friday encontrado.')
+    else notif.ok(`${prods.length} produto(s) da Black Friday carregado(s).`)
+  } catch { notif.erro('Erro ao carregar os produtos da Black Friday.') }
+  finally { carregandoBf.value = false }
+}
+
+// Ao escolher o modelo Black Friday, já puxa os produtos da campanha automaticamente.
+watch(template, (t) => {
+  if (t === 'blackfriday' && produtosSel.value.length === 0) adicionarBlackFriday()
+})
 
 // Adiciona de uma vez todos os produtos por peso (balança) à seleção.
 async function adicionarTodosKg() {

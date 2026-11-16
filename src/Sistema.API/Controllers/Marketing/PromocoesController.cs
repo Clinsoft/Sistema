@@ -45,6 +45,47 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
         return Ok(resultado.ToList());
     }
 
+    /// <summary>Produtos de uma campanha (por prefixo do nome, ex.: "BLACK FRIDAY") prontos
+    /// para imprimir etiqueta: traz o produto + o MELHOR preço já com o desconto da promoção.
+    /// Usado pela tela de Etiquetas (modelo Black Friday) para só listar os produtos da campanha.</summary>
+    [HttpGet("produtos-etiqueta")]
+    public async Task<IActionResult> ProdutosEtiqueta(
+        [FromQuery] Guid empresaId, [FromQuery] string termo = "BLACK FRIDAY", CancellationToken ct = default)
+    {
+        var promos = await db.Promocoes.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.AplicaEm == "Produto"
+                && p.ReferenciaId != null && p.Nome.StartsWith(termo))
+            .Select(p => new { ProdutoId = p.ReferenciaId!.Value, p.TipoDesconto, p.Desconto })
+            .ToListAsync(ct);
+        if (promos.Count == 0) return Ok(Array.Empty<object>());
+
+        var ids = promos.Select(p => p.ProdutoId).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && ids.Contains(p.Id))
+            .ToListAsync(ct);
+
+        var resultado = produtos.Select(p =>
+        {
+            // Melhor (menor) preço entre as promoções Black Friday do produto.
+            decimal? melhor = null;
+            foreach (var pr in promos.Where(x => x.ProdutoId == p.Id))
+            {
+                var preco = pr.TipoDesconto == "ValorFixo"
+                    ? Math.Max(0, p.PrecoVenda - pr.Desconto)
+                    : Math.Round(p.PrecoVenda * (1 - pr.Desconto / 100m), 2);
+                if (melhor is null || preco < melhor) melhor = preco;
+            }
+            return new
+            {
+                p.Id, p.Codigo, p.CodigoBarras, p.CodigoPlu, p.Descricao, p.DescricaoComplementar,
+                p.PrecoVenda, precoBlackFriday = melhor ?? p.PrecoVenda,
+                p.ProdutoBalanca, p.ImagemUrl, p.ValidadeEmDias
+            };
+        }).OrderBy(x => x.Descricao).ToList();
+
+        return Ok(resultado);
+    }
+
     /// <summary>Dados prontos para preencher uma mensagem de WhatsApp a partir da promoção:
     /// texto do desconto, nome e preços do produto, e a arte (Feed) já gerada.</summary>
     [HttpGet("{id:guid}/mensagem")]

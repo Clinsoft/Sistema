@@ -25,10 +25,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var fim = inicio.AddMonths(1).AddDays(-1);
 
         // Custos fixos = contas a pagar que vencem no mês (exceto canceladas).
+        // Exclui a compra de estoque (CMV): é custo VARIÁVEL, já coberto pela margem de
+        // contribuição — somá-la aos custos fixos inflaria o ponto de equilíbrio.
         var contasPagar = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.Categoria != "Custo (CMV)"
                 && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1))
             .Select(l => new { l.Categoria, l.ValorOriginal })
             .ToListAsync(ct);
@@ -177,6 +180,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && l.Categoria != "Custo (CMV)"   // compra de estoque é variável (já na margem)
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
             .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem })
             .ToListAsync(ct);

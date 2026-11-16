@@ -85,7 +85,7 @@
             <v-row dense class="mb-3">
               <v-col cols="6">
                 <div class="pe-stat">
-                  <div class="pe-stat-lbl">{{ lojaAtualNome ? 'Custos fixos (loja)' : 'Contas a pagar (mês)' }}</div>
+                  <div class="pe-stat-lbl">{{ lojaAtualNome ? 'Custos fixos (loja)' : 'Custos fixos (mês)' }}</div>
                   <div class="pe-stat-val text-error">{{ fmt(peView.totalCustosFixos) }}</div>
                 </div>
               </v-col>

@@ -319,7 +319,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
     /// financiamentos do mês — cada uma dividida pela margem de contribuição e pelos dias do mês.</summary>
     [HttpGet("metas-diarias")]
     public async Task<IActionResult> MetasDiarias([FromQuery] Guid empresaId,
-        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+        [FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var anoRef = ano ?? DateTime.Today.Year;
         var mesRef = mes ?? DateTime.Today.Month;
@@ -331,6 +331,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
+                && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)
                 && l.DataVencimento >= inicio && l.DataVencimento < fim.AddDays(1))
             .Select(l => new { l.Categoria, l.ValorOriginal })
             .ToListAsync(ct);
@@ -344,7 +345,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             .Where(c => !EhFinanciamento(c.Categoria) && !EhEstoque(c.Categoria)).Sum(c => c.ValorOriginal);
         var financiamentos = contas.Where(c => EhFinanciamento(c.Categoria)).Sum(c => c.ValorOriginal);
 
-        var mc = await MargemContribuicaoAsync(empresaId, inicio, fim, ct);
+        var mc = await MargemContribuicaoAsync(empresaId, inicio, fim, ct, localEstoqueId);
 
         decimal MetaDia(decimal valorMes) =>
             mc > 0 ? Math.Round(valorMes / (mc / 100m) / diasMes, 2) : 0m;
@@ -366,7 +367,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
     /// compra mais mercadoria do que vende, e a diferença precisa vir de capital de giro.</summary>
     [HttpGet("capital-giro")]
     public async Task<IActionResult> CapitalGiro([FromQuery] Guid empresaId,
-        [FromQuery] int? ano, [FromQuery] int? mes, CancellationToken ct)
+        [FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] Guid? localEstoqueId, CancellationToken ct)
     {
         var anoRef = ano ?? DateTime.Today.Year;
         var mesRef = mes ?? DateTime.Today.Month;
@@ -378,6 +379,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
                 && l.Categoria == "Custo (CMV)"
+                && (localEstoqueId == null || l.LocalEstoqueId == localEstoqueId)
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
             .SumAsync(l => l.ValorOriginal, ct);
 
@@ -385,6 +387,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var vendasPrevistas = await db.Vendas.AsNoTracking()
             .Where(v => v.EmpresaId == empresaId
                 && v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada
+                && (localEstoqueId == null || v.LocalEstoqueId == localEstoqueId)
                 && v.DataHora >= DateTime.Today.AddDays(-30))
             .SumAsync(v => (decimal?)v.Total, ct) ?? 0m;
 
@@ -393,6 +396,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var itens90 = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId && x.v.DataHora >= de90
+                && (localEstoqueId == null || x.v.LocalEstoqueId == localEstoqueId)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
                 (x, p) => new { rec = x.i.PrecoUnitario * x.i.Quantidade, cus = p.CustoUnitario * x.i.Quantidade })
@@ -418,12 +422,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
     /// afinar a meta de venda (o mix vendido muda a margem média).</summary>
     [HttpGet("margem-categorias")]
     public async Task<IActionResult> MargemCategorias([FromQuery] Guid empresaId,
-        [FromQuery] int dias = 90, CancellationToken ct = default)
+        [FromQuery] int dias = 90, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
         var de = DateTime.Today.AddDays(-Math.Abs(dias));
         var itens = await db.ItensVenda.AsNoTracking()
             .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
             .Where(x => x.v.EmpresaId == empresaId && x.v.DataHora >= de
+                && (localEstoqueId == null || x.v.LocalEstoqueId == localEstoqueId)
                 && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
             .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
                 (x, p) => new { p.CategoriaId, receita = x.i.PrecoUnitario * x.i.Quantidade, custo = p.CustoUnitario * x.i.Quantidade })
@@ -453,13 +458,14 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
     }
 
     /// <summary>Margem de contribuição % do mês; se o mês não tem vendas, usa os últimos 90 dias.</summary>
-    private async Task<decimal> MargemContribuicaoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct)
+    private async Task<decimal> MargemContribuicaoAsync(Guid empresaId, DateTime inicio, DateTime fim, CancellationToken ct, Guid? localEstoqueId = null)
     {
         async Task<decimal> Calc(DateTime de, DateTime ate)
         {
             var itens = await db.ItensVenda.AsNoTracking()
                 .Join(db.Vendas, i => i.VendaId, v => v.Id, (i, v) => new { i, v })
                 .Where(x => x.v.EmpresaId == empresaId && x.v.DataHora >= de && x.v.DataHora < ate
+                    && (localEstoqueId == null || x.v.LocalEstoqueId == localEstoqueId)
                     && x.v.Status == Domain.Vendas.Entities.StatusVenda.Finalizada)
                 .Join(db.Produtos, x => x.i.ProdutoId, p => p.Id,
                     (x, p) => new { receita = x.i.PrecoUnitario * x.i.Quantidade, custo = p.CustoUnitario * x.i.Quantidade })

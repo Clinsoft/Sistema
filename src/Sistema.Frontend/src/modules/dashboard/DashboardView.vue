@@ -1101,7 +1101,7 @@ async function carregarPlanejamento() {
   if (!auth.empresaId) return
   try {
     const res = await api.get<PlanejamentoData>('/relatorios/planejamento-anual', {
-      params: { empresaId: auth.empresaId, ano: anoAtual }
+      params: { empresaId: auth.empresaId, ano: anoAtual, localEstoqueId: auth.lojaAtualId }
     })
     planejamento.value = res.data
   } catch { planejamento.value = null }
@@ -1247,7 +1247,7 @@ async function carregarMetas() {
   if (!auth.empresaId) return
   try {
     const res = await api.get<MetasDiarias>('/financeiro/ponto-equilibrio/metas-diarias', {
-      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value, localEstoqueId: auth.lojaAtualId }
     })
     metas.value = res.data
   } catch { metas.value = null }
@@ -1261,7 +1261,7 @@ async function carregarMargemCats() {
   if (!auth.empresaId) return
   try {
     const res = await api.get<MargemCatData>('/financeiro/ponto-equilibrio/margem-categorias', {
-      params: { empresaId: auth.empresaId, dias: 90 }
+      params: { empresaId: auth.empresaId, dias: 90, localEstoqueId: auth.lojaAtualId }
     })
     margemCats.value = res.data
   } catch { margemCats.value = null }
@@ -1287,7 +1287,7 @@ async function carregarCapitalGiro() {
   if (!auth.empresaId) return
   try {
     const res = await api.get<CapitalGiro>('/financeiro/ponto-equilibrio/capital-giro', {
-      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value, localEstoqueId: auth.lojaAtualId }
     })
     capitalGiro.value = res.data
   } catch { capitalGiro.value = null }
@@ -1483,7 +1483,7 @@ async function carregarContasMes() {
     const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
     const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<ContaPagar[]>('/contas-pagar', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     // Só o que ainda falta pagar (em aberto / parcial), não cancelado nem quitado.
     contasMes.value = (res.data ?? []).filter(c => c.status !== 'Pago' && c.status !== 'Cancelado')
@@ -1539,7 +1539,7 @@ async function carregarReceberMes() {
     const inicio = new Date(anoRef.value, mesRef.value, 1).toISOString().slice(0, 10)
     const fim = new Date(anoRef.value, mesRef.value + 1, 0).toISOString().slice(0, 10)
     const res = await api.get<ContaReceber[]>('/contas-receber', {
-      params: { empresaId: auth.empresaId, inicio, fim }
+      params: { empresaId: auth.empresaId, inicio, fim, localEstoqueId: auth.lojaAtualId }
     })
     receberMes.value = (res.data ?? []).filter(c => c.status !== 'Pago' && c.status !== 'Cancelado')
   } catch { receberMes.value = [] } finally { carregandoCR.value = false }
@@ -2090,7 +2090,7 @@ async function carregarMovimento() {
   if (!auth.empresaId) { carregandoMov.value = false; return }
   carregandoMov.value = true
   try {
-    const r = await api.get('/dashboard/movimento', { params: { empresaId: auth.empresaId, dias: periodoMov.value } })
+    const r = await api.get('/dashboard/movimento', { params: { empresaId: auth.empresaId, dias: periodoMov.value, localEstoqueId: auth.lojaAtualId } })
     movimento.value = r.data
   } finally { carregandoMov.value = false }
 }
@@ -2160,6 +2160,33 @@ onMounted(async () => {
   requestAnimationFrame(() => {
     renderizarGraficoPe()
     renderizarGraficoDre()
+    renderizarCurvaAbc()
+    renderizarRentab()
+  })
+})
+
+// Trocar a loja no seletor do topo (auth.lojaAtualId) recarrega todos os cards
+// que dependem de loja — o Dashboard inteiro passa a refletir a loja escolhida.
+watch(() => auth.lojaAtualId, async () => {
+  await Promise.all([
+    carregarResumo(),
+    carregarMovimento(),
+    carregarVendasMes(),
+    carregarContasMes(),
+    carregarReceberMes(),
+    carregarVendasColaborador(),
+    carregarPlanejamento(),
+    carregarCurvaAbc(),
+    carregarMetas(),
+    carregarMargemCats(),
+    carregarCapitalGiro(),
+    carregarPe(),
+    carregarPeLojas(),
+    carregarRentabilidade(),
+  ])
+  await nextTick()
+  requestAnimationFrame(() => {
+    renderizarGraficoPe()
     renderizarCurvaAbc()
     renderizarRentab()
   })

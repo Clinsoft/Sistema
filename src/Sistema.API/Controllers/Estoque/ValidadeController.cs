@@ -506,11 +506,13 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
     {
         Domain.Estoque.Entities.Lote lote;
         string mensagem;
+        bool validadeMudou;   // só reimprime etiqueta se a validade realmente mudou
 
         if (req.LoteId.HasValue)
         {
             lote = await db.Lotes.FindAsync([req.LoteId.Value], ct)
                 ?? throw new KeyNotFoundException("Lote não encontrado.");
+            validadeMudou = lote.DataValidade != req.DataValidade;
             lote.AtualizarValidade(req.DataValidade);
             mensagem = "Validade atualizada.";
         }
@@ -534,6 +536,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
                 l.ProdutoId == req.ProdutoId && l.LocalEstoqueId == localId && l.NumeroLote == numero, ct);
             if (existente is not null)
             {
+                validadeMudou = existente.DataValidade != req.DataValidade;
                 existente.AtualizarValidade(req.DataValidade);
                 lote = existente;
                 mensagem = "Validade atualizada no lote existente.";
@@ -543,6 +546,7 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
                 lote = Lote.Criar(req.EmpresaId, req.ProdutoId, localId, numero,
                     req.Quantidade ?? 1, produto.CustoUnitario, dataValidade: req.DataValidade);
                 db.Lotes.Add(lote);
+                validadeMudou = true;   // lote novo com validade = etiqueta nova
                 mensagem = "Lote registrado com validade.";
             }
         }
@@ -551,9 +555,13 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
         var url = await SalvarImagemLoteAsync(lote.Id, req.ImagemBase64, ct);
         if (url is not null) lote.DefinirImagem(url);
 
-        // Mudou a validade → a etiqueta do produto precisa ser reimpressa.
-        var prodEtiq = await db.Produtos.FindAsync([lote.ProdutoId], ct);
-        prodEtiq?.MarcarEtiquetaDesatualizada();
+        // Só reimprime etiqueta se a VALIDADE realmente mudou (regra: sem mudança de
+        // preço/validade não sugere reimprimir). Carimba o momento p/ o controle por loja.
+        if (validadeMudou)
+        {
+            var prodEtiq = await db.Produtos.FindAsync([lote.ProdutoId], ct);
+            prodEtiq?.MarcarEtiquetaParaReimprimir();
+        }
 
         // Marca o item da NOTA como concluído (validade + lote), para o progresso
         // "já registrei este" persistir mesmo se recarregar a tela / sair pro almoço.

@@ -95,6 +95,14 @@ public class Produto : Entity
     /// <summary>Registra a 1ª impressão de etiqueta (só na primeira vez).</summary>
     public void RegistrarImpressaoEtiqueta() => EtiquetaImpressaEm ??= DateTime.UtcNow;
     public void MarcarEtiquetaDesatualizada() => EtiquetaDesatualizada = true;
+    /// <summary>Marca a etiqueta para reimpressão por MUDANÇA DE VALIDADE e carimba o
+    /// momento no mesmo "corte" usado para preço (PrecoAtualizadoEm) — assim o controle
+    /// por loja limpa o alerta quando a loja reimprimir depois da mudança.</summary>
+    public void MarcarEtiquetaParaReimprimir()
+    {
+        EtiquetaDesatualizada = true;
+        PrecoAtualizadoEm = DateTime.UtcNow;
+    }
     /// <summary>Define o flag global de etiqueta desatualizada (recálculo por loja).</summary>
     public void DefinirEtiquetaDesatualizada(bool v) => EtiquetaDesatualizada = v;
 

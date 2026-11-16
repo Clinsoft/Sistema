@@ -1432,7 +1432,7 @@ async function mudarMes(delta: number) {
   mesOffset.value += delta
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
-    carregarPe(), carregarPeLojas(), carregarDre(), carregarVendasColaborador(),
+    carregarPe(), carregarPeLojas(), carregarDre(), carregarDreLojas(), carregarVendasColaborador(),
     carregarMetas(), carregarCapitalGiro(),
   ])
 }

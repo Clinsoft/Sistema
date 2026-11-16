@@ -123,10 +123,10 @@
               style="background:rgba(103,58,183,.06);font-size:.7rem">
               <span class="text-medium-emphasis">
                 <v-icon size="13" color="deep-purple">mdi-store-cog-outline</v-icon>
-                PE operacional <span class="text-medium-emphasis" title="Sem o financiamento/dívida do mês">(sem financiamento)</span>
+                PE operacional <span class="text-medium-emphasis" title="Sem a dívida/investimento do mês (financiamento + imobilizado financiado)">(sem dívida)</span>
               </span>
               <span class="font-weight-bold text-deep-purple">{{ fmt(peView.pontoEquilibrioOperacional) }}</span>
-              <span class="text-medium-emphasis">financiamento {{ fmt(peView.financiamentoMes || 0) }}</span>
+              <span class="text-medium-emphasis" title="Financiamento + imobilizado financiado">dívida {{ fmt(peView.financiamentoMes || 0) }}</span>
             </div>
 
             <canvas ref="peCanvas" height="90" style="width:100%" />

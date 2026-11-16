@@ -170,27 +170,26 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
 
         // Custos fixos = TODAS as contas a pagar do mês (igual ao consolidado), separando:
         //  • DIRETAS   = lançamento com loja marcada (ex.: salário já leva a loja do colaborador);
-        //  • FOLHA     = agregados da folha SEM loja (FGTS/INSS/provisões — DocumentoOrigem "FOLHA yyyy-MM"
-        //                e sem ColaboradorId) → rateados por Nº DE FUNCIONÁRIOS de cada loja;
-        //  • DEMAIS    = os outros compartilhados (financiamento, contador, pró-labore) → por faturamento.
+        //  • FOLHA     = folha SEM loja (FGTS/INSS/provisões E pró-labore — DocumentoOrigem "FOLHA yyyy-MM")
+        //                → rateada por Nº DE FUNCIONÁRIOS de cada loja;
+        //  • DEMAIS    = os outros compartilhados (financiamento, contador...) → por faturamento.
         var contas = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.EmpresaId == empresaId
                 && l.Tipo == Domain.Financeiro.Entities.TipoLancamento.ContaPagar
                 && l.Status != Domain.Financeiro.Entities.StatusLancamento.Cancelado
                 && l.DataVencimento >= inicio && l.DataVencimento < fimExcl)
-            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem, l.ColaboradorId })
+            .Select(l => new { l.ValorOriginal, l.LocalEstoqueId, l.DocumentoOrigem })
             .ToListAsync(ct);
 
         var diretaLoja = contas.Where(c => c.LocalEstoqueId != null)
             .GroupBy(c => c.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
 
-        bool EhFolhaAgregada(string? doc, Guid? colab) =>
-            colab == null && doc != null && doc.StartsWith("FOLHA ");
+        bool EhFolha(string? doc) => doc != null && doc.StartsWith("FOLHA ");
         var custoFolha = contas.Where(c => c.LocalEstoqueId == null
-            && EhFolhaAgregada(c.DocumentoOrigem, c.ColaboradorId)).Sum(c => c.ValorOriginal);
+            && EhFolha(c.DocumentoOrigem)).Sum(c => c.ValorOriginal);
         var custoDemaisComp = contas.Where(c => c.LocalEstoqueId == null
-            && !EhFolhaAgregada(c.DocumentoOrigem, c.ColaboradorId)).Sum(c => c.ValorOriginal);
+            && !EhFolha(c.DocumentoOrigem)).Sum(c => c.ValorOriginal);
 
         // Nº de funcionários CLT por loja (fonte: usuários com salário, excluindo sócios).
         var funcs = await db.Usuarios.AsNoTracking()
@@ -273,7 +272,7 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
                 custosFixos = Math.Round(resultado.Sum(x => x.custosFixos), 2),
                 pontoEquilibrio = Math.Round(resultado.Sum(x => x.pontoEquilibrio), 2),
             },
-            observacao = "Folha sem loja (FGTS/INSS/provisões) rateada por nº de funcionários de cada loja; demais custos sem loja, pela participação no faturamento."
+            observacao = "Folha sem loja (FGTS/INSS/provisões e pró-labore) rateada por nº de funcionários de cada loja; demais custos sem loja, pela participação no faturamento."
         });
     }
 

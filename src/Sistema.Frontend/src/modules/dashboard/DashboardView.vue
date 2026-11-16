@@ -138,7 +138,10 @@
                       <span class="text-caption" style="color:white;font-size:.6rem">{{ fmt(l.faturamentoMes) }} / {{ fmt(l.pontoEquilibrio) }}</span>
                     </v-progress-linear>
                     <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-2" style="font-size:.65rem">
-                      <span>Custos fixos {{ fmt(l.custosFixos) }}</span>
+                      <span>
+                        Custos fixos {{ fmt(l.custosFixos) }}
+                        <span v-if="l.funcionarios">· {{ l.funcionarios }} func.</span>
+                      </span>
                       <span>
                         MC {{ l.percentualMargemContribuicao }}%<span v-if="l.margemEstimada" class="text-warning" title="Estimada (90 dias)">*</span>
                       </span>
@@ -148,7 +151,8 @@
                     </div>
                   </div>
                   <div v-if="peLojas.custoCompartilhado > 0" class="text-caption text-medium-emphasis" style="font-size:.6rem">
-                    * Custos sem loja ({{ fmt(peLojas.custoCompartilhado) }}) rateados pelo faturamento de cada loja.
+                    <span v-if="peLojas.custoFolhaRateada > 0">Folha sem loja ({{ fmt(peLojas.custoFolhaRateada) }}) rateada por nº de funcionários; </span>
+                    demais custos sem loja ({{ fmt(peLojas.custoDemaisRateado) }}) pelo faturamento.
                   </div>
                 </div>
               </v-expand-transition>
@@ -1299,10 +1303,14 @@ interface PeLoja {
   peAtingido: boolean
   lucroAcimaPE: number
   faltaAtingir: number
+  funcionarios: number
 }
 interface PeLojasData {
   totalCustosFixos: number
   custoCompartilhado: number
+  custoFolhaRateada: number
+  custoDemaisRateado: number
+  totalFuncionarios: number
   lojas: PeLoja[]
 }
 const peLojas = ref<PeLojasData | null>(null)

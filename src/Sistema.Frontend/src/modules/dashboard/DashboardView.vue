@@ -181,6 +181,9 @@
           <v-card-title class="pa-4 pb-2 text-body-1 font-weight-bold d-flex align-center">
             <v-icon icon="mdi-finance" class="mr-2" color="indigo" />
             DRE — {{ calMesLabel }}
+            <v-chip v-if="lojaAtualNome" size="x-small" color="indigo" variant="tonal" label class="ml-2">
+              {{ lojaAtualNome }}
+            </v-chip>
             <v-btn icon size="x-small" variant="text" color="deep-purple"
               @click="analisarCard('DRE do mês', dadosDre)">
               <v-icon>mdi-lightbulb-on-outline</v-icon>
@@ -189,8 +192,8 @@
             <v-btn icon="mdi-chevron-left" size="x-small" variant="text" density="comfortable" class="ml-1" @click="mudarMes(-1)" />
             <v-btn icon="mdi-chevron-right" size="x-small" variant="text" density="comfortable" @click="mudarMes(1)" />
             <v-spacer />
-            <v-chip v-if="dre" :color="dre.resultadoOperacional >= 0 ? 'success' : 'error'" size="small" label>
-              {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+            <v-chip v-if="dreView" :color="dreView.resultadoOperacional >= 0 ? 'success' : 'error'" size="small" label>
+              {{ dreView.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dreView.resultadoOperacional) }}
             </v-chip>
           </v-card-title>
 
@@ -198,7 +201,7 @@
             <v-progress-circular indeterminate color="indigo" />
           </v-card-text>
 
-          <v-card-text v-else-if="!dre" class="text-center text-medium-emphasis pa-6">
+          <v-card-text v-else-if="!dreView" class="text-center text-medium-emphasis pa-6">
             <v-icon icon="mdi-chart-line-variant" size="36" class="mb-2" />
             <div class="text-body-2">Sem dados para o período.</div>
           </v-card-text>
@@ -209,26 +212,26 @@
               <v-col cols="6">
                 <div class="pe-stat">
                   <div class="pe-stat-lbl">Receita líquida</div>
-                  <div class="pe-stat-val text-indigo">{{ fmt(dre.receitaLiquida) }}</div>
+                  <div class="pe-stat-val text-indigo">{{ fmt(dreView.receitaLiquida) }}</div>
                 </div>
               </v-col>
               <v-col cols="6">
                 <div class="pe-stat">
                   <div class="pe-stat-lbl">CMV</div>
-                  <div class="pe-stat-val text-warning">{{ fmt(dre.cmv) }}</div>
+                  <div class="pe-stat-val text-warning">{{ fmt(dreView.cmv) }}</div>
                 </div>
               </v-col>
               <v-col cols="6">
                 <div class="pe-stat">
                   <div class="pe-stat-lbl">Margem bruta</div>
-                  <div class="pe-stat-val text-deep-purple">{{ dre.margemBruta }}%</div>
+                  <div class="pe-stat-val text-deep-purple">{{ dreView.margemBruta }}%</div>
                 </div>
               </v-col>
               <v-col cols="6">
-                <div class="pe-stat" :class="dre.resultadoOperacional >= 0 ? 'pe-stat--ok' : 'pe-stat--warn'">
+                <div class="pe-stat" :class="dreView.resultadoOperacional >= 0 ? 'pe-stat--ok' : 'pe-stat--warn'">
                   <div class="pe-stat-lbl">Resultado operacional</div>
-                  <div class="pe-stat-val" :class="dre.resultadoOperacional >= 0 ? 'text-success' : 'text-error'">
-                    {{ dre.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dre.resultadoOperacional) }}
+                  <div class="pe-stat-val" :class="dreView.resultadoOperacional >= 0 ? 'text-success' : 'text-error'">
+                    {{ dreView.resultadoOperacional >= 0 ? '+' : '' }}{{ fmt(dreView.resultadoOperacional) }}
                   </div>
                 </div>
               </v-col>
@@ -413,11 +416,11 @@
             <div class="flex-grow-1">
               <div class="text-caption text-medium-emphasis">Custo da Mercadoria Vendida (CMV) — {{ calMesLabel }}</div>
               <div class="text-h5 font-weight-bold text-orange-darken-2">
-                {{ dre ? fmt(dre.cmv) : 'R$ --' }}
+                {{ dreView ? fmt(dreView.cmv) : 'R$ --' }}
               </div>
               <div class="text-caption text-medium-emphasis">
-                {{ dre && dre.receitaLiquida > 0
-                  ? Math.round(dre.cmv / dre.receitaLiquida * 100) + '% da receita líquida'
+                {{ dreView && dreView.receitaLiquida > 0
+                  ? Math.round(dreView.cmv / dreView.receitaLiquida * 100) + '% da receita líquida'
                   : 'sem receita no mês' }}
               </div>
             </div>
@@ -426,10 +429,10 @@
               <v-icon>mdi-lightbulb-on-outline</v-icon>
               <v-tooltip activator="parent" location="top">Análise inteligente</v-tooltip>
             </v-btn>
-            <v-progress-circular v-if="dre && dre.receitaLiquida > 0"
-              :model-value="Math.min(dre.cmv / dre.receitaLiquida * 100, 100)"
+            <v-progress-circular v-if="dreView && dreView.receitaLiquida > 0"
+              :model-value="Math.min(dreView.cmv / dreView.receitaLiquida * 100, 100)"
               :size="52" :width="6" color="orange-darken-2">
-              <span class="text-caption font-weight-bold">{{ Math.round(dre.cmv / dre.receitaLiquida * 100) }}%</span>
+              <span class="text-caption font-weight-bold">{{ Math.round(dreView.cmv / dreView.receitaLiquida * 100) }}%</span>
             </v-progress-circular>
           </v-card-text>
         </v-card>
@@ -1603,8 +1606,8 @@ const dre = ref<DreData | null>(null)
 const carregandoDre = ref(true)
 
 const linhasDre = computed(() => {
-  if (!dre.value) return []
-  const d = dre.value
+  if (!dreView.value) return []
+  const d = dreView.value
   return [
     { label: 'Receita Bruta', valor: d.receitaBruta, cor: 'text-success', destaque: false },
     { label: '(-) Descontos', valor: -d.descontos, cor: 'text-error', destaque: false, indent: true },
@@ -1628,10 +1631,43 @@ async function carregarDre() {
   } catch { /* vazio */ } finally { carregandoDre.value = false }
 }
 
+// ── DRE por loja (para o card refletir a loja selecionada no topo) ────────────
+interface DreLoja {
+  lojaId: string; loja: string; receita: number; cmv: number; lucroBruto: number
+  margemBruta: number; perdas: number; despesasDiretas: number; despesasRateadas: number
+  despesasTotal: number; resultado: number; margemLiquida: number
+}
+const dreLojas = ref<{ lojas: DreLoja[] } | null>(null)
+async function carregarDreLojas() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<{ lojas: DreLoja[] }>('/financeiro/dre/por-lojas', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    dreLojas.value = res.data
+  } catch { dreLojas.value = null }
+}
+// DRE exibido: loja selecionada → DRE DELA (com rateio das despesas); senão, consolidado.
+const dreView = computed<DreData | null>(() => {
+  const loja = auth.lojaAtualId
+  if (loja && dreLojas.value) {
+    const l = dreLojas.value.lojas.find(x => x.lojaId === loja)
+    if (l) return {
+      receitaBruta: l.receita, descontos: 0, receitaLiquida: l.receita,
+      cmv: l.cmv, lucroBruto: l.lucroBruto, margemBruta: l.margemBruta,
+      despesasOperacionais: (l.perdas || 0) + l.despesasTotal,
+      despesasPorCategoria: [],
+      resultadoOperacional: l.resultado, margemOperacional: l.margemLiquida,
+    }
+  }
+  return dre.value
+})
+watch(dreView, async () => { await nextTick(); renderizarGraficoDre() })
+
 let _dreTry = 0
 function renderizarGraficoDre() {
   const canvas = dreCanvas.value
-  if (!canvas || !dre.value) return
+  if (!canvas || !dreView.value) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   if (canvas.offsetWidth === 0) {
@@ -1639,7 +1675,7 @@ function renderizarGraficoDre() {
     return
   }
   _dreTry = 0
-  const d = dre.value
+  const d = dreView.value
   const W = canvas.offsetWidth || 400; const H = 80
   canvas.width = W; canvas.height = H
 
@@ -2002,7 +2038,7 @@ function dadosPe() {
     + (p.peAtingido ? `lucro acima do PE R$ ${fmtNum(p.lucroAcimaPE)}.` : `falta R$ ${fmtNum(p.pontoEquilibrio - p.faturamentoMes)} para atingir o PE.`)
 }
 function dadosDre() {
-  const d = dre.value; if (!d) return ''
+  const d = dreView.value; if (!d) return ''
   return `Receita líquida R$ ${fmtNum(d.receitaLiquida)}; CMV R$ ${fmtNum(d.cmv)}; lucro bruto R$ ${fmtNum(d.lucroBruto)} `
     + `(margem bruta ${d.margemBruta}%); despesas operacionais R$ ${fmtNum(d.despesasOperacionais)}; `
     + `resultado operacional R$ ${fmtNum(d.resultadoOperacional)} (margem operacional ${d.margemOperacional}%).`
@@ -2032,7 +2068,7 @@ function dadosMargem() {
     + `(R$ ${fmtNum(p.margemContribuicao)} de contribuição no mês), sobre faturamento de R$ ${fmtNum(p.faturamentoMes)}.`
 }
 function dadosCmv() {
-  const d = dre.value; if (!d) return ''
+  const d = dreView.value; if (!d) return ''
   const pct = d.receitaLiquida > 0 ? Math.round(d.cmv / d.receitaLiquida * 100) : 0
   return `Custo da Mercadoria Vendida (CMV) do mês R$ ${fmtNum(d.cmv)} `
     + `(${pct}% da receita líquida de R$ ${fmtNum(d.receitaLiquida)}). `
@@ -2144,6 +2180,7 @@ onMounted(async () => {
     carregarReceberMes(),
     carregarVendasColaborador(),
     carregarDre(),
+    carregarDreLojas(),
     carregarPlanejamento(),
     carregarFornecedores(),
     carregarCalendario(),
@@ -2182,11 +2219,14 @@ watch(() => auth.lojaAtualId, async () => {
     carregarCapitalGiro(),
     carregarPe(),
     carregarPeLojas(),
+    carregarDre(),
+    carregarDreLojas(),
     carregarRentabilidade(),
   ])
   await nextTick()
   requestAnimationFrame(() => {
     renderizarGraficoPe()
+    renderizarGraficoDre()
     renderizarCurvaAbc()
     renderizarRentab()
   })

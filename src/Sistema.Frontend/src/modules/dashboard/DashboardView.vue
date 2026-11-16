@@ -115,6 +115,44 @@
             </v-row>
 
             <canvas ref="peCanvas" height="90" style="width:100%" />
+
+            <!-- Ponto de equilíbrio por loja -->
+            <template v-if="peLojas && peLojas.lojas.length > 1">
+              <v-btn variant="text" size="small" color="deep-purple" class="mt-1"
+                @click="mostrarPeLojas = !mostrarPeLojas">
+                <v-icon start>{{ mostrarPeLojas ? 'mdi-chevron-up' : 'mdi-store-outline' }}</v-icon>
+                {{ mostrarPeLojas ? 'Ocultar por loja' : 'Ver por loja' }}
+              </v-btn>
+              <v-expand-transition>
+                <div v-show="mostrarPeLojas" class="mt-1">
+                  <div v-for="l in peLojas.lojas" :key="l.lojaId" class="pe-loja">
+                    <div class="d-flex justify-space-between align-center mb-1">
+                      <span class="text-caption font-weight-bold">{{ l.loja }}</span>
+                      <v-chip :color="l.peAtingido ? 'success' : 'warning'" size="x-small" label>
+                        {{ l.peAtingido ? 'Atingido ✓' : l.percentualAtingido + '%' }}
+                      </v-chip>
+                    </div>
+                    <v-progress-linear :model-value="Math.min(l.percentualAtingido, 100)"
+                      :color="l.peAtingido ? 'success' : l.percentualAtingido >= 75 ? 'warning' : 'deep-purple'"
+                      height="16" rounded class="mb-1">
+                      <span class="text-caption" style="color:white;font-size:.6rem">{{ fmt(l.faturamentoMes) }} / {{ fmt(l.pontoEquilibrio) }}</span>
+                    </v-progress-linear>
+                    <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-2" style="font-size:.65rem">
+                      <span>Custos fixos {{ fmt(l.custosFixos) }}</span>
+                      <span>
+                        MC {{ l.percentualMargemContribuicao }}%<span v-if="l.margemEstimada" class="text-warning" title="Estimada (90 dias)">*</span>
+                      </span>
+                      <span :class="l.peAtingido ? 'text-success' : 'text-warning'">
+                        {{ l.peAtingido ? '+' + fmt(l.lucroAcimaPE) : 'falta ' + fmt(l.faltaAtingir) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="peLojas.custoCompartilhado > 0" class="text-caption text-medium-emphasis" style="font-size:.6rem">
+                    * Custos sem loja ({{ fmt(peLojas.custoCompartilhado) }}) rateados pelo faturamento de cada loja.
+                  </div>
+                </div>
+              </v-expand-transition>
+            </template>
           </v-card-text>
         </v-card>
       </v-col>
@@ -1248,6 +1286,37 @@ async function carregarPe() {
   }
 }
 
+// ── Ponto de Equilíbrio por loja ──────────────────────────────────────────────
+interface PeLoja {
+  lojaId: string
+  loja: string
+  faturamentoMes: number
+  custosFixos: number
+  percentualMargemContribuicao: number
+  margemEstimada?: boolean
+  pontoEquilibrio: number
+  percentualAtingido: number
+  peAtingido: boolean
+  lucroAcimaPE: number
+  faltaAtingir: number
+}
+interface PeLojasData {
+  totalCustosFixos: number
+  custoCompartilhado: number
+  lojas: PeLoja[]
+}
+const peLojas = ref<PeLojasData | null>(null)
+const mostrarPeLojas = ref(false)
+async function carregarPeLojas() {
+  if (!auth.empresaId) return
+  try {
+    const res = await api.get<PeLojasData>('/financeiro/ponto-equilibrio/por-lojas', {
+      params: { empresaId: auth.empresaId, ano: anoRef.value, mes: mesNum.value }
+    })
+    peLojas.value = res.data
+  } catch { peLojas.value = null }
+}
+
 let _peTry = 0
 function renderizarGraficoPe() {
   const canvas = peCanvas.value
@@ -1303,7 +1372,7 @@ async function mudarMes(delta: number) {
   mesOffset.value += delta
   await Promise.all([
     carregarVendasMes(), carregarContasMes(), carregarReceberMes(),
-    carregarPe(), carregarDre(), carregarVendasColaborador(),
+    carregarPe(), carregarPeLojas(), carregarDre(), carregarVendasColaborador(),
     carregarMetas(), carregarCapitalGiro(),
   ])
 }
@@ -2013,6 +2082,7 @@ onMounted(async () => {
     carregarMovimento(),
     carregarVendasMes(),
     carregarPe(),
+    carregarPeLojas(),
     carregarContasMes(),
     carregarReceberMes(),
     carregarVendasColaborador(),

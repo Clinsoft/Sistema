@@ -88,9 +88,13 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
         var pontoEquilibrio = percentualMC > 0
             ? Math.Round(totalCustosFixos / (percentualMC / 100), 2) : 0m;
 
-        // PE OPERACIONAL = tira o financiamento (dívida/capital de giro) dos custos fixos —
-        // é o quanto a loja precisa vender só para manter a operação, sem a dívida.
-        var financiamentoMes = contasPagar.Where(c => c.Categoria == "Financiamentos").Sum(c => c.ValorOriginal);
+        // PE OPERACIONAL = tira a DÍVIDA/INVESTIMENTO (financiamento + imobilizado financiado)
+        // dos custos fixos — é o quanto a loja precisa vender só para manter a operação, sem a
+        // dívida. (Imobilizado parcelado é dívida de investimento, não custo recorrente de operar;
+        // continua no PE TOTAL, que é o que garante que a loja se paga por completo.)
+        var financiamentoMes = contasPagar
+            .Where(c => c.Categoria == "Financiamentos" || c.Categoria == "Imobilizado")
+            .Sum(c => c.ValorOriginal);
         var custosOperacionais = totalCustosFixos - financiamentoMes;
         var pontoEquilibrioOperacional = percentualMC > 0
             ? Math.Round(custosOperacionais / (percentualMC / 100), 2) : 0m;
@@ -200,11 +204,12 @@ public class PontoEquilibrioController(SistemaDbContext db) : ControllerBase
             .GroupBy(c => c.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
 
-        // Financiamento (dívida/capital de giro) — para o PE OPERACIONAL (sem dívida).
-        var financDiretaLoja = contas.Where(c => c.LocalEstoqueId != null && c.Categoria == "Financiamentos")
+        // Dívida/investimento (financiamento + imobilizado financiado) — p/ o PE OPERACIONAL (sem dívida).
+        bool EhDivida(string? c) => c == "Financiamentos" || c == "Imobilizado";
+        var financDiretaLoja = contas.Where(c => c.LocalEstoqueId != null && EhDivida(c.Categoria))
             .GroupBy(c => c.LocalEstoqueId!.Value)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.ValorOriginal));
-        var financSemLoja = contas.Where(c => c.LocalEstoqueId == null && c.Categoria == "Financiamentos")
+        var financSemLoja = contas.Where(c => c.LocalEstoqueId == null && EhDivida(c.Categoria))
             .Sum(c => c.ValorOriginal);
 
         bool EhFolha(string? doc) => doc != null && doc.StartsWith("FOLHA ");

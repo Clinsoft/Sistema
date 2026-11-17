@@ -421,10 +421,10 @@
 
               <!-- ═══ Layout Black Friday ═══ -->
               <template v-if="ehBf">
-                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c tr" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c bl" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c br" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
+                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round" /></svg>
+                <svg class="bf-c tr" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round" /></svg>
+                <svg class="bf-c bl" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round" /></svg>
+                <svg class="bf-c br" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round" /></svg>
 
                 <div class="eco-bf-header">
                   <svg class="bf-tag" viewBox="0 0 24 24"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83Z" fill="none" stroke="#fff" stroke-width="1.3" /><circle cx="6.5" cy="6.5" r="1.4" fill="#fff" /><text x="12.5" y="15.5" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#fff">%</text></svg>
@@ -1371,7 +1371,7 @@ function imprimir() {
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
       }
       .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; }
-      .etiqueta-eco.bf > svg.bf-c { position: absolute; width: 13mm; height: 13mm; z-index: 0; }
+      .etiqueta-eco.bf > svg.bf-c { position: absolute; width: 8mm; height: 8mm; z-index: 0; }
       .etiqueta-eco.bf .bf-c.tl { top: 0; left: 0; }
       .etiqueta-eco.bf .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
       .etiqueta-eco.bf .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
@@ -1500,7 +1500,7 @@ function imprimir() {
 .etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; }
 .etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
 .etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
-.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 46px; height: 46px; z-index: 0; }
+.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 30px; height: 30px; z-index: 0; }
 .bf-c.tl { top: 0; left: 0; }
 .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
 .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }

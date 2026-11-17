@@ -53,7 +53,7 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
     const gid = 'pr' + Math.random().toString(36).slice(2, 8)
     const grad = `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#dcdcdc"/><stop offset="1" stop-color="#7d7d7d"/></linearGradient></defs>`
     // Franja prata (degradê): uma única linha grossa em cada canto.
-    const franja = `<line x1="0" y1="26" x2="26" y2="0" stroke="url(#${gid})" stroke-width="8" stroke-linecap="round"/>`
+    const franja = `<line x1="0" y1="26" x2="26" y2="0" stroke="url(#${gid})" stroke-width="3" stroke-linecap="round"/>`
     const cantos = ['tl', 'tr', 'bl', 'br'].map(c =>
       `<svg class="bf-c ${c}" viewBox="0 0 40 40">${grad}${franja}</svg>`).join('')
     // Tagzinha de preço com "%".
@@ -165,7 +165,7 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
   .etq.bf { align-items: center; text-align: center; justify-content: flex-start; padding: 4mm 5mm 4.5mm; }
-  .etq.bf > svg.bf-c { position: absolute; width: 12mm; height: 12mm; z-index: 0; }
+  .etq.bf > svg.bf-c { position: absolute; width: 8mm; height: 8mm; z-index: 0; }
   .bf-c.tl { top: 0; left: 0; }
   .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
   .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }

@@ -11,6 +11,7 @@ export interface EtiquetaKgData {
   nome: string
   codigoPlu?: number | string | null
   precoVenda: number        // preço por KG (o template exibe por 100g)
+  precoOriginal?: number | null  // preço CHEIO por KG (Black Friday: mostra "de" riscado)
   validade?: string | null  // yyyy-MM-dd
   descricao?: string | null // texto descritivo (descrição complementar)
   slug?: string | null      // usado no QR; se ausente, gerado do nome
@@ -52,11 +53,22 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
   const meio = bf
     ? `<div class="etq-spacer"></div>`
     : `<div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>`
+  // Franjas diagonais nos 4 cantos (estilo Black Friday).
+  const linhasCanto = '<g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0"/><line x1="0" y1="20" x2="20" y2="0"/><line x1="0" y1="28" x2="28" y2="0"/></g>'
+  const cantos = bf
+    ? `<svg class="bf-c tl" viewBox="0 0 34 34">${linhasCanto}</svg>
+       <svg class="bf-c tr" viewBox="0 0 34 34">${linhasCanto}</svg>
+       <svg class="bf-c bl" viewBox="0 0 34 34">${linhasCanto}</svg>
+       <svg class="bf-c br" viewBox="0 0 34 34">${linhasCanto}</svg>`
+    : ''
   return `
     <div class="etq">
       <div class="etq-wm"></div>
+      ${cantos}
       ${header}
       <div class="etq-nome">${esc((it.nome || '').toUpperCase())}${plu}</div>
+      ${bf && it.precoOriginal && it.precoOriginal > it.precoVenda
+        ? `<div class="etq-de">de R$ ${fmt((it.precoOriginal ?? 0) / 10)} por</div>` : ''}
       <div class="etq-preco"><span class="v">${fmt(preco100)}</span><span class="l">${esc(o.rotuloPreco || 'cada 100g')}</span></div>
       ${it.validade ? `<div class="etq-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
       ${meio}
@@ -138,6 +150,12 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   .etq-bf-b { display: block; font-size: 10pt; letter-spacing: 6px; font-weight: 700; color: #fff; line-height: 1; }
   .etq-bf-f { display: block; font-size: 24pt; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
   .etq-spacer { flex: 1 1 auto; }
+  .etq-de { text-align: center; font-size: 11pt; color: #bdbdbd; text-decoration: line-through; margin-top: 1mm; }
+  .etq > svg.bf-c { position: absolute; width: 34px; height: 34px; z-index: 0; }
+  .bf-c.tl { top: 0; left: 0; }
+  .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
+  .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
+  .bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
   .etq-nome { font-size: ${(12 * escNome).toFixed(1)}pt; font-weight: 900; color: ${corTexto}; text-align: center; line-height: 1.15; }
   .etq-nome .plu { font-weight: 700; font-size: .85em; }
   .etq-preco { display: table; margin: 2mm auto 1mm; }

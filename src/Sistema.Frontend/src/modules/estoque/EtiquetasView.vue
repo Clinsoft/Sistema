@@ -419,6 +419,14 @@
               <img v-if="marcaDaguaUrl && !ehBf" :src="marcaDaguaUrl" class="eco-marca-dagua"
                 :style="{ opacity: ecoCfg.marcaOpacidade / 100 }" />
 
+              <!-- Franjas diagonais nos cantos (Black Friday) -->
+              <template v-if="ehBf">
+                <svg class="bf-c tl" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
+                <svg class="bf-c tr" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
+                <svg class="bf-c bl" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
+                <svg class="bf-c br" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
+              </template>
+
               <!-- Cabeçalho BLACK FRIDAY -->
               <div v-if="ehBf" class="eco-bf-header">
                 <div class="eco-bf-black">BLACK</div>
@@ -435,6 +443,7 @@
 
               <!-- Preço grande -->
               <div v-if="camposEco.preco100g" class="eco-preco-bloco">
+                <div v-if="ehBf && precoBf(p) < p.precoVenda" class="eco-bf-de">de R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }} por</div>
                 <span class="eco-preco-valor" :style="ehBf ? {} : stPreco">{{ fmtPrecoDisplay(preco100g(ehBf ? precoBf(p) : p.precoVenda)) }}</span>
                 <div class="eco-preco-label" :style="ehBf ? {} : stRotulo">cada 100g</div>
               </div>
@@ -1305,6 +1314,7 @@ function imprimir() {
         nome: p.descricao,
         codigoPlu: p.codigoPlu ?? p.codigo,
         precoVenda: ehBf.value ? precoBf(p) : p.precoVenda,   // Black Friday: preço já com desconto
+        precoOriginal: ehBf.value ? p.precoVenda : undefined, // preço cheio (mostra "de" riscado)
         validade: validadeProduto(p) || validadePadrao(),
         descricao: p.descricaoComplementar || textoDescritivoEco.value,
       })),
@@ -1461,6 +1471,12 @@ function imprimir() {
 .eco-bf-header { text-align: center; padding: 4mm 0 0; }
 .eco-bf-black { font-size: 13px; letter-spacing: 6px; font-weight: 700; line-height: 1; }
 .eco-bf-friday { font-size: 40px; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
+.eco-bf-de { text-align: center; font-size: 15px; color: #bdbdbd; text-decoration: line-through; }
+.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 40px; height: 40px; z-index: 0; }
+.bf-c.tl { top: 0; left: 0; }
+.bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
+.bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
+.bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
 
 .eco-marca-dagua {
   position: absolute;

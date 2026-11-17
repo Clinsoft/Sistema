@@ -181,7 +181,7 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   .bf-preco .cent { font-size: 24pt; vertical-align: 28%; }
   .bf-100 { font-size: 8.5pt; color: #e0e0e0; margin-top: 1.5mm; }
   .bf-val { font-size: 9pt; color: #fff; margin-top: 1mm; }
-  .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; width: 100%; margin-top: 3.5mm; }
+  .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; width: 100%; margin-top: 1.5mm; }
   .bf-qr { width: 18mm; height: 18mm; }
   .bf-frase { font-size: 10.5pt; font-weight: 900; color: #fff; text-align: center; line-height: 1.15; letter-spacing: .5px; }
   .etq-nome { font-size: ${(12 * escNome).toFixed(1)}pt; font-weight: 900; color: ${corTexto}; text-align: center; line-height: 1.15; }

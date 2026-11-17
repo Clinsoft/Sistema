@@ -1399,7 +1399,7 @@ function imprimir() {
       .etiqueta-eco.bf .bf-preco .cent { font-size: 24pt; vertical-align: 28%; }
       .etiqueta-eco.bf .bf-100 { font-size: 8.5pt; color: #e0e0e0; text-align: center; margin-top: 1.5mm; }
       .etiqueta-eco.bf .bf-val { font-size: 9pt; color: #fff; text-align: center; margin-top: 1mm; }
-      .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; margin-top: 3.5mm; }
+      .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; margin-top: 1.5mm; }
       .etiqueta-eco.bf .bf-frase { font-size: 10.5pt; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
       .eco-marca-dagua {
         position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
@@ -1514,7 +1514,7 @@ function imprimir() {
 .etiqueta-eco.bf .bf-preco .cent { font-size: 32px; vertical-align: 28%; }
 .etiqueta-eco.bf .bf-100 { font-size: 12px; color: #e0e0e0; text-align: center; margin-top: 6px; }
 .etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; margin-top: 4px; }
-.etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; }
+.etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
 .etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
 
 .eco-marca-dagua {

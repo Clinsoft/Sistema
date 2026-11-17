@@ -1,5 +1,28 @@
 <template>
   <div>
+    <!-- Confirmação da impressão (substitui o confirm nativo) -->
+    <v-dialog v-model="dlgConfirmEtiq" max-width="440" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center pa-4 pb-2">
+          <v-icon color="primary" class="mr-2">mdi-printer-check</v-icon>
+          As etiquetas saíram?
+        </v-card-title>
+        <v-card-text class="pb-2">
+          Confirme se as <b>{{ confirmEtiqIds.length }}</b> etiqueta(s) saíram corretamente na impressora.
+          <div class="text-caption text-medium-emphasis mt-1">
+            Se a impressora estava desligada ou sumiu, responda <b>Não saiu</b> — elas continuam na lista para reimprimir.
+          </div>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-btn variant="text" color="error" @click="confirmarEtiqNao">Não saiu</v-btn>
+          <v-spacer />
+          <v-btn color="primary" variant="flat" prepend-icon="mdi-check" @click="confirmarEtiqSim">
+            Sim, saiu tudo
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-row align="center" class="mb-4">
       <v-col><h2 class="text-h5 font-weight-bold">Editor de Etiquetas</h2></v-col>
       <v-col cols="auto" class="d-flex gap-2">
@@ -941,13 +964,23 @@ function escHtml(s: string): string {
 // Após mandar imprimir, confirma COM A ATENDENTE se as etiquetas realmente saíram antes
 // de marcá-las como impressas. Se ela disser que NÃO saiu (impressora desligada, travou),
 // os produtos continuam na lista para reimprimir — evita "mandei imprimir e sumiu".
+// Confirmação da impressão por um diálogo DENTRO do sistema (mais confiável que o
+// confirm() nativo, que abria atrás da janela de impressão e era fácil de perder).
+const dlgConfirmEtiq = ref(false)
+const confirmEtiqIds = ref<string[]>([])
 function confirmarImpressao(ids: string[]) {
   if (!ids.length) return
-  setTimeout(() => {
-    const ok = confirm('As etiquetas saíram corretamente na impressora?\n\n• OK = saiu tudo (tira da lista)\n• Cancelar = não saiu (mantém na lista para reimprimir)')
-    if (ok) finalizarImpressao(ids)
-    else notif.aviso('Impressão não confirmada — as etiquetas continuam na lista para você tentar de novo.')
-  }, 700)
+  confirmEtiqIds.value = ids
+  // pequeno atraso: a janela de impressão devolve o foco antes do diálogo abrir.
+  setTimeout(() => { dlgConfirmEtiq.value = true }, 600)
+}
+function confirmarEtiqSim() {
+  dlgConfirmEtiq.value = false
+  finalizarImpressao(confirmEtiqIds.value)
+}
+function confirmarEtiqNao() {
+  dlgConfirmEtiq.value = false
+  notif.aviso('Impressão não confirmada — as etiquetas continuam na lista para você tentar de novo.')
 }
 
 async function finalizarImpressao(ids: string[]) {

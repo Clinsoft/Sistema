@@ -48,33 +48,48 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
   const preco100 = (it.precoVenda ?? 0) / 10
   const cod = it.codigoPlu != null && it.codigoPlu !== '' ? String(it.codigoPlu) : ''
   const codFmt = /^\d+$/.test(cod) ? cod.padStart(4, '0') : cod
+
+  if (bf) {
+    const gid = 'pr' + Math.random().toString(36).slice(2, 8)
+    const grad = `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#dcdcdc"/><stop offset="1" stop-color="#7d7d7d"/></linearGradient></defs>`
+    // Franjas prata (degradê) nos 4 cantos.
+    const franja = `<g stroke="url(#${gid})" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0"/><line x1="0" y1="23" x2="23" y2="0"/><line x1="0" y1="32" x2="32" y2="0"/></g>`
+    const cantos = ['tl', 'tr', 'bl', 'br'].map(c =>
+      `<svg class="bf-c ${c}" viewBox="0 0 40 40">${grad}${franja}</svg>`).join('')
+    // Tagzinha de preço com "%".
+    const tag = `<svg class="bf-tag" viewBox="0 0 24 24"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83Z" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="6.5" cy="6.5" r="1.4" fill="#fff"/><text x="12.5" y="15.5" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#fff">%</text></svg>`
+    const friday = `<svg class="bf-friday" viewBox="0 0 300 62" preserveAspectRatio="xMidYMid meet">${grad}<text x="150" y="50" text-anchor="middle" font-family="Arial" font-weight="900" font-size="56" fill="url(#${gid})">FRIDAY</text></svg>`
+    return `
+    <div class="etq bf">
+      ${cantos}
+      <div class="bf-top">
+        ${tag}
+        <div class="bf-black">BLACK</div>
+        ${friday}
+      </div>
+      <div class="bf-nome">${esc((it.nome || '').toUpperCase())}</div>
+      ${codFmt ? `<div class="bf-cod">-${codFmt}-</div>` : ''}
+      <div class="bf-preco">${fmt(preco100)}</div>
+      <div class="bf-100">${esc(o.rotuloPreco || 'cada 100g')}</div>
+      ${it.validade ? `<div class="bf-hr"></div><div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div><div class="bf-hr"></div>` : ''}
+      <div class="bf-foot">
+        ${qr ? `<img class="bf-qr" src="${qr}"/>` : '<span></span>'}
+        <div class="bf-frase">${esc(o.fraseRodape || 'APROVEITE A BLACK FRIDAY!')}</div>
+      </div>
+    </div>`
+  }
+
   const plu = codFmt ? ` <span class="plu">-${codFmt}</span>` : ''
-  const header = bf ? `<div class="etq-bf"><span class="etq-bf-b">BLACK</span><span class="etq-bf-f">FRIDAY</span></div>` : ''
-  const meio = bf
-    ? `<div class="etq-spacer"></div>`
-    : `<div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>`
-  // Franjas diagonais nos 4 cantos (estilo Black Friday).
-  const linhasCanto = '<g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0"/><line x1="0" y1="20" x2="20" y2="0"/><line x1="0" y1="28" x2="28" y2="0"/></g>'
-  const cantos = bf
-    ? `<svg class="bf-c tl" viewBox="0 0 34 34">${linhasCanto}</svg>
-       <svg class="bf-c tr" viewBox="0 0 34 34">${linhasCanto}</svg>
-       <svg class="bf-c bl" viewBox="0 0 34 34">${linhasCanto}</svg>
-       <svg class="bf-c br" viewBox="0 0 34 34">${linhasCanto}</svg>`
-    : ''
   return `
     <div class="etq">
       <div class="etq-wm"></div>
-      ${cantos}
-      ${header}
       <div class="etq-nome">${esc((it.nome || '').toUpperCase())}${plu}</div>
-      ${bf && it.precoOriginal && it.precoOriginal > it.precoVenda
-        ? `<div class="etq-de">de R$ ${fmt((it.precoOriginal ?? 0) / 10)} por</div>` : ''}
       <div class="etq-preco"><span class="v">${fmt(preco100)}</span><span class="l">${esc(o.rotuloPreco || 'cada 100g')}</span></div>
       ${it.validade ? `<div class="etq-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
-      ${meio}
+      <div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>
       <div class="etq-rodape">
-        ${qr ? `<div class="qr-wrap"><img class="qr" src="${qr}"/>${bf ? '' : '<div class="qr-saiba">Saiba mais pelo QR Code</div>'}</div>` : '<span></span>'}
-        <div class="frase">${esc(o.fraseRodape || (bf ? 'APROVEITE A BLACK FRIDAY!' : 'Natural como deve ser!'))}</div>
+        ${qr ? `<div class="qr-wrap"><img class="qr" src="${qr}"/><div class="qr-saiba">Saiba mais pelo QR Code</div></div>` : '<span></span>'}
+        <div class="frase">${esc(o.fraseRodape || 'Natural como deve ser!')}</div>
       </div>
     </div>`
 }
@@ -146,16 +161,25 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
     opacity: ${opac}; pointer-events: none;
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
-  .etq > svg.bf-c { position: absolute; width: 34px; height: 34px; z-index: 0; }
+  .etq.bf { align-items: center; text-align: center; justify-content: flex-start; padding: 5mm 5mm 4mm; }
+  .etq.bf > svg.bf-c { position: absolute; width: 13mm; height: 13mm; z-index: 0; }
   .bf-c.tl { top: 0; left: 0; }
   .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
   .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
   .bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
-  .etq-bf { text-align: center; margin-bottom: 1mm; }
-  .etq-bf-b { display: block; font-size: 10pt; letter-spacing: 6px; font-weight: 700; color: #fff; line-height: 1; }
-  .etq-bf-f { display: block; font-size: 24pt; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
-  .etq-spacer { flex: 1 1 auto; }
-  .etq-de { text-align: center; font-size: 11pt; color: #bdbdbd; text-decoration: line-through; margin-top: 1mm; }
+  .bf-top { text-align: center; width: 100%; }
+  .bf-tag { width: 9mm; height: 9mm; display: block; margin: 0 auto 1mm; }
+  .bf-black { font-size: 12pt; letter-spacing: 7px; font-weight: 700; color: #fff; line-height: 1; padding-left: 7px; }
+  .bf-friday { display: block; width: 62%; height: auto; margin: -0.5mm auto 0; }
+  .bf-nome { font-size: 12pt; font-weight: 900; color: #fff; text-align: center; line-height: 1.12; margin-top: 2mm; }
+  .bf-cod { font-size: 9pt; color: #bdbdbd; text-align: center; margin-top: 0.5mm; }
+  .bf-preco { font-size: 40pt; font-weight: 900; color: #fff; line-height: 1; text-align: center; margin-top: 1.5mm; }
+  .bf-100 { font-size: 9pt; color: #e0e0e0; text-align: center; }
+  .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 2mm auto; }
+  .bf-val { font-size: 10pt; color: #fff; text-align: center; }
+  .bf-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; width: 100%; }
+  .bf-qr { width: 20mm; height: 20mm; }
+  .bf-frase { font-size: 10pt; font-weight: 900; color: #fff; text-align: right; line-height: 1.15; max-width: 48%; }
   .etq-nome { font-size: ${(12 * escNome).toFixed(1)}pt; font-weight: 900; color: ${corTexto}; text-align: center; line-height: 1.15; }
   .etq-nome .plu { font-weight: 700; font-size: .85em; }
   .etq-preco { display: table; margin: 2mm auto 1mm; }

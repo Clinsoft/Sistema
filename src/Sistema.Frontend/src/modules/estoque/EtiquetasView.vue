@@ -419,55 +419,63 @@
               <img v-if="marcaDaguaUrl && !ehBf" :src="marcaDaguaUrl" class="eco-marca-dagua"
                 :style="{ opacity: ecoCfg.marcaOpacidade / 100 }" />
 
-              <!-- Franjas diagonais nos cantos (Black Friday) -->
+              <!-- ═══ Layout Black Friday ═══ -->
               <template v-if="ehBf">
-                <svg class="bf-c tl" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
-                <svg class="bf-c tr" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
-                <svg class="bf-c bl" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
-                <svg class="bf-c br" viewBox="0 0 34 34"><g stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="0" y1="12" x2="12" y2="0" /><line x1="0" y1="20" x2="20" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /></g></svg>
+                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
+                <svg class="bf-c tr" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
+                <svg class="bf-c bl" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
+                <svg class="bf-c br" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
+
+                <div class="eco-bf-header">
+                  <svg class="bf-tag" viewBox="0 0 24 24"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83Z" fill="none" stroke="#fff" stroke-width="1.3" /><circle cx="6.5" cy="6.5" r="1.4" fill="#fff" /><text x="12.5" y="15.5" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#fff">%</text></svg>
+                  <div class="eco-bf-black">BLACK</div>
+                  <svg class="bf-friday" viewBox="0 0 300 62" preserveAspectRatio="xMidYMid meet"><text x="150" y="50" text-anchor="middle" font-family="Arial" font-weight="900" font-size="56" fill="url(#bfpr)">FRIDAY</text></svg>
+                </div>
+                <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
+                <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">-{{ codigoEtiqueta(p) }}-</div>
+                <div v-if="camposEco.preco100g" class="bf-preco">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</div>
+                <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
+                <template v-if="camposEco.validade && validadeProduto(p)">
+                  <div class="bf-hr"></div>
+                  <div class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
+                  <div class="bf-hr"></div>
+                </template>
+                <div class="eco-rodape bf-foot">
+                  <div v-if="camposEco.qrcode" class="eco-qr-wrap">
+                    <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                  </div>
+                  <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A BLACK FRIDAY!</strong></div>
+                </div>
               </template>
 
-              <!-- Cabeçalho BLACK FRIDAY -->
-              <div v-if="ehBf" class="eco-bf-header">
-                <div class="eco-bf-black">BLACK</div>
-                <div class="eco-bf-friday">FRIDAY</div>
-              </div>
-
-              <!-- Cabeçalho: nome do produto -->
-              <div v-if="camposEco.nome" class="eco-nome" :style="ehBf ? {} : stNome">
-                {{ p.descricao?.toUpperCase() }}
-                <span v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="eco-nome-plu">
-                  -{{ codigoEtiqueta(p) }}
-                </span>
-              </div>
-
-              <!-- Preço grande -->
-              <div v-if="camposEco.preco100g" class="eco-preco-bloco">
-                <div v-if="ehBf && precoBf(p) < p.precoVenda" class="eco-bf-de">de R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }} por</div>
-                <span class="eco-preco-valor" :style="ehBf ? {} : stPreco">{{ fmtPrecoDisplay(preco100g(ehBf ? precoBf(p) : p.precoVenda)) }}</span>
-                <div class="eco-preco-label" :style="ehBf ? {} : stRotulo">cada 100g</div>
-              </div>
-
-              <!-- Validade -->
-              <div v-if="camposEco.validade && validadeProduto(p)" class="eco-validade">
-                <strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong>
-              </div>
-
-              <!-- Texto descritivo (não no Black Friday) -->
-              <div v-if="camposEco.descricao && !ehBf" class="eco-descricao">
-                {{ p.descricaoComplementar || textoDescritivoEco }}
-              </div>
-
-              <!-- Rodapé: QR Code + frase -->
-              <div class="eco-rodape">
-                <div v-if="camposEco.qrcode" class="eco-qr-wrap">
-                  <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
-                  <div v-if="!ehBf" class="eco-qr-saibamais">Saiba mais pelo QR Code</div>
+              <!-- ═══ Layout EcoGranel padrão ═══ -->
+              <template v-else>
+                <div v-if="camposEco.nome" class="eco-nome" :style="stNome">
+                  {{ p.descricao?.toUpperCase() }}
+                  <span v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="eco-nome-plu">
+                    -{{ codigoEtiqueta(p) }}
+                  </span>
                 </div>
-                <div v-if="camposEco.frase" class="eco-frase" :style="ehBf ? {} : stFrase">
-                  <strong>{{ ehBf ? 'APROVEITE A BLACK FRIDAY!' : ecoCfg.fraseRodape }}</strong>
+                <div v-if="camposEco.preco100g" class="eco-preco-bloco">
+                  <span class="eco-preco-valor" :style="stPreco">{{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</span>
+                  <div class="eco-preco-label" :style="stRotulo">cada 100g</div>
                 </div>
-              </div>
+                <div v-if="camposEco.validade && validadeProduto(p)" class="eco-validade">
+                  <strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong>
+                </div>
+                <div v-if="camposEco.descricao" class="eco-descricao">
+                  {{ p.descricaoComplementar || textoDescritivoEco }}
+                </div>
+                <div class="eco-rodape">
+                  <div v-if="camposEco.qrcode" class="eco-qr-wrap">
+                    <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                    <div class="eco-qr-saibamais">Saiba mais pelo QR Code</div>
+                  </div>
+                  <div v-if="camposEco.frase" class="eco-frase" :style="stFrase">
+                    <strong>{{ ecoCfg.fraseRodape }}</strong>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -1364,13 +1372,25 @@ function imprimir() {
         position: relative; overflow: hidden; page-break-inside: avoid;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
       }
-      .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; }
-      .etiqueta-eco.bf .eco-nome, .etiqueta-eco.bf .eco-preco-valor,
-      .etiqueta-eco.bf .eco-validade, .etiqueta-eco.bf .eco-frase { color: #fff !important; }
-      .etiqueta-eco.bf .eco-preco-label { color: #e0e0e0 !important; }
-      .eco-bf-header { text-align: center; padding: 4mm 0 0; }
-      .eco-bf-black { font-size: 11pt; letter-spacing: 6px; font-weight: 700; line-height: 1; }
-      .eco-bf-friday { font-size: 26pt; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
+      .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; }
+      .etiqueta-eco.bf > svg.bf-c { position: absolute; width: 13mm; height: 13mm; z-index: 0; }
+      .etiqueta-eco.bf .bf-c.tl { top: 0; left: 0; }
+      .etiqueta-eco.bf .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
+      .etiqueta-eco.bf .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
+      .etiqueta-eco.bf .bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
+      .etiqueta-eco.bf > * { position: relative; z-index: 1; }
+      .eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
+      .bf-tag { width: 9mm; height: 9mm; display: block; margin: 0 auto 1mm; }
+      .eco-bf-black { font-size: 12pt; letter-spacing: 7px; font-weight: 700; line-height: 1; color: #fff; padding-left: 7px; }
+      .bf-friday { display: block; width: 62%; height: auto; margin: -0.5mm auto 0; }
+      .etiqueta-eco.bf .bf-nome { font-size: 12pt; font-weight: 900; color: #fff; text-align: center; margin-top: 2mm; line-height: 1.12; }
+      .etiqueta-eco.bf .bf-cod { font-size: 9pt; color: #bdbdbd; text-align: center; margin-top: 0.5mm; }
+      .etiqueta-eco.bf .bf-preco { font-size: 40pt; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 1.5mm; }
+      .etiqueta-eco.bf .bf-100 { font-size: 9pt; color: #e0e0e0; text-align: center; }
+      .etiqueta-eco.bf .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 2mm auto; }
+      .etiqueta-eco.bf .bf-val { font-size: 10pt; color: #fff; text-align: center; }
+      .etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
+      .etiqueta-eco.bf .bf-frase { font-size: 10pt; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
       .eco-marca-dagua {
         position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
         pointer-events: none; user-select: none;
@@ -1464,15 +1484,21 @@ function imprimir() {
   transition: box-shadow .2s;
 }
 .etiqueta-eco:hover { box-shadow: 0 6px 20px rgba(0,0,0,.22); }
-.etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.etiqueta-eco.bf .eco-nome, .etiqueta-eco.bf .eco-preco-valor,
-.etiqueta-eco.bf .eco-validade, .etiqueta-eco.bf .eco-frase { color: #fff !important; }
-.etiqueta-eco.bf .eco-preco-label { color: #e0e0e0 !important; }
-.eco-bf-header { text-align: center; padding: 4mm 0 0; }
-.eco-bf-black { font-size: 13px; letter-spacing: 6px; font-weight: 700; line-height: 1; }
-.eco-bf-friday { font-size: 40px; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
-.eco-bf-de { text-align: center; font-size: 15px; color: #bdbdbd; text-decoration: line-through; }
-.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 40px; height: 40px; z-index: 0; }
+.etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.etiqueta-eco.bf > * { position: relative; z-index: 1; }
+.eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
+.bf-tag { width: 34px; height: 34px; display: block; margin: 0 auto 4px; }
+.eco-bf-black { font-size: 17px; letter-spacing: 7px; font-weight: 700; line-height: 1; color: #fff; padding-left: 7px; }
+.bf-friday { display: block; width: 62%; height: auto; margin: -2px auto 0; }
+.etiqueta-eco.bf .bf-nome { font-size: 17px; font-weight: 900; color: #fff; text-align: center; margin-top: 8px; line-height: 1.12; }
+.etiqueta-eco.bf .bf-cod { font-size: 13px; color: #bdbdbd; text-align: center; margin-top: 2px; }
+.etiqueta-eco.bf .bf-preco { font-size: 56px; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 6px; }
+.etiqueta-eco.bf .bf-100 { font-size: 13px; color: #e0e0e0; text-align: center; }
+.etiqueta-eco.bf .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 8px auto; }
+.etiqueta-eco.bf .bf-val { font-size: 14px; color: #fff; text-align: center; }
+.etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
+.etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
+.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 46px; height: 46px; z-index: 0; }
 .bf-c.tl { top: 0; left: 0; }
 .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
 .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }

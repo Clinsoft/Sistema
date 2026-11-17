@@ -52,8 +52,8 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
   if (bf) {
     const gid = 'pr' + Math.random().toString(36).slice(2, 8)
     const grad = `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#dcdcdc"/><stop offset="1" stop-color="#7d7d7d"/></linearGradient></defs>`
-    // Franjas prata (degradê) nos 4 cantos.
-    const franja = `<g stroke="url(#${gid})" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0"/><line x1="0" y1="23" x2="23" y2="0"/><line x1="0" y1="32" x2="32" y2="0"/></g>`
+    // Franja prata (degradê): uma única linha grossa em cada canto.
+    const franja = `<line x1="0" y1="26" x2="26" y2="0" stroke="url(#${gid})" stroke-width="8" stroke-linecap="round"/>`
     const cantos = ['tl', 'tr', 'bl', 'br'].map(c =>
       `<svg class="bf-c ${c}" viewBox="0 0 40 40">${grad}${franja}</svg>`).join('')
     // Tagzinha de preço com "%".
@@ -67,13 +67,14 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
         <div class="bf-black">BLACK</div>
         ${friday}
       </div>
+      <div class="bf-hr"></div>
       <div class="bf-nome">${esc((it.nome || '').toUpperCase())}</div>
       ${codFmt ? `<div class="bf-cod">-${codFmt}-</div>` : ''}
       ${it.precoOriginal && it.precoOriginal > it.precoVenda
         ? `<div class="bf-de">de <s>R$ ${fmt((it.precoOriginal ?? 0) / 10)}</s> por</div>` : ''}
       <div class="bf-preco">${fmt(preco100)}</div>
       <div class="bf-100">${esc(o.rotuloPreco || 'cada 100g')}</div>
-      ${it.validade ? `<div class="bf-hr"></div><div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div><div class="bf-hr"></div>` : ''}
+      ${it.validade ? `<div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
       <div class="bf-foot">
         ${qr ? `<img class="bf-qr" src="${qr}"/>` : '<span></span>'}
         <div class="bf-frase">${esc(o.fraseRodape || 'APROVEITE A BLACK FRIDAY!')}</div>

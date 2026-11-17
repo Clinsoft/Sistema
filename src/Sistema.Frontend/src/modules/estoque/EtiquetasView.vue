@@ -421,26 +421,23 @@
 
               <!-- ═══ Layout Black Friday ═══ -->
               <template v-if="ehBf">
-                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
-                <svg class="bf-c tr" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
-                <svg class="bf-c bl" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
-                <svg class="bf-c br" viewBox="0 0 40 40"><g stroke="url(#bfpr)" stroke-width="3" stroke-linecap="round"><line x1="0" y1="14" x2="14" y2="0" /><line x1="0" y1="23" x2="23" y2="0" /><line x1="0" y1="32" x2="32" y2="0" /></g></svg>
+                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
+                <svg class="bf-c tr" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
+                <svg class="bf-c bl" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
+                <svg class="bf-c br" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
 
                 <div class="eco-bf-header">
                   <svg class="bf-tag" viewBox="0 0 24 24"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83Z" fill="none" stroke="#fff" stroke-width="1.3" /><circle cx="6.5" cy="6.5" r="1.4" fill="#fff" /><text x="12.5" y="15.5" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#fff">%</text></svg>
                   <div class="eco-bf-black">BLACK</div>
                   <svg class="bf-friday" viewBox="0 0 300 62" preserveAspectRatio="xMidYMid meet"><text x="150" y="50" text-anchor="middle" font-family="Arial" font-weight="900" font-size="56" fill="url(#bfpr)">FRIDAY</text></svg>
                 </div>
+                <div class="bf-hr"></div>
                 <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
                 <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">-{{ codigoEtiqueta(p) }}-</div>
                 <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
                 <div v-if="camposEco.preco100g" class="bf-preco">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</div>
                 <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
-                <template v-if="camposEco.validade && validadeProduto(p)">
-                  <div class="bf-hr"></div>
-                  <div class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
-                  <div class="bf-hr"></div>
-                </template>
+                <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
                 <div class="eco-rodape bf-foot">
                   <div v-if="camposEco.qrcode" class="eco-qr-wrap">
                     <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />

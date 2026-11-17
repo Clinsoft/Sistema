@@ -459,34 +459,57 @@
             <div v-for="p in etiquetasExpandidas" :key="p._key"
               :style="{ width:'10cm', height:'10cm', background:'#0a0a0a', color:'#fff', display:'flex',
                 flexDirection:'column', alignItems:'center', position:'relative', overflow:'hidden',
-                pageBreakInside:'avoid', fontFamily:'Arial, Helvetica, sans-serif', boxSizing:'border-box' }">
+                pageBreakInside:'avoid', fontFamily:'Arial, Helvetica, sans-serif', boxSizing:'border-box',
+                padding:'5mm 4mm 4mm' }">
+              <!-- Listras diagonais nos 4 cantos -->
+              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;top:0;left:0">
+                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
+                </g>
+              </svg>
+              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;top:0;right:0;transform:scaleX(-1)">
+                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
+                </g>
+              </svg>
+              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;bottom:0;left:0;transform:scaleY(-1)">
+                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
+                </g>
+              </svg>
+              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;bottom:0;right:0;transform:scale(-1,-1)">
+                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
+                </g>
+              </svg>
+              <!-- Selo de desconto -->
+              <svg width="26" height="26" viewBox="0 0 24 24" style="margin-bottom:0.5mm">
+                <circle cx="12" cy="12" r="11" fill="none" stroke="#fff" stroke-width="1.6" />
+                <text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">%</text>
+              </svg>
               <!-- Cabeçalho BLACK FRIDAY -->
-              <div :style="{ textAlign:'center', paddingTop:'7mm' }">
-                <div :style="{ fontSize:'13pt', letterSpacing:'6px', fontWeight:700 }">BLACK</div>
-                <div :style="{ fontSize:'34pt', fontWeight:900, lineHeight:'0.85', letterSpacing:'1px',
-                  background:'linear-gradient(180deg,#fff 0%,#9e9e9e 100%)', WebkitBackgroundClip:'text',
-                  WebkitTextFillColor:'transparent', backgroundClip:'text' }">FRIDAY</div>
-              </div>
+              <div :style="{ fontSize:'12pt', letterSpacing:'7px', fontWeight:700, lineHeight:'1' }">BLACK</div>
+              <div :style="{ fontSize:'30pt', fontWeight:900, lineHeight:'0.9', letterSpacing:'1px', color:'#cfcfcf' }">FRIDAY</div>
               <!-- Produto + código -->
-              <div :style="{ fontSize:'14pt', fontWeight:800, textAlign:'center', padding:'4mm 6mm 0',
+              <div :style="{ fontSize:'13pt', fontWeight:800, textAlign:'center', padding:'3mm 6mm 0',
                 textTransform:'uppercase', lineHeight:'1.1' }">{{ p.descricao }}</div>
-              <div :style="{ fontSize:'10pt', color:'#bdbdbd', margin:'1mm 0 1mm' }">-{{ p.codigo || codigoEtiqueta(p) }}-</div>
+              <div :style="{ fontSize:'9.5pt', color:'#bdbdbd', margin:'0.5mm 0' }">-{{ p.codigo || codigoEtiqueta(p) }}-</div>
               <!-- Preço -->
-              <div :style="{ textAlign:'center' }">
-                <span :style="{ fontSize:'56pt', fontWeight:900, lineHeight:'1', letterSpacing:'-2px' }">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</span>
-                <div :style="{ fontSize:'11pt', color:'#e0e0e0', marginTop:'-1mm' }">cada 100g</div>
+              <div :style="{ textAlign:'center', marginTop:'1mm' }">
+                <span :style="{ fontSize:'46pt', fontWeight:900, lineHeight:'1', letterSpacing:'-2px' }">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</span>
+                <div :style="{ fontSize:'10.5pt', color:'#e0e0e0', marginTop:'0' }">cada 100g</div>
               </div>
               <!-- Validade -->
-              <div v-if="validadeProduto(p)" :style="{ fontSize:'11pt', margin:'3mm 0',
-                borderTop:'1px solid #555', borderBottom:'1px solid #555', padding:'1.5mm 10mm' }">
+              <div v-if="validadeProduto(p)" :style="{ fontSize:'10pt', margin:'2.5mm 0',
+                borderTop:'1px solid #555', borderBottom:'1px solid #555', padding:'1.2mm 10mm' }">
                 Validade: <b>{{ fmtData(validadeProduto(p)) }}</b>
               </div>
               <div :style="{ flex:'1 1 auto' }"></div>
               <!-- Rodapé: QR + frase -->
-              <div :style="{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                width:'100%', padding:'0 7mm 6mm', boxSizing:'border-box' }">
-                <canvas :ref="el => registrarQr(el, p)" :style="{ width:'20mm', height:'20mm' }" />
-                <div :style="{ fontWeight:900, fontSize:'12pt', textAlign:'right', lineHeight:'1.15' }">
+              <div :style="{ display:'flex', alignItems:'flex-end', justifyContent:'space-between',
+                width:'100%', padding:'0 3mm', boxSizing:'border-box' }">
+                <canvas :ref="el => registrarQr(el, p)" :style="{ width:'19mm', height:'19mm' }" />
+                <div :style="{ fontWeight:900, fontSize:'11.5pt', textAlign:'right', lineHeight:'1.15' }">
                   APROVEITE A<br />BLACK FRIDAY!
                 </div>
               </div>

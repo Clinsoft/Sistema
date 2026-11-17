@@ -36,23 +36,33 @@ function esc(s: string) {
 
 /** Gera o HTML de uma etiqueta kg (usado no preview e na impressão). */
 async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<string> {
+  const bf = !!o.blackFriday
   const url = branding.catalogoProdutoUrl + (it.slug || slugify(it.nome))
   let qr = ''
-  try { qr = await QRCode.toDataURL(url, { width: 240, margin: 1 }) } catch { /* ignora */ }
+  try {
+    // No Black Friday o QR é branco (fundo transparente) para aparecer sobre o preto.
+    qr = await QRCode.toDataURL(url, { width: 240, margin: 1,
+      ...(bf ? { color: { dark: '#ffffff', light: '#00000000' } } : {}) })
+  } catch { /* ignora */ }
   const preco100 = (it.precoVenda ?? 0) / 10
   const cod = it.codigoPlu != null && it.codigoPlu !== '' ? String(it.codigoPlu) : ''
   const codFmt = /^\d+$/.test(cod) ? cod.padStart(4, '0') : cod
   const plu = codFmt ? ` <span class="plu">-${codFmt}</span>` : ''
+  const header = bf ? `<div class="etq-bf"><span class="etq-bf-b">BLACK</span><span class="etq-bf-f">FRIDAY</span></div>` : ''
+  const meio = bf
+    ? `<div class="etq-spacer"></div>`
+    : `<div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>`
   return `
     <div class="etq">
       <div class="etq-wm"></div>
+      ${header}
       <div class="etq-nome">${esc((it.nome || '').toUpperCase())}${plu}</div>
       <div class="etq-preco"><span class="v">${fmt(preco100)}</span><span class="l">${esc(o.rotuloPreco || 'cada 100g')}</span></div>
       ${it.validade ? `<div class="etq-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
-      <div class="etq-desc">${esc(it.descricao || TEXTO_PADRAO)}</div>
+      ${meio}
       <div class="etq-rodape">
-        ${qr ? `<div class="qr-wrap"><img class="qr" src="${qr}"/><div class="qr-saiba">Saiba mais pelo QR Code</div></div>` : '<span></span>'}
-        <div class="frase">${esc(o.fraseRodape || 'Natural como deve ser!')}</div>
+        ${qr ? `<div class="qr-wrap"><img class="qr" src="${qr}"/>${bf ? '' : '<div class="qr-saiba">Saiba mais pelo QR Code</div>'}</div>` : '<span></span>'}
+        <div class="frase">${esc(o.fraseRodape || (bf ? 'APROVEITE A BLACK FRIDAY!' : 'Natural como deve ser!'))}</div>
       </div>
     </div>`
 }
@@ -72,6 +82,7 @@ export interface EtiquetaKgOpts {
   marcaOpacidade?: number   // % (0-100)
   escalaNome?: number       // % do tamanho do nome
   escalaPreco?: number      // % do tamanho do preço
+  blackFriday?: boolean     // tema preto Black Friday (fundo preto, texto branco, cabeçalho BLACK FRIDAY)
 }
 
 // Logo padrão da marca (servida na raiz do site).
@@ -95,10 +106,14 @@ async function toDataUrl(url: string): Promise<string> {
 }
 
 const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: EtiquetaKgOpts) => {
-  const corTexto  = o.corTexto  || '#111'
-  const corPreco  = o.corPreco  || '#111'
-  const corRotulo = o.corRotulo || '#444'
-  const fundoCor  = o.fundoCor  || '#e8f5e9'
+  const bf        = !!o.blackFriday
+  const corTexto  = bf ? '#ffffff' : (o.corTexto  || '#111')
+  const corPreco  = bf ? '#ffffff' : (o.corPreco  || '#111')
+  const corRotulo = bf ? '#e0e0e0' : (o.corRotulo || '#444')
+  const corFrase  = bf ? '#ffffff' : cor
+  const corBorda  = bf ? '#000000' : cor
+  const corVal    = bf ? '#ffffff' : '#222'
+  const fundo     = bf ? '#0a0a0a' : `linear-gradient(160deg,#ffffff 0%,${o.fundoCor || '#e8f5e9'} 60%,${o.fundoCor || '#e8f5e9'} 100%)`
   const opac      = (o.marcaOpacidade ?? 10) / 100
   const escNome   = (o.escalaNome  ?? 100) / 100
   const escPreco  = (o.escalaPreco ?? 100) / 100
@@ -109,30 +124,34 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   .folha { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 92mm; gap: 4mm; }
   .etq {
     position: relative;
-    border: ${espessuraPx}px solid ${cor}; border-radius: ${espessuraPx * 2 + 4}px; padding: 5mm;
-    background: linear-gradient(160deg,#ffffff 0%,${fundoCor} 60%,${fundoCor} 100%);
+    border: ${espessuraPx}px solid ${corBorda}; border-radius: ${espessuraPx * 2 + 4}px; padding: 5mm;
+    background: ${fundo};
     display: flex; flex-direction: column; overflow: hidden; page-break-inside: avoid;
   }
-  ${marcaUrl ? `.etq-wm {
+  ${marcaUrl && !bf ? `.etq-wm {
     position: absolute; inset: 0; z-index: 0;
     background: url("${marcaUrl}") center 45% / 62% no-repeat;
     opacity: ${opac}; pointer-events: none;
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
+  .etq-bf { text-align: center; margin-bottom: 1mm; }
+  .etq-bf-b { display: block; font-size: 10pt; letter-spacing: 6px; font-weight: 700; color: #fff; line-height: 1; }
+  .etq-bf-f { display: block; font-size: 24pt; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
+  .etq-spacer { flex: 1 1 auto; }
   .etq-nome { font-size: ${(12 * escNome).toFixed(1)}pt; font-weight: 900; color: ${corTexto}; text-align: center; line-height: 1.15; }
   .etq-nome .plu { font-weight: 700; font-size: .85em; }
   .etq-preco { display: table; margin: 2mm auto 1mm; }
   .etq-preco .v { font-size: ${(40 * escPreco).toFixed(1)}pt; font-weight: 900; color: ${corPreco}; line-height: 1; }
   .etq-preco .l { display: block; font-size: 8pt; color: ${corRotulo}; text-align: right; }
-  .etq-val { text-align: center; font-size: 10pt; color: #222; margin-bottom: 1mm; }
+  .etq-val { text-align: center; font-size: 10pt; color: ${corVal}; margin-bottom: 1mm; }
   .etq-desc { font-size: 8pt; color: #333; text-align: center; line-height: 1.35;
     flex: 1 1 auto; min-height: 0;
     display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
   .etq-rodape { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; margin-top: 2mm; }
   .qr-wrap { display: flex; flex-direction: column; align-items: center; }
   .etq-rodape .qr { width: 20mm; height: 20mm; }
-  .qr-saiba { font-size: 6.5pt; font-weight: 900; color: ${cor}; text-align: center; margin-top: 0.5mm; }
-  .etq-rodape .frase { font-size: 9pt; font-weight: 900; color: ${cor}; text-align: right; max-width: 50%; line-height: 1.2; }
+  .qr-saiba { font-size: 6.5pt; font-weight: 900; color: ${corFrase}; text-align: center; margin-top: 0.5mm; }
+  .etq-rodape .frase { font-size: 9pt; font-weight: 900; color: ${corFrase}; text-align: right; max-width: 50%; line-height: 1.2; }
 `}
 
 /**

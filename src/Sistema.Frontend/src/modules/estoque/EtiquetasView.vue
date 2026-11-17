@@ -1299,31 +1299,38 @@ function removerProduto(id: string) {
 // ── Impressão ────────────────────────────────────────────────────────────────
 function imprimir() {
   const idsImpressos = produtosParaImprimir.value.map((p: any) => p.id)
-  // Template EcoGranel (produtos por peso) → usa o template PADRÃO 6/A4 compartilhado.
-  if (template.value === 'ecogranel') {
+  // EcoGranel e Black Friday (produtos por peso) → template PADRÃO 6/A4 compartilhado.
+  if (template.value === 'ecogranel' || ehBf.value) {
     imprimirEtiquetasKg(
       produtosParaImprimir.value.map((p: any) => ({
         nome: p.descricao,
         codigoPlu: p.codigoPlu ?? p.codigo,
-        precoVenda: p.precoVenda,
+        precoVenda: ehBf.value ? precoBf(p) : p.precoVenda,   // Black Friday: preço já com desconto
         validade: validadeProduto(p) || validadePadrao(),
         descricao: p.descricaoComplementar || textoDescritivoEco.value,
       })),
-      {
-        copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
-        bordaCor: borda.value.cor,
-        bordaEspessura: borda.value.espessura,
-        marcaDaguaUrl: marcaDaguaUrl.value || undefined,
-        rotuloPreco: ecoCfg.value.rotuloPreco,
-        fraseRodape: ecoCfg.value.fraseRodape,
-        corTexto: ecoCfg.value.corTexto,
-        corPreco: ecoCfg.value.corPreco,
-        corRotulo: ecoCfg.value.corRotulo,
-        fundoCor: ecoCfg.value.fundoCor,
-        marcaOpacidade: ecoCfg.value.marcaOpacidade,
-        escalaNome: ecoCfg.value.escalaNome,
-        escalaPreco: ecoCfg.value.escalaPreco,
-      }
+      ehBf.value
+        ? {
+            copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
+            blackFriday: true,
+            rotuloPreco: 'cada 100g',
+            fraseRodape: 'APROVEITE A BLACK FRIDAY!',
+          }
+        : {
+            copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
+            bordaCor: borda.value.cor,
+            bordaEspessura: borda.value.espessura,
+            marcaDaguaUrl: marcaDaguaUrl.value || undefined,
+            rotuloPreco: ecoCfg.value.rotuloPreco,
+            fraseRodape: ecoCfg.value.fraseRodape,
+            corTexto: ecoCfg.value.corTexto,
+            corPreco: ecoCfg.value.corPreco,
+            corRotulo: ecoCfg.value.corRotulo,
+            fundoCor: ecoCfg.value.fundoCor,
+            marcaOpacidade: ecoCfg.value.marcaOpacidade,
+            escalaNome: ecoCfg.value.escalaNome,
+            escalaPreco: ecoCfg.value.escalaPreco,
+          }
     )
     confirmarImpressao(idsImpressos)
     return

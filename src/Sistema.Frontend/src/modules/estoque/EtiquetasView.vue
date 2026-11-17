@@ -830,7 +830,10 @@ function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
 function fmtData(d: string) { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
 function fmtDataHora(iso: string) {
   if (!iso) return ''
-  const dt = new Date(iso)
+  // O backend grava em UTC. Se a data vier SEM fuso ('Z'/offset), trata como UTC
+  // para o navegador converter corretamente para o horário de Brasília.
+  const s = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z'
+  const dt = new Date(s)
   if (isNaN(dt.getTime())) return ''
   return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }

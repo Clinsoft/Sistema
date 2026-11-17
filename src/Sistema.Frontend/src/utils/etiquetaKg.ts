@@ -69,6 +69,8 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
       </div>
       <div class="bf-nome">${esc((it.nome || '').toUpperCase())}</div>
       ${codFmt ? `<div class="bf-cod">-${codFmt}-</div>` : ''}
+      ${it.precoOriginal && it.precoOriginal > it.precoVenda
+        ? `<div class="bf-de">de <s>R$ ${fmt((it.precoOriginal ?? 0) / 10)}</s> por</div>` : ''}
       <div class="bf-preco">${fmt(preco100)}</div>
       <div class="bf-100">${esc(o.rotuloPreco || 'cada 100g')}</div>
       ${it.validade ? `<div class="bf-hr"></div><div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div><div class="bf-hr"></div>` : ''}
@@ -161,25 +163,27 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
     opacity: ${opac}; pointer-events: none;
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
-  .etq.bf { align-items: center; text-align: center; justify-content: flex-start; padding: 5mm 5mm 4mm; }
-  .etq.bf > svg.bf-c { position: absolute; width: 13mm; height: 13mm; z-index: 0; }
+  .etq.bf { align-items: center; text-align: center; justify-content: flex-start; padding: 4mm 5mm 4.5mm; }
+  .etq.bf > svg.bf-c { position: absolute; width: 12mm; height: 12mm; z-index: 0; }
   .bf-c.tl { top: 0; left: 0; }
   .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
   .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
   .bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
   .bf-top { text-align: center; width: 100%; }
-  .bf-tag { width: 9mm; height: 9mm; display: block; margin: 0 auto 1mm; }
-  .bf-black { font-size: 12pt; letter-spacing: 7px; font-weight: 700; color: #fff; line-height: 1; padding-left: 7px; }
-  .bf-friday { display: block; width: 62%; height: auto; margin: -0.5mm auto 0; }
-  .bf-nome { font-size: 12pt; font-weight: 900; color: #fff; text-align: center; line-height: 1.12; margin-top: 2mm; }
-  .bf-cod { font-size: 9pt; color: #bdbdbd; text-align: center; margin-top: 0.5mm; }
-  .bf-preco { font-size: 40pt; font-weight: 900; color: #fff; line-height: 1; text-align: center; margin-top: 1.5mm; }
-  .bf-100 { font-size: 9pt; color: #e0e0e0; text-align: center; }
-  .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 2mm auto; }
-  .bf-val { font-size: 10pt; color: #fff; text-align: center; }
+  .bf-tag { width: 8mm; height: 8mm; display: block; margin: 0 auto 0.5mm; }
+  .bf-black { font-size: 11pt; letter-spacing: 6px; font-weight: 700; color: #fff; line-height: 1; padding-left: 6px; }
+  .bf-friday { display: block; width: 56%; height: auto; margin: -0.5mm auto 0; }
+  .bf-nome { font-size: 11pt; font-weight: 900; color: #fff; text-align: center; line-height: 1.1; margin-top: 1.5mm; }
+  .bf-cod { font-size: 8.5pt; color: #bdbdbd; text-align: center; margin-top: 0.3mm; }
+  .bf-de { font-size: 8.5pt; color: #cfcfcf; text-align: center; margin-top: 1mm; }
+  .bf-de s { color: #9a9a9a; }
+  .bf-preco { font-size: 33pt; font-weight: 900; color: #fff; line-height: 1; text-align: center; margin-top: 0.5mm; }
+  .bf-100 { font-size: 8.5pt; color: #e0e0e0; text-align: center; margin-top: 1.5mm; }
+  .bf-hr { width: 78%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 1.5mm auto; }
+  .bf-val { font-size: 9.5pt; color: #fff; text-align: center; }
   .bf-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; width: 100%; }
-  .bf-qr { width: 20mm; height: 20mm; }
-  .bf-frase { font-size: 10pt; font-weight: 900; color: #fff; text-align: right; line-height: 1.15; max-width: 48%; }
+  .bf-qr { width: 17mm; height: 17mm; }
+  .bf-frase { font-size: 9.5pt; font-weight: 900; color: #fff; text-align: right; line-height: 1.15; max-width: 48%; }
   .etq-nome { font-size: ${(12 * escNome).toFixed(1)}pt; font-weight: 900; color: ${corTexto}; text-align: center; line-height: 1.15; }
   .etq-nome .plu { font-weight: 700; font-size: .85em; }
   .etq-preco { display: table; margin: 2mm auto 1mm; }

@@ -433,6 +433,7 @@
                 </div>
                 <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
                 <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">-{{ codigoEtiqueta(p) }}-</div>
+                <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
                 <div v-if="camposEco.preco100g" class="bf-preco">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</div>
                 <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
                 <template v-if="camposEco.validade && validadeProduto(p)">
@@ -1381,14 +1382,16 @@ function imprimir() {
       .etiqueta-eco.bf > * { position: relative; z-index: 1; }
       .eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
       .bf-tag { width: 9mm; height: 9mm; display: block; margin: 0 auto 1mm; }
-      .eco-bf-black { font-size: 12pt; letter-spacing: 7px; font-weight: 700; line-height: 1; color: #fff; padding-left: 7px; }
-      .bf-friday { display: block; width: 62%; height: auto; margin: -0.5mm auto 0; }
-      .etiqueta-eco.bf .bf-nome { font-size: 12pt; font-weight: 900; color: #fff; text-align: center; margin-top: 2mm; line-height: 1.12; }
-      .etiqueta-eco.bf .bf-cod { font-size: 9pt; color: #bdbdbd; text-align: center; margin-top: 0.5mm; }
-      .etiqueta-eco.bf .bf-preco { font-size: 40pt; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 1.5mm; }
-      .etiqueta-eco.bf .bf-100 { font-size: 9pt; color: #e0e0e0; text-align: center; }
-      .etiqueta-eco.bf .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 2mm auto; }
-      .etiqueta-eco.bf .bf-val { font-size: 10pt; color: #fff; text-align: center; }
+      .eco-bf-black { font-size: 11pt; letter-spacing: 6px; font-weight: 700; line-height: 1; color: #fff; padding-left: 6px; }
+      .bf-friday { display: block; width: 56%; height: auto; margin: -0.5mm auto 0; }
+      .etiqueta-eco.bf .bf-nome { font-size: 11pt; font-weight: 900; color: #fff; text-align: center; margin-top: 1.5mm; line-height: 1.1; }
+      .etiqueta-eco.bf .bf-cod { font-size: 8.5pt; color: #bdbdbd; text-align: center; margin-top: 0.3mm; }
+      .etiqueta-eco.bf .bf-de { font-size: 8.5pt; color: #cfcfcf; text-align: center; margin-top: 1mm; }
+      .etiqueta-eco.bf .bf-de s { color: #9a9a9a; }
+      .etiqueta-eco.bf .bf-preco { font-size: 33pt; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 0.5mm; }
+      .etiqueta-eco.bf .bf-100 { font-size: 8.5pt; color: #e0e0e0; text-align: center; margin-top: 1.5mm; }
+      .etiqueta-eco.bf .bf-hr { width: 78%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 1.5mm auto; }
+      .etiqueta-eco.bf .bf-val { font-size: 9.5pt; color: #fff; text-align: center; }
       .etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
       .etiqueta-eco.bf .bf-frase { font-size: 10pt; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
       .eco-marca-dagua {
@@ -1487,15 +1490,17 @@ function imprimir() {
 .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .etiqueta-eco.bf > * { position: relative; z-index: 1; }
 .eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
-.bf-tag { width: 34px; height: 34px; display: block; margin: 0 auto 4px; }
-.eco-bf-black { font-size: 17px; letter-spacing: 7px; font-weight: 700; line-height: 1; color: #fff; padding-left: 7px; }
-.bf-friday { display: block; width: 62%; height: auto; margin: -2px auto 0; }
-.etiqueta-eco.bf .bf-nome { font-size: 17px; font-weight: 900; color: #fff; text-align: center; margin-top: 8px; line-height: 1.12; }
-.etiqueta-eco.bf .bf-cod { font-size: 13px; color: #bdbdbd; text-align: center; margin-top: 2px; }
-.etiqueta-eco.bf .bf-preco { font-size: 56px; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 6px; }
-.etiqueta-eco.bf .bf-100 { font-size: 13px; color: #e0e0e0; text-align: center; }
-.etiqueta-eco.bf .bf-hr { width: 72%; height: 1px; background: #6a6a6a; margin: 8px auto; }
-.etiqueta-eco.bf .bf-val { font-size: 14px; color: #fff; text-align: center; }
+.bf-tag { width: 30px; height: 30px; display: block; margin: 0 auto 3px; }
+.eco-bf-black { font-size: 15px; letter-spacing: 6px; font-weight: 700; line-height: 1; color: #fff; padding-left: 6px; }
+.bf-friday { display: block; width: 56%; height: auto; margin: -2px auto 0; }
+.etiqueta-eco.bf .bf-nome { font-size: 15px; font-weight: 900; color: #fff; text-align: center; margin-top: 6px; line-height: 1.1; }
+.etiqueta-eco.bf .bf-cod { font-size: 12px; color: #bdbdbd; text-align: center; margin-top: 1px; }
+.etiqueta-eco.bf .bf-de { font-size: 12px; color: #cfcfcf; text-align: center; margin-top: 4px; }
+.etiqueta-eco.bf .bf-de s { color: #9a9a9a; }
+.etiqueta-eco.bf .bf-preco { font-size: 46px; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 2px; }
+.etiqueta-eco.bf .bf-100 { font-size: 12px; color: #e0e0e0; text-align: center; margin-top: 5px; }
+.etiqueta-eco.bf .bf-hr { width: 78%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 6px auto; }
+.etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; }
 .etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
 .etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
 .etiqueta-eco.bf > svg.bf-c { position: absolute; width: 46px; height: 46px; z-index: 0; }

@@ -411,7 +411,7 @@
             <div v-for="p in etiquetasExpandidas" :key="p._key"
               class="etiqueta-eco" :class="{ bf: ehBf }"
               :style="ehBf
-                ? { border: '3px solid #000', borderRadius: '6px', background: '#0a0a0a' }
+                ? { border: '3px solid #000', borderRadius: '6px', background: 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)' }
                 : { border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
                     background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
 
@@ -421,28 +421,26 @@
 
               <!-- ═══ Layout Black Friday ═══ -->
               <template v-if="ehBf">
-                <svg class="bf-c tl" viewBox="0 0 40 40"><defs><linearGradient id="bfpr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" /><stop offset=".5" stop-color="#dcdcdc" /><stop offset="1" stop-color="#7d7d7d" /></linearGradient></defs><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c tr" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c bl" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-                <svg class="bf-c br" viewBox="0 0 40 40"><line x1="0" y1="26" x2="26" y2="0" stroke="url(#bfpr)" stroke-width="8" stroke-linecap="round" /></svg>
-
-                <div class="eco-bf-header">
-                  <svg class="bf-tag" viewBox="0 0 24 24"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.83Z" fill="none" stroke="#fff" stroke-width="1.3" /><circle cx="6.5" cy="6.5" r="1.4" fill="#fff" /><text x="12.5" y="15.5" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#fff">%</text></svg>
+                <span v-html="fernMarkup('tr')"></span>
+                <span v-html="fernMarkup('tl')"></span>
+                <span v-html="fernMarkup('br')"></span>
+                <span v-html="fernMarkup('bl')"></span>
+                <div class="bf-content">
                   <div class="eco-bf-black">BLACK</div>
-                  <svg class="bf-friday" viewBox="0 0 300 62" preserveAspectRatio="xMidYMid meet"><text x="150" y="50" text-anchor="middle" font-family="Arial" font-weight="900" font-size="56" fill="url(#bfpr)">FRIDAY</text></svg>
-                </div>
-                <div class="bf-hr"></div>
-                <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
-                <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">-{{ codigoEtiqueta(p) }}-</div>
-                <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
-                <div v-if="camposEco.preco100g" class="bf-preco">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</div>
-                <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
-                <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
-                <div class="eco-rodape bf-foot">
-                  <div v-if="camposEco.qrcode" class="eco-qr-wrap">
-                    <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                  <svg class="bf-friday" viewBox="0 0 300 66" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="bffg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" /><stop offset=".35" stop-color="#f0f0f0" /><stop offset=".5" stop-color="#9c9c9c" /><stop offset=".62" stop-color="#d8d8d8" /><stop offset="1" stop-color="#6f6f6f" /></linearGradient></defs><text x="150" y="52" text-anchor="middle" font-family="Arial" font-weight="900" font-size="60" fill="url(#bffg)" stroke="#5a5a5a" stroke-width="0.6">FRIDAY</text></svg>
+                  <div class="bf-hr"></div>
+                  <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
+                  <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">cód. {{ codigoEtiqueta(p) }}</div>
+                  <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
+                  <div v-if="camposEco.preco100g" class="bf-preco"><span class="cur">R$</span>{{ precoBfParts(p).int }}<span class="cent">,{{ precoBfParts(p).cent }}</span></div>
+                  <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
+                  <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
+                  <div class="bf-foot">
+                    <div v-if="camposEco.qrcode" class="eco-qr-wrap">
+                      <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                    </div>
+                    <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A BLACK FRIDAY!</strong></div>
                   </div>
-                  <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A BLACK FRIDAY!</strong></div>
                 </div>
               </template>
 
@@ -563,6 +561,7 @@ import { useRoute } from 'vue-router'
 import { ean13Svg } from '@/utils/barcode'
 import QRCode from 'qrcode'
 import { imprimirEtiquetasKg } from '@/utils/etiquetaKg'
+import { FERN_PATH } from '@/utils/fernBlackFriday'
 import GuiaPassos from '@/components/GuiaPassos.vue'
 import api from '@/composables/useApi'
 import { useAuthStore } from '@/stores/auth'
@@ -843,6 +842,16 @@ function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
 // Formato especial: "7,69" (sem R$ e com vírgula)
 function fmtPrecoDisplay(v: number) {
   return (v ?? 0).toLocaleString('pt-BR', OPTS_2)
+}
+
+// Folhagem (samambaia) da arte EcoGranel nos cantos do preview Black Friday.
+function fernMarkup(c: string): string {
+  return `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="#5f5f5f">${FERN_PATH}</g></svg>`
+}
+// Preço BF separado em inteiro/centavos (para "R$" + inteiro grande + centavos elevados).
+function precoBfParts(p: any): { int: string; cent: string } {
+  const [int, cent] = (preco100g(precoBf(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
+  return { int, cent: cent ?? '00' }
 }
 
 function fmtPreco(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
@@ -1371,27 +1380,28 @@ function imprimir() {
         position: relative; overflow: hidden; page-break-inside: avoid;
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
       }
-      .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; }
-      .etiqueta-eco.bf > svg.bf-c { position: absolute; width: 13mm; height: 13mm; z-index: 0; }
-      .etiqueta-eco.bf .bf-c.tl { top: 0; left: 0; }
-      .etiqueta-eco.bf .bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
-      .etiqueta-eco.bf .bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
-      .etiqueta-eco.bf .bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
-      .etiqueta-eco.bf > * { position: relative; z-index: 1; }
-      .eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
-      .bf-tag { width: 9mm; height: 9mm; display: block; margin: 0 auto 1mm; }
-      .eco-bf-black { font-size: 11pt; letter-spacing: 6px; font-weight: 700; line-height: 1; color: #fff; padding-left: 6px; }
-      .bf-friday { display: block; width: 56%; height: auto; margin: -0.5mm auto 0; }
-      .etiqueta-eco.bf .bf-nome { font-size: 11pt; font-weight: 900; color: #fff; text-align: center; margin-top: 1.5mm; line-height: 1.1; }
-      .etiqueta-eco.bf .bf-cod { font-size: 8.5pt; color: #bdbdbd; text-align: center; margin-top: 0.3mm; }
-      .etiqueta-eco.bf .bf-de { font-size: 8.5pt; color: #cfcfcf; text-align: center; margin-top: 1mm; }
+      .etiqueta-eco.bf { background: radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%) !important; color: #fff; justify-content: center; }
+      .etiqueta-eco.bf > .fern { position: absolute; width: 38mm; height: auto; z-index: 0; opacity: .5; }
+      .etiqueta-eco.bf .fern.tr { top: -4mm; right: -5mm; transform: scaleY(-1); }
+      .etiqueta-eco.bf .fern.tl { top: -4mm; left: -5mm; transform: scale(-1, -1); }
+      .etiqueta-eco.bf .fern.br { bottom: -4mm; right: -5mm; }
+      .etiqueta-eco.bf .fern.bl { bottom: -4mm; left: -5mm; transform: scaleX(-1); }
+      .etiqueta-eco.bf .bf-content { position: relative; z-index: 1; width: 100%; text-align: center; }
+      .etiqueta-eco.bf .bf-content > * { width: 100%; text-align: center; }
+      .eco-bf-black { font-size: 11pt; letter-spacing: 9px; font-weight: 700; line-height: 1; color: #fff; text-indent: 9px; }
+      .bf-friday { display: block; width: 60%; height: auto; margin: -1mm auto 0; }
+      .etiqueta-eco.bf .bf-hr { width: 72%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 1.5mm auto; }
+      .etiqueta-eco.bf .bf-nome { font-size: 11pt; font-weight: 900; color: #fff; text-align: center; margin-top: 1.5mm; line-height: 1.08; letter-spacing: .3px; }
+      .etiqueta-eco.bf .bf-cod { font-size: 8pt; color: #9a9a9a; text-align: center; letter-spacing: 1px; margin-top: 0.5mm; }
+      .etiqueta-eco.bf .bf-de { font-size: 8.5pt; color: #cfcfcf; text-align: center; margin-top: 2mm; }
       .etiqueta-eco.bf .bf-de s { color: #9a9a9a; }
-      .etiqueta-eco.bf .bf-preco { font-size: 33pt; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 0.5mm; }
+      .etiqueta-eco.bf .bf-preco { font-size: 46pt; font-weight: 900; color: #ff2e2e; text-align: center; line-height: 1; margin-top: 0.5mm; }
+      .etiqueta-eco.bf .bf-preco .cur { font-size: 18pt; font-weight: 800; vertical-align: 28%; margin-right: 2px; }
+      .etiqueta-eco.bf .bf-preco .cent { font-size: 24pt; vertical-align: 28%; }
       .etiqueta-eco.bf .bf-100 { font-size: 8.5pt; color: #e0e0e0; text-align: center; margin-top: 1.5mm; }
-      .etiqueta-eco.bf .bf-hr { width: 78%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 1.5mm auto; }
-      .etiqueta-eco.bf .bf-val { font-size: 9.5pt; color: #fff; text-align: center; }
-      .etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
-      .etiqueta-eco.bf .bf-frase { font-size: 10pt; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
+      .etiqueta-eco.bf .bf-val { font-size: 9pt; color: #fff; text-align: center; margin-top: 1mm; }
+      .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; margin-top: 3.5mm; }
+      .etiqueta-eco.bf .bf-frase { font-size: 10.5pt; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
       .eco-marca-dagua {
         position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
         pointer-events: none; user-select: none;
@@ -1485,27 +1495,28 @@ function imprimir() {
   transition: box-shadow .2s;
 }
 .etiqueta-eco:hover { box-shadow: 0 6px 20px rgba(0,0,0,.22); }
-.etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; align-items: center; justify-content: flex-start; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.etiqueta-eco.bf > * { position: relative; z-index: 1; }
-.eco-bf-header { text-align: center; width: 100%; padding: 5mm 0 0; }
-.bf-tag { width: 30px; height: 30px; display: block; margin: 0 auto 3px; }
-.eco-bf-black { font-size: 15px; letter-spacing: 6px; font-weight: 700; line-height: 1; color: #fff; padding-left: 6px; }
-.bf-friday { display: block; width: 56%; height: auto; margin: -2px auto 0; }
-.etiqueta-eco.bf .bf-nome { font-size: 15px; font-weight: 900; color: #fff; text-align: center; margin-top: 6px; line-height: 1.1; }
-.etiqueta-eco.bf .bf-cod { font-size: 12px; color: #bdbdbd; text-align: center; margin-top: 1px; }
-.etiqueta-eco.bf .bf-de { font-size: 12px; color: #cfcfcf; text-align: center; margin-top: 4px; }
+.etiqueta-eco.bf { background: radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%) !important; color: #fff; justify-content: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.etiqueta-eco.bf > .fern { position: absolute; width: 145px; height: auto; z-index: 0; opacity: .5; }
+.etiqueta-eco.bf .fern.tr { top: -15px; right: -18px; transform: scaleY(-1); }
+.etiqueta-eco.bf .fern.tl { top: -15px; left: -18px; transform: scale(-1, -1); }
+.etiqueta-eco.bf .fern.br { bottom: -15px; right: -18px; }
+.etiqueta-eco.bf .fern.bl { bottom: -15px; left: -18px; transform: scaleX(-1); }
+.etiqueta-eco.bf .bf-content { position: relative; z-index: 1; width: 100%; text-align: center; }
+.etiqueta-eco.bf .bf-content > * { width: 100%; text-align: center; }
+.eco-bf-black { font-size: 15px; letter-spacing: 9px; font-weight: 700; line-height: 1; color: #fff; text-indent: 9px; }
+.bf-friday { display: block; width: 60%; height: auto; margin: -4px auto 0; }
+.etiqueta-eco.bf .bf-hr { width: 72%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 6px auto; }
+.etiqueta-eco.bf .bf-nome { font-size: 15px; font-weight: 900; color: #fff; text-align: center; margin-top: 6px; line-height: 1.08; letter-spacing: .3px; }
+.etiqueta-eco.bf .bf-cod { font-size: 11px; color: #9a9a9a; text-align: center; letter-spacing: 1px; margin-top: 2px; }
+.etiqueta-eco.bf .bf-de { font-size: 12px; color: #cfcfcf; text-align: center; margin-top: 7px; }
 .etiqueta-eco.bf .bf-de s { color: #9a9a9a; }
-.etiqueta-eco.bf .bf-preco { font-size: 46px; font-weight: 900; color: #fff; text-align: center; line-height: 1; margin-top: 2px; }
-.etiqueta-eco.bf .bf-100 { font-size: 12px; color: #e0e0e0; text-align: center; margin-top: 5px; }
-.etiqueta-eco.bf .bf-hr { width: 78%; height: 0; border-top: 1.5px solid #9a9a9a; margin: 6px auto; }
-.etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; }
-.etiqueta-eco.bf .bf-foot { margin-top: auto; align-items: center; }
-.etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: right; max-width: 48%; line-height: 1.15; }
-.etiqueta-eco.bf > svg.bf-c { position: absolute; width: 46px; height: 46px; z-index: 0; }
-.bf-c.tl { top: 0; left: 0; }
-.bf-c.tr { top: 0; right: 0; transform: scaleX(-1); }
-.bf-c.bl { bottom: 0; left: 0; transform: scaleY(-1); }
-.bf-c.br { bottom: 0; right: 0; transform: scale(-1, -1); }
+.etiqueta-eco.bf .bf-preco { font-size: 62px; font-weight: 900; color: #ff2e2e; text-align: center; line-height: 1; margin-top: 2px; }
+.etiqueta-eco.bf .bf-preco .cur { font-size: 24px; font-weight: 800; vertical-align: 28%; margin-right: 2px; }
+.etiqueta-eco.bf .bf-preco .cent { font-size: 32px; vertical-align: 28%; }
+.etiqueta-eco.bf .bf-100 { font-size: 12px; color: #e0e0e0; text-align: center; margin-top: 6px; }
+.etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; margin-top: 4px; }
+.etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; }
+.etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
 
 .eco-marca-dagua {
   position: absolute;

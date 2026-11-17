@@ -281,23 +281,35 @@
             @keyup.enter="buscarPorCodigoBarras"
             hint="Pode bipar o código de barras: o produto entra na lista sozinho"
             persistent-hint class="mb-2" />
-          <div class="d-flex gap-2 flex-wrap mb-2">
-            <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-scale-balance"
-              :loading="adicionandoKg" @click="adicionarTodosKg">
-              Adicionar todos por kg (balança)
-            </v-btn>
-            <v-btn size="small" color="warning" variant="tonal" prepend-icon="mdi-tag-remove-outline"
-              :loading="carregandoDesat" @click="carregarDesatualizadas">
-              Adicionar etiquetas desatualizadas
-            </v-btn>
-            <v-btn size="small" color="blue-grey" variant="tonal" prepend-icon="mdi-tag-off-outline"
-              :loading="carregandoEnc" @click="carregarEncalhados('sem')">
-              Adicionar encalhados sem etiqueta
-            </v-btn>
-            <v-btn v-if="auth.lojaAtualId" size="small" color="deep-orange" variant="tonal"
+          <div class="d-flex align-center gap-2 flex-wrap mb-3">
+            <v-menu>
+              <template #activator="{ props }">
+                <v-btn v-bind="props" color="primary" variant="flat" size="small"
+                  prepend-icon="mdi-playlist-plus" append-icon="mdi-chevron-down"
+                  :loading="adicionandoKg || carregandoDesat || carregandoEnc">
+                  Adicionar em lote
+                </v-btn>
+              </template>
+              <v-list density="compact" min-width="280">
+                <v-list-item @click="adicionarTodosKg" title="Todos os produtos por kg"
+                  subtitle="Produtos de balança">
+                  <template #prepend><v-icon color="primary">mdi-scale-balance</v-icon></template>
+                </v-list-item>
+                <v-list-item @click="carregarDesatualizadas" title="Etiquetas desatualizadas"
+                  subtitle="Preço/validade mudou e não reimprimiu">
+                  <template #prepend><v-icon color="deep-orange">mdi-tag-remove-outline</v-icon></template>
+                </v-list-item>
+                <v-list-item @click="carregarEncalhados('sem')" title="Encalhados sem etiqueta"
+                  subtitle="Nunca etiquetados">
+                  <template #prepend><v-icon color="blue-grey">mdi-tag-off-outline</v-icon></template>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+            <v-btn v-if="auth.lojaAtualId" size="small" variant="text" color="deep-orange"
               prepend-icon="mdi-printer-alert" :loading="reabrindo" @click="reabrirUltimaImpressao">
-              Reimprimir — perdi a última impressão
+              Perdi a última impressão
             </v-btn>
+            <v-spacer />
             <v-btn v-if="produtosSel.length" size="small" variant="text" color="error"
               prepend-icon="mdi-close" @click="produtosSel = []">
               Limpar ({{ produtosSel.length }})
@@ -312,9 +324,10 @@
               <template #prepend><v-icon size="18">mdi-plus-circle-outline</v-icon></template>
             </v-list-item>
           </v-list>
-          <div v-if="!produtosSel.length" class="text-caption text-medium-emphasis mt-2">
-            Nenhum produto adicionado.
-          </div>
+          <v-alert v-if="!produtosSel.length" type="info" variant="tonal" density="compact" class="mt-1">
+            Nenhum produto na lista. Use <b>"Adicionar em lote → Etiquetas desatualizadas"</b> ou
+            bipe o código de barras. Cada produto mostra a <b>data da última impressão</b>.
+          </v-alert>
           <template v-else>
             <div class="d-flex align-center mb-1">
               <span class="text-caption text-medium-emphasis">
@@ -331,15 +344,15 @@
                     density="compact" @update:model-value="v => marcados[p.id] = !!v" />
                 </template>
                 <v-list-item-title class="text-body-2">{{ p.descricao }}</v-list-item-title>
-                <v-list-item-subtitle style="font-size:.68rem">
-                  <template v-if="ultimaImpressaoMap[p.id]">
-                    <v-icon size="11" color="success">mdi-printer-check</v-icon>
-                    Última impressão: {{ fmtDataHora(ultimaImpressaoMap[p.id]) }}
-                  </template>
-                  <template v-else>
-                    <v-icon size="11" color="grey">mdi-printer-off</v-icon>
-                    Nunca enviada à impressora {{ auth.lojaAtualId ? 'nesta loja' : '' }}
-                  </template>
+                <v-list-item-subtitle class="mt-1">
+                  <v-chip v-if="ultimaImpressaoMap[p.id]" size="x-small" color="success"
+                    variant="tonal" prepend-icon="mdi-printer-check">
+                    Impressa em {{ fmtDataHora(ultimaImpressaoMap[p.id]) }}
+                  </v-chip>
+                  <v-chip v-else size="x-small" color="deep-orange" variant="tonal"
+                    prepend-icon="mdi-printer-off">
+                    Nunca impressa{{ auth.lojaAtualId ? ' nesta loja' : '' }}
+                  </v-chip>
                 </v-list-item-subtitle>
                 <template #append>
                   <v-chip size="x-small" :color="ehKg(p) ? 'green' : 'grey'" variant="tonal" class="mr-1">

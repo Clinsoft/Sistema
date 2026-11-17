@@ -407,18 +407,26 @@
           </div>
 
           <!-- ── Preview EcoGranel ── -->
-          <div v-else-if="template === 'ecogranel'" id="area-impressao" class="etiquetas-grid">
+          <div v-else-if="template === 'ecogranel' || ehBf" id="area-impressao" class="etiquetas-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
-              class="etiqueta-eco"
-              :style="{ border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
-                background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
+              class="etiqueta-eco" :class="{ bf: ehBf }"
+              :style="ehBf
+                ? { border: '3px solid #000', borderRadius: '6px', background: '#0a0a0a' }
+                : { border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
+                    background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
 
-              <!-- Marca d'água -->
-              <img v-if="marcaDaguaUrl" :src="marcaDaguaUrl" class="eco-marca-dagua"
+              <!-- Marca d'água (não no Black Friday) -->
+              <img v-if="marcaDaguaUrl && !ehBf" :src="marcaDaguaUrl" class="eco-marca-dagua"
                 :style="{ opacity: ecoCfg.marcaOpacidade / 100 }" />
 
+              <!-- Cabeçalho BLACK FRIDAY -->
+              <div v-if="ehBf" class="eco-bf-header">
+                <div class="eco-bf-black">BLACK</div>
+                <div class="eco-bf-friday">FRIDAY</div>
+              </div>
+
               <!-- Cabeçalho: nome do produto -->
-              <div v-if="camposEco.nome" class="eco-nome" :style="stNome">
+              <div v-if="camposEco.nome" class="eco-nome" :style="ehBf ? {} : stNome">
                 {{ p.descricao?.toUpperCase() }}
                 <span v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="eco-nome-plu">
                   -{{ codigoEtiqueta(p) }}
@@ -427,8 +435,8 @@
 
               <!-- Preço grande -->
               <div v-if="camposEco.preco100g" class="eco-preco-bloco">
-                <span class="eco-preco-valor" :style="stPreco">{{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</span>
-                <div class="eco-preco-label" :style="stRotulo">{{ ecoCfg.rotuloPreco }}</div>
+                <span class="eco-preco-valor" :style="ehBf ? {} : stPreco">{{ fmtPrecoDisplay(preco100g(ehBf ? precoBf(p) : p.precoVenda)) }}</span>
+                <div class="eco-preco-label" :style="ehBf ? {} : stRotulo">cada 100g</div>
               </div>
 
               <!-- Validade -->
@@ -436,8 +444,8 @@
                 <strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong>
               </div>
 
-              <!-- Texto descritivo -->
-              <div v-if="camposEco.descricao" class="eco-descricao">
+              <!-- Texto descritivo (não no Black Friday) -->
+              <div v-if="camposEco.descricao && !ehBf" class="eco-descricao">
                 {{ p.descricaoComplementar || textoDescritivoEco }}
               </div>
 
@@ -445,72 +453,10 @@
               <div class="eco-rodape">
                 <div v-if="camposEco.qrcode" class="eco-qr-wrap">
                   <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
-                  <div class="eco-qr-saibamais">Saiba mais pelo QR Code</div>
+                  <div v-if="!ehBf" class="eco-qr-saibamais">Saiba mais pelo QR Code</div>
                 </div>
-                <div v-if="camposEco.frase" class="eco-frase" :style="stFrase">
-                  <strong>{{ ecoCfg.fraseRodape }}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Preview Black Friday (10×10cm) -->
-          <div v-else-if="template === 'blackfriday'" id="area-impressao" class="etiquetas-grid">
-            <div v-for="p in etiquetasExpandidas" :key="p._key"
-              :style="{ width:'10cm', height:'10cm', background:'#0a0a0a', color:'#fff', display:'flex',
-                flexDirection:'column', alignItems:'center', position:'relative', overflow:'hidden',
-                pageBreakInside:'avoid', fontFamily:'Arial, Helvetica, sans-serif', boxSizing:'border-box',
-                padding:'5mm 4mm 4mm' }">
-              <!-- Listras diagonais nos 4 cantos -->
-              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;top:0;left:0">
-                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
-                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
-                </g>
-              </svg>
-              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;top:0;right:0;transform:scaleX(-1)">
-                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
-                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
-                </g>
-              </svg>
-              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;bottom:0;left:0;transform:scaleY(-1)">
-                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
-                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
-                </g>
-              </svg>
-              <svg width="46" height="46" viewBox="0 0 46 46" style="position:absolute;bottom:0;right:0;transform:scale(-1,-1)">
-                <g stroke="#fff" stroke-width="2.4" stroke-linecap="round">
-                  <line x1="0" y1="18" x2="18" y2="0" /><line x1="0" y1="28" x2="28" y2="0" /><line x1="0" y1="38" x2="38" y2="0" />
-                </g>
-              </svg>
-              <!-- Selo de desconto -->
-              <svg width="26" height="26" viewBox="0 0 24 24" style="margin-bottom:0.5mm">
-                <circle cx="12" cy="12" r="11" fill="none" stroke="#fff" stroke-width="1.6" />
-                <text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">%</text>
-              </svg>
-              <!-- Cabeçalho BLACK FRIDAY -->
-              <div :style="{ fontSize:'12pt', letterSpacing:'7px', fontWeight:700, lineHeight:'1' }">BLACK</div>
-              <div :style="{ fontSize:'30pt', fontWeight:900, lineHeight:'0.9', letterSpacing:'1px', color:'#cfcfcf' }">FRIDAY</div>
-              <!-- Produto + código -->
-              <div :style="{ fontSize:'13pt', fontWeight:800, textAlign:'center', padding:'3mm 6mm 0',
-                textTransform:'uppercase', lineHeight:'1.1' }">{{ p.descricao }}</div>
-              <div :style="{ fontSize:'9.5pt', color:'#bdbdbd', margin:'0.5mm 0' }">-{{ p.codigo || codigoEtiqueta(p) }}-</div>
-              <!-- Preço -->
-              <div :style="{ textAlign:'center', marginTop:'1mm' }">
-                <span :style="{ fontSize:'46pt', fontWeight:900, lineHeight:'1', letterSpacing:'-2px' }">{{ fmtPrecoDisplay(preco100g(precoBf(p))) }}</span>
-                <div :style="{ fontSize:'10.5pt', color:'#e0e0e0', marginTop:'0' }">cada 100g</div>
-              </div>
-              <!-- Validade -->
-              <div v-if="validadeProduto(p)" :style="{ fontSize:'10pt', margin:'2.5mm 0',
-                borderTop:'1px solid #555', borderBottom:'1px solid #555', padding:'1.2mm 10mm' }">
-                Validade: <b>{{ fmtData(validadeProduto(p)) }}</b>
-              </div>
-              <div :style="{ flex:'1 1 auto' }"></div>
-              <!-- Rodapé: QR + frase -->
-              <div :style="{ display:'flex', alignItems:'flex-end', justifyContent:'space-between',
-                width:'100%', padding:'0 3mm', boxSizing:'border-box' }">
-                <canvas :ref="el => registrarQr(el, p)" :style="{ width:'19mm', height:'19mm' }" />
-                <div :style="{ fontWeight:900, fontSize:'11.5pt', textAlign:'right', lineHeight:'1.15' }">
-                  APROVEITE A<br />BLACK FRIDAY!
+                <div v-if="camposEco.frase" class="eco-frase" :style="ehBf ? {} : stFrase">
+                  <strong>{{ ehBf ? 'APROVEITE A BLACK FRIDAY!' : ecoCfg.fraseRodape }}</strong>
                 </div>
               </div>
             </div>
@@ -822,6 +768,8 @@ const gondolaTamanhos = [
 ]
 
 const isGondola = computed(() => template.value.startsWith('gondola'))
+// Black Friday = mesmo render do EcoGranel, só com tema preto.
+const ehBf = computed(() => template.value === 'blackfriday')
 
 const gondolaTamanhoAtual = computed(() =>
   gondolaTamanhos.find(s => s.id === gondolaTamanho.value) ?? gondolaTamanhos[2]
@@ -1398,7 +1346,15 @@ function imprimir() {
         display: flex; flex-direction: column;
         background: linear-gradient(160deg, #ffffff 0%, #e8f5e9 60%, #c8e6c9 100%);
         position: relative; overflow: hidden; page-break-inside: avoid;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
       }
+      .etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; }
+      .etiqueta-eco.bf .eco-nome, .etiqueta-eco.bf .eco-preco-valor,
+      .etiqueta-eco.bf .eco-validade, .etiqueta-eco.bf .eco-frase { color: #fff !important; }
+      .etiqueta-eco.bf .eco-preco-label { color: #e0e0e0 !important; }
+      .eco-bf-header { text-align: center; padding: 4mm 0 0; }
+      .eco-bf-black { font-size: 11pt; letter-spacing: 6px; font-weight: 700; line-height: 1; }
+      .eco-bf-friday { font-size: 26pt; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
       .eco-marca-dagua {
         position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
         pointer-events: none; user-select: none;
@@ -1492,6 +1448,13 @@ function imprimir() {
   transition: box-shadow .2s;
 }
 .etiqueta-eco:hover { box-shadow: 0 6px 20px rgba(0,0,0,.22); }
+.etiqueta-eco.bf { background: #0a0a0a !important; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.etiqueta-eco.bf .eco-nome, .etiqueta-eco.bf .eco-preco-valor,
+.etiqueta-eco.bf .eco-validade, .etiqueta-eco.bf .eco-frase { color: #fff !important; }
+.etiqueta-eco.bf .eco-preco-label { color: #e0e0e0 !important; }
+.eco-bf-header { text-align: center; padding: 4mm 0 0; }
+.eco-bf-black { font-size: 13px; letter-spacing: 6px; font-weight: 700; line-height: 1; }
+.eco-bf-friday { font-size: 40px; font-weight: 900; line-height: 0.9; letter-spacing: 1px; color: #cfcfcf; }
 
 .eco-marca-dagua {
   position: absolute;

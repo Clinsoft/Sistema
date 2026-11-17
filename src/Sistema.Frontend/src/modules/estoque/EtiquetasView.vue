@@ -331,6 +331,16 @@
                     density="compact" @update:model-value="v => marcados[p.id] = !!v" />
                 </template>
                 <v-list-item-title class="text-body-2">{{ p.descricao }}</v-list-item-title>
+                <v-list-item-subtitle style="font-size:.68rem">
+                  <template v-if="ultimaImpressaoMap[p.id]">
+                    <v-icon size="11" color="success">mdi-printer-check</v-icon>
+                    Última impressão: {{ fmtDataHora(ultimaImpressaoMap[p.id]) }}
+                  </template>
+                  <template v-else>
+                    <v-icon size="11" color="grey">mdi-printer-off</v-icon>
+                    Nunca enviada à impressora {{ auth.lojaAtualId ? 'nesta loja' : '' }}
+                  </template>
+                </v-list-item-subtitle>
                 <template #append>
                   <v-chip size="x-small" :color="ehKg(p) ? 'green' : 'grey'" variant="tonal" class="mr-1">
                     {{ p.unidadeSigla || 'UN' }}
@@ -566,11 +576,28 @@ const notif = useNotifStore()
 const route = useRoute()
 
 // Atalho vindo da tela de Produtos: já carrega as etiquetas desatualizadas ou os encalhados.
+// Mapa produto → data da última impressão NESTA loja (para mostrar na lista).
+const ultimaImpressaoMap = ref<Record<string, string>>({})
+async function carregarUltimaImpressao() {
+  if (!auth.empresaId || !auth.lojaAtualId) { ultimaImpressaoMap.value = {}; return }
+  try {
+    const r = await api.get('/produtos/etiquetas-ultima-impressao-loja', {
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId },
+    })
+    const mapa: Record<string, string> = {}
+    for (const it of (r.data ?? [])) mapa[it.produtoId] = it.impressaEm
+    ultimaImpressaoMap.value = mapa
+  } catch { /* silencioso */ }
+}
+
 onMounted(() => {
+  carregarUltimaImpressao()
   if (route.query.desatualizadas) carregarDesatualizadas()
   const enc = route.query.encalhados as string | undefined
   if (enc) carregarEncalhados(enc === 'com' ? 'com' : enc === 'todos' ? 'todos' : 'sem')
 })
+// Troca de loja no topo → recarrega as datas de última impressão.
+watch(() => auth.lojaAtualId, carregarUltimaImpressao)
 // Atendente pode imprimir etiquetas de produto, mas não editar/salvar o template.
 const ehAtendente = computed(() => auth.usuario?.role === 'Atendente')
 const buscaProdutoTexto = ref('')
@@ -800,6 +827,12 @@ const etiquetasExpandidas = computed(() => {
 const OPTS_2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const
 function fmt(v: number) { return (v ?? 0).toLocaleString('pt-BR', OPTS_2) }
 function fmtData(d: string) { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
+function fmtDataHora(iso: string) {
+  if (!iso) return ''
+  const dt = new Date(iso)
+  if (isNaN(dt.getTime())) return ''
+  return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 function preco100g(precoKg: number) { return Math.round(((precoKg ?? 0) / 10) * 100) / 100 }
 // Preço usado na etiqueta Black Friday: o já com desconto da promoção (se veio), senão o normal.
 function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
@@ -986,6 +1019,9 @@ async function finalizarImpressao(ids: string[]) {
   if (!ids.length) return
   // Com loja selecionada, registra a reimpressão NAQUELA unidade (controle por loja).
   try { await api.post('/produtos/etiquetas-impressas', { ids, localEstoqueId: auth.lojaAtualId ?? null }) } catch { /* silencioso */ }
+  // Atualiza a data de "última impressão" na hora (marca agora para os recém-impressos).
+  const agora = new Date().toISOString()
+  ids.forEach(id => { ultimaImpressaoMap.value[id] = agora })
   produtosSel.value = produtosSel.value.filter((p: any) => !ids.includes(p.id))
   ids.forEach(id => { delete marcados.value[id] })
   notif.ok(`${ids.length} etiqueta(s) impressa(s) — removida(s) da lista e do alerta.`)

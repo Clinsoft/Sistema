@@ -1429,6 +1429,19 @@ public class ProdutosController(IMediator mediator, SistemaDbContext db, IUnitOf
         return Ok(new { ids = pendentes });
     }
 
+    /// <summary>Data da ÚLTIMA impressão de etiqueta enviada à impressora, por produto, NESTA loja
+    /// (para a tela mostrar "última impressão: dd/mm hh:mm" e resolver dúvidas de "já imprimi").</summary>
+    [HttpGet("etiquetas-ultima-impressao-loja")]
+    public async Task<IActionResult> EtiquetasUltimaImpressaoLoja([FromQuery] Guid empresaId,
+        [FromQuery] Guid localEstoqueId, CancellationToken ct)
+    {
+        var itens = await db.EtiquetasImpressasLoja.AsNoTracking()
+            .Where(e => e.EmpresaId == empresaId && e.LocalEstoqueId == localEstoqueId)
+            .Select(e => new { produtoId = e.ProdutoId, impressaEm = e.ImpressaEm })
+            .ToListAsync(ct);
+        return Ok(itens);
+    }
+
     /// <summary>Reabre a ÚLTIMA remessa de etiquetas impressas desta loja (ex.: a impressora
     /// estava desligada e as etiquetas "sumiram"). Apaga as marcas de impressão do dia mais
     /// recente e reativa o flag para os produtos voltarem à lista de desatualizadas da loja.</summary>

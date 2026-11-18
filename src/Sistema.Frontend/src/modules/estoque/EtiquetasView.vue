@@ -1260,7 +1260,7 @@ const reabrindo = ref(false)
 async function reabrirUltimaImpressao() {
   if (!auth.lojaAtualId) { notif.aviso('Selecione uma loja para reabrir a última impressão.'); return }
   const escopo = auth.lojaAtual ? ` de ${auth.lojaAtual.nome}` : ''
-  if (!confirm(`Reabrir a ÚLTIMA remessa de etiquetas impressas${escopo}?\n\nUse quando a impressão se perdeu (impressora desligada, travou). Os produtos voltam para a lista para você reimprimir.`)) return
+  if (!confirm(`⚠️ ATENÇÃO — ler antes de confirmar:\n\nIsto vai REABRIR a última remessa de etiquetas${escopo} e marcar TODOS aqueles produtos como "etiqueta desatualizada" de novo — eles voltam para a fila de reimpressão e o alerta "imprimir etiquetas" reaparece.\n\nUse SOMENTE se a impressora falhou e as etiquetas NÃO saíram.\n\nSe as etiquetas saíram normalmente, clique em CANCELAR.`)) return
   reabrindo.value = true
   try {
     const r = await api.post('/produtos/etiquetas-reabrir-ultima', { localEstoqueId: auth.lojaAtualId })

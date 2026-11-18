@@ -39,6 +39,7 @@ function esc(s: string) {
 /** Gera o HTML de uma etiqueta kg (usado no preview e na impressão). */
 async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<string> {
   const bf = !!o.blackFriday
+  const promo = !!o.promocao
   const url = branding.catalogoProdutoUrl + (it.slug || slugify(it.nome))
   let qr = ''
   try {
@@ -49,19 +50,25 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
   const preco100 = (it.precoVenda ?? 0) / 10
   const cod = it.codigoPlu != null && it.codigoPlu !== '' ? String(it.codigoPlu) : ''
   const codFmt = /^\d+$/.test(cod) ? cod.padStart(4, '0') : cod
-  if (bf) {
-    // Folhagem (samambaia) da arte EcoGranel nos 4 cantos.
-    const fern = (c: string) => `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="#5f5f5f">${FERN_PATH}</g></svg>`
+  if (bf || promo) {
+    // Folhagem (samambaia) da arte EcoGranel nos 4 cantos. No BF é cinza; na
+    // Promoção (fundo natural claro) é verde da marca.
+    const fernFill = promo ? '#2e7d32' : '#5f5f5f'
+    const fern = (c: string) => `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="${fernFill}">${FERN_PATH}</g></svg>`
     // "FRIDAY" metálico (degradê prata com brilho).
     const friday = `<svg class="bf-friday" viewBox="0 0 300 66" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="bffg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#f0f0f0"/><stop offset=".5" stop-color="#9c9c9c"/><stop offset=".62" stop-color="#d8d8d8"/><stop offset="1" stop-color="#6f6f6f"/></linearGradient></defs><text x="150" y="52" text-anchor="middle" font-family="Arial" font-weight="900" font-size="60" fill="url(#bffg)" stroke="#5a5a5a" stroke-width="0.6">FRIDAY</text></svg>`
+    // Cabeçalho: BLACK FRIDAY (metálico) ou selo vermelho "PROMOÇÃO".
+    const header = bf
+      ? `<div class="bf-black">BLACK</div>${friday}`
+      : `<div class="pr-badge">PROMOÇÃO</div>`
+    const fraseDefault = bf ? 'APROVEITE A BLACK FRIDAY!' : 'APROVEITE A PROMOÇÃO!'
     // Preço vermelho: "R$" pequeno + inteiro grande + centavos elevados.
     const [intPreco, centPreco] = fmt(preco100).split(',')
     return `
-    <div class="etq bf">
+    <div class="etq ${bf ? 'bf' : 'promo'}">
       ${fern('tr')}${fern('tl')}${fern('br')}${fern('bl')}
       <div class="bf-content">
-        <div class="bf-black">BLACK</div>
-        ${friday}
+        ${header}
         <div class="bf-hr"></div>
         <div class="bf-nome">${esc((it.nome || '').toUpperCase())}</div>
         ${codFmt ? `<div class="bf-cod">cód. ${codFmt}</div>` : ''}
@@ -72,7 +79,7 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
         ${it.validade ? `<div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
         <div class="bf-foot">
           ${qr ? `<img class="bf-qr" src="${qr}"/>` : ''}
-          <div class="bf-frase">${esc(o.fraseRodape || 'APROVEITE A BLACK FRIDAY!')}</div>
+          <div class="bf-frase">${esc(o.fraseRodape || fraseDefault)}</div>
         </div>
       </div>
     </div>`
@@ -109,6 +116,7 @@ export interface EtiquetaKgOpts {
   escalaNome?: number       // % do tamanho do nome
   escalaPreco?: number      // % do tamanho do preço
   blackFriday?: boolean     // tema preto Black Friday (fundo preto, texto branco, cabeçalho BLACK FRIDAY)
+  promocao?: boolean        // tema Promoção (fundo natural verde, selo "PROMOÇÃO", preço vermelho, de/por)
 }
 
 // Logo padrão da marca (servida na raiz do site).
@@ -133,13 +141,16 @@ async function toDataUrl(url: string): Promise<string> {
 
 const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: EtiquetaKgOpts) => {
   const bf        = !!o.blackFriday
+  const promo     = !!o.promocao
   const corTexto  = bf ? '#ffffff' : (o.corTexto  || '#111')
   const corPreco  = bf ? '#ffffff' : (o.corPreco  || '#111')
   const corRotulo = bf ? '#e0e0e0' : (o.corRotulo || '#444')
   const corFrase  = bf ? '#ffffff' : cor
-  const corBorda  = bf ? '#000000' : cor
+  const corBorda  = bf ? '#000000' : (promo ? '#2e7d32' : cor)
   const corVal    = bf ? '#ffffff' : '#222'
-  const fundo     = bf ? 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)' : `linear-gradient(160deg,#ffffff 0%,${o.fundoCor || '#e8f5e9'} 60%,${o.fundoCor || '#e8f5e9'} 100%)`
+  const fundo     = bf ? 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)'
+                       : promo ? 'linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%)'
+                       : `linear-gradient(160deg,#ffffff 0%,${o.fundoCor || '#e8f5e9'} 60%,${o.fundoCor || '#e8f5e9'} 100%)`
   const opac      = (o.marcaOpacidade ?? 10) / 100
   const escNome   = (o.escalaNome  ?? 100) / 100
   const escPreco  = (o.escalaPreco ?? 100) / 100
@@ -160,8 +171,21 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
     opacity: ${opac}; pointer-events: none;
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
-  .etq.bf { justify-content: center; padding: 4mm 5mm; }
-  .etq.bf > .fern { position: absolute; width: 38mm; height: auto; z-index: 0; opacity: .5; }
+  .etq.bf, .etq.promo { justify-content: center; padding: 4mm 5mm; }
+  .etq.bf > .fern, .etq.promo > .fern { position: absolute; width: 38mm; height: auto; z-index: 0; opacity: .5; }
+  .etq.promo > .fern { opacity: .4; }
+  /* Promoção: selo + overrides de cor sobre as classes bf-* (fundo natural claro) */
+  .pr-badge { display: inline-block; background: #d32f2f; color: #fff; font-weight: 900;
+    font-size: 12pt; letter-spacing: 2px; padding: 1mm 6mm; border-radius: 999px; }
+  .etq.promo .bf-nome { color: #1b5e20; }
+  .etq.promo .bf-cod { color: #777; }
+  .etq.promo .bf-de { color: #555; }
+  .etq.promo .bf-de s { color: #999; }
+  .etq.promo .bf-preco { color: #d32f2f; }
+  .etq.promo .bf-100 { color: #555; }
+  .etq.promo .bf-val { color: #222; }
+  .etq.promo .bf-hr { border-top-color: #2e7d3288; }
+  .etq.promo .bf-frase { color: #1b5e20; }
   .fern.tr { top: -4mm; right: -5mm; transform: scaleY(-1); }
   .fern.tl { top: -4mm; left: -5mm; transform: scale(-1, -1); }
   .fern.br { bottom: -4mm; right: -5mm; }

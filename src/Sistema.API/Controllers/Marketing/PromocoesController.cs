@@ -86,6 +86,50 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
         return Ok(resultado);
     }
 
+    /// <summary>Produtos que estão em promoção ATIVA com desconto automático (entidade Promocao,
+    /// Tipo=Desconto, AplicaEm=Produto, dentro da vigência). Traz o produto + o MELHOR preço já
+    /// com o desconto. Usado pela tela de Etiquetas (modelo EcoGranel Promoção).</summary>
+    [HttpGet("produtos-promocao-ativa")]
+    public async Task<IActionResult> ProdutosPromocaoAtiva(
+        [FromQuery] Guid empresaId, CancellationToken ct = default)
+    {
+        var hoje = DateTime.UtcNow.Date;
+        var promos = await db.Promocoes.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativa
+                && p.Tipo == "Desconto" && p.AplicaEm == "Produto" && p.ReferenciaId != null
+                && p.DataInicio <= hoje && (p.DataFim == null || p.DataFim >= hoje))
+            .Select(p => new { ProdutoId = p.ReferenciaId!.Value, p.Nome, p.TipoDesconto, p.Desconto })
+            .ToListAsync(ct);
+        if (promos.Count == 0) return Ok(Array.Empty<object>());
+
+        var ids = promos.Select(p => p.ProdutoId).Distinct().ToList();
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo && ids.Contains(p.Id))
+            .ToListAsync(ct);
+
+        var resultado = produtos.Select(p =>
+        {
+            // Melhor (menor) preço entre as promoções ativas do produto.
+            decimal? melhor = null;
+            string? nomePromo = null;
+            foreach (var pr in promos.Where(x => x.ProdutoId == p.Id))
+            {
+                var preco = pr.TipoDesconto == "ValorFixo"
+                    ? Math.Max(0, p.PrecoVenda - pr.Desconto)
+                    : Math.Round(p.PrecoVenda * (1 - pr.Desconto / 100m), 2);
+                if (melhor is null || preco < melhor) { melhor = preco; nomePromo = pr.Nome; }
+            }
+            return new
+            {
+                p.Id, p.Codigo, p.CodigoBarras, p.CodigoPlu, p.Descricao, p.DescricaoComplementar,
+                p.PrecoVenda, precoPromocao = melhor ?? p.PrecoVenda, nomePromocao = nomePromo,
+                p.ProdutoBalanca, p.ImagemUrl, p.ValidadeEmDias
+            };
+        }).OrderBy(x => x.Descricao).ToList();
+
+        return Ok(resultado);
+    }
+
     /// <summary>Dados prontos para preencher uma mensagem de WhatsApp a partir da promoção:
     /// texto do desconto, nome e preços do produto, e a arte (Feed) já gerada.</summary>
     [HttpGet("{id:guid}/mensagem")]

@@ -243,6 +243,21 @@
             </div>
           </template>
 
+          <!-- ── EcoGranel Promoção (10×10cm, natural verde + preço vermelho) ── -->
+          <template v-else-if="template === 'promocao'">
+            <v-alert type="success" variant="tonal" density="compact" class="mb-3">
+              Etiqueta <b>EcoGranel Promoção</b> (10×10cm). Mostra o <b>preço já com o desconto</b> e
+              o <b>"de/por"</b>, só dos produtos que estão <b>em promoção ativa com desconto automático</b>.
+            </v-alert>
+            <v-btn color="green-darken-2" prepend-icon="mdi-sale" :loading="carregandoPromo"
+              @click="adicionarPromocao" block class="mb-2">
+              Carregar produtos em promoção
+            </v-btn>
+            <div class="text-caption text-medium-emphasis">
+              Puxa as promoções ativas (Marketing → Promoções). O preço é por 100g já com desconto.
+            </div>
+          </template>
+
           <!-- ── Templates padrão ── -->
           <template v-else>
             <v-alert v-if="template === 'plaquinha'" type="info" variant="tonal" density="compact" class="mb-3">
@@ -407,11 +422,13 @@
           </div>
 
           <!-- ── Preview EcoGranel ── -->
-          <div v-else-if="template === 'ecogranel' || ehBf" id="area-impressao" class="etiquetas-grid">
+          <div v-else-if="template === 'ecogranel' || ehBf || ehPromo" id="area-impressao" class="etiquetas-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
-              class="etiqueta-eco" :class="{ bf: ehBf }"
+              class="etiqueta-eco" :class="{ bf: ehBf, promo: ehPromo }"
               :style="ehBf
                 ? { border: '3px solid #000', borderRadius: '6px', background: 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)' }
+                : ehPromo
+                ? { border: '3px solid #2e7d32', borderRadius: '10px', background: 'linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%)' }
                 : { border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
                     background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
 
@@ -440,6 +457,30 @@
                       <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
                     </div>
                     <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A BLACK FRIDAY!</strong></div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- ═══ Layout Promoção (natural verde + preço vermelho) ═══ -->
+              <template v-else-if="ehPromo">
+                <span v-html="fernMarkup('tr', '#2e7d32')"></span>
+                <span v-html="fernMarkup('tl', '#2e7d32')"></span>
+                <span v-html="fernMarkup('br', '#2e7d32')"></span>
+                <span v-html="fernMarkup('bl', '#2e7d32')"></span>
+                <div class="bf-content">
+                  <div class="pr-badge">PROMOÇÃO</div>
+                  <div class="bf-hr"></div>
+                  <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
+                  <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">cód. {{ codigoEtiqueta(p) }}</div>
+                  <div v-if="camposEco.preco100g && precoPromoAuto(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
+                  <div v-if="camposEco.preco100g" class="bf-preco"><span class="cur">R$</span>{{ precoPromoParts(p).int }}<span class="cent">,{{ precoPromoParts(p).cent }}</span></div>
+                  <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
+                  <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
+                  <div class="bf-foot">
+                    <div v-if="camposEco.qrcode" class="eco-qr-wrap">
+                      <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
+                    </div>
+                    <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A PROMOÇÃO!</strong></div>
                   </div>
                 </div>
               </template>
@@ -608,7 +649,7 @@ const marcados = ref<Record<string, boolean>>({})
 function ehKg(p: any) { return !!p?.produtoBalanca || String(p?.unidadeSigla || '').toUpperCase() === 'KG' }
 function elegivel(p: any) {
   // EcoGranel e Black Friday são etiqueta de pote (preço por 100g) → só produtos por peso.
-  if (template.value === 'ecogranel' || template.value === 'blackfriday') return ehKg(p)
+  if (template.value === 'ecogranel' || template.value === 'blackfriday' || template.value === 'promocao') return ehKg(p)
   if (template.value === 'plaquinha') return !ehKg(p)  // Plaquinha: só produtos por unidade (UN)
   return true
 }
@@ -763,6 +804,7 @@ const campos = ref({
 const templates = [
   { id: 'ecogranel', nome: 'EcoGranel - Potes' },
   { id: 'blackfriday', nome: 'Black Friday 🖤' },
+  { id: 'promocao', nome: 'EcoGranel Promoção 🏷️' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },
   { id: 'plaquinha', nome: 'Plaquinha (UN)' },
   { id: 'pote9x9', nome: 'Pote 9×9cm' },
@@ -783,6 +825,8 @@ const gondolaTamanhos = [
 const isGondola = computed(() => template.value.startsWith('gondola'))
 // Black Friday = mesmo render do EcoGranel, só com tema preto.
 const ehBf = computed(() => template.value === 'blackfriday')
+// Promoção = mesmo render do EcoGranel, tema natural (verde) com preço vermelho e "de/por".
+const ehPromo = computed(() => template.value === 'promocao')
 
 const gondolaTamanhoAtual = computed(() =>
   gondolaTamanhos.find(s => s.id === gondolaTamanho.value) ?? gondolaTamanhos[2]
@@ -837,6 +881,8 @@ function fmtDataHora(iso: string) {
 function preco100g(precoKg: number) { return Math.round(((precoKg ?? 0) / 10) * 100) / 100 }
 // Preço usado na etiqueta Black Friday: o já com desconto da promoção (se veio), senão o normal.
 function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
+// Preço usado na etiqueta Promoção: o já com desconto da promoção ativa, senão o normal.
+function precoPromoAuto(p: any) { return p?.precoPromocao ?? p?.precoVenda ?? 0 }
 
 // Formato especial: "7,69" (sem R$ e com vírgula)
 function fmtPrecoDisplay(v: number) {
@@ -844,12 +890,17 @@ function fmtPrecoDisplay(v: number) {
 }
 
 // Folhagem (samambaia) da arte EcoGranel nos cantos do preview Black Friday.
-function fernMarkup(c: string): string {
-  return `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="#5f5f5f">${FERN_PATH}</g></svg>`
+function fernMarkup(c: string, fill = '#5f5f5f'): string {
+  return `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="${fill}">${FERN_PATH}</g></svg>`
 }
 // Preço BF separado em inteiro/centavos (para "R$" + inteiro grande + centavos elevados).
 function precoBfParts(p: any): { int: string; cent: string } {
   const [int, cent] = (preco100g(precoBf(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
+  return { int, cent: cent ?? '00' }
+}
+// Preço da Promoção separado em inteiro/centavos (mesmo formato do BF).
+function precoPromoParts(p: any): { int: string; cent: string } {
+  const [int, cent] = (preco100g(precoPromoAuto(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
   return { int, cent: cent ?? '00' }
 }
 
@@ -911,7 +962,7 @@ watch(qrBaseUrl, async () => {
 })
 
 watch(etiquetasExpandidas, async () => {
-  if (template.value !== 'ecogranel' && template.value !== 'blackfriday') return
+  if (template.value !== 'ecogranel' && template.value !== 'blackfriday' && template.value !== 'promocao') return
   await nextTick()
   for (const [key, canvas] of qrCanvasMap.entries()) {
     const p = etiquetasExpandidas.value.find(e => e._key === key)
@@ -1120,9 +1171,28 @@ async function adicionarBlackFriday() {
   finally { carregandoBf.value = false }
 }
 
-// Ao escolher o modelo Black Friday, já puxa os produtos da campanha automaticamente.
+// Carrega SÓ os produtos em promoção ATIVA com desconto automático (preço já descontado).
+const carregandoPromo = ref(false)
+async function adicionarPromocao() {
+  carregandoPromo.value = true
+  try {
+    const r = await api.get('/promocoes/produtos-promocao-ativa', {
+      params: { empresaId: auth.empresaId },
+    })
+    const prods = (r.data ?? []) as any[]
+    produtosSel.value = []   // a etiqueta de Promoção é só dos produtos em promoção ativa
+    await Promise.all(prods.map((p: any) => enriquecerValidadeRegistrada(p)))
+    prods.forEach((p: any) => produtosSel.value.push(p))
+    if (!prods.length) notif.aviso('Nenhum produto em promoção ativa (com desconto automático) encontrado.')
+    else notif.ok(`${prods.length} produto(s) em promoção carregado(s).`)
+  } catch { notif.erro('Erro ao carregar os produtos em promoção.') }
+  finally { carregandoPromo.value = false }
+}
+
+// Ao escolher o modelo Black Friday / Promoção, já puxa os produtos automaticamente.
 watch(template, (t) => {
   if (t === 'blackfriday' && produtosSel.value.length === 0) adicionarBlackFriday()
+  if (t === 'promocao' && produtosSel.value.length === 0) adicionarPromocao()
 })
 
 // Adiciona de uma vez todos os produtos por peso (balança) à seleção.
@@ -1323,13 +1393,14 @@ function removerProduto(id: string) {
 function imprimir() {
   const idsImpressos = produtosParaImprimir.value.map((p: any) => p.id)
   // EcoGranel e Black Friday (produtos por peso) → template PADRÃO 6/A4 compartilhado.
-  if (template.value === 'ecogranel' || ehBf.value) {
+  if (template.value === 'ecogranel' || ehBf.value || ehPromo.value) {
     imprimirEtiquetasKg(
       produtosParaImprimir.value.map((p: any) => ({
         nome: p.descricao,
         codigoPlu: p.codigoPlu ?? p.codigo,
-        precoVenda: ehBf.value ? precoBf(p) : p.precoVenda,   // Black Friday: preço já com desconto
-        precoOriginal: ehBf.value ? p.precoVenda : undefined, // preço cheio (mostra "de" riscado)
+        // Black Friday / Promoção: preço já com desconto; EcoGranel: preço normal
+        precoVenda: ehBf.value ? precoBf(p) : ehPromo.value ? precoPromoAuto(p) : p.precoVenda,
+        precoOriginal: (ehBf.value || ehPromo.value) ? p.precoVenda : undefined, // preço cheio (mostra "de" riscado)
         validade: validadeProduto(p) || validadePadrao(),
         descricao: p.descricaoComplementar || textoDescritivoEco.value,
       })),
@@ -1339,6 +1410,13 @@ function imprimir() {
             blackFriday: true,
             rotuloPreco: 'cada 100g',
             fraseRodape: 'APROVEITE A BLACK FRIDAY!',
+          }
+        : ehPromo.value
+        ? {
+            copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
+            promocao: true,
+            rotuloPreco: 'cada 100g',
+            fraseRodape: 'APROVEITE A PROMOÇÃO!',
           }
         : {
             copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
@@ -1516,6 +1594,29 @@ function imprimir() {
 .etiqueta-eco.bf .bf-val { font-size: 13px; color: #fff; text-align: center; margin-top: 4px; }
 .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
 .etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
+
+/* ── Promoção (natural verde + preço vermelho) ── */
+.etiqueta-eco.promo { background: linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%) !important; justify-content: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.etiqueta-eco.promo > .fern { position: absolute; width: 140px; height: auto; z-index: 0; opacity: .4; }
+.etiqueta-eco.promo .fern.tr { top: -15px; right: -18px; transform: scaleY(-1); }
+.etiqueta-eco.promo .fern.tl { top: -15px; left: -18px; transform: scale(-1, -1); }
+.etiqueta-eco.promo .fern.br { bottom: -15px; right: -18px; }
+.etiqueta-eco.promo .fern.bl { bottom: -15px; left: -18px; transform: scaleX(-1); }
+.etiqueta-eco.promo .bf-content { position: relative; z-index: 1; width: 100%; text-align: center; }
+.etiqueta-eco.promo .bf-content > * { width: 100%; text-align: center; }
+.etiqueta-eco.promo .pr-badge { display: inline-block; width: auto; background: #d32f2f; color: #fff; font-weight: 900; font-size: 17px; letter-spacing: 2px; padding: 4px 22px; border-radius: 999px; }
+.etiqueta-eco.promo .bf-hr { width: 72%; height: 0; border-top: 1.5px solid #2e7d3288; margin: 8px auto; }
+.etiqueta-eco.promo .bf-nome { font-size: 15px; font-weight: 900; color: #1b5e20; text-align: center; margin-top: 6px; line-height: 1.08; letter-spacing: .3px; }
+.etiqueta-eco.promo .bf-cod { font-size: 11px; color: #777; text-align: center; letter-spacing: 1px; margin-top: 2px; }
+.etiqueta-eco.promo .bf-de { font-size: 12px; color: #555; text-align: center; margin-top: 7px; }
+.etiqueta-eco.promo .bf-de s { color: #999; }
+.etiqueta-eco.promo .bf-preco { font-size: 62px; font-weight: 900; color: #d32f2f; text-align: center; line-height: 1; margin-top: 2px; }
+.etiqueta-eco.promo .bf-preco .cur { font-size: 24px; font-weight: 800; vertical-align: 28%; margin-right: 2px; }
+.etiqueta-eco.promo .bf-preco .cent { font-size: 32px; vertical-align: 28%; }
+.etiqueta-eco.promo .bf-100 { font-size: 12px; color: #555; text-align: center; margin-top: 6px; }
+.etiqueta-eco.promo .bf-val { font-size: 13px; color: #222; text-align: center; margin-top: 4px; }
+.etiqueta-eco.promo .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
+.etiqueta-eco.promo .bf-frase { font-size: 14px; font-weight: 900; color: #1b5e20; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
 
 .eco-marca-dagua {
   position: absolute;

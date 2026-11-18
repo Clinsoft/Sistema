@@ -116,7 +116,6 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             }).ToListAsync(ct))
             .Where(x => x.Saldo > 0).ToList();
         var encalhadoSemSet = encalhadoSemIds.ToHashSet();
-        var encalhadoComSet = encalhadoComIds.ToHashSet();
         // SEM etiqueta atribuível (usado no card e na quebra por loja abaixo).
         var encalhadoSaldoLoja = encalhadoSaldoTodos.Where(x => encalhadoSemSet.Contains(x.ProdutoId)).ToList();
 
@@ -125,10 +124,9 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
         var encalhadoSemEtiqueta = lojaUsuario is Guid ljEnc
             ? encalhadoSaldoLoja.Where(x => x.LocalEstoqueId == ljEnc).Select(x => x.ProdutoId).Distinct().Count()
             : encalhadoSaldoLoja.Select(x => x.ProdutoId).Distinct().Count();
-        var encalhadoComEtiqueta = (lojaUsuario is Guid ljC
-            ? encalhadoSaldoTodos.Where(x => x.LocalEstoqueId == ljC)
-            : encalhadoSaldoTodos).Where(x => encalhadoComSet.Contains(x.ProdutoId))
-            .Select(x => x.ProdutoId).Distinct().Count();
+        // "Encalhados COM etiqueta" NÃO é mais alerta do sininho: ao imprimir a etiqueta o produto
+        // sai de vez da notificação (decisão do gestor 18/11/2026). O acompanhamento de "etiquetado
+        // mas não girou" continua no filtro da tela de Produtos (?encalhados=com).
 
         var contasVencidas = ehGestao ? await db.LancamentosFinanceiros.CountAsync(l =>
             l.EmpresaId == empresaId && l.Tipo == TipoLancamento.ContaPagar
@@ -260,13 +258,6 @@ public class NotificacoesController(SistemaDbContext db) : ControllerBase
             titulo = "Encalhados SEM etiqueta",
             texto = $"{encalhadoSemEtiqueta} produto(s) que nunca venderam e nunca tiveram etiqueta impressa — etiquetar/expor.",
             rota = "/estoque/produtos?encalhados=sem", porLoja = encalhadoSemPorLoja
-        });
-        if (encalhadoComEtiqueta > 0) itens.Add(new
-        {
-            tipo = "encalhado-com-etiqueta", quantidade = encalhadoComEtiqueta, cor = "blue-grey", icone = "mdi-tag-outline",
-            titulo = "Encalhados COM etiqueta",
-            texto = $"{encalhadoComEtiqueta} produto(s) etiquetados que nunca venderam — promover/liquidar.",
-            rota = "/estoque/produtos?encalhados=com"
         });
         if (validadeProxima > 0) itens.Add(new
         {

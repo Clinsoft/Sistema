@@ -34,9 +34,12 @@
       </section>
 
       <v-container style="max-width: 1200px" class="pb-16">
-        <!-- Categorias (fixa ao rolar) -->
-        <div class="cat-bar">
-          <div class="d-flex flex-wrap py-2 gap-2">
+        <!-- Busca + categorias (fixas ao rolar) -->
+        <div class="cat-bar" id="vitrine-resultados">
+          <v-text-field v-model="busca" placeholder="Buscar produto..."
+            variant="solo-filled" flat rounded="pill" density="compact" hide-details clearable
+            prepend-inner-icon="mdi-magnify" class="cat-busca" bg-color="grey-lighten-4" />
+          <div class="cat-chips d-flex flex-nowrap overflow-x-auto pb-2 gap-2">
             <button class="cat-chip" :class="{ ativo: categoria === null }" @click="categoria = null">
               <v-icon size="18">mdi-view-grid</v-icon> Todos
             </button>
@@ -83,7 +86,7 @@
                   <div v-if="noCarrinho(p.id)" class="stepper-card">
                     <v-btn icon="mdi-minus" size="small" variant="flat" color="primary"
                       @click="menos(noCarrinho(p.id)!)" />
-                    <span class="stepper-qtd">{{ rotuloQtd(noCarrinho(p.id)!) }}</span>
+                    <span class="stepper-qtd stepper-qtd-click" @click="abrirEditQtd(noCarrinho(p.id)!)">{{ rotuloQtd(noCarrinho(p.id)!) }}</span>
                     <v-btn icon="mdi-plus" size="small" variant="flat" color="primary"
                       @click="mais(noCarrinho(p.id)!)" />
                   </div>
@@ -158,7 +161,7 @@
           </div>
           <div class="stepper-mini">
             <v-btn icon="mdi-minus" size="x-small" variant="tonal" color="primary" @click="menos(it)" />
-            <span class="stepper-qtd-mini">{{ rotuloQtd(it) }}</span>
+            <span class="stepper-qtd-mini stepper-qtd-click" @click="abrirEditQtd(it)">{{ rotuloQtd(it) }}</span>
             <v-btn icon="mdi-plus" size="x-small" variant="tonal" color="primary" @click="mais(it)" />
           </div>
         </div>
@@ -184,6 +187,10 @@
         <v-toolbar color="primary" density="comfortable">
           <v-btn icon="mdi-arrow-left" @click="checkoutAberto = false" />
           <v-toolbar-title class="text-body-1 font-weight-bold">Finalizar pedido</v-toolbar-title>
+          <v-spacer />
+          <v-btn variant="text" class="text-none font-weight-bold" :loading="enviando" @click="enviarPedido">
+            Enviar
+          </v-btn>
         </v-toolbar>
         <v-card-text class="pa-4">
           <v-form ref="formCheckout">
@@ -255,6 +262,32 @@
         <v-btn variant="text" block class="text-none" @click="novoPedido">Fazer novo pedido</v-btn>
       </v-card>
     </v-dialog>
+
+    <!-- Editar quantidade (digitar gramas/unidades + atalhos) -->
+    <v-dialog v-model="editAberto" max-width="360">
+      <v-card v-if="editItem" rounded="xl" class="pa-4">
+        <div class="text-body-1 font-weight-bold mb-1">{{ editItem.descricao }}</div>
+        <div class="text-caption text-medium-emphasis mb-3">
+          {{ editItem.porPeso ? 'Escolha ou digite a quantidade (em gramas)' : 'Escolha ou digite a quantidade' }}
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <v-btn v-for="pz in (editItem.porPeso ? [100, 250, 500, 1000] : [1, 2, 3, 6, 12])" :key="pz"
+            size="small" variant="tonal" color="primary" rounded="pill" class="text-none"
+            @click="editValor = pz">
+            {{ editItem.porPeso ? (pz >= 1000 ? (pz / 1000) + 'kg' : pz + 'g') : pz + 'un' }}
+          </v-btn>
+        </div>
+        <v-text-field v-model.number="editValor" type="number"
+          :min="editItem.porPeso ? 10 : 1" :step="editItem.porPeso ? 10 : 1"
+          :suffix="editItem.porPeso ? 'gramas' : 'unidades'"
+          variant="outlined" density="comfortable" hide-details autofocus
+          @keyup.enter="aplicarEditQtd" />
+        <div class="d-flex justify-end gap-2 mt-4">
+          <v-btn variant="text" class="text-none" @click="editAberto = false">Cancelar</v-btn>
+          <v-btn color="accent" variant="flat" rounded="pill" class="text-none px-5" @click="aplicarEditQtd">OK</v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
@@ -289,6 +322,10 @@ const formCheckout = ref()  // <v-form> do checkout (destaca obrigatórios em ve
 const sucessoAberto = ref(false)
 const enviando = ref(false)
 const scrolled = ref(false)
+// Edição de quantidade (digitar gramas/unidades)
+const editAberto = ref(false)
+const editItem = ref<ItemCarrinho | null>(null)
+const editValor = ref<number>(0)
 
 const ped = ref({ nome: '', telefone: '', lojaId: '', tipoEntrega: 'Retirada', endereco: '', observacao: '' })
 const pedidoFeito = ref<{ numero: string; total: number }>({ numero: '', total: 0 })
@@ -332,6 +369,27 @@ function menos(it: ItemCarrinho) {
 }
 
 watch(carrinho, () => localStorage.setItem(chaveCarrinho, JSON.stringify(carrinho.value)), { deep: true })
+
+// Abrir/aplicar edição de quantidade por digitação (granel em gramas, unidade em un).
+function abrirEditQtd(it: ItemCarrinho) {
+  editItem.value = it
+  editValor.value = it.porPeso ? Math.round(it.quantidade * 1000) : it.quantidade
+  editAberto.value = true
+}
+function aplicarEditQtd() {
+  const it = editItem.value
+  if (!it) return
+  let v = Number(editValor.value) || 0
+  if (it.porPeso) { if (v < 10) v = 10; it.quantidade = +(v / 1000).toFixed(3) }
+  else { v = Math.round(v); if (v < 1) v = 1; it.quantidade = v }
+  editAberto.value = false
+}
+
+// Ao começar a buscar, rola até os resultados — o cliente VÊ a loja filtrar.
+watch(busca, (v, old) => {
+  if (v && !old) nextTick(() => document.getElementById('vitrine-resultados')
+    ?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+})
 
 function abrirCheckout() {
   if (!ped.value.lojaId && lojas.value.length) ped.value.lojaId = lojas.value[0].id
@@ -443,6 +501,10 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
   border-bottom: 1px solid rgba(0,0,0,.06);
 }
 .gap-2 { gap: 8px; }
+.cat-busca { max-width: 560px; margin: 8px auto 4px; }
+.cat-chips { scrollbar-width: none; }
+.cat-chips::-webkit-scrollbar { display: none; }
+.stepper-qtd-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .cat-chip {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
   padding: 7px 16px; border-radius: 999px; font-size: .85rem; font-weight: 600;

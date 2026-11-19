@@ -502,6 +502,8 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
 }
 .gap-2 { gap: 8px; }
 .cat-busca { max-width: 560px; margin: 8px auto 4px; }
+/* no desktop a busca do hero basta — some a compacta fixa (fica só no celular/tablet) */
+@media (min-width: 960px) { .cat-busca { display: none; } }
 .cat-chips { scrollbar-width: none; }
 .cat-chips::-webkit-scrollbar { display: none; }
 .stepper-qtd-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }

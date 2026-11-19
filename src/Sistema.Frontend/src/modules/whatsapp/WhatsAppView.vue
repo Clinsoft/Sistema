@@ -149,6 +149,8 @@
                       subtitle="Mostra os produtos dentro do chat" @click="enviarCatalogoNativo" />
                     <v-list-item prepend-icon="mdi-link-variant" title="Link do site"
                       subtitle="Envia o link ecogranel.com.br/produtos" @click="enviarLinkCatalogo" />
+                    <v-list-item prepend-icon="mdi-cart-arrow-right" title="Pedido online (loja)"
+                      subtitle="Mensagem pronta com o link da loja" @click="enviarLinkVitrine" />
                   </v-list>
                 </v-menu>
                 <template v-if="!gravando">
@@ -1006,6 +1008,15 @@ async function enviarLinkCatalogo() {
   } catch (e: any) {
     notif.erro(e?.response?.data?.mensagem ?? 'Falha ao enviar o link do catálogo.')
   } finally { respondendo.value = false }
+}
+
+// Coloca um convite pronto (com o link da loja) no campo de mensagem — a atendente
+// pode editar e só então enviar.
+function enviarLinkVitrine() {
+  if (!conversaAtiva.value) return
+  respostaTexto.value = `🛒 Faça seu pedido online na nossa loja ${branding.nome}, sem sair de casa!\n\n`
+    + `👉 ${linkVitrine.value}\n\n`
+    + 'É só montar o carrinho com os produtos que quiser e enviar — a gente separa tudo pra você. 🌿'
 }
 
 async function responderTemplate() {

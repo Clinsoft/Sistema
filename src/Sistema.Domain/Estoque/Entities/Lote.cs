@@ -14,6 +14,10 @@ public class Lote : Entity
     public decimal CustoUnitario { get; private set; }
     /// <summary>Foto da etiqueta (validade/lote) tirada no registro, para conferência.</summary>
     public string? ImagemUrl { get; private set; }
+    /// <summary>Quando a atendente LANÇOU/confirmou a validade deste lote (não muda na venda).
+    /// Usado pela conferência da requisição p/ reconhecer lote relançado reaproveitando um
+    /// número de lote de compra anterior (aí o CriadoEm fica antigo, mas isto marca o lançamento).</summary>
+    public DateTime? ValidadeLancadaEm { get; private set; }
 
     private Lote() { }
 
@@ -45,6 +49,8 @@ public class Lote : Entity
     public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
     public void AtualizarValidade(DateTime dataValidade) => DataValidade = NormalizarAno(dataValidade);
     public void DefinirImagem(string url) => ImagemUrl = url;
+    /// <summary>Marca que a validade foi lançada/confirmada pela atendente agora.</summary>
+    public void RegistrarLancamentoValidade() => ValidadeLancadaEm = DateTime.UtcNow;
 
     public void Editar(string numeroLote, decimal quantidade, decimal custoUnitario,
         DateTime? dataFabricacao, DateTime? dataValidade)

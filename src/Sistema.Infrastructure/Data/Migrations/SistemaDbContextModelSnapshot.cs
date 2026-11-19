@@ -2203,6 +2203,9 @@ namespace Sistema.Infrastructure.Data.Migrations
                     b.Property<decimal>("Quantidade")
                         .HasColumnType("decimal(18,3)");
 
+                    b.Property<DateTime?>("ValidadeLancadaEm")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ProdutoId", "LocalEstoqueId", "NumeroLote")

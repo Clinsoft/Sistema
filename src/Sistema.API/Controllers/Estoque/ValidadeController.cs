@@ -551,6 +551,10 @@ public partial class ValidadeController(SistemaDbContext db, IUnitOfWork uow) : 
             }
         }
 
+        // Marca o momento do LANÇAMENTO da validade (não muda na venda) — a conferência da
+        // requisição usa isto p/ reconhecer lote relançado reaproveitando nº de lote antigo.
+        lote.RegistrarLancamentoValidade();
+
         // Salva a foto da etiqueta (conferência) e vincula ao lote.
         var url = await SalvarImagemLoteAsync(lote.Id, req.ImagemBase64, ct);
         if (url is not null) lote.DefinirImagem(url);

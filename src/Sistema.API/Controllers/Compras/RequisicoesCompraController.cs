@@ -445,11 +445,19 @@ public class RequisicoesCompraController(SistemaDbContext db, IUnitOfWork uow) :
         // CHEGADA FÍSICA = a atendente lançou o LOTE (desde a requisição, nesta loja). A NF
         // escriturada cria só a entrada no estoque (produto EM TRÂNSITO); o lote é lançado quando
         // o produto chega de fato na loja. Com validade = chegou; sem validade = chegou falta validade.
-        var lotesRecebidos = await db.Lotes.AsNoTracking()
+        // "Recebido" = lote CRIADO ou RELANÇADO (validade confirmada pela atendente) a partir da
+        // requisição. O relançamento reaproveitando um nº de lote de compra anterior mantém o
+        // CriadoEm antigo, então também consideramos ValidadeLancadaEm (carimbo do lançamento,
+        // que NÃO muda na venda — ao contrário de AtualizadoEm).
+        var lotesRecebidos = (await db.Lotes.AsNoTracking()
             .Where(l => l.EmpresaId == req.EmpresaId && l.LocalEstoqueId == req.LocalEstoqueId
-                && reqProdutoIds.Contains(l.ProdutoId) && l.CriadoEm >= req.CriadoEm)
-            .Select(l => new { l.ProdutoId, l.DataValidade, l.CriadoEm })
-            .ToListAsync(ct);
+                && reqProdutoIds.Contains(l.ProdutoId)
+                && (l.CriadoEm >= req.CriadoEm
+                    || (l.ValidadeLancadaEm != null && l.ValidadeLancadaEm >= req.CriadoEm)))
+            .Select(l => new { l.ProdutoId, l.DataValidade, l.CriadoEm, l.ValidadeLancadaEm })
+            .ToListAsync(ct))
+            .Select(l => new { l.ProdutoId, l.DataValidade, CriadoEm = l.ValidadeLancadaEm ?? l.CriadoEm })
+            .ToList();
         var faltaValidadeSet = lotesRecebidos.Where(l => l.DataValidade == null)
             .Select(l => l.ProdutoId).Distinct().ToHashSet();
         var loteComValidadeSet = lotesRecebidos.Where(l => l.DataValidade != null)

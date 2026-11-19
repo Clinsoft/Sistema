@@ -372,19 +372,24 @@ public class ContasPagarController(
 
             // Um PDF pode conter VÁRIOS pagamentos (um por página — ex.: Sicredi
             // "Pagar Boletos Eletrônicos"). Trata cada página como um comprovante.
-            var paginas = ExtrairPaginas(caminho);
-            if (paginas.Count == 0) paginas.Add("");
-            var multi = paginas.Count > 1;
-            // Fatia o PDF em 1 página por comprovante para cada conta ficar com o SEU arquivo.
-            var urlsPagina = multi ? SplitPdfPorPagina(caminho, dir, id, paginas.Count) : null;
+            var paginasRaw = ExtrairPaginas(caminho);
+            if (paginasRaw.Count == 0) paginasRaw.Add("");
+            // Agrupa páginas em comprovantes. O layout novo do Itaú ("comprovante de
+            // pagamento de boleto") traz UM pagamento em 2 páginas (beneficiário na 1ª,
+            // valor/datas na 2ª); o Sicredi traz 1 pagamento por página.
+            var comprovantes = AgruparPaginas(paginasRaw);
+            var multi = comprovantes.Count > 1;
+            // Só dá pra fatiar 1 arquivo por comprovante quando cada um ocupa 1 página.
+            var umaPorPagina = multi && comprovantes.All(c => c.qtd == 1);
+            var urlsPagina = umaPorPagina ? SplitPdfPorPagina(caminho, dir, id, paginasRaw.Count) : null;
 
-            for (var pg = 0; pg < paginas.Count; pg++)
+            foreach (var c in comprovantes)
             {
-                var (valor, data, venc, nomes, docs) = ParsePagina(paginas[pg]);
+                var (valor, data, venc, nomes, docs) = ParsePagina(c.texto);
                 if (valor is null && nomes.Count == 0) continue; // página sem pagamento (capa, rodapé)
 
-                var urlPg = urlsPagina != null ? urlsPagina[pg]
-                          : (multi ? $"{url}#page={pg + 1}" : url);
+                var urlPg = urlsPagina != null ? urlsPagina[c.inicio]
+                          : (multi ? $"{url}#page={c.inicio + 1}" : url);
                 var benefTokens = nomes.SelectMany(Tokens).Distinct().ToList();
 
                 var ranqueadas = candidatas.Select(l =>
@@ -423,7 +428,7 @@ public class ContasPagarController(
                 var melhor = ranqueadas.FirstOrDefault();
                 resultado.Add(new
                 {
-                    arquivo = multi ? $"{arq.FileName} (pág. {pg + 1})" : arq.FileName,
+                    arquivo = multi ? $"{arq.FileName} (pág. {c.inicio + 1})" : arq.FileName,
                     comprovanteUrl = urlPg,
                     valorLido = valor,
                     dataLida = data,
@@ -517,6 +522,30 @@ public class ContasPagarController(
     }
 
     // ─── Leitura/parse de comprovantes ──────────────────────────────────────
+    /// <summary>Agrupa páginas em comprovantes. No layout novo do Itaú ("comprovante de
+    /// pagamento de boleto") cada comprovante ocupa 2 páginas (beneficiário na 1ª, valor na
+    /// 2ª): junta as páginas de cada um. Nos demais layouts (Sicredi) = 1 página por comprovante.</summary>
+    private static List<(string texto, int inicio, int qtd)> AgruparPaginas(List<string> paginas)
+    {
+        const string rxHeader = @"comprovante de pagamento (de boleto|qr code)";
+        var itauNovo = paginas.Any(p => Regex.IsMatch(p ?? "", rxHeader, RegexOptions.IgnoreCase));
+        if (!itauNovo)
+            return paginas.Select((p, i) => (p, i, 1)).ToList();
+
+        var grupos = new List<(string, int, int)>();
+        var inicio = -1;
+        var buffer = new List<string>();
+        void Flush(int fim) { if (inicio >= 0) grupos.Add((string.Join(" ", buffer), inicio, fim - inicio)); }
+        for (var i = 0; i < paginas.Count; i++)
+        {
+            var header = Regex.IsMatch(paginas[i] ?? "", rxHeader, RegexOptions.IgnoreCase);
+            if (header) { Flush(i); inicio = i; buffer = new List<string> { paginas[i] }; }
+            else { if (inicio < 0) inicio = i; buffer.Add(paginas[i]); }
+        }
+        Flush(paginas.Count);
+        return grupos;
+    }
+
     private static List<string> ExtrairPaginas(string caminho)
     {
         var paginas = new List<string>();
@@ -539,6 +568,50 @@ public class ContasPagarController(
     private static (decimal? valor, DateTime? data, DateTime? venc, List<string> nomes, List<string> docs) ParsePagina(string texto)
     {
         var t = (texto ?? "").Replace('\n', ' ').Replace('\r', ' ');
+
+        // ─── Itaú — layout novo do app/internet banking ──────────────────────────
+        // Cobre "comprovante de pagamento de boleto" (boleto) E "...QR Code" (PIX).
+        // Rótulos minúsculos, 2 páginas (beneficiário/recebedor na 1ª, valor/datas na
+        // 2ª, já unidas por AgruparPaginas). Exclui o Sispag antigo ("Valor do boleto (R$)").
+        if ((Regex.IsMatch(t, @"comprovante de pagamento", RegexOptions.IgnoreCase)
+             || Regex.IsMatch(t, @"valor do pagamento", RegexOptions.IgnoreCase)
+             || Regex.IsMatch(t, @"valor da transa[cç][aã]o", RegexOptions.IgnoreCase))
+            && !Regex.IsMatch(t, @"Valor do boleto \(R\$\)", RegexOptions.IgnoreCase))
+        {
+            var vNi = ParseMoeda(Campo(t, @"valor do pagamento\s*R?\$?\s*([\d\.]+,\d{2})"))
+                   ?? ParseMoeda(Campo(t, @"valor da transa[cç][aã]o\s*R?\$?\s*([\d\.]+,\d{2})"))
+                   ?? ParseMoeda(Campo(t, @"valor do documento\s*R?\$?\s*([\d\.]+,\d{2})"));
+            var dNi = ParseData(Campo(t, @"data do pagamento\s*(?:\d+\s+de\s+\d+\s+)?(\d{2}/\d{2}/\d{4})")
+                             ?? Campo(t, @"pagamento efetuado em\s*(\d{2}/\d{2}/\d{4})"));   // PIX QR Code
+            var vencNi = ParseData(Campo(t, @"data do vencimento\s*(?:\d+\s+de\s+\d+\s+)?(\d{2}/\d{2}/\d{4})"));
+            // Beneficiário (boleto) ou Recebedor (PIX): bloco até código de barras / dados da transação.
+            var bloco = Campo(t, @"dados do benefici[aá]rio\s*(.{3,200}?)\s*c[oó]digo de barras")
+                     ?? Campo(t, @"dados do benefici[aá]rio\s*(.{3,200}?)\s*dados da transa")
+                     ?? Campo(t, @"dados do recebedor\s*(.{3,200}?)\s*dados da transa");
+            var nomesNi = new List<string>();
+            var docsNi = new List<string>();
+            if (!string.IsNullOrWhiteSpace(bloco))
+            {
+                // 1º CNPJ/CPF do bloco = o do recebedor/beneficiário (o do pagador/devedor
+                // fica FORA do bloco, então não é confundido com a EcoGranel).
+                var mc = Regex.Match(bloco, @"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}");
+                if (mc.Success) { var dd = SomenteDigitos(mc.Value); if (dd.Length is 11 or 14) docsNi.Add(dd); }
+                // O PdfPig gruda as palavras ("...LTDACPF/CNPJ09..."); pega o nome entre o
+                // rótulo e "CPF/CNPJ" e, no fallback, limpa rótulo colado no fim.
+                var nome = Campo(bloco, @"nome do recebedor\s*(.{3,60}?)\s*CPF/?\s*CNPJ")
+                        ?? Campo(bloco, @"nome do benefici[aá]rio\s*(.{3,60}?)\s*CPF/?\s*CNPJ")
+                        ?? Campo(bloco, @"nome\s*(.{3,60}?)\s*CPF/?\s*CNPJ");
+                if (string.IsNullOrWhiteSpace(nome))
+                    nome = Regex.Matches(bloco, @"[A-ZÁÂÃÉÊÍÓÔÕÚÜÇ][A-ZÁÂÃÉÊÍÓÔÕÚÜÇ0-9&.\- ]{3,}")
+                        .Select(m => m.Value.Trim())
+                        .Where(s => !Regex.IsMatch(s, @"^(NOME|CPF|CNPJ|RAZ[AÃ]O|DADOS|BANCO|CHAVE|INSTITU|TIPO)", RegexOptions.IgnoreCase))
+                        .OrderByDescending(s => s.Length).FirstOrDefault();
+                if (nome != null) nome = Regex.Replace(nome, @"\s*(CPF|CNPJ|RAZ[AÃ]O|CHAVE|INSTITU).*$", "", RegexOptions.IgnoreCase).Trim();
+                if (!string.IsNullOrWhiteSpace(nome)) nomesNi.Add(nome!);
+            }
+            if (vNi.HasValue || nomesNi.Count > 0 || docsNi.Count > 0)
+                return (vNi, dNi, vencNi, nomesNi, docsNi);
+        }
 
         // ─── Itaú ("Comprovante de pagamento de boleto" via Sispag) ───────────────
         // Layout em tabela: com as quebras viradas em espaço, o CNPJ do beneficiário

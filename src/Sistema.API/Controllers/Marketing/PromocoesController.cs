@@ -50,11 +50,15 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
     /// Usado pela tela de Etiquetas (modelo Black Friday) para só listar os produtos da campanha.</summary>
     [HttpGet("produtos-etiqueta")]
     public async Task<IActionResult> ProdutosEtiqueta(
-        [FromQuery] Guid empresaId, [FromQuery] string termo = "BLACK FRIDAY", CancellationToken ct = default)
+        [FromQuery] Guid empresaId, [FromQuery] string termo = "BLACK FRIDAY",
+        [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
+        // Filtra pela LOJA (se informada): promoção da loja + "todas as lojas" (null).
+        // Sem loja = todas (admin). Evita vazar promoção de outra loja na etiqueta.
         var promos = await db.Promocoes.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.AplicaEm == "Produto"
-                && p.ReferenciaId != null && p.Nome.StartsWith(termo))
+                && p.ReferenciaId != null && p.Nome.StartsWith(termo)
+                && (localEstoqueId == null || p.LocalEstoqueId == null || p.LocalEstoqueId == localEstoqueId))
             .Select(p => new { ProdutoId = p.ReferenciaId!.Value, p.TipoDesconto, p.Desconto })
             .ToListAsync(ct);
         if (promos.Count == 0) return Ok(Array.Empty<object>());
@@ -91,13 +95,16 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
     /// com o desconto. Usado pela tela de Etiquetas (modelo EcoGranel Promoção).</summary>
     [HttpGet("produtos-promocao-ativa")]
     public async Task<IActionResult> ProdutosPromocaoAtiva(
-        [FromQuery] Guid empresaId, CancellationToken ct = default)
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId = null, CancellationToken ct = default)
     {
         var hoje = DateTime.UtcNow.Date;
+        // Filtra pela LOJA (se informada): promoção da loja + "todas as lojas" (null).
+        // Sem loja = todas (admin). Evita imprimir etiqueta de promoção de outra loja.
         var promos = await db.Promocoes.AsNoTracking()
             .Where(p => p.EmpresaId == empresaId && p.Ativa
                 && p.Tipo == "Desconto" && p.AplicaEm == "Produto" && p.ReferenciaId != null
-                && p.DataInicio <= hoje && (p.DataFim == null || p.DataFim >= hoje))
+                && p.DataInicio <= hoje && (p.DataFim == null || p.DataFim >= hoje)
+                && (localEstoqueId == null || p.LocalEstoqueId == null || p.LocalEstoqueId == localEstoqueId))
             .Select(p => new { ProdutoId = p.ReferenciaId!.Value, p.Nome, p.TipoDesconto, p.Desconto })
             .ToListAsync(ct);
         if (promos.Count == 0) return Ok(Array.Empty<object>());

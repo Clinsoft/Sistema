@@ -1169,7 +1169,7 @@ async function adicionarBlackFriday() {
   carregandoBf.value = true
   try {
     const r = await api.get('/promocoes/produtos-etiqueta', {
-      params: { empresaId: auth.empresaId, termo: 'BLACK FRIDAY' },
+      params: { empresaId: auth.empresaId, termo: 'BLACK FRIDAY', localEstoqueId: auth.lojaAtualId || undefined },
     })
     const prods = (r.data ?? []) as any[]
     produtosSel.value = []   // a etiqueta BF é só dos produtos da campanha
@@ -1187,7 +1187,7 @@ async function adicionarPromocao() {
   carregandoPromo.value = true
   try {
     const r = await api.get('/promocoes/produtos-promocao-ativa', {
-      params: { empresaId: auth.empresaId },
+      params: { empresaId: auth.empresaId, localEstoqueId: auth.lojaAtualId || undefined },
     })
     const prods = (r.data ?? []) as any[]
     produtosSel.value = []   // a etiqueta de Promoção é só dos produtos em promoção ativa

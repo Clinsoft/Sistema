@@ -239,7 +239,7 @@
               Carregar produtos da Black Friday
             </v-btn>
             <div class="text-caption text-medium-emphasis">
-              Puxa os produtos das promoções "BLACK FRIDAY". O preço é por 100g já com desconto.
+              Puxa os produtos das promoções "BLACK FRIDAY". Vale p/ granel (por 100g) e por unidade — preço já com desconto.
             </div>
           </template>
 
@@ -254,7 +254,7 @@
               Carregar produtos em promoção
             </v-btn>
             <div class="text-caption text-medium-emphasis">
-              Puxa as promoções ativas (Marketing → Promoções). O preço é por 100g já com desconto.
+              Puxa as promoções ativas (Marketing → Promoções). Vale p/ granel (por 100g) e por unidade — o preço sai já com desconto.
             </div>
           </template>
 
@@ -448,9 +448,9 @@
                   <div class="bf-hr"></div>
                   <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
                   <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">cód. {{ codigoEtiqueta(p) }}</div>
-                  <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
+                  <div v-if="camposEco.preco100g && precoBf(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(precoEtq(p, p.precoVenda)) }}</s> por</div>
                   <div v-if="camposEco.preco100g" class="bf-preco"><span class="cur">R$</span>{{ precoBfParts(p).int }}<span class="cent">,{{ precoBfParts(p).cent }}</span></div>
-                  <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
+                  <div v-if="camposEco.preco100g" class="bf-100">{{ rotuloEtqPreco(p) }}</div>
                   <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
                   <div class="bf-foot">
                     <div v-if="camposEco.qrcode" class="eco-qr-wrap">
@@ -472,9 +472,9 @@
                   <div class="bf-hr"></div>
                   <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
                   <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">cód. {{ codigoEtiqueta(p) }}</div>
-                  <div v-if="camposEco.preco100g && precoPromoAuto(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(preco100g(p.precoVenda)) }}</s> por</div>
+                  <div v-if="camposEco.preco100g && precoPromoAuto(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(precoEtq(p, p.precoVenda)) }}</s> por</div>
                   <div v-if="camposEco.preco100g" class="bf-preco"><span class="cur">R$</span>{{ precoPromoParts(p).int }}<span class="cent">,{{ precoPromoParts(p).cent }}</span></div>
-                  <div v-if="camposEco.preco100g" class="bf-100">cada 100g</div>
+                  <div v-if="camposEco.preco100g" class="bf-100">{{ rotuloEtqPreco(p) }}</div>
                   <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
                   <div class="bf-foot">
                     <div v-if="camposEco.qrcode" class="eco-qr-wrap">
@@ -649,7 +649,9 @@ const marcados = ref<Record<string, boolean>>({})
 function ehKg(p: any) { return !!p?.produtoBalanca || String(p?.unidadeSigla || '').toUpperCase() === 'KG' }
 function elegivel(p: any) {
   // EcoGranel e Black Friday são etiqueta de pote (preço por 100g) → só produtos por peso.
-  if (template.value === 'ecogranel' || template.value === 'blackfriday' || template.value === 'promocao') return ehKg(p)
+  if (template.value === 'ecogranel') return ehKg(p)
+  // Black Friday e Promoção valem p/ granel (por 100g) E unidade (preço por unidade).
+  if (template.value === 'blackfriday' || template.value === 'promocao') return true
   if (template.value === 'plaquinha') return !ehKg(p)  // Plaquinha: só produtos por unidade (UN)
   return true
 }
@@ -879,6 +881,9 @@ function fmtDataHora(iso: string) {
   return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 function preco100g(precoKg: number) { return Math.round(((precoKg ?? 0) / 10) * 100) / 100 }
+// Na etiqueta o preço é por 100g para granel (kg) e por UNIDADE para produtos UN.
+function precoEtq(p: any, valor: number) { return ehKg(p) ? preco100g(valor) : (valor ?? 0) }
+function rotuloEtqPreco(p: any) { return ehKg(p) ? 'cada 100g' : 'cada unidade' }
 // Preço usado na etiqueta Black Friday: o já com desconto da promoção (se veio), senão o normal.
 function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
 // Preço usado na etiqueta Promoção: o já com desconto da promoção ativa, senão o normal.
@@ -895,12 +900,12 @@ function fernMarkup(c: string, fill = '#5f5f5f'): string {
 }
 // Preço BF separado em inteiro/centavos (para "R$" + inteiro grande + centavos elevados).
 function precoBfParts(p: any): { int: string; cent: string } {
-  const [int, cent] = (preco100g(precoBf(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
+  const [int, cent] = (precoEtq(p, precoBf(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
   return { int, cent: cent ?? '00' }
 }
 // Preço da Promoção separado em inteiro/centavos (mesmo formato do BF).
 function precoPromoParts(p: any): { int: string; cent: string } {
-  const [int, cent] = (preco100g(precoPromoAuto(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
+  const [int, cent] = (precoEtq(p, precoPromoAuto(p)) ?? 0).toLocaleString('pt-BR', OPTS_2).split(',')
   return { int, cent: cent ?? '00' }
 }
 

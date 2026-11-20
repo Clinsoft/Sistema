@@ -424,20 +424,20 @@
           <!-- ── Preview EcoGranel ── -->
           <div v-else-if="template === 'ecogranel' || ehBf || ehPromo" id="area-impressao" class="etiquetas-grid">
             <div v-for="p in etiquetasExpandidas" :key="p._key"
-              class="etiqueta-eco" :class="{ bf: ehBf, promo: ehPromo }"
-              :style="ehBf
+              class="etiqueta-eco" :class="{ bf: temaItem(p) === 'bf', promo: temaItem(p) === 'promo' }"
+              :style="temaItem(p) === 'bf'
                 ? { border: '3px solid #000', borderRadius: '6px', background: 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)' }
-                : ehPromo
-                ? { border: '3px solid #2e7d32', borderRadius: '10px', background: 'linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%)' }
+                : temaItem(p) === 'promo'
+                ? { border: '3px solid #2e7d32', borderRadius: '10px', background: '#ffffff' }
                 : { border: `${borda.espessura}px solid ${borda.cor}`, borderRadius: `${borda.espessura * 2 + 4}px`,
                     background: `linear-gradient(160deg,#ffffff 0%, ${ecoCfg.fundoCor} 60%, ${ecoCfg.fundoCor} 100%)` }">
 
-              <!-- Marca d'água (não no Black Friday) -->
-              <img v-if="marcaDaguaUrl && !ehBf" :src="marcaDaguaUrl" class="eco-marca-dagua"
+              <!-- Marca d'água (só no template EcoGranel padrão) -->
+              <img v-if="marcaDaguaUrl && temaItem(p) === 'eco'" :src="marcaDaguaUrl" class="eco-marca-dagua"
                 :style="{ opacity: ecoCfg.marcaOpacidade / 100 }" />
 
               <!-- ═══ Layout Black Friday ═══ -->
-              <template v-if="ehBf">
+              <template v-if="temaItem(p) === 'bf'">
                 <span v-html="fernMarkup('tr')"></span>
                 <span v-html="fernMarkup('tl')"></span>
                 <span v-html="fernMarkup('br')"></span>
@@ -461,28 +461,24 @@
                 </div>
               </template>
 
-              <!-- ═══ Layout Promoção (natural verde + preço vermelho) ═══ -->
-              <template v-else-if="ehPromo">
+              <!-- ═══ Layout Oferta "Preços Reduzidos" (fundo branco, de/por) ═══ -->
+              <template v-else-if="temaItem(p) === 'promo'">
                 <span v-html="fernMarkup('tr', '#2e7d32')"></span>
                 <span v-html="fernMarkup('tl', '#2e7d32')"></span>
-                <span v-html="fernMarkup('br', '#2e7d32')"></span>
-                <span v-html="fernMarkup('bl', '#2e7d32')"></span>
-                <div class="bf-content">
-                  <div class="pr-badge">PROMOÇÃO</div>
-                  <div class="bf-hr"></div>
-                  <div v-if="camposEco.nome" class="bf-nome">{{ p.descricao?.toUpperCase() }}</div>
-                  <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="bf-cod">cód. {{ codigoEtiqueta(p) }}</div>
-                  <div v-if="camposEco.preco100g && precoPromoAuto(p) < p.precoVenda" class="bf-de">de <s>R$ {{ fmtPrecoDisplay(precoEtq(p, p.precoVenda)) }}</s> por</div>
-                  <div v-if="camposEco.preco100g" class="bf-preco"><span class="cur">R$</span>{{ precoPromoParts(p).int }}<span class="cent">,{{ precoPromoParts(p).cent }}</span></div>
-                  <div v-if="camposEco.preco100g" class="bf-100">{{ rotuloEtqPreco(p) }}</div>
-                  <div v-if="camposEco.validade && validadeProduto(p)" class="bf-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
-                  <div class="bf-foot">
-                    <div v-if="camposEco.qrcode" class="eco-qr-wrap">
-                      <canvas :ref="el => registrarQr(el, p)" class="eco-qr-canvas" />
-                    </div>
-                    <div v-if="camposEco.frase" class="bf-frase"><strong>APROVEITE A PROMOÇÃO!</strong></div>
-                  </div>
+                <div class="of-head">
+                  <div class="of-badge">PREÇOS REDUZIDOS</div>
+                  <div class="of-aproveite">APROVEITE!</div>
                 </div>
+                <div class="of-faixa">OFERTA</div>
+                <div class="of-body">
+                  <div v-if="camposEco.nome" class="of-nome">{{ p.descricao?.toUpperCase() }}</div>
+                  <div v-if="camposEco.codigoPlu && codigoEtiqueta(p)" class="of-cod">cód. {{ codigoEtiqueta(p) }}</div>
+                  <div v-if="camposEco.preco100g && precoPromoAuto(p) < p.precoVenda" class="of-de">De: <span class="risco">R$ {{ fmtPrecoDisplay(precoEtq(p, p.precoVenda)) }}</span></div>
+                </div>
+                <div v-if="camposEco.preco100g" class="of-por"><span class="lbl">Por:</span><span class="cur">R$</span><span class="val">{{ precoPromoParts(p).int }},{{ precoPromoParts(p).cent }}</span><span class="rot">{{ rotuloEtqPreco(p) }}</span></div>
+                <div v-if="camposEco.validade && validadeProduto(p)" class="of-val"><strong>Validade: {{ fmtData(validadeProduto(p)) }}</strong></div>
+                <!-- Rodapé só aparece quando o lote vence em até 30 dias -->
+                <div v-if="venceEmDias(p) <= 30" class="of-rod">PRODUTOS PRÓXIMOS AO VENCIMENTO · CONSUMO IMEDIATO</div>
               </template>
 
               <!-- ═══ Layout EcoGranel padrão ═══ -->
@@ -807,7 +803,7 @@ const campos = ref({
 const templates = [
   { id: 'ecogranel', nome: 'EcoGranel - Potes' },
   { id: 'blackfriday', nome: 'Black Friday 🖤' },
-  { id: 'promocao', nome: 'EcoGranel Promoção 🏷️' },
+  { id: 'promocao', nome: 'Oferta — Preços Reduzidos 🏷️' },
   { id: 'gondola-70x40', nome: 'Gôndola Zebra' },
   { id: 'plaquinha', nome: 'Plaquinha (UN)' },
   { id: 'pote9x9', nome: 'Pote 9×9cm' },
@@ -889,6 +885,14 @@ function rotuloEtqPreco(p: any) { return ehKg(p) ? 'cada 100g' : 'cada unidade' 
 function precoBf(p: any) { return p?.precoBlackFriday ?? p?.precoVenda ?? 0 }
 // Preço usado na etiqueta Promoção: o já com desconto da promoção ativa, senão o normal.
 function precoPromoAuto(p: any) { return p?.precoPromocao ?? p?.precoVenda ?? 0 }
+// Produto cuja promoção de origem é Black Friday (p/ no template Oferta sair no visual preto).
+function ehProdutoBlack(p: any) { return String(p?.nomePromocao || '').toUpperCase().startsWith('BLACK FRIDAY') }
+// Tema do item na prévia/impressão: no template Oferta, os da Black vão de preto; o resto branco.
+function temaItem(p: any): 'bf' | 'promo' | 'eco' {
+  if (ehBf.value) return 'bf'
+  if (ehPromo.value) return ehProdutoBlack(p) ? 'bf' : 'promo'
+  return 'eco'
+}
 
 // Formato especial: "7,69" (sem R$ e com vírgula)
 function fmtPrecoDisplay(v: number) {
@@ -1366,6 +1370,17 @@ async function enriquecerValidadeRegistrada(p: any) {
 
 // Validade da etiqueta para um produto: prioriza a validade REGISTRADA no Controle
 // de Validade; senão, hoje + validadeEmDias; por fim, a data global do formulário.
+// Dias até o vencimento (para mostrar o rodapé "próximos ao vencimento" só quando <= 30).
+function venceEmDias(p: any): number {
+  const v = validadeProduto(p)
+  if (!v) return 9999
+  const [y, m, d] = String(v).slice(0, 10).split('-').map(Number)
+  if (!y) return 9999
+  const alvo = new Date(y, (m || 1) - 1, d || 1)
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  return Math.round((alvo.getTime() - hoje.getTime()) / 86400000)
+}
+
 function validadeProduto(p: any): string {
   if (p?._validadeRegistrada) return p._validadeRegistrada
   // Produto por kg (balança) sem validade registrada no Controle de Validade:
@@ -1407,6 +1422,8 @@ function imprimir() {
         // Black Friday / Promoção: preço já com desconto; EcoGranel: preço normal
         precoVenda: ehBf.value ? precoBf(p) : ehPromo.value ? precoPromoAuto(p) : p.precoVenda,
         precoOriginal: (ehBf.value || ehPromo.value) ? p.precoVenda : undefined, // preço cheio (mostra "de" riscado)
+        porUnidade: !ehKg(p),   // UN: não divide por 10 e rotula "cada unidade"
+        blackFriday: temaItem(p) === 'bf',   // no template Oferta, os da Black saem no visual preto
         validade: validadeProduto(p) || validadePadrao(),
         descricao: p.descricaoComplementar || textoDescritivoEco.value,
       })),
@@ -1414,15 +1431,12 @@ function imprimir() {
         ? {
             copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
             blackFriday: true,
-            rotuloPreco: 'cada 100g',
             fraseRodape: 'APROVEITE A BLACK FRIDAY!',
           }
         : ehPromo.value
         ? {
             copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
             promocao: true,
-            rotuloPreco: 'cada 100g',
-            fraseRodape: 'APROVEITE A PROMOÇÃO!',
           }
         : {
             copiasPorItem: Math.max(1, qtdEtiquetas.value || 1),
@@ -1485,6 +1499,30 @@ function imprimir() {
       .etiqueta-eco.bf .bf-val { font-size: 9pt; color: #fff; text-align: center; margin-top: 1mm; }
       .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2mm; margin-top: 1.5mm; }
       .etiqueta-eco.bf .bf-frase { font-size: 10.5pt; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
+
+      /* ── Oferta "Preços Reduzidos" (impressão) ── */
+      .etiqueta-eco.promo { background: #ffffff !important; justify-content: flex-start; }
+      .etiqueta-eco.promo > .fern { position: absolute; width: 34mm; height: auto; z-index: 0; opacity: .35; }
+      .etiqueta-eco.promo .fern.tr { top: -3mm; right: -4mm; transform: scaleY(-1); }
+      .etiqueta-eco.promo .fern.tl { top: -3mm; left: -4mm; transform: scale(-1, -1); }
+      .etiqueta-eco.promo > *:not(.fern) { position: relative; z-index: 1; }
+      .etiqueta-eco.promo .of-head { display: flex; justify-content: space-between; align-items: center; gap: 3mm; padding: 4mm 4mm 3mm; }
+      .etiqueta-eco.promo .of-badge { background: #c81d1d; color: #fff; font-weight: 900; font-size: 15pt; letter-spacing: .3px; padding: 2.6mm 4mm; border-radius: 7px; }
+      .etiqueta-eco.promo .of-aproveite { color: #c81d1d; font-weight: 900; font-size: 13pt; }
+      .etiqueta-eco.promo .of-faixa { background: #f2691c; color: #fff; font-weight: 900; font-size: 16pt; letter-spacing: 3px; text-align: center; padding: 1.4mm 0; }
+      .etiqueta-eco.promo .of-body { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; padding: 3mm 5mm 0; text-align: center; }
+      .etiqueta-eco.promo .of-nome { color: #111; font-weight: 900; font-size: 17pt; line-height: 1.08; text-transform: uppercase; }
+      .etiqueta-eco.promo .of-cod { color: #777; font-size: 8.5pt; margin-top: 1.5mm; letter-spacing: 1px; }
+      .etiqueta-eco.promo .of-de { margin-top: 3mm; font-size: 12pt; color: #111; font-weight: 700; }
+      .etiqueta-eco.promo .of-de .risco { position: relative; color: #c81d1d; font-weight: 900; font-size: 19pt; }
+      .etiqueta-eco.promo .of-de .risco::after { content: ""; position: absolute; left: -4%; right: -4%; top: 52%; height: 3px; background: #111; transform: rotate(-12deg); }
+      .etiqueta-eco.promo .of-por { background: #c81d1d; color: #fff; display: flex; align-items: center; justify-content: center; gap: 2.5mm; padding: 2mm 5mm; }
+      .etiqueta-eco.promo .of-por .lbl { font-size: 13pt; font-weight: 800; }
+      .etiqueta-eco.promo .of-por .cur { font-size: 16pt; font-weight: 800; align-self: flex-start; margin-top: 3mm; }
+      .etiqueta-eco.promo .of-por .val { font-size: 38pt; font-weight: 900; line-height: .9; }
+      .etiqueta-eco.promo .of-por .rot { font-size: 8pt; font-weight: 700; align-self: flex-end; margin-bottom: 3mm; opacity: .95; }
+      .etiqueta-eco.promo .of-val { text-align: center; font-size: 9.5pt; color: #222; padding: 2mm 0; }
+      .etiqueta-eco.promo .of-rod { background: #f2691c; color: #fff; font-weight: 800; font-size: 7pt; letter-spacing: .5px; text-align: center; padding: 1.2mm 2mm; }
       .eco-marca-dagua {
         position: absolute; right: 4mm; top: 30%; width: 42%; opacity: 0.18;
         pointer-events: none; user-select: none;
@@ -1601,28 +1639,29 @@ function imprimir() {
 .etiqueta-eco.bf .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
 .etiqueta-eco.bf .bf-frase { font-size: 14px; font-weight: 900; color: #fff; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
 
-/* ── Promoção (natural verde + preço vermelho) ── */
-.etiqueta-eco.promo { background: linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%) !important; justify-content: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.etiqueta-eco.promo > .fern { position: absolute; width: 140px; height: auto; z-index: 0; opacity: .4; }
-.etiqueta-eco.promo .fern.tr { top: -15px; right: -18px; transform: scaleY(-1); }
-.etiqueta-eco.promo .fern.tl { top: -15px; left: -18px; transform: scale(-1, -1); }
-.etiqueta-eco.promo .fern.br { bottom: -15px; right: -18px; }
-.etiqueta-eco.promo .fern.bl { bottom: -15px; left: -18px; transform: scaleX(-1); }
-.etiqueta-eco.promo .bf-content { position: relative; z-index: 1; width: 100%; text-align: center; }
-.etiqueta-eco.promo .bf-content > * { width: 100%; text-align: center; }
-.etiqueta-eco.promo .pr-badge { display: inline-block; width: auto; background: #d32f2f; color: #fff; font-weight: 900; font-size: 17px; letter-spacing: 2px; padding: 4px 22px; border-radius: 999px; }
-.etiqueta-eco.promo .bf-hr { width: 72%; height: 0; border-top: 1.5px solid #2e7d3288; margin: 8px auto; }
-.etiqueta-eco.promo .bf-nome { font-size: 15px; font-weight: 900; color: #1b5e20; text-align: center; margin-top: 6px; line-height: 1.08; letter-spacing: .3px; }
-.etiqueta-eco.promo .bf-cod { font-size: 11px; color: #777; text-align: center; letter-spacing: 1px; margin-top: 2px; }
-.etiqueta-eco.promo .bf-de { font-size: 12px; color: #555; text-align: center; margin-top: 7px; }
-.etiqueta-eco.promo .bf-de s { color: #999; }
-.etiqueta-eco.promo .bf-preco { font-size: 62px; font-weight: 900; color: #d32f2f; text-align: center; line-height: 1; margin-top: 2px; }
-.etiqueta-eco.promo .bf-preco .cur { font-size: 24px; font-weight: 800; vertical-align: 28%; margin-right: 2px; }
-.etiqueta-eco.promo .bf-preco .cent { font-size: 32px; vertical-align: 28%; }
-.etiqueta-eco.promo .bf-100 { font-size: 12px; color: #555; text-align: center; margin-top: 6px; }
-.etiqueta-eco.promo .bf-val { font-size: 13px; color: #222; text-align: center; margin-top: 4px; }
-.etiqueta-eco.promo .bf-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
-.etiqueta-eco.promo .bf-frase { font-size: 14px; font-weight: 900; color: #1b5e20; text-align: center; max-width: 100%; line-height: 1.15; letter-spacing: .5px; }
+/* ── Oferta "Preços Reduzidos" (fundo branco, de/por) ── */
+.etiqueta-eco.promo { background: #ffffff !important; justify-content: flex-start; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.etiqueta-eco.promo > .fern { position: absolute; width: 130px; height: auto; z-index: 0; opacity: .35; }
+.etiqueta-eco.promo .fern.tr { top: -14px; right: -16px; transform: scaleY(-1); }
+.etiqueta-eco.promo .fern.tl { top: -14px; left: -16px; transform: scale(-1, -1); }
+.etiqueta-eco.promo > *:not(.fern) { position: relative; z-index: 1; }
+.etiqueta-eco.promo .of-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+.etiqueta-eco.promo .of-badge { background: #c81d1d; color: #fff; font-weight: 900; font-size: 19px; letter-spacing: .3px; padding: 9px 14px; border-radius: 8px; }
+.etiqueta-eco.promo .of-aproveite { color: #c81d1d; font-weight: 900; font-size: 17px; }
+.etiqueta-eco.promo .of-faixa { background: #f2691c; color: #fff; font-weight: 900; font-size: 21px; letter-spacing: 3px; text-align: center; padding: 5px 0; }
+.etiqueta-eco.promo .of-body { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; padding: 12px 18px 0; text-align: center; }
+.etiqueta-eco.promo .of-nome { color: #111; font-weight: 900; font-size: 22px; line-height: 1.08; text-transform: uppercase; }
+.etiqueta-eco.promo .of-cod { color: #777; font-size: 11px; margin-top: 5px; letter-spacing: 1px; }
+.etiqueta-eco.promo .of-de { margin-top: 10px; font-size: 16px; color: #111; font-weight: 700; }
+.etiqueta-eco.promo .of-de .risco { position: relative; color: #c81d1d; font-weight: 900; font-size: 25px; }
+.etiqueta-eco.promo .of-de .risco::after { content: ""; position: absolute; left: -4%; right: -4%; top: 52%; height: 3px; background: #111; transform: rotate(-12deg); }
+.etiqueta-eco.promo .of-por { background: #c81d1d; color: #fff; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 8px 18px; }
+.etiqueta-eco.promo .of-por .lbl { font-size: 17px; font-weight: 800; }
+.etiqueta-eco.promo .of-por .cur { font-size: 21px; font-weight: 800; align-self: flex-start; margin-top: 11px; }
+.etiqueta-eco.promo .of-por .val { font-size: 50px; font-weight: 900; line-height: .9; }
+.etiqueta-eco.promo .of-por .rot { font-size: 11px; font-weight: 700; align-self: flex-end; margin-bottom: 11px; opacity: .95; }
+.etiqueta-eco.promo .of-val { text-align: center; font-size: 13px; color: #222; padding: 8px 0; }
+.etiqueta-eco.promo .of-rod { background: #f2691c; color: #fff; font-weight: 800; font-size: 9px; letter-spacing: .5px; text-align: center; padding: 5px 6px; }
 
 .eco-marca-dagua {
   position: absolute;

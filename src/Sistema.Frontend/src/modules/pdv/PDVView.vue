@@ -1176,6 +1176,8 @@ const ultimaVendaAutorizada = ref(false)
 
 // ── Sessão de caixa ──────────────────────────────────────────────
 const sessaoAtual = ref<{ id: string; numero: number; abertoEm: string; localEstoqueId?: string | null } | null>(null)
+// Quando a loja do caixa fica conhecida (abriu/retomou caixa), recarrega banner + preços promo da loja.
+watch(sessaoAtual, () => { carregarPromocoes(); carregarPrecosPromo() })
 
 // Só os colaboradores da LOJA do caixa (ou da loja selecionada no topo), sem
 // Administrador. IPANEMA mostra IPANEMA e RIO CLARO mostra RIO CLARO.
@@ -1639,10 +1641,13 @@ function adicionarProdutoBalanca(p: Produto, bal: { plu: number; valor: number }
     total = Math.round(bal.valor) / 100                                   // total da etiqueta manda
     qtdKg = p.precoVenda > 0 ? Math.round(total / p.precoVenda * 1000) / 1000 : 1
   }
+  // Desconto promocional (por KG) sobre a quantidade pesada.
+  const desc = Math.round(descontoUnitPromo(p.id, p.precoVenda) * qtdKg * 100) / 100
+  total = Math.round((total - desc) * 100) / 100
   itens.value.push({
     produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
     precoUnitario: p.precoVenda, quantidade: qtdKg,
-    total, unidade: p.unidadeSigla || 'KG', desconto: 0, porPeso: true,
+    total, unidade: p.unidadeSigla || 'KG', desconto: desc, porPeso: true,
   })
   itemSelecionado.value = itens.value.length - 1
   nextTick(() => inputCodigo.value?.focus())
@@ -1661,13 +1666,17 @@ function adicionarProduto(p: Produto, qtd = 1) {
   const q = Math.max(1, Math.floor(qtd) || 1)
   const existe = itens.value.find(i => i.produtoId === p.id)
   if (existe) {
+    // Mantém o desconto POR UNIDADE já aplicado (promoção ou manual) ao somar quantidade.
+    const porUnidade = existe.quantidade > 0 ? existe.desconto / existe.quantidade : 0
     existe.quantidade += q
+    existe.desconto = Math.round(porUnidade * existe.quantidade * 100) / 100
     existe.total = Math.round((existe.quantidade * existe.precoUnitario - existe.desconto) * 100) / 100
   } else {
+    const desc = Math.round(descontoUnitPromo(p.id, p.precoVenda) * q * 100) / 100
     itens.value.push({
       produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
       precoUnitario: p.precoVenda, quantidade: q,
-      total: Math.round(q * p.precoVenda * 100) / 100, unidade: p.unidadeSigla, desconto: 0
+      total: Math.round((q * p.precoVenda - desc) * 100) / 100, unidade: p.unidadeSigla, desconto: desc
     })
     itemSelecionado.value = itens.value.length - 1
   }
@@ -1695,11 +1704,12 @@ function confirmarPeso() {
   const g = Number(gramas.value)
   if (!p || !(g > 0)) { notif.aviso('Informe o peso em gramas.'); return }
   const qtdKg = Math.round((g / 1000) * 1000) / 1000   // KG com 3 casas
+  const desc = Math.round(descontoUnitPromo(p.id, p.precoVenda) * qtdKg * 100) / 100
   itens.value.push({
     produtoId: p.id, descricao: p.descricao, codigo: p.codigo,
     precoUnitario: p.precoVenda, quantidade: qtdKg,
-    total: Math.round(qtdKg * p.precoVenda * 100) / 100,
-    unidade: p.unidadeSigla || 'KG', desconto: 0, porPeso: true,
+    total: Math.round((qtdKg * p.precoVenda - desc) * 100) / 100,
+    unidade: p.unidadeSigla || 'KG', desconto: desc, porPeso: true,
   })
   itemSelecionado.value = itens.value.length - 1
   dialogPeso.value = false
@@ -2379,6 +2389,31 @@ async function carregarPromocoes() {
   } catch { /* silencioso */ }
 }
 
+// ── Preço promocional automático no caixa ─────────────────────────
+// Mapa produtoId → melhor preço promocional ativo (qualquer promoção Tipo=Desconto
+// vigente desta loja: Produto/Categoria/Marca/Todos). Aplicado ao adicionar o item.
+const precosPromo = ref<Map<string, number>>(new Map())
+function lojaPdv(): string | null {
+  const lojaCaixa = (sessaoAtual.value && sessaoAtual.value.id !== 'dev')
+    ? sessaoAtual.value.localEstoqueId : null
+  return lojaCaixa ?? auth.lojaAtualId ?? auth.usuario?.localEstoqueId ?? null
+}
+async function carregarPrecosPromo() {
+  try {
+    const r = await api.get('/promocoes/precos-ativos', {
+      params: { empresaId: auth.empresaId, localEstoqueId: lojaPdv() || undefined }
+    })
+    const m = new Map<string, number>()
+    for (const x of (r.data ?? []) as any[]) m.set(String(x.produtoId), Number(x.preco))
+    precosPromo.value = m
+  } catch { /* silencioso */ }
+}
+// Desconto por UNIDADE (ou por KG, p/ granel) a partir do preço promocional ativo.
+function descontoUnitPromo(produtoId: string, precoUnit: number): number {
+  const promo = precosPromo.value.get(String(produtoId))
+  return (promo != null && promo < precoUnit) ? Math.round((precoUnit - promo) * 1000) / 1000 : 0
+}
+
 // ── Colaboradores ──────────────────────────────────────────────────
 async function carregarColaboradores() {
   if (!auth.empresaId) return
@@ -2495,7 +2530,7 @@ onMounted(async () => {
   // A sessão do caixa define a loja; carrega antes das promoções para o
   // filtro por loja funcionar (aviso de sorteio da loja certa).
   await verificarSessaoCaixa()
-  await Promise.all([carregarColaboradores(), carregarPromocoes(), carregarOperadoras()])
+  await Promise.all([carregarColaboradores(), carregarPromocoes(), carregarPrecosPromo(), carregarOperadoras()])
 })
 
 async function carregarOperadoras() {

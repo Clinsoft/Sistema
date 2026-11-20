@@ -130,6 +130,56 @@ public class PromocoesController(SistemaDbContext db) : ControllerBase
         return Ok(resultado);
     }
 
+    /// <summary>Preços promocionais ATIVOS por produto para a loja — QUALQUER promoção
+    /// Tipo=Desconto vigente (AplicaEm Produto/Categoria/Marca/Todos), pegando o MELHOR (menor)
+    /// preço por produto. O PDV usa isto p/ aplicar o desconto automaticamente no caixa.
+    /// Retorna só os produtos que de fato têm preço menor que o de venda.</summary>
+    [HttpGet("precos-ativos")]
+    public async Task<IActionResult> PrecosAtivos(
+        [FromQuery] Guid empresaId, [FromQuery] Guid? localEstoqueId, CancellationToken ct = default)
+    {
+        var hoje = DateTime.UtcNow.Date;
+        var promos = await db.Promocoes.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativa && p.Tipo == "Desconto"
+                && p.DataInicio <= hoje && (p.DataFim == null || p.DataFim >= hoje)
+                && (p.LocalEstoqueId == null || p.LocalEstoqueId == localEstoqueId))
+            .Select(p => new { p.AplicaEm, p.ReferenciaId, p.TipoDesconto, p.Desconto })
+            .ToListAsync(ct);
+        if (promos.Count == 0) return Ok(Array.Empty<object>());
+
+        var produtos = await db.Produtos.AsNoTracking()
+            .Where(p => p.EmpresaId == empresaId && p.Ativo)
+            .Select(p => new { p.Id, p.PrecoVenda, p.CategoriaId, p.MarcaId })
+            .ToListAsync(ct);
+
+        static decimal Preco(decimal precoVenda, string tipoDesc, decimal desc) =>
+            tipoDesc == "ValorFixo" ? Math.Max(0, precoVenda - desc)
+                                    : Math.Round(precoVenda * (1 - desc / 100m), 2);
+
+        var resultado = new List<object>();
+        foreach (var p in produtos)
+        {
+            decimal? melhor = null;
+            foreach (var pr in promos)
+            {
+                var aplica = pr.AplicaEm switch
+                {
+                    "Todos"     => true,
+                    "Produto"   => pr.ReferenciaId == p.Id,
+                    "Categoria" => pr.ReferenciaId == p.CategoriaId,
+                    "Marca"     => pr.ReferenciaId == p.MarcaId,
+                    _           => false
+                };
+                if (!aplica) continue;
+                var preco = Preco(p.PrecoVenda, pr.TipoDesconto, pr.Desconto);
+                if (melhor is null || preco < melhor) melhor = preco;
+            }
+            if (melhor is { } m && m < p.PrecoVenda)
+                resultado.Add(new { produtoId = p.Id, preco = m });
+        }
+        return Ok(resultado);
+    }
+
     /// <summary>Dados prontos para preencher uma mensagem de WhatsApp a partir da promoção:
     /// texto do desconto, nome e preços do produto, e a arte (Feed) já gerada.</summary>
     [HttpGet("{id:guid}/mensagem")]

@@ -10,8 +10,10 @@ import { FERN_PATH } from './fernBlackFriday'
 export interface EtiquetaKgData {
   nome: string
   codigoPlu?: number | string | null
-  precoVenda: number        // preço por KG (o template exibe por 100g)
-  precoOriginal?: number | null  // preço CHEIO por KG (Black Friday: mostra "de" riscado)
+  precoVenda: number        // preço por KG (o template exibe por 100g) OU por unidade se porUnidade
+  precoOriginal?: number | null  // preço CHEIO (Black Friday/Oferta: mostra "de" riscado)
+  porUnidade?: boolean      // produto por UNIDADE: não divide por 10 e rotula "cada unidade"
+  blackFriday?: boolean     // tema POR ITEM: true = layout preto Black Friday; senão segue o tema do lote
   validade?: string | null  // yyyy-MM-dd
   descricao?: string | null // texto descritivo (descrição complementar)
   slug?: string | null      // usado no QR; se ausente, gerado do nome
@@ -32,14 +34,25 @@ function fmtData(d?: string | null) {
   const [y, m, dd] = String(d).slice(0, 10).split('-')
   return `${dd}/${m}/${y}`
 }
+// Dias até o vencimento (null se sem data) — rodapé "próximos ao vencimento" só se <= 30.
+function diasAteVencer(d?: string | null): number | null {
+  if (!d) return null
+  const [y, m, dd] = String(d).slice(0, 10).split('-').map(Number)
+  if (!y) return null
+  const alvo = new Date(y, (m || 1) - 1, dd || 1)
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  return Math.round((alvo.getTime() - hoje.getTime()) / 86400000)
+}
 function esc(s: string) {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 /** Gera o HTML de uma etiqueta kg (usado no preview e na impressão). */
 async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<string> {
-  const bf = !!o.blackFriday
-  const promo = !!o.promocao
+  // Tema por ITEM: se o produto trouxer blackFriday, ele manda (permite misturar
+  // Black preto + Oferta branca num lote só); senão segue o tema do lote (opts).
+  const bf = it.blackFriday != null ? !!it.blackFriday : !!o.blackFriday
+  const promo = !bf && !!o.promocao
   const url = QR_BASE + (it.slug || slugify(it.nome))
   let qr = ''
   try {
@@ -47,40 +60,60 @@ async function cardHtml(it: EtiquetaKgData, o: EtiquetaKgOpts = {}): Promise<str
     qr = await QRCode.toDataURL(url, { width: 240, margin: 1,
       ...(bf ? { color: { dark: '#ffffff', light: '#00000000' } } : {}) })
   } catch { /* ignora */ }
-  const preco100 = (it.precoVenda ?? 0) / 10
+  const divisor = it.porUnidade ? 1 : 10            // UN mostra preço cheio; kg mostra por 100g
+  const preco100 = (it.precoVenda ?? 0) / divisor
+  const rotulo = o.rotuloPreco || (it.porUnidade ? 'cada unidade' : 'cada 100g')
   const cod = it.codigoPlu != null && it.codigoPlu !== '' ? String(it.codigoPlu) : ''
   const codFmt = /^\d+$/.test(cod) ? cod.padStart(4, '0') : cod
 
-  if (bf || promo) {
-    // Folhagem (samambaia) da arte EcoGranel nos 4 cantos. No BF é cinza; na
-    // Promoção (fundo natural claro) é verde da marca.
-    const fernFill = promo ? '#2e7d32' : '#5f5f5f'
-    const fern = (c: string) => `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="${fernFill}">${FERN_PATH}</g></svg>`
-    // "FRIDAY" metálico (degradê prata com brilho).
+  // ─── Oferta "Preços Reduzidos" (promoção): fundo branco, de/por destacado ───
+  if (promo) {
+    const fern = (c: string) => `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="#2e7d32">${FERN_PATH}</g></svg>`
+    const [intPreco, centPreco] = fmt(preco100).split(',')
+    const deStr = it.precoOriginal && it.precoOriginal > it.precoVenda
+      ? fmt((it.precoOriginal ?? 0) / divisor) : null
+    const dias = diasAteVencer(it.validade)
+    const rodape = dias != null && dias <= 30
+    return `
+    <div class="etq promo">
+      ${fern('tr')}${fern('tl')}
+      <div class="of-head">
+        <div class="of-badge">PREÇOS REDUZIDOS</div>
+        <div class="of-aproveite">APROVEITE!</div>
+      </div>
+      <div class="of-faixa">OFERTA</div>
+      <div class="of-body">
+        <div class="of-nome">${esc((it.nome || '').toUpperCase())}</div>
+        ${codFmt ? `<div class="of-cod">cód. ${codFmt}</div>` : ''}
+        ${deStr ? `<div class="of-de">De: <span class="risco">R$ ${deStr}</span></div>` : ''}
+      </div>
+      <div class="of-por"><span class="lbl">Por:</span><span class="cur">R$</span><span class="val">${intPreco},${centPreco}</span><span class="rot">${esc(rotulo)}</span></div>
+      ${it.validade ? `<div class="of-val"><b>Validade: ${fmtData(it.validade)}</b></div>` : ''}
+      ${rodape ? `<div class="of-rod">PRODUTOS PRÓXIMOS AO VENCIMENTO · CONSUMO IMEDIATO</div>` : ''}
+    </div>`
+  }
+
+  // ─── Black Friday (fundo preto) ───
+  if (bf) {
+    const fern = (c: string) => `<svg class="fern ${c}" viewBox="216 105 48 44" preserveAspectRatio="xMidYMid meet"><g fill="#5f5f5f">${FERN_PATH}</g></svg>`
     const friday = `<svg class="bf-friday" viewBox="0 0 300 66" preserveAspectRatio="xMidYMid meet"><defs><linearGradient id="bffg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#f0f0f0"/><stop offset=".5" stop-color="#9c9c9c"/><stop offset=".62" stop-color="#d8d8d8"/><stop offset="1" stop-color="#6f6f6f"/></linearGradient></defs><text x="150" y="52" text-anchor="middle" font-family="Arial" font-weight="900" font-size="60" fill="url(#bffg)" stroke="#5a5a5a" stroke-width="0.6">FRIDAY</text></svg>`
-    // Cabeçalho: BLACK FRIDAY (metálico) ou selo vermelho "PROMOÇÃO".
-    const header = bf
-      ? `<div class="bf-black">BLACK</div>${friday}`
-      : `<div class="pr-badge">PROMOÇÃO</div>`
-    const fraseDefault = bf ? 'APROVEITE A BLACK FRIDAY!' : 'APROVEITE A PROMOÇÃO!'
-    // Preço vermelho: "R$" pequeno + inteiro grande + centavos elevados.
     const [intPreco, centPreco] = fmt(preco100).split(',')
     return `
-    <div class="etq ${bf ? 'bf' : 'promo'}">
+    <div class="etq bf">
       ${fern('tr')}${fern('tl')}${fern('br')}${fern('bl')}
       <div class="bf-content">
-        ${header}
+        <div class="bf-black">BLACK</div>${friday}
         <div class="bf-hr"></div>
         <div class="bf-nome">${esc((it.nome || '').toUpperCase())}</div>
         ${codFmt ? `<div class="bf-cod">cód. ${codFmt}</div>` : ''}
         ${it.precoOriginal && it.precoOriginal > it.precoVenda
-          ? `<div class="bf-de">de <s>R$ ${fmt((it.precoOriginal ?? 0) / 10)}</s> por</div>` : ''}
+          ? `<div class="bf-de">de <s>R$ ${fmt((it.precoOriginal ?? 0) / divisor)}</s> por</div>` : ''}
         <div class="bf-preco"><span class="cur">R$</span>${intPreco}<span class="cent">,${centPreco}</span></div>
-        <div class="bf-100">${esc(o.rotuloPreco || 'cada 100g')}</div>
+        <div class="bf-100">${esc(rotulo)}</div>
         ${it.validade ? `<div class="bf-val">Validade: <b>${fmtData(it.validade)}</b></div>` : ''}
         <div class="bf-foot">
           ${qr ? `<img class="bf-qr" src="${qr}"/>` : ''}
-          <div class="bf-frase">${esc(o.fraseRodape || fraseDefault)}</div>
+          <div class="bf-frase">${esc(o.fraseRodape || 'APROVEITE A BLACK FRIDAY!')}</div>
         </div>
       </div>
     </div>`
@@ -150,7 +183,7 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
   const corBorda  = bf ? '#000000' : (promo ? '#2e7d32' : cor)
   const corVal    = bf ? '#ffffff' : '#222'
   const fundo     = bf ? 'radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%)'
-                       : promo ? 'linear-gradient(160deg,#ffffff 0%,#e8f5e9 55%,#dcedc8 100%)'
+                       : promo ? '#ffffff'
                        : `linear-gradient(160deg,#ffffff 0%,${o.fundoCor || '#e8f5e9'} 60%,${o.fundoCor || '#e8f5e9'} 100%)`
   const opac      = (o.marcaOpacidade ?? 10) / 100
   const escNome   = (o.escalaNome  ?? 100) / 100
@@ -172,21 +205,32 @@ const buildCss = (cor: string, espessuraPx: number, marcaUrl: string, o: Etiquet
     opacity: ${opac}; pointer-events: none;
   }` : ''}
   .etq > *:not(.etq-wm) { position: relative; z-index: 1; }
-  .etq.bf, .etq.promo { justify-content: center; padding: 4mm 5mm; }
-  .etq.bf > .fern, .etq.promo > .fern { position: absolute; width: 38mm; height: auto; z-index: 0; opacity: .5; }
-  .etq.promo > .fern { opacity: .4; }
-  /* Promoção: selo + overrides de cor sobre as classes bf-* (fundo natural claro) */
-  .pr-badge { display: inline-block; background: #d32f2f; color: #fff; font-weight: 900;
-    font-size: 12pt; letter-spacing: 2px; padding: 1mm 6mm; border-radius: 999px; }
-  .etq.promo .bf-nome { color: #1b5e20; }
-  .etq.promo .bf-cod { color: #777; }
-  .etq.promo .bf-de { color: #555; }
-  .etq.promo .bf-de s { color: #999; }
-  .etq.promo .bf-preco { color: #d32f2f; }
-  .etq.promo .bf-100 { color: #555; }
-  .etq.promo .bf-val { color: #222; }
-  .etq.promo .bf-hr { border-top-color: #2e7d3288; }
-  .etq.promo .bf-frase { color: #1b5e20; }
+  /* Fundo/borda POR ITEM (lote misto Black preto + Oferta branca) — não depende do tema do lote */
+  .etq.bf { justify-content: center; padding: 4mm 5mm; color: #fff;
+    background: radial-gradient(130% 100% at 50% 0%,#1c1c1c 0%,#0a0a0a 62%) !important; border-color: #000 !important; }
+  .etq.bf > .fern { position: absolute; width: 38mm; height: auto; z-index: 0; opacity: .5; }
+  /* ── Oferta "Preços Reduzidos" (promoção): fundo branco, bandas de/por ── */
+  .etq.promo { justify-content: flex-start; padding: 0;
+    background: #ffffff !important; border-color: #2e7d32 !important; }
+  .etq.promo > .fern { position: absolute; width: 30mm; height: auto; z-index: 0; opacity: .35; }
+  .etq.promo > *:not(.fern) { position: relative; z-index: 1; }
+  .of-head { display: flex; justify-content: space-between; align-items: center; gap: 3mm; padding: 4mm 4mm 3mm; }
+  .of-badge { background: #c81d1d; color: #fff; font-weight: 900; font-size: 13pt; letter-spacing: .3px; padding: 2mm 3.5mm; border-radius: 6px; }
+  .of-aproveite { color: #c81d1d; font-weight: 900; font-size: 11pt; }
+  .of-faixa { background: #f2691c; color: #fff; font-weight: 900; font-size: 14pt; letter-spacing: 3px; text-align: center; padding: 1.2mm 0; }
+  .of-body { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; padding: 3mm 5mm 0; text-align: center; }
+  .of-nome { color: #111; font-weight: 900; font-size: 15pt; line-height: 1.08; text-transform: uppercase; }
+  .of-cod { color: #777; font-size: 8pt; margin-top: 1.5mm; letter-spacing: 1px; }
+  .of-de { margin-top: 3mm; font-size: 11pt; color: #111; font-weight: 700; }
+  .of-de .risco { position: relative; color: #c81d1d; font-weight: 900; font-size: 17pt; }
+  .of-de .risco::after { content: ""; position: absolute; left: -4%; right: -4%; top: 52%; height: 3px; background: #111; transform: rotate(-12deg); }
+  .of-por { background: #c81d1d; color: #fff; display: flex; align-items: center; justify-content: center; gap: 2.5mm; padding: 2mm 5mm; }
+  .of-por .lbl { font-size: 12pt; font-weight: 800; }
+  .of-por .cur { font-size: 15pt; font-weight: 800; align-self: flex-start; margin-top: 2.6mm; }
+  .of-por .val { font-size: 34pt; font-weight: 900; line-height: .9; }
+  .of-por .rot { font-size: 7.5pt; font-weight: 700; align-self: flex-end; margin-bottom: 2.6mm; opacity: .95; }
+  .of-val { text-align: center; font-size: 9pt; color: #222; padding: 1.6mm 0; }
+  .of-rod { background: #f2691c; color: #fff; font-weight: 800; font-size: 6.5pt; letter-spacing: .5px; text-align: center; padding: 1.2mm 2mm; }
   .fern.tr { top: -4mm; right: -5mm; transform: scaleY(-1); }
   .fern.tl { top: -4mm; left: -5mm; transform: scale(-1, -1); }
   .fern.br { bottom: -4mm; right: -5mm; }

@@ -33,6 +33,12 @@ public class MovimentacaoEstoque : Entity
             UsuarioId = usuarioId,
             Observacao = observacao
         };
+
+    /// <summary>Repont a movimentação para outra loja (ex.: transferir entrada lançada na loja errada).</summary>
+    public void DefinirLocalEstoque(Guid localEstoqueId) => LocalEstoqueId = localEstoqueId;
+
+    /// <summary>Repont a movimentação para outro lote (ex.: mesclar lotes ao transferir de loja).</summary>
+    public void DefinirLote(Guid? loteId) => LoteId = loteId;
 }
 
 public enum TipoMovimentacao

@@ -35,6 +35,9 @@
           <v-list-item prepend-icon="mdi-swap-horizontal-bold" title="Corrigir produto de item"
             subtitle="Troca o produto de um item sem estornar a nota toda"
             @click="abrirCorrigir" :disabled="entrada?.status !== 'Processada'" />
+          <v-list-item prepend-icon="mdi-store-outline" title="Transferir para outra loja"
+            subtitle="Move estoque, lote e financeiro desta nota para outra loja"
+            @click="abrirTransferir" :disabled="entrada?.status === 'Estornada'" />
           <v-list-item prepend-icon="mdi-delete-outline" title="Excluir" class="text-error"
             @click="excluir" :disabled="entrada?.status === 'Processada'" />
         </v-list>
@@ -986,6 +989,32 @@
       </v-card>
     </v-dialog>
 
+    <!-- Dialog: Transferir para outra loja -->
+    <v-dialog v-model="dlgTransferir" max-width="460" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 pb-0">
+          <v-icon start color="primary">mdi-store-outline</v-icon>
+          Transferir para outra loja
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" density="compact" class="mb-3 text-body-2">
+            Move desta nota para a loja escolhida: <b>estoque</b> (movimentações e lote),
+            e os <b>lançamentos financeiros</b>. Não duplica nada e pode ser desfeito
+            transferindo de volta.
+          </v-alert>
+          <v-select v-model="lojaDestino" label="Loja de destino *"
+            :items="locaisEstoque.filter(l => l.id !== entrada?.localEstoqueId)"
+            item-title="nome" item-value="id" variant="outlined" density="compact" />
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="dlgTransferir = false">Cancelar</v-btn>
+          <v-btn color="primary" rounded="lg" :loading="transferindo"
+            :disabled="!lojaDestino" @click="transferir()">Transferir</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Dialog: Estorno -->
     <v-dialog v-model="dlgEstorno" max-width="440" persistent>
       <v-card rounded="xl">
@@ -1712,6 +1741,9 @@ const dlgFrete = ref(false)
 const dlgEstorno = ref(false)
 const dlgEtiquetas = ref(false)
 const motivoEstorno = ref('')
+const dlgTransferir = ref(false)
+const transferindo = ref(false)
+const lojaDestino = ref<string | null>(null)
 const templateEtiqueta = ref<string | null>(null)
 
 // Grid editável de itens
@@ -2419,6 +2451,30 @@ function adicionarFatura() {
     valor: 0,
     vencimento: venc.toISOString().slice(0, 10),
   })
+}
+
+function abrirTransferir() {
+  lojaDestino.value = null
+  dlgTransferir.value = true
+}
+
+async function transferir(forcar = false) {
+  if (!lojaDestino.value) return
+  transferindo.value = true
+  try {
+    const r = await api.post(`/fiscal/entradas/${entradaId}/transferir-loja`,
+      { localEstoqueId: lojaDestino.value, forcar })
+    notif.ok(r.data?.mensagem ?? 'Entrada transferida.')
+    dlgTransferir.value = false
+    await carregar()
+  } catch (e: any) {
+    // Estoque ficaria negativo na origem → pede confirmação e refaz com forcar.
+    if (e?.response?.status === 409 && e.response.data?.exigeConfirmacao) {
+      if (confirm(e.response.data.mensagem)) { transferindo.value = false; return transferir(true) }
+    } else {
+      notif.erro(e.response?.data?.mensagem ?? 'Erro ao transferir.')
+    }
+  } finally { transferindo.value = false }
 }
 
 // Abre a confirmação — NÃO lança nada ainda. O financeiro só é lançado após conferência.

@@ -46,6 +46,10 @@ public class Lote : Entity
     public bool EstaVencido() => DataValidade.HasValue && DataValidade.Value.Date < DateTime.Today;
     public bool VenceEm(int dias) => DataValidade.HasValue && DataValidade.Value.Date <= DateTime.Today.AddDays(dias);
     public void Baixar(decimal quantidade) => Quantidade = Math.Max(0, Quantidade - quantidade);
+    /// <summary>Move o lote para outra loja (transferência de entrada lançada na loja errada).</summary>
+    public void MoverPara(Guid localEstoqueId) => LocalEstoqueId = localEstoqueId;
+    /// <summary>Soma quantidade ao lote (ex.: mesclar com lote de mesmo número ao transferir de loja).</summary>
+    public void AdicionarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, Quantidade + quantidade);
     public void AtualizarQuantidade(decimal quantidade) => Quantidade = Math.Max(0, quantidade);
     public void AtualizarValidade(DateTime dataValidade) => DataValidade = NormalizarAno(dataValidade);
     public void DefinirImagem(string url) => ImagemUrl = url;

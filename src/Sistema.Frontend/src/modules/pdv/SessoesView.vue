@@ -199,6 +199,90 @@
       </v-row>
     </v-card>
 
+    <!-- Depósito por loja (quanto de dinheiro deveria ir ao banco no período) -->
+    <v-card v-if="!ehAtendente && depositoLojas.length" rounded="xl" elevation="1" class="mb-4">
+      <v-card-text class="pa-4">
+        <div class="d-flex align-center mb-3">
+          <v-icon icon="mdi-bank-transfer-in" color="success" class="mr-2" />
+          <span class="text-subtitle-1 font-weight-bold">Depósito por loja</span>
+          <span class="text-caption text-medium-emphasis ml-2">
+            dinheiro em espécie no período — cartão/Pix vêm por repasse
+          </span>
+          <v-spacer />
+          <v-btn size="small" variant="text" icon="mdi-refresh" @click="carregarDeposito" :loading="carregandoDeposito" />
+        </div>
+
+        <v-row dense>
+          <v-col v-for="d in depositoLojas" :key="d.localEstoqueId" cols="12" md="6">
+            <v-card variant="tonal" :color="Math.abs(d.diferenca) < 0.01 ? 'success' : 'error'" rounded="lg">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-2">
+                  <v-icon icon="mdi-store" size="18" class="mr-1" />
+                  <span class="text-body-2 font-weight-bold">{{ d.loja }}</span>
+                  <v-spacer />
+                  <v-chip v-if="d.sessoesAbertas" size="x-small" color="warning" label class="mr-1">
+                    {{ d.sessoesAbertas }} caixa(s) aberto(s)
+                  </v-chip>
+                  <v-chip v-if="d.temFundoSuspeito" size="x-small" color="warning" label>
+                    <v-icon start size="12">mdi-alert</v-icon>fundo suspeito
+                  </v-chip>
+                </div>
+
+                <div class="dep-linha"><span>Dinheiro (líquido de troco)</span>
+                  <span class="font-weight-medium">R$ {{ fmt(d.dinheiroLiquido) }}</span></div>
+                <div class="dep-linha" v-if="d.suprimentos > 0"><span>+ Suprimentos</span>
+                  <span class="text-secondary">R$ {{ fmt(d.suprimentos) }}</span></div>
+                <div class="dep-linha" v-if="d.sangrias > 0"><span>− Sangrias</span>
+                  <span class="text-warning">R$ {{ fmt(d.sangrias) }}</span></div>
+                <v-divider class="my-2" />
+                <div class="dep-linha">
+                  <span class="font-weight-bold">A depositar</span>
+                  <span class="text-h6 font-weight-bold text-success">R$ {{ fmt(d.aDepositar) }}</span>
+                </div>
+                <div class="dep-linha text-caption text-medium-emphasis">
+                  <span>Conferido no fechamento</span><span>R$ {{ fmt(d.contado) }}</span>
+                </div>
+                <div class="dep-linha text-caption">
+                  <span class="text-medium-emphasis">Sobra / falta de caixa</span>
+                  <span :class="Math.abs(d.diferenca) < 0.01 ? 'text-success font-weight-bold' : 'text-error font-weight-bold'">
+                    {{ d.diferenca >= 0 ? '+' : '−' }}R$ {{ fmt(Math.abs(d.diferenca)) }}
+                  </span>
+                </div>
+
+                <v-expand-transition>
+                  <div v-if="expandida === d.localEstoqueId" class="mt-3">
+                    <v-divider class="mb-2" />
+                    <div v-for="s in sessoesDaLoja(d.localEstoqueId)" :key="s.id"
+                      class="d-flex align-center text-caption py-1" style="gap:6px">
+                      <span class="text-medium-emphasis" style="min-width:94px">{{ fmtDia(s.abertura) }}</span>
+                      <span style="min-width:90px">{{ s.operador ?? '—' }}</span>
+                      <v-chip v-if="s.fundoSuspeito" size="x-small" color="warning" label>fundo {{ fmt(s.fundo) }}</v-chip>
+                      <v-spacer />
+                      <span v-if="s.diferenca != null"
+                        :class="Math.abs(s.diferenca) < 0.01 ? 'text-success' : 'text-error font-weight-bold'">
+                        {{ s.diferenca >= 0 ? '+' : '−' }}{{ fmt(Math.abs(s.diferenca)) }}
+                      </span>
+                      <span v-else class="text-warning">aberta</span>
+                    </div>
+                  </div>
+                </v-expand-transition>
+                <v-btn size="x-small" variant="text" class="mt-1 px-1"
+                  @click="expandida = expandida === d.localEstoqueId ? null : d.localEstoqueId">
+                  {{ expandida === d.localEstoqueId ? 'Ocultar sessões' : 'Ver por dia/operador' }}
+                </v-btn>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <v-alert v-if="depositoLojas.some(d => d.temFundoSuspeito)" type="warning" variant="tonal"
+          density="compact" class="mt-2 text-caption">
+          <b>Fundo suspeito:</b> o fundo de abertura não bate com o fechamento do caixa anterior —
+          provável fundo digitado sem o dinheiro estar na gaveta. Isso gera "falta" artificial no dia.
+        </v-alert>
+      </v-card-text>
+    </v-card>
+
     <!-- Tabela histórico -->
     <v-card rounded="xl" elevation="1">
       <div v-if="ehAtendente" class="px-4 pt-3 text-subtitle-2 font-weight-bold">
@@ -420,6 +504,10 @@ const sessoes = ref<any[]>([])
 const sessaoAtiva = ref<any>(null)
 const locais = ref<any[]>([])
 const caixasAbertos = ref<any[]>([])
+const depositoLojas = ref<any[]>([])
+const depositoSessoes = ref<any[]>([])
+const carregandoDeposito = ref(false)
+const expandida = ref<string | null>(null)
 
 // Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
 const podeSupervisionar = computed(() =>
@@ -510,6 +598,10 @@ const headers = [
 const fmt   = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 const fmtDt = (v?: string) => v ? new Date(v).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
 const fmtHora = (v?: string) => v ? new Date(v).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—'
+const fmtDia = (v?: string) => v ? new Date(v).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—'
+
+const sessoesDaLoja = (lojaId: string) =>
+  depositoSessoes.value.filter((s: any) => s.localEstoqueId === lojaId)
 
 function abrirOperacao(tipo: 'suprimento' | 'sangria') {
   tipoOperacao.value = tipo
@@ -547,6 +639,21 @@ async function listar() {
     })
     sessoes.value = r.data ?? []
   } finally { carregando.value = false }
+  carregarDeposito()
+}
+
+// Resumo de depósito por loja (só supervisão — atendente não vê).
+async function carregarDeposito() {
+  if (ehAtendente.value) return
+  carregandoDeposito.value = true
+  try {
+    const r = await api.get('/pdv/sessoes/deposito', {
+      params: { empresaId: auth.empresaId, inicio: filtros.value.inicio, fim: filtros.value.fim },
+    })
+    depositoLojas.value = r.data?.porLoja ?? []
+    depositoSessoes.value = r.data?.sessoes ?? []
+  } catch { depositoLojas.value = []; depositoSessoes.value = [] }
+  finally { carregandoDeposito.value = false }
 }
 
 async function abrirCaixa() {
@@ -669,5 +776,12 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
+}
+.dep-linha {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 0.875rem;
 }
 </style>

@@ -204,6 +204,109 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
         return Ok(lista);
     }
 
+    /// <summary>
+    /// Resumo de DEPÓSITO por loja no período: quanto de dinheiro (líquido de troco,
+    /// menos sangrias, mais suprimentos) deveria ter ido ao banco, o que foi conferido
+    /// no fechamento e a sobra/falta. Sinaliza fundo de abertura inconsistente com o
+    /// fechamento anterior (fundo "digitado" sem o dinheiro estar na gaveta).
+    /// </summary>
+    [HttpGet("deposito")]
+    [Authorize(Roles = "Administrador,Gerente,Financeiro,Contador")]
+    public async Task<IActionResult> Deposito(
+        [FromQuery] Guid empresaId,
+        [FromQuery] DateTime inicio,
+        [FromQuery] DateTime fim,
+        [FromQuery] Guid? localEstoqueId,
+        CancellationToken ct)
+    {
+        var ini = inicio.Date;
+        var fimEx = fim.Date.AddDays(1); // fim inclusivo (até 23:59 do dia)
+
+        var sessoes = await db.PDVSessoes.AsNoTracking()
+            .Where(s => s.EmpresaId == empresaId
+                && s.Abertura >= ini && s.Abertura < fimEx
+                && (localEstoqueId == null || s.LocalEstoqueId == localEstoqueId))
+            .OrderBy(s => s.LocalEstoqueId).ThenBy(s => s.Abertura)
+            .ToListAsync(ct);
+
+        var numeros = await NumerosPorSessaoAsync(empresaId, ct);
+        var usuarioIds = sessoes.Select(s => s.UsuarioId).Distinct().ToList();
+        var localIds = sessoes.Select(s => s.LocalEstoqueId).Distinct().ToList();
+        var operadores = await db.Usuarios.AsNoTracking()
+            .Where(u => usuarioIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Nome, ct);
+        var locais = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => localIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.Nome, ct);
+
+        // Detalhe por sessão (dinheiro já líquido de troco via BreakdownFormasAsync).
+        var detalhe = new List<dynamic>();
+        decimal? fechamentoAnterior = null;
+        Guid lojaAnterior = Guid.Empty;
+        foreach (var s in sessoes)
+        {
+            var b = await BreakdownFormasAsync(s, ct);
+            var fundo = s.SaldoAbertura;
+            var esperado = Math.Round(fundo + b.Dinheiro + s.TotalSuprimentos - s.TotalSangrias, 2);
+            var aberta = s.Status == StatusSessao.Aberta;
+            decimal? contado = aberta ? (decimal?)null : s.SaldoFechamento; // aberta ainda não contou
+            var diferenca = contado.HasValue ? Math.Round(contado.Value - esperado, 2) : (decimal?)null;
+
+            // Fundo suspeito: trocou de loja reinicia a cadeia; senão compara com o
+            // fechamento da sessão anterior da mesma loja.
+            bool fundoSuspeito = false;
+            if (s.LocalEstoqueId == lojaAnterior && fechamentoAnterior.HasValue)
+                fundoSuspeito = Math.Abs(fundo - fechamentoAnterior.Value) > 0.01m && fundo > 0.01m;
+
+            detalhe.Add(new
+            {
+                s.Id,
+                s.LocalEstoqueId,
+                numero = numeros.GetValueOrDefault(s.Id, 0),
+                operador = operadores.GetValueOrDefault(s.UsuarioId),
+                s.Abertura, s.Fechamento,
+                fundo,
+                dinheiroLiquido = Math.Round(b.Dinheiro, 2),
+                suprimentos = s.TotalSuprimentos,
+                sangrias = s.TotalSangrias,
+                esperado,
+                contado,
+                diferenca,
+                aDepositar = Math.Round(b.Dinheiro - s.TotalSangrias + s.TotalSuprimentos, 2),
+                fundoSuspeito,
+                aberta,
+            });
+
+            fechamentoAnterior = contado;
+            lojaAnterior = s.LocalEstoqueId;
+        }
+
+        // Agregado por loja.
+        var porLoja = detalhe
+            .GroupBy(d => (Guid)d.LocalEstoqueId)
+            .Select(g => new
+            {
+                localEstoqueId = g.Key,
+                loja = locais.GetValueOrDefault(g.Key) ?? "—",
+                dinheiroLiquido = Math.Round(g.Sum(d => (decimal)d.dinheiroLiquido), 2),
+                sangrias = Math.Round(g.Sum(d => (decimal)d.sangrias), 2),
+                suprimentos = Math.Round(g.Sum(d => (decimal)d.suprimentos), 2),
+                aDepositar = Math.Round(g.Sum(d => (decimal)d.aDepositar), 2),
+                contado = Math.Round(g.Where(d => d.contado != null).Sum(d => (decimal)d.contado), 2),
+                diferenca = Math.Round(g.Where(d => d.diferenca != null).Sum(d => (decimal)d.diferenca), 2),
+                sessoes = g.Count(),
+                sessoesAbertas = g.Count(d => (bool)d.aberta),
+                temFundoSuspeito = g.Any(d => (bool)d.fundoSuspeito),
+            })
+            .OrderBy(x => x.loja)
+            .ToList();
+
+        return Ok(new
+        {
+            periodo = new { inicio = ini, fim = fimEx.AddDays(-1) },
+            porLoja,
+            sessoes = detalhe,
+        });
+    }
+
     /// <summary>Número sequencial da sessão por empresa (ordem de abertura), já que não há coluna Numero.</summary>
     private async Task<Dictionary<Guid, int>> NumerosPorSessaoAsync(Guid empresaId, CancellationToken ct)
     {

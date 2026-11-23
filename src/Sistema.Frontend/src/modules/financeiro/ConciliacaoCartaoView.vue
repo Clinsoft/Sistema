@@ -10,6 +10,9 @@
 
     <v-card rounded="xl" elevation="1" class="pa-4 mb-4">
       <div class="d-flex flex-wrap align-center gap-3">
+        <v-select v-model="loja" :items="lojasOpcoes" item-title="nome" item-value="id"
+          label="Loja" variant="outlined" density="comfortable" hide-details
+          prepend-inner-icon="mdi-store" style="max-width:220px" />
         <v-file-input v-model="arquivo" label="Relatório de vendas (CSV ou Excel)" accept=".csv,.xlsx,.xls"
           variant="outlined" density="comfortable" hide-details prepend-icon="mdi-file-delimited-outline"
           style="max-width:420px" />
@@ -120,6 +123,9 @@ const notif = useNotifStore()
 const arquivo = ref<File | File[] | null>(null)
 const carregando = ref(false)
 const res = ref<any>(null)
+// Cada relatório da operadora é de UMA loja (CNPJ/conta própria) — concilia por loja.
+const loja = ref<string | null>(auth.lojaAtualId)
+const lojasOpcoes = [{ id: null as any, nome: 'Todas as lojas' }, ...auth.lojas]
 
 // Adapta QUALQUER export da InfinitePay (xlsx "Rede/Relatório de Vendas" ou CSV antigo)
 // para o CSV normalizado que o backend entende. Reconhece cabeçalhos novos e antigos e
@@ -188,6 +194,7 @@ async function importar() {
     const fd = new FormData()
     fd.append('empresaId', auth.empresaId)
     fd.append('arquivo', file)
+    if (loja.value) fd.append('localEstoqueId', loja.value)
     const r = await api.post('/financeiro/conciliacao-cartao/importar', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })

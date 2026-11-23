@@ -668,6 +668,130 @@ public class EntradaNFeController(SistemaDbContext db,
         return NoContent();
     }
 
+    public record TransferirLojaRequest(Guid LocalEstoqueId, bool Forcar = false);
+
+    /// <summary>
+    /// Transfere uma entrada JÁ PROCESSADA para outra loja: repontam-se, numa só
+    /// operação, as MOVIMENTAÇÕES de estoque, os LOTES e os LANÇAMENTOS financeiros
+    /// desta nota (identificados pela chave de acesso) para a loja destino — sem
+    /// duplicar estoque nem financeiro. Entrada Em Edição só troca o campo (ainda não
+    /// movimentou). Trava quando a origem ficaria com estoque negativo (já vendeu),
+    /// a não ser que Forcar=true.
+    /// </summary>
+    [HttpPost("{id:guid}/transferir-loja")]
+    [Authorize(Roles = "Administrador,Gerente")]
+    public async Task<IActionResult> TransferirLoja(
+        Guid id, [FromBody] TransferirLojaRequest req, CancellationToken ct)
+    {
+        var entrada = await db.EntradasNFe.Include(e => e.Itens)
+            .FirstOrDefaultAsync(e => e.Id == id, ct)
+            ?? throw new KeyNotFoundException("Entrada não encontrada.");
+
+        var destino = req.LocalEstoqueId;
+        var origem = entrada.LocalEstoqueId;
+        if (destino == origem)
+            return BadRequest(new { mensagem = "A entrada já está nessa loja." });
+        if (entrada.Status == StatusEntradaNFe.Estornada)
+            return BadRequest(new { mensagem = "Entrada estornada não pode ser transferida." });
+
+        var lojaDestino = await db.LocaisEstoque
+            .FirstOrDefaultAsync(l => l.Id == destino && l.EmpresaId == entrada.EmpresaId, ct);
+        if (lojaDestino is null)
+            return BadRequest(new { mensagem = "Loja de destino inválida." });
+
+        // Em edição: ainda não gerou estoque/financeiro — basta trocar o campo.
+        if (entrada.Status != StatusEntradaNFe.Processada)
+        {
+            entrada.DefinirLocalEstoque(destino);
+            await db.SaveChangesAsync(ct);
+            return Ok(new { mensagem = $"Entrada movida para {lojaDestino.Nome}." });
+        }
+
+        var movs = await db.MovimentacoesEstoque
+            .Where(m => m.EmpresaId == entrada.EmpresaId && m.DocumentoOrigem == entrada.ChaveAcesso
+                        && m.LocalEstoqueId == origem)
+            .ToListAsync(ct);
+
+        // Trava de estoque negativo na origem: saldo atual − o que esta nota soma lá.
+        if (!req.Forcar && movs.Count > 0)
+        {
+            var produtos = movs.Select(m => m.ProdutoId).Distinct().ToList();
+            var saldos = await db.MovimentacoesEstoque
+                .Where(m => m.EmpresaId == entrada.EmpresaId && m.LocalEstoqueId == origem
+                            && produtos.Contains(m.ProdutoId))
+                .GroupBy(m => m.ProdutoId)
+                .Select(g => new
+                {
+                    ProdutoId = g.Key,
+                    Saldo = g.Sum(m =>
+                        m.Tipo == TipoMovimentacao.Entrada || m.Tipo == TipoMovimentacao.AjustePositivo || m.Tipo == TipoMovimentacao.Devolucao ? m.Quantidade
+                        : m.Tipo == TipoMovimentacao.Saida || m.Tipo == TipoMovimentacao.AjusteNegativo || m.Tipo == TipoMovimentacao.Transferencia ? -m.Quantidade
+                        : 0m)
+                })
+                .ToListAsync(ct);
+            var somaNota = movs.GroupBy(m => m.ProdutoId).ToDictionary(g => g.Key, g => g.Sum(m => m.Quantidade));
+            var neg = saldos.Count(s => somaNota.TryGetValue(s.ProdutoId, out var q) && (s.Saldo - q) < -0.001m);
+            if (neg > 0)
+            {
+                var nomeOrigem = await db.LocaisEstoque.Where(l => l.Id == origem)
+                    .Select(l => l.Nome).FirstOrDefaultAsync(ct) ?? "a loja de origem";
+                return Conflict(new
+                {
+                    exigeConfirmacao = true,
+                    mensagem = $"{neg} produto(s) ficariam com estoque negativo em {nomeOrigem} — "
+                             + "provavelmente já houve venda dessa mercadoria. Transferir mesmo assim?"
+                });
+            }
+        }
+
+        // 1) Movimentações → loja destino.
+        foreach (var m in movs) m.DefinirLocalEstoque(destino);
+
+        // 2) Lotes desta nota → destino (mesclando se já existir lote igual lá).
+        var loteIds = entrada.Itens.Where(i => i.LoteId.HasValue).Select(i => i.LoteId!.Value).Distinct().ToList();
+        foreach (var loteId in loteIds)
+        {
+            var lote = await db.Lotes.FirstOrDefaultAsync(l => l.Id == loteId, ct);
+            if (lote is null || lote.LocalEstoqueId == destino) continue;
+
+            var existente = await db.Lotes.FirstOrDefaultAsync(l =>
+                l.EmpresaId == lote.EmpresaId && l.LocalEstoqueId == destino
+                && l.ProdutoId == lote.ProdutoId && l.NumeroLote == lote.NumeroLote, ct);
+
+            if (existente is null)
+            {
+                lote.MoverPara(destino);
+            }
+            else
+            {
+                existente.AdicionarQuantidade(lote.Quantidade);
+                var movsLote = await db.MovimentacoesEstoque.Where(m => m.LoteId == lote.Id).ToListAsync(ct);
+                foreach (var m in movsLote) m.DefinirLote(existente.Id);
+                foreach (var it in entrada.Itens.Where(i => i.LoteId == lote.Id))
+                    it.DefinirLote(it.NumeroLote!, it.Validade, existente.Id);
+                db.Lotes.Remove(lote);
+            }
+        }
+
+        // 3) Lançamentos financeiros desta nota → destino.
+        var lancs = await db.LancamentosFinanceiros
+            .Where(l => l.EmpresaId == entrada.EmpresaId && l.DocumentoOrigem == entrada.ChaveAcesso)
+            .ToListAsync(ct);
+        foreach (var l in lancs) l.DefinirLoja(destino);
+
+        // 4) A própria entrada.
+        entrada.DefinirLocalEstoque(destino);
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            mensagem = $"Entrada transferida para {lojaDestino.Nome}.",
+            movimentacoes = movs.Count,
+            lotes = loteIds.Count,
+            financeiro = lancs.Count
+        });
+    }
+
     [HttpPatch("{id:guid}/frete-manual")]
     public async Task<IActionResult> DefinirFreteManual(
         Guid id, [FromBody] FreteManualRequest req, CancellationToken ct)

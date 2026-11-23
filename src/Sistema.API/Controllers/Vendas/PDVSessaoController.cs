@@ -299,11 +299,39 @@ public class PDVSessaoController(IMediator mediator, IPDVSessaoRepository repo, 
             .OrderBy(x => x.loja)
             .ToList();
 
+        // Operações internas (sangrias/suprimentos) das sessões do período — detalhe clicável.
+        var opsRaw = await (
+            from o in db.OperacoesCaixa.AsNoTracking()
+            join s in db.PDVSessoes.AsNoTracking() on o.SessaoId equals s.Id
+            where s.EmpresaId == empresaId && s.Abertura >= ini && s.Abertura < fimEx
+                  && (localEstoqueId == null || s.LocalEstoqueId == localEstoqueId)
+            select new { o.Tipo, o.Valor, o.Descricao, o.CriadoEm, o.UsuarioId, s.LocalEstoqueId }
+        ).ToListAsync(ct);
+
+        var opUserIds = opsRaw.Where(o => o.UsuarioId.HasValue).Select(o => o.UsuarioId!.Value).Distinct().ToList();
+        var opOperadores = opUserIds.Count == 0 ? new Dictionary<Guid, string>()
+            : await db.Usuarios.AsNoTracking().Where(u => opUserIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Nome, ct);
+
+        var operacoes = opsRaw
+            .OrderByDescending(o => o.CriadoEm)
+            .Select(o => new
+            {
+                localEstoqueId = o.LocalEstoqueId,
+                tipo = o.Tipo.ToString(),
+                o.Valor,
+                descricao = o.Descricao,
+                quando = o.CriadoEm,
+                operador = o.UsuarioId.HasValue ? opOperadores.GetValueOrDefault(o.UsuarioId.Value) : null,
+            })
+            .ToList();
+
         return Ok(new
         {
             periodo = new { inicio = ini, fim = fimEx.AddDays(-1) },
             porLoja,
             sessoes = detalhe,
+            operacoes,
         });
     }
 

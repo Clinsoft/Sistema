@@ -232,8 +232,32 @@
                   <span class="font-weight-medium">R$ {{ fmt(d.dinheiroLiquido) }}</span></div>
                 <div class="dep-linha" v-if="d.suprimentos > 0"><span>+ Suprimentos</span>
                   <span class="text-secondary">R$ {{ fmt(d.suprimentos) }}</span></div>
-                <div class="dep-linha" v-if="d.sangrias > 0"><span>− Sangrias</span>
-                  <span class="text-warning">R$ {{ fmt(d.sangrias) }}</span></div>
+                <template v-if="d.sangrias > 0">
+                  <div class="dep-linha dep-clicavel"
+                    @click="sangriasAbertas = sangriasAbertas === d.localEstoqueId ? null : d.localEstoqueId">
+                    <span>
+                      <v-icon size="14" class="mr-1">
+                        {{ sangriasAbertas === d.localEstoqueId ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
+                      </v-icon>− Sangrias
+                      <span class="text-caption text-medium-emphasis">({{ sangriasDaLoja(d.localEstoqueId).length }})</span>
+                    </span>
+                    <span class="text-warning">R$ {{ fmt(d.sangrias) }}</span>
+                  </div>
+                  <v-expand-transition>
+                    <div v-if="sangriasAbertas === d.localEstoqueId" class="pl-4 pb-1">
+                      <div v-for="(sg, i) in sangriasDaLoja(d.localEstoqueId)" :key="i"
+                        class="d-flex align-center text-caption py-1" style="gap:6px">
+                        <span class="text-medium-emphasis" style="min-width:76px">{{ fmtDiaHora(sg.quando) }}</span>
+                        <span style="min-width:80px">{{ sg.operador ?? '—' }}</span>
+                        <span class="text-medium-emphasis text-truncate" style="max-width:150px">
+                          {{ sg.descricao || 'sem motivo' }}
+                        </span>
+                        <v-spacer />
+                        <span class="text-warning font-weight-medium">R$ {{ fmt(sg.valor) }}</span>
+                      </div>
+                    </div>
+                  </v-expand-transition>
+                </template>
                 <v-divider class="my-2" />
                 <div class="dep-linha">
                   <span class="font-weight-bold">A depositar</span>
@@ -506,8 +530,10 @@ const locais = ref<any[]>([])
 const caixasAbertos = ref<any[]>([])
 const depositoLojas = ref<any[]>([])
 const depositoSessoes = ref<any[]>([])
+const depositoOperacoes = ref<any[]>([])
 const carregandoDeposito = ref(false)
 const expandida = ref<string | null>(null)
+const sangriasAbertas = ref<string | null>(null)
 
 // Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
 const podeSupervisionar = computed(() =>
@@ -600,8 +626,13 @@ const fmtDt = (v?: string) => v ? new Date(v).toLocaleString('pt-BR', { day:'2-d
 const fmtHora = (v?: string) => v ? new Date(v).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '—'
 const fmtDia = (v?: string) => v ? new Date(v).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—'
 
+const fmtDiaHora = (v?: string) => v ? new Date(v).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'
+
 const sessoesDaLoja = (lojaId: string) =>
   depositoSessoes.value.filter((s: any) => s.localEstoqueId === lojaId)
+
+const sangriasDaLoja = (lojaId: string) =>
+  depositoOperacoes.value.filter((o: any) => o.localEstoqueId === lojaId && o.tipo === 'Sangria')
 
 function abrirOperacao(tipo: 'suprimento' | 'sangria') {
   tipoOperacao.value = tipo
@@ -652,7 +683,8 @@ async function carregarDeposito() {
     })
     depositoLojas.value = r.data?.porLoja ?? []
     depositoSessoes.value = r.data?.sessoes ?? []
-  } catch { depositoLojas.value = []; depositoSessoes.value = [] }
+    depositoOperacoes.value = r.data?.operacoes ?? []
+  } catch { depositoLojas.value = []; depositoSessoes.value = []; depositoOperacoes.value = [] }
   finally { carregandoDeposito.value = false }
 }
 
@@ -783,5 +815,12 @@ onMounted(async () => {
   align-items: center;
   padding: 2px 0;
   font-size: 0.875rem;
+}
+.dep-clicavel {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.dep-clicavel:hover {
+  background: rgba(var(--v-theme-warning), 0.08);
 }
 </style>

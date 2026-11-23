@@ -23,7 +23,8 @@ public class ConciliacaoCartaoController(SistemaDbContext db) : ControllerBase
 
     [HttpPost("importar")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> Importar([FromForm] Guid empresaId, IFormFile arquivo, CancellationToken ct)
+    public async Task<IActionResult> Importar([FromForm] Guid empresaId, IFormFile arquivo,
+        [FromForm] Guid? localEstoqueId, CancellationToken ct)
     {
         if (arquivo is null || arquivo.Length == 0)
             return BadRequest(new { mensagem = "Envie o arquivo CSV do relatório de vendas da operadora." });
@@ -78,6 +79,8 @@ public class ConciliacaoCartaoController(SistemaDbContext db) : ControllerBase
             where r.EmpresaId == empresaId && r.DataTransacao >= ini && r.DataTransacao < fim.AddDays(1)
             join v in db.Vendas.AsNoTracking() on r.VendaId equals v.Id into vj
             from v in vj.DefaultIfEmpty()
+            // Filtro por LOJA: cada relatório da operadora é de uma loja (CNPJ/conta própria).
+            where localEstoqueId == null || (v != null && v.LocalEstoqueId == localEstoqueId)
             select new { r.DataTransacao, r.FormaPagamento, r.ValorBruto, r.Taxa, Hora = (DateTime?)(v != null ? v.DataHora : r.DataTransacao) }
         ).ToListAsync(ct);
         var sis = sisRaw.Select(r => new SisTxn(

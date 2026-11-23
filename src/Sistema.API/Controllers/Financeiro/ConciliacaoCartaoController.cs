@@ -81,10 +81,10 @@ public class ConciliacaoCartaoController(SistemaDbContext db) : ControllerBase
             from v in vj.DefaultIfEmpty()
             // Filtro por LOJA: cada relatório da operadora é de uma loja (CNPJ/conta própria).
             where localEstoqueId == null || (v != null && v.LocalEstoqueId == localEstoqueId)
-            select new { r.DataTransacao, r.FormaPagamento, r.ValorBruto, r.Taxa, Hora = (DateTime?)(v != null ? v.DataHora : r.DataTransacao) }
+            select new { r.Id, r.DataTransacao, r.FormaPagamento, r.ValorBruto, r.Taxa, Hora = (DateTime?)(v != null ? v.DataHora : r.DataTransacao) }
         ).ToListAsync(ct);
         var sis = sisRaw.Select(r => new SisTxn(
-            (r.Hora ?? r.DataTransacao), r.DataTransacao.Date, NormForma(r.FormaPagamento) ?? "?", r.ValorBruto)).ToList();
+            r.Id, (r.Hora ?? r.DataTransacao), r.DataTransacao.Date, NormForma(r.FormaPagamento) ?? "?", r.ValorBruto)).ToList();
 
         // Índice do sistema por data.
         var porDia = sis.GroupBy(s => s.Dia).ToDictionary(g => g.Key, g => g.ToList());
@@ -108,7 +108,7 @@ public class ConciliacaoCartaoController(SistemaDbContext db) : ControllerBase
             if (melhor is null) { soNaOperadora.Add(t); continue; }
             melhor.Usado = true; casados++;
             if (melhor.Forma != t.Forma)
-                formaDivergente.Add(new { data = t.Data.Date, valor = t.Bruto, formaSistema = melhor.Forma, formaOperadora = t.Forma, cliente = t.Nome });
+                formaDivergente.Add(new { recebivelId = melhor.Id, data = t.Data.Date, valor = t.Bruto, formaSistema = melhor.Forma, formaOperadora = t.Forma, cliente = t.Nome });
         }
         var soNoSistema = sis.Where(s => !s.Usado).ToList();
 
@@ -141,11 +141,36 @@ public class ConciliacaoCartaoController(SistemaDbContext db) : ControllerBase
 
     // ─── modelos e helpers ───────────────────────────────────────────────────
     private record Txn(DateTime Data, string Forma, decimal Bruto, decimal Taxa, string? Nome);
-    private sealed class SisTxn(DateTime hora, DateTime dia, string forma, decimal valor)
+    private sealed class SisTxn(Guid id, DateTime hora, DateTime dia, string forma, decimal valor)
     {
+        public Guid Id { get; } = id;
         public DateTime Hora { get; } = hora; public DateTime Dia { get; } = dia;
         public string Forma { get; } = forma; public decimal Valor { get; } = valor;
         public bool Usado { get; set; }
+    }
+
+    public record CorrigirFormaRequest(Guid RecebivelId, string NovaForma);
+
+    /// <summary>Corrige a forma de um recebível quando o relatório da operadora diverge do
+    /// sistema. SÓ permite a troca SEGURA débito↔crédito (mesma operadora Visa/Master, não
+    /// altera a venda). Pix↔cartão muda operadora/taxa/repasse → tem que ser corrigido na venda.</summary>
+    [HttpPost("corrigir-forma")]
+    public async Task<IActionResult> CorrigirForma([FromBody] CorrigirFormaRequest req, CancellationToken ct)
+    {
+        var nova = NormForma(req.NovaForma);
+        if (nova is null) return BadRequest(new { mensagem = "Forma inválida." });
+        var rec = await db.ReceiveisCartao.FirstOrDefaultAsync(r => r.Id == req.RecebivelId, ct);
+        if (rec is null) return NotFound(new { mensagem = "Recebível não encontrado." });
+        var atual = NormForma(rec.FormaPagamento);
+        var debCred = new[] { "Débito", "Crédito" };
+        if (!debCred.Contains(atual) || !debCred.Contains(nova))
+            return BadRequest(new { mensagem = "Correção automática só para débito↔crédito. Pix/cartão deve ser corrigido na venda." });
+        if (atual == nova) return Ok(new { mensagem = "Já estava correto." });
+        // Mantém a convenção do sistema para o valor gravado.
+        rec.CorrigirForma(nova == "Crédito" ? "Crédito à vista" : "Débito");
+        db.ReceiveisCartao.Update(rec);
+        await db.SaveChangesAsync(ct);
+        return Ok(new { mensagem = $"Forma corrigida para {nova}." });
     }
 
     private static string? NormForma(string? s)

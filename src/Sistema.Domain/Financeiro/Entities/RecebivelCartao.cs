@@ -46,6 +46,9 @@ public class RecebivelCartao : Entity
         };
     }
 
+    /// <summary>Corrige a forma de pagamento do recebível (ex.: débito↔crédito lançado errado no PDV).</summary>
+    public void CorrigirForma(string forma) => FormaPagamento = forma;
+
     public void MarcarRecebido(DateTime? data = null)
     {
         Status = StatusRecebivelCartao.Recebido;

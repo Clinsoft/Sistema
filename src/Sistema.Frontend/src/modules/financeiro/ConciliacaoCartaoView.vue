@@ -57,10 +57,15 @@
         <v-card-title class="text-subtitle-1 d-flex align-center">
           <v-icon color="deep-orange" class="mr-2">mdi-swap-horizontal</v-icon>
           Forma registrada errada ({{ res.formaDivergente.length }})
+          <v-spacer />
+          <v-btn v-if="res.formaDivergente.some(ehDebCred)" size="small" color="indigo" variant="tonal"
+            :loading="corrigindo" prepend-icon="mdi-auto-fix" class="text-none" @click="corrigirTodas">
+            Corrigir débito↔crédito
+          </v-btn>
         </v-card-title>
-        <v-card-subtitle>Casou pela hora+valor, mas a forma no sistema difere da máquina (ex.: cliente pagou Pix e foi lançado como cartão).</v-card-subtitle>
+        <v-card-subtitle>Casou pela hora+valor, mas a forma no sistema difere da máquina. Dá p/ corrigir débito↔crédito num clique (Pix/cartão muda operadora → ajuste na venda).</v-card-subtitle>
         <v-table density="compact" height="240" fixed-header>
-          <thead><tr><th>Data</th><th class="text-right">Valor</th><th>No sistema</th><th></th><th>Na máquina</th><th>Cliente</th></tr></thead>
+          <thead><tr><th>Data</th><th class="text-right">Valor</th><th>No sistema</th><th></th><th>Na máquina</th><th>Cliente</th><th></th></tr></thead>
           <tbody>
             <tr v-for="(t,i) in res.formaDivergente" :key="i">
               <td>{{ fmtD(t.data) }}</td><td class="text-right">{{ fmt(t.valor) }}</td>
@@ -68,6 +73,11 @@
               <td><v-icon size="16">mdi-arrow-right</v-icon></td>
               <td><v-chip size="x-small" color="deep-orange" label>{{ t.formaOperadora }}</v-chip></td>
               <td class="text-truncate" style="max-width:140px">{{ t.cliente }}</td>
+              <td class="text-right">
+                <v-btn v-if="ehDebCred(t)" size="x-small" color="indigo" variant="text" :loading="corrigindo"
+                  class="text-none" @click="corrigirForma(t)">Corrigir</v-btn>
+                <span v-else class="text-caption text-medium-emphasis">na venda</span>
+              </td>
             </tr>
           </tbody>
         </v-table>
@@ -205,6 +215,31 @@ async function importar() {
   } finally {
     carregando.value = false
   }
+}
+
+const corrigindo = ref(false)
+const ehDebCred = (t: any) => ['Débito', 'Crédito'].includes(t.formaSistema) && ['Débito', 'Crédito'].includes(t.formaOperadora)
+async function corrigirForma(t: any) {
+  if (!t?.recebivelId) return
+  corrigindo.value = true
+  try {
+    await api.post('/financeiro/conciliacao-cartao/corrigir-forma', { recebivelId: t.recebivelId, novaForma: t.formaOperadora })
+    notif.ok('Forma corrigida.')
+    await importar()   // reconcilia pra refletir
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Falha ao corrigir.') }
+  finally { corrigindo.value = false }
+}
+async function corrigirTodas() {
+  const alvos = (res.value?.formaDivergente ?? []).filter(ehDebCred)
+  if (!alvos.length) return
+  corrigindo.value = true
+  try {
+    for (const t of alvos)
+      await api.post('/financeiro/conciliacao-cartao/corrigir-forma', { recebivelId: t.recebivelId, novaForma: t.formaOperadora })
+    notif.ok(`${alvos.length} forma(s) corrigida(s).`)
+    await importar()
+  } catch (e: any) { notif.erro(e?.response?.data?.mensagem ?? 'Falha ao corrigir.') }
+  finally { corrigindo.value = false }
 }
 
 const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

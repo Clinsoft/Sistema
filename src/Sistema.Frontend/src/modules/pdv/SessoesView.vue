@@ -230,8 +230,32 @@
 
                 <div class="dep-linha"><span>Dinheiro (líquido de troco)</span>
                   <span class="font-weight-medium">R$ {{ fmt(d.dinheiroLiquido) }}</span></div>
-                <div class="dep-linha" v-if="d.suprimentos > 0"><span>+ Suprimentos</span>
-                  <span class="text-secondary">R$ {{ fmt(d.suprimentos) }}</span></div>
+                <template v-if="d.suprimentos > 0">
+                  <div class="dep-linha dep-clicavel"
+                    @click="suprimentosAbertos = suprimentosAbertos === d.localEstoqueId ? null : d.localEstoqueId">
+                    <span>
+                      <v-icon size="14" class="mr-1">
+                        {{ suprimentosAbertos === d.localEstoqueId ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
+                      </v-icon>+ Suprimentos
+                      <span class="text-caption text-medium-emphasis">({{ suprimentosDaLoja(d.localEstoqueId).length }})</span>
+                    </span>
+                    <span class="text-secondary">R$ {{ fmt(d.suprimentos) }}</span>
+                  </div>
+                  <v-expand-transition>
+                    <div v-if="suprimentosAbertos === d.localEstoqueId" class="pl-4 pb-1">
+                      <div v-for="(sp, i) in suprimentosDaLoja(d.localEstoqueId)" :key="i"
+                        class="d-flex align-center text-caption py-1" style="gap:6px">
+                        <span class="text-medium-emphasis" style="min-width:76px">{{ fmtDiaHora(sp.quando) }}</span>
+                        <span style="min-width:80px">{{ sp.operador ?? '—' }}</span>
+                        <span class="text-medium-emphasis text-truncate" style="max-width:150px">
+                          {{ sp.descricao || 'sem motivo' }}
+                        </span>
+                        <v-spacer />
+                        <span class="text-secondary font-weight-medium">R$ {{ fmt(sp.valor) }}</span>
+                      </div>
+                    </div>
+                  </v-expand-transition>
+                </template>
                 <template v-if="d.sangrias > 0">
                   <div class="dep-linha dep-clicavel"
                     @click="sangriasAbertas = sangriasAbertas === d.localEstoqueId ? null : d.localEstoqueId">
@@ -534,6 +558,7 @@ const depositoOperacoes = ref<any[]>([])
 const carregandoDeposito = ref(false)
 const expandida = ref<string | null>(null)
 const sangriasAbertas = ref<string | null>(null)
+const suprimentosAbertos = ref<string | null>(null)
 
 // Supervisão: admin/gerente enxergam os caixas abertos de todos os operadores.
 const podeSupervisionar = computed(() =>
@@ -633,6 +658,9 @@ const sessoesDaLoja = (lojaId: string) =>
 
 const sangriasDaLoja = (lojaId: string) =>
   depositoOperacoes.value.filter((o: any) => o.localEstoqueId === lojaId && o.tipo === 'Sangria')
+
+const suprimentosDaLoja = (lojaId: string) =>
+  depositoOperacoes.value.filter((o: any) => o.localEstoqueId === lojaId && o.tipo === 'Suprimento')
 
 function abrirOperacao(tipo: 'suprimento' | 'sangria') {
   tipoOperacao.value = tipo

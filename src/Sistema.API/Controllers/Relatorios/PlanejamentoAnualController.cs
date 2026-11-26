@@ -86,6 +86,18 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         var vendasMap = vendas.GroupBy(v => (v.LocalEstoqueId, v.Month))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
 
+        // Vendas do ANO ALVO — para saber em que mês a loja começou a operar (loja nova
+        // que abriu no meio do ano não deve ser cobrada de plano nos meses anteriores).
+        var iniAlvo = new DateTime(anoAlvo, 1, 1);
+        var fimAlvo = new DateTime(anoAlvo, 12, 31, 23, 59, 59);
+        var aberturaPorLoja = (await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                && v.DataHora >= iniAlvo && v.DataHora <= fimAlvo)
+            .Select(v => new { v.LocalEstoqueId, v.DataHora.Month })
+            .ToListAsync(ct))
+            .GroupBy(v => v.LocalEstoqueId)
+            .ToDictionary(g => g.Key, g => g.Min(x => x.Month));
+
         var histRows = await db.HistoricoFaturamentoLoja.AsNoTracking()
             .Where(h => h.EmpresaId == empresaId && h.Ano == ano)
             .Select(h => new { LojaId = h.LocalEstoqueId, h.Mes, h.Faturamento })
@@ -120,6 +132,12 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
                 if (salvo > 0) mesesPlanejados++;
                 meta += salvo > 0 ? salvo : projet;
             }
+            // Meses que a loja DEVE planejar: 12 se já existia no ano base; se é loja nova
+            // (sem base), só a partir do mês de abertura no ano alvo (abriu em ago = 5 meses).
+            var temBase = realizadoBase > 0;
+            var aberturaMes = aberturaPorLoja.GetValueOrDefault(loja.Id, 0);
+            var mesesEsperados = temBase ? 12 : (aberturaMes > 0 ? 12 - aberturaMes + 1 : 0);
+
             unidades.Add(new
             {
                 localEstoqueId = loja.Id,
@@ -129,7 +147,10 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
                 crescimento = realizadoBase > 0
                     ? (decimal?)Math.Round((meta - realizadoBase) / realizadoBase * 100, 0)
                     : null,
-                mesesPlanejados,           // 0..12 — p/ avisar plano incompleto
+                mesesPlanejados,            // 0..12 — meses com meta salva > 0
+                mesesEsperados,             // quantos meses a loja deveria planejar (respeita abertura)
+                aberturaMes,                // 0 = sem venda no ano alvo; 1..12 = mês de abertura
+                planoCompleto = mesesEsperados > 0 && mesesPlanejados >= mesesEsperados,
                 semBase = realizadoBase <= 0,
             });
         }

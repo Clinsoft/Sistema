@@ -18,7 +18,7 @@
             density="compact"
             hide-details
             style="max-width:200px"
-            @update:model-value="carregar"
+            @update:model-value="trocarLoja"
           />
           <v-select
             v-model="ano"
@@ -73,10 +73,16 @@
                   <v-icon icon="mdi-store" size="18" class="mr-1" />
                   <span class="text-body-2 font-weight-bold">{{ u.loja }}</span>
                   <v-spacer />
-                  <v-chip v-if="u.semBase" size="x-small" color="warning" label>sem base {{ ano }}</v-chip>
-                  <v-chip v-else-if="u.mesesPlanejados > 0 && u.mesesPlanejados < 12"
-                    size="x-small" color="warning" label>
-                    plano {{ u.mesesPlanejados }}/12 meses
+                  <v-chip v-if="u.semBase && u.aberturaMes > 0" size="x-small" color="info" label>
+                    loja nova (abriu {{ nomeMesCurto(u.aberturaMes) }})
+                  </v-chip>
+                  <v-chip v-else-if="u.semBase" size="x-small" color="warning" label>sem base {{ ano }}</v-chip>
+                  <v-chip v-if="!u.planoCompleto && u.mesesEsperados > 0"
+                    size="x-small" color="warning" label class="ml-1">
+                    plano {{ u.mesesPlanejados }}/{{ u.mesesEsperados }}
+                  </v-chip>
+                  <v-chip v-else-if="u.planoCompleto" size="x-small" color="success" label class="ml-1">
+                    plano completo
                   </v-chip>
                 </div>
                 <v-row dense>
@@ -382,11 +388,21 @@ async function carregarResumo() {
     resumoUnidades.value = r.data?.unidades ?? []
   } catch { resumoUnidades.value = [] }
 }
-// Clicar num card do resumo = filtrar o painel de baixo por aquela loja.
-function selecionarUnidade(id: string) {
-  localEstoqueId.value = localEstoqueId.value === id ? null : id
+const nomeMesCurto = (m: number) =>
+  ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'][m] ?? ''
+
+// Troca a loja do painel E do seletor global do topo (ficam sempre em sincronia).
+function trocarLoja(id: string | null) {
+  localEstoqueId.value = id
+  if (auth.lojaAtualId !== id) {
+    auth.setLoja(id)
+    // atendente tem loja fixa — setLoja pode manter a dele; segue o que ficou.
+    if (auth.lojaAtualId !== id) localEstoqueId.value = auth.lojaAtualId
+  }
   carregar()
 }
+// Clicar num card do resumo = filtrar por aquela loja (e trocar o seletor do topo).
+function selecionarUnidade(id: string) { trocarLoja(id) }
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface MesData {
@@ -702,14 +718,15 @@ function desenharGauge() {
 
 onMounted(async () => {
   await carregarLojas()
-  // Abre já POR UNIDADE (evita a soma confusa da rede): usa a loja do usuário se tiver
-  // vínculo, senão a primeira loja. Se só existe 1 loja, mantém ela.
-  if (localEstoqueId.value == null && lojas.value.length) {
-    const vinculo = (auth.usuario as any)?.localEstoqueId
-    localEstoqueId.value = lojas.value.find((l: any) => l.id === vinculo)?.id ?? lojas.value[0].id
-  }
+  // Abre já POR UNIDADE, seguindo o seletor de loja do topo (auth.lojaAtualId),
+  // que por padrão já é a loja do usuário. Assim os dois ficam em sincronia.
+  localEstoqueId.value = auth.lojaAtualId
   carregarResumo()
   carregar()
+})
+// Trocou a loja no seletor GLOBAL (topo) → o painel acompanha.
+watch(() => auth.lojaAtualId, (v) => {
+  if (v !== localEstoqueId.value) { localEstoqueId.value = v; carregar() }
 })
 watch([ano, meta], () => { carregar(); carregarResumo() })
 

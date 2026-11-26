@@ -116,13 +116,14 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         foreach (var loja in lojas)
         {
             decimal realizadoBase = 0m, meta = 0m, piso = 0m;
-            int mesesPlanejados = 0;
+            int mesesPlanejados = 0, mesesComBase = 0;
             for (var mes = 1; mes <= 12; mes++)
             {
                 var realMes = Math.Max(
                     vendasMap.GetValueOrDefault((loja.Id, mes), 0m),
                     histMap.GetValueOrDefault((loja.Id, mes), 0m));
                 realizadoBase += realMes;
+                if (realMes > 0) mesesComBase++;
 
                 // Meta projetada com a mesma TRAVA do painel (não cai mês a mês).
                 var projet = Math.Max(Math.Round(realMes * fator, 2), piso);
@@ -132,6 +133,12 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
                 if (salvo > 0) mesesPlanejados++;
                 meta += salvo > 0 ? salvo : projet;
             }
+
+            // Base ANUALIZADA p/ o crescimento %: se o ano base é parcial (loja nova ou
+            // ano corrente ainda não fechado), projeta a média mensal p/ 12 meses — senão
+            // comparar base parcial × meta de 12 meses dá um "+%" enganoso (ex.: +310%).
+            var baseParcial = mesesComBase > 0 && mesesComBase < 12;
+            var baseAnualizada = baseParcial ? realizadoBase / mesesComBase * 12m : realizadoBase;
             // Meses que a loja DEVE planejar: 12 se já existia no ano base; se é loja nova
             // (sem base), só a partir do mês de abertura no ano alvo (abriu em ago = 5 meses).
             var temBase = realizadoBase > 0;
@@ -143,9 +150,12 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
                 localEstoqueId = loja.Id,
                 loja = loja.Nome,
                 realizadoBase = Math.Round(realizadoBase, 2),
+                baseAnualizada = Math.Round(baseAnualizada, 2),
+                baseParcial,                // base do ano é parcial (anualizada p/ o %)
+                mesesComBase,               // meses do ano base com realizado > 0
                 meta = Math.Round(meta, 2),
-                crescimento = realizadoBase > 0
-                    ? (decimal?)Math.Round((meta - realizadoBase) / realizadoBase * 100, 0)
+                crescimento = baseAnualizada > 0
+                    ? (decimal?)Math.Round((meta - baseAnualizada) / baseAnualizada * 100, 0)
                     : null,
                 mesesPlanejados,            // 0..12 — meses com meta salva > 0
                 mesesEsperados,             // quantos meses a loja deveria planejar (respeita abertura)

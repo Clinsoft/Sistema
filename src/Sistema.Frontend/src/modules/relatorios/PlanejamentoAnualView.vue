@@ -89,6 +89,7 @@
                   <v-col cols="4">
                     <div class="text-caption text-medium-emphasis">Realizado {{ ano }}</div>
                     <div class="text-body-1 font-weight-bold">{{ fmtK(u.realizadoBase) }}</div>
+                    <div v-if="u.baseParcial" class="text-caption text-warning">{{ u.mesesComBase }} meses</div>
                   </v-col>
                   <v-col cols="4">
                     <div class="text-caption text-medium-emphasis">Meta {{ ano + 1 }}</div>
@@ -100,8 +101,15 @@
                       :class="u.crescimento == null ? 'text-medium-emphasis' : 'text-primary'">
                       {{ u.crescimento == null ? '—' : (u.crescimento >= 0 ? '+' : '') + u.crescimento + '%' }}
                     </div>
+                    <div v-if="u.baseParcial" class="text-caption text-medium-emphasis">
+                      base anualizada
+                    </div>
                   </v-col>
                 </v-row>
+                <div v-if="u.baseParcial" class="text-caption text-warning mt-1">
+                  <v-icon size="12">mdi-information-outline</v-icon>
+                  base {{ ano }} parcial ({{ u.mesesComBase }} meses) — % calculado sobre a média anualizada, não sobre o parcial
+                </div>
                 <div class="text-caption text-primary mt-1">
                   <v-icon size="12">mdi-cursor-default-click-outline</v-icon>
                   {{ localEstoqueId === u.localEstoqueId ? 'vendo esta unidade' : 'ver só esta unidade' }}

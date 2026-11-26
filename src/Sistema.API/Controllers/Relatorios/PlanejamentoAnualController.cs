@@ -57,6 +57,86 @@ public class PlanejamentoAnualController(SistemaDbContext db) : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Resumo do planejamento POR UNIDADE (loja): realizado do ano base, meta do ano
+    /// alvo (meta salva onde houver, projetada no restante) e crescimento % — cada loja
+    /// contra a PRÓPRIA base. Evita a distorção de somar lojas com bases diferentes
+    /// (ex.: loja nova sem histórico no ano base infla o "crescimento necessário").
+    /// </summary>
+    [HttpGet("resumo-unidades")]
+    public async Task<IActionResult> ResumoUnidades([FromQuery] Guid empresaId, [FromQuery] int ano,
+        [FromQuery] decimal crescimentoMeta = 10m, CancellationToken ct = default)
+    {
+        var anoAlvo = ano + 1;
+        var fator = 1 + crescimentoMeta / 100m;
+
+        var lojas = await db.LocaisEstoque.AsNoTracking()
+            .Where(l => l.EmpresaId == empresaId)
+            .Select(l => new { l.Id, l.Nome })
+            .OrderBy(l => l.Nome)
+            .ToListAsync(ct);
+
+        var inicio = new DateTime(ano, 1, 1);
+        var fim = new DateTime(ano, 12, 31, 23, 59, 59);
+        var vendas = await db.Vendas.AsNoTracking()
+            .Where(v => v.EmpresaId == empresaId && v.Status == StatusVenda.Finalizada
+                && v.DataHora >= inicio && v.DataHora <= fim)
+            .Select(v => new { v.LocalEstoqueId, v.DataHora.Month, v.Total })
+            .ToListAsync(ct);
+        var vendasMap = vendas.GroupBy(v => (v.LocalEstoqueId, v.Month))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+        var histRows = await db.HistoricoFaturamentoLoja.AsNoTracking()
+            .Where(h => h.EmpresaId == empresaId && h.Ano == ano)
+            .Select(h => new { LojaId = h.LocalEstoqueId, h.Mes, h.Faturamento })
+            .ToListAsync(ct);
+        var histMap = histRows.GroupBy(h => (h.LojaId, h.Mes))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Faturamento));
+
+        var metasRows = await db.MetasVendaMensal.AsNoTracking()
+            .Where(m => m.EmpresaId == empresaId && m.Ano == anoAlvo && m.LocalEstoqueId != null)
+            .Select(m => new { LojaId = m.LocalEstoqueId!.Value, m.Mes, m.Valor })
+            .ToListAsync(ct);
+        var metasMap = metasRows.GroupBy(m => (m.LojaId, m.Mes))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Valor));
+
+        var unidades = new List<object>();
+        foreach (var loja in lojas)
+        {
+            decimal realizadoBase = 0m, meta = 0m, piso = 0m;
+            int mesesPlanejados = 0;
+            for (var mes = 1; mes <= 12; mes++)
+            {
+                var realMes = Math.Max(
+                    vendasMap.GetValueOrDefault((loja.Id, mes), 0m),
+                    histMap.GetValueOrDefault((loja.Id, mes), 0m));
+                realizadoBase += realMes;
+
+                // Meta projetada com a mesma TRAVA do painel (não cai mês a mês).
+                var projet = Math.Max(Math.Round(realMes * fator, 2), piso);
+                piso = projet;
+
+                var salvo = metasMap.GetValueOrDefault((loja.Id, mes), 0m);
+                if (salvo > 0) mesesPlanejados++;
+                meta += salvo > 0 ? salvo : projet;
+            }
+            unidades.Add(new
+            {
+                localEstoqueId = loja.Id,
+                loja = loja.Nome,
+                realizadoBase = Math.Round(realizadoBase, 2),
+                meta = Math.Round(meta, 2),
+                crescimento = realizadoBase > 0
+                    ? (decimal?)Math.Round((meta - realizadoBase) / realizadoBase * 100, 0)
+                    : null,
+                mesesPlanejados,           // 0..12 — p/ avisar plano incompleto
+                semBase = realizadoBase <= 0,
+            });
+        }
+
+        return Ok(new { ano, anoAlvo, unidades });
+    }
+
     /// <summary>Lista os fornecedores com histórico de boletos (últimos 365 dias) e o prazo médio
     /// de cada um (emissão → vencimento), para o seletor do calendário de compras.</summary>
     [HttpGet("fornecedores-prazo")]

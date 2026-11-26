@@ -53,6 +53,65 @@
       </v-col>
     </v-row>
 
+    <!-- Resumo POR UNIDADE: cada loja contra a própria base (evita somar bases diferentes) -->
+    <v-card v-if="resumoUnidades.length > 1" rounded="xl" elevation="1" class="mb-4">
+      <v-card-text class="pa-4">
+        <div class="d-flex align-center mb-3">
+          <v-icon icon="mdi-store-outline" color="primary" class="mr-2" />
+          <span class="text-subtitle-1 font-weight-bold">Resumo por unidade</span>
+          <span class="text-caption text-medium-emphasis ml-2">
+            {{ ano }} realizado → {{ ano + 1 }} meta · cada loja na própria base
+          </span>
+        </div>
+        <v-row dense>
+          <v-col v-for="u in resumoUnidades" :key="u.localEstoqueId" cols="12" md="6">
+            <v-card variant="tonal" rounded="lg"
+              :color="localEstoqueId === u.localEstoqueId ? 'primary' : undefined"
+              class="resumo-unidade" @click="selecionarUnidade(u.localEstoqueId)">
+              <v-card-text class="pa-3">
+                <div class="d-flex align-center mb-2">
+                  <v-icon icon="mdi-store" size="18" class="mr-1" />
+                  <span class="text-body-2 font-weight-bold">{{ u.loja }}</span>
+                  <v-spacer />
+                  <v-chip v-if="u.semBase" size="x-small" color="warning" label>sem base {{ ano }}</v-chip>
+                  <v-chip v-else-if="u.mesesPlanejados > 0 && u.mesesPlanejados < 12"
+                    size="x-small" color="warning" label>
+                    plano {{ u.mesesPlanejados }}/12 meses
+                  </v-chip>
+                </div>
+                <v-row dense>
+                  <v-col cols="4">
+                    <div class="text-caption text-medium-emphasis">Realizado {{ ano }}</div>
+                    <div class="text-body-1 font-weight-bold">{{ fmtK(u.realizadoBase) }}</div>
+                  </v-col>
+                  <v-col cols="4">
+                    <div class="text-caption text-medium-emphasis">Meta {{ ano + 1 }}</div>
+                    <div class="text-body-1 font-weight-bold text-success">{{ fmtK(u.meta) }}</div>
+                  </v-col>
+                  <v-col cols="4">
+                    <div class="text-caption text-medium-emphasis">Crescimento</div>
+                    <div class="text-body-1 font-weight-bold"
+                      :class="u.crescimento == null ? 'text-medium-emphasis' : 'text-primary'">
+                      {{ u.crescimento == null ? '—' : (u.crescimento >= 0 ? '+' : '') + u.crescimento + '%' }}
+                    </div>
+                  </v-col>
+                </v-row>
+                <div class="text-caption text-primary mt-1">
+                  <v-icon size="12">mdi-cursor-default-click-outline</v-icon>
+                  {{ localEstoqueId === u.localEstoqueId ? 'vendo esta unidade' : 'ver só esta unidade' }}
+                </div>
+              </v-card-text>
+            </v-card>
+          </v-col>
+        </v-row>
+        <div class="text-caption text-medium-emphasis mt-2">
+          Abaixo:
+          <b>{{ lojasOpcoes.find(l => l.id === localEstoqueId)?.nome ?? 'Todas as unidades' }}</b>
+          <span v-if="!localEstoqueId"> (soma da rede — use os cards acima ou o filtro para ver uma loja)</span>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <GuiaPassos
       id="planejamento-anual"
       titulo="Como usar o Planejamento Anual"
@@ -310,6 +369,23 @@ async function carregarLojas() {
     const r = await api.get('/locais-estoque', { params: { empresaId: auth.empresaId } })
     lojas.value = r.data ?? []
   } catch { /* silencioso */ }
+}
+
+// ── Resumo por unidade (cada loja na própria base) ──
+const resumoUnidades = ref<any[]>([])
+async function carregarResumo() {
+  if (!auth.empresaId) return
+  try {
+    const r = await api.get('/relatorios/planejamento-anual/resumo-unidades', {
+      params: { empresaId: auth.empresaId, ano: ano.value, crescimentoMeta: meta.value },
+    })
+    resumoUnidades.value = r.data?.unidades ?? []
+  } catch { resumoUnidades.value = [] }
+}
+// Clicar num card do resumo = filtrar o painel de baixo por aquela loja.
+function selecionarUnidade(id: string) {
+  localEstoqueId.value = localEstoqueId.value === id ? null : id
+  carregar()
 }
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -624,8 +700,18 @@ function desenharGauge() {
   ctx.textAlign = 'right'; ctx.fillText('50%', cx + r + 4, cy + 16)
 }
 
-onMounted(() => { carregarLojas(); carregar() })
-watch([ano, meta], () => carregar())
+onMounted(async () => {
+  await carregarLojas()
+  // Abre já POR UNIDADE (evita a soma confusa da rede): usa a loja do usuário se tiver
+  // vínculo, senão a primeira loja. Se só existe 1 loja, mantém ela.
+  if (localEstoqueId.value == null && lojas.value.length) {
+    const vinculo = (auth.usuario as any)?.localEstoqueId
+    localEstoqueId.value = lojas.value.find((l: any) => l.id === vinculo)?.id ?? lojas.value[0].id
+  }
+  carregarResumo()
+  carregar()
+})
+watch([ano, meta], () => { carregar(); carregarResumo() })
 
 function imprimir() {
   window.print()
@@ -633,6 +719,8 @@ function imprimir() {
 </script>
 
 <style scoped>
+.resumo-unidade { cursor: pointer; transition: transform .1s ease; }
+.resumo-unidade:hover { transform: translateY(-1px); }
 .dre-meta-input :deep(input) { text-align: right; font-weight: 700; color: rgb(var(--v-theme-teal, 0 137 123)); font-size: 0.875rem; }
 @media print {
   .v-btn, .v-select { display: none !important; }
